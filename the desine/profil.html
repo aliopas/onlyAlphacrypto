@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>OnlyAlpha Text-Only Settings V1</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#135bec",
+                        "background-black": "#000000",
+                        "surface-dark": "#0A0A0A",
+                        "border-grey": "#333333",
+                        "text-muted": "#888888",
+                        "neon-gold": "#FFD700",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: { "DEFAULT": "0rem", "lg": "0rem", "xl": "0rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <style type="text/tailwindcss">
+        @layer base {
+            body {
+                @apply bg-[#000000] text-white antialiased;
+            }
+            .font-mono-nums {
+                font-family: 'JetBrains Mono', monospace;
+            }
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #000000; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #333333; 
+        }
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+            animation: marquee 40s linear infinite;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        .toggle-checkbox:checked {
+            @apply right-0;
+            right: 0;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            @apply bg-white;
+        }
+    </style>
+</head>
+
+<body class="font-display h-screen flex overflow-hidden bg-black">
+    <nav class="w-[64px] border-r border-[#333] flex flex-col items-center py-6 bg-[#000000] shrink-0 z-20">
+        <div class="mb-10">
+            <div class="text-xl font-bold tracking-tighter text-white">OA</div>
+        </div>
+        <div class="flex flex-col gap-8 w-full items-center">
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[24px]">grid_view</span>
+            </button>
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[24px]">airplay</span>
+            </button>
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[24px]">account_balance_wallet</span>
+            </button>
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[24px]">monitoring</span>
+            </button>
+        </div>
+        <div class="mt-auto flex flex-col gap-6 items-center">
+            <button class="text-white bg-black border border-[#333] p-2 transition-colors">
+                <span class="material-symbols-outlined text-[22px]">settings</span>
+            </button>
+            <div
+                class="w-8 h-8 flex items-center justify-center border border-[#333] text-[10px] font-mono text-[#888]">
+                OA
+            </div>
+        </div>
+    </nav>
+    <main class="flex-1 flex flex-col h-full min-w-0 bg-[#000000]">
+        <header
+            class="h-[42px] border-b border-[#333] bg-[#000000] flex items-center overflow-hidden whitespace-nowrap relative z-10">
+            <div class="flex animate-marquee items-center font-mono text-[11px] uppercase tracking-wider">
+                <div class="flex items-center gap-10 px-6">
+                    <span class="text-[#888] flex items-center gap-2"><span class="w-1 h-1 bg-emerald-500"></span>
+                        LIVE</span>
+                    <span class="flex items-center gap-2 text-[#888]">BTC <span
+                            class="text-white font-mono-nums">$65,230.12</span> <span
+                            class="text-[#10b981] font-mono-nums">+1.24%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">ETH <span
+                            class="text-white font-mono-nums">$3,400.55</span> <span
+                            class="text-[#ef4444] font-mono-nums">-0.52%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">SOL <span
+                            class="text-white font-mono-nums">$145.20</span> <span
+                            class="text-[#10b981] font-mono-nums">+4.21%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">TIA <span
+                            class="text-white font-mono-nums">$12.45</span> <span
+                            class="text-[#10b981] font-mono-nums">+8.32%</span></span>
+                </div>
+                <div class="flex items-center gap-10 px-6">
+                    <span class="text-[#888] flex items-center gap-2"><span class="w-1 h-1 bg-emerald-500"></span>
+                        LIVE</span>
+                    <span class="flex items-center gap-2 text-[#888]">BTC <span
+                            class="text-white font-mono-nums">$65,230.12</span> <span
+                            class="text-[#10b981] font-mono-nums">+1.24%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">ETH <span
+                            class="text-white font-mono-nums">$3,400.55</span> <span
+                            class="text-[#ef4444] font-mono-nums">-0.52%</span></span>
+                </div>
+            </div>
+        </header>
+        <div class="flex-1 overflow-y-auto p-8 flex gap-[24px]">
+            <div class="w-[70%] flex flex-col gap-[24px]">
+                <div class="bg-black border border-[#333] p-8">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <div class="text-[10px] font-mono text-[#555] uppercase tracking-[0.2em] mb-4">Identity
+                                Profile</div>
+                            <h2 class="text-3xl font-mono text-white mb-2 uppercase tracking-tighter">USER ID: OA-9921-X
+                            </h2>
+                            <p class="text-[#888] font-mono text-sm mb-6 lowercase">genesis.user@onlyalpha.com</p>
+                            <div
+                                class="inline-flex items-center gap-2 px-3 py-1 border border-[#FFD700] bg-[#FFD700]/5">
+                                <span
+                                    class="text-[10px] font-mono font-bold text-[#FFD700] tracking-widest uppercase">OG
+                                    GENESIS MEMBER</span>
+                            </div>
+                        </div>
+                        <button
+                            class="px-4 py-2 border border-[#333] hover:bg-white hover:text-black transition-colors text-[11px] font-mono uppercase tracking-widest">Edit
+                            Details</button>
+                    </div>
+                </div>
+                <div class="bg-black border border-[#333] p-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <h3 class="text-[11px] font-mono text-[#888] uppercase tracking-[0.2em]">Public Wallet Tracking
+                        </h3>
+                        <span class="text-[10px] font-mono text-[#555] uppercase">Slot 01/10</span>
+                    </div>
+                    <div class="flex gap-4">
+                        <div class="flex-1 relative">
+                            <input
+                                class="w-full bg-[#000] border border-[#333] text-white font-mono py-4 px-4 focus:ring-0 focus:outline-none focus:border-white text-sm"
+                                readonly="" type="text" value="0x71C...8947" />
+                            <span
+                                class="absolute right-4 top-1/2 -translate-y-1/2 text-[#555] font-mono text-[10px]">VERIFIED</span>
+                        </div>
+                        <button
+                            class="bg-white text-black px-8 py-4 font-mono text-[11px] font-bold uppercase tracking-widest hover:bg-gray-200 transition-colors shrink-0">
+                            [+ Add Wallet]
+                        </button>
+                    </div>
+                    <p class="mt-4 text-[10px] text-[#444] font-mono uppercase tracking-wider">Automated tracking
+                        enabled for Ethereum, Solana, and Cosmos networks.</p>
+                </div>
+                <div class="bg-black border border-[#333] p-8">
+                    <h3 class="text-[11px] font-mono text-[#888] uppercase tracking-[0.2em] mb-6">Developer API</h3>
+                    <div class="flex items-center justify-between gap-6">
+                        <div class="flex-1">
+                            <div
+                                class="bg-black border border-[#333] p-4 font-mono text-sm overflow-hidden whitespace-nowrap relative">
+                                <span
+                                    class="blur-[6px] select-none text-[#555] opacity-50">oa_live_sk_7y2H9kLp8M1vX4z0Q5r2w9N7m4A1b8C9d0EfG</span>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <span class="text-[10px] text-white tracking-widest uppercase bg-black px-2">Reveal
+                                        API Secret</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button
+                            class="border border-[#333] text-white px-8 py-4 font-mono text-[11px] uppercase tracking-widest hover:bg-white hover:text-black transition-colors shrink-0">
+                            Generate Key
+                        </button>
+                    </div>
+                    <div class="mt-6 flex gap-12">
+                        <div class="flex flex-col gap-1">
+                            <span class="text-[10px] text-[#555] font-mono uppercase">Status</span>
+                            <span class="text-[11px] text-emerald-500 font-mono font-bold uppercase">Connected</span>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <span class="text-[10px] text-[#555] font-mono uppercase">Monthly Quota</span>
+                            <span class="text-[11px] text-white font-mono uppercase font-bold">1,242 / 10,000 req</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="w-[30%] flex flex-col gap-[24px]">
+                <div class="bg-black border border-[#333] p-8">
+                    <h3 class="text-[11px] font-mono text-[#888] uppercase tracking-[0.2em] mb-8">Alerts &amp;
+                        Notifications</h3>
+                    <div class="space-y-8">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-[12px] font-mono font-bold text-white uppercase">Airdrop Alerts</p>
+                                <p class="text-[10px] font-mono text-[#555] uppercase mt-1">Real-time snapshot detection
+                                </p>
+                            </div>
+                            <div class="relative inline-block w-8 align-middle select-none">
+                                <input checked=""
+                                    class="toggle-checkbox absolute block w-4 h-4 bg-black border border-[#333] appearance-none cursor-pointer"
+                                    id="airdrop_toggle" type="checkbox" />
+                                <label
+                                    class="toggle-label block overflow-hidden h-4 bg-[#111] border border-[#333] cursor-pointer"
+                                    for="airdrop_toggle"></label>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-[12px] font-mono font-bold text-white uppercase">AI Signals</p>
+                                <p class="text-[10px] font-mono text-[#555] uppercase mt-1">Sentiment &amp; Volume
+                                    spikes</p>
+                            </div>
+                            <div class="relative inline-block w-8 align-middle select-none">
+                                <input checked=""
+                                    class="toggle-checkbox absolute block w-4 h-4 bg-black border border-[#333] appearance-none cursor-pointer"
+                                    id="ai_toggle" type="checkbox" />
+                                <label
+                                    class="toggle-label block overflow-hidden h-4 bg-[#111] border border-[#333] cursor-pointer"
+                                    for="ai_toggle"></label>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-[12px] font-mono font-bold text-white uppercase">Newsletter</p>
+                                <p class="text-[10px] font-mono text-[#555] uppercase mt-1">Weekly ecosystem alpha</p>
+                            </div>
+                            <div class="relative inline-block w-8 align-middle select-none">
+                                <input
+                                    class="toggle-checkbox absolute block w-4 h-4 bg-black border border-[#333] appearance-none cursor-pointer"
+                                    id="news_toggle" type="checkbox" />
+                                <label
+                                    class="toggle-label block overflow-hidden h-4 bg-[#111] border border-[#333] cursor-pointer"
+                                    for="news_toggle"></label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-black border border-[#333] p-8 flex-1">
+                    <h3 class="text-[11px] font-mono text-[#888] uppercase tracking-[0.2em] mb-6">Active Sessions</h3>
+                    <div class="space-y-4">
+                        <div class="p-4 border border-[#333] bg-black">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-[11px] font-mono font-bold text-white uppercase">MacOS / Chrome</span>
+                                <span
+                                    class="text-[9px] font-mono text-emerald-500 border border-emerald-500/30 px-1">ACTIVE</span>
+                            </div>
+                            <p class="text-[10px] font-mono text-[#555] uppercase leading-relaxed">London, UK •
+                                192.168.1.1</p>
+                        </div>
+                        <div class="p-4 border border-[#222] bg-black opacity-60">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-[11px] font-mono font-bold text-white uppercase">iPhone 15 Pro</span>
+                                <button
+                                    class="text-[9px] font-mono text-[#ef4444] uppercase hover:underline">Revoke</button>
+                            </div>
+                            <p class="text-[10px] font-mono text-[#555] uppercase leading-relaxed">London, UK • 2H Ago
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        class="w-full mt-8 py-4 border border-[#333] text-[#888] hover:text-white hover:border-white transition-colors font-mono text-[10px] uppercase tracking-[0.2em]">
+                        Terminate All Other Sessions
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+</body>
+
+</html>

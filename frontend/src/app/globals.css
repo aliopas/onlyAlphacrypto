@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #00e5ff;
+  --color-surface: #0A0A0A;
+  --color-surface-hover: #111111;
+  --color-border: #333333;
+  --color-border-hover: #4d4d4d;
+  --color-muted: #888888;
+  --color-muted-dim: #555555;
+  --color-green: #10b981;
+  --color-red: #ef4444;
+  --color-neon: #00ff88;
+  --font-display: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+/* ── Base ──────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: #000000;
+  color: #ffffff;
+  font-family: var(--font-display);
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  antialiased: true;
+}
+
+/* ── Scrollbar ─────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333333;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444444;
+}
+
+/* ── JetBrains Mono Nums ───────────────────── */
+.font-mono-nums {
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* ── Ticker Marquee ────────────────────────── */
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 40s linear infinite;
+}
+
+/* ── Chart Grid ────────────────────────────── */
+.chart-grid {
+  background-size: 30px 30px;
+  background-image:
+    linear-gradient(to right, #111 1px, transparent 1px),
+    linear-gradient(to bottom, #111 1px, transparent 1px);
+}
+
+/* ── Market Mood Gauge ─────────────────────── */
+.gauge-container {
+  position: relative;
+  width: 140px;
+  height: 70px;
+  overflow: hidden;
+}
+
+.gauge-bg {
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 12px solid #1a1a1a;
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  transform: rotate(-135deg);
+}
+
+.gauge-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  border: 12px solid #10b981;
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  transform: rotate(-45deg);
+}

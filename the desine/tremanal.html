@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>OnlyAlpha Unified Intelligence Terminal</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#135bec",
+                        "background-dark": "#000000",
+                        "surface-dark": "#0A0A0A",
+                        "border-dark": "#333333",
+                        "text-muted": "#888888",
+                        "matte-blue": "#1e3a8a",
+                        "matte-green": "#10b981",
+                        "matte-red": "#ef4444",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <style type="text/tailwindcss">
+        @layer base {
+            body {
+                @apply bg-[#000000] text-white;
+            }
+        }::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #000000; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #333333; 
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #444444; 
+        }@keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+            animation: marquee 40s linear infinite;
+        }
+        .chart-grid {
+            background-size: 30px 30px;
+            background-image:
+                linear-gradient(to right, #111 1px, transparent 1px),
+                linear-gradient(to bottom, #111 1px, transparent 1px);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+
+<body class="font-display h-screen flex overflow-hidden selection:bg-primary selection:text-white">
+    <nav class="w-[64px] border-r border-[#333] flex flex-col items-center py-6 bg-[#000000] shrink-0 z-20">
+        <div class="mb-10">
+            <div class="text-xl font-bold tracking-tighter text-white">OA</div>
+        </div>
+        <div class="flex flex-col gap-8 w-full items-center">
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[24px]">home</span>
+            </button>
+            <button class="text-white bg-[#0A0A0A] border border-[#333] p-2 rounded transition-colors group relative">
+                <span class="material-symbols-outlined text-[24px]">terminal</span>
+            </button>
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[24px]">account_balance_wallet</span>
+            </button>
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[24px]">monitoring</span>
+            </button>
+        </div>
+        <div class="mt-auto flex flex-col gap-6 items-center">
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[22px]">settings</span>
+            </button>
+            <div class="w-8 h-8 rounded-full bg-[#0A0A0A] border border-[#333] overflow-hidden grayscale opacity-80">
+                <img alt="User" class="w-full h-full object-cover"
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuCnDtn1kNleScwPUdkMiWCuEs8uz7_V7txLpaEjy3aOwPnP4sFqQcn2BD6-M9tdPX1AIma9dTIs0mr7MecdUUIwDpZYwDbIwAepLtSyMhHtVFnFyFG_Oj3TVqgn6Jmf2JSDGBTUqJK88qbrvZrO5IFwqTJ9EfN2K0uI2B42ABB4O5XkxUxV_qY-g4eNn63fWtRtgZABdrwt-MK0GytMsUMUzCBZDjh-xzHTUrx5LSxJFeBn_5T22CrdSzfGePPG_ETWNlqi_gnwujw" />
+            </div>
+        </div>
+    </nav>
+    <main class="flex-1 flex flex-col h-full min-w-0">
+        <header
+            class="h-[42px] border-b border-[#333] bg-[#000000] flex items-center overflow-hidden whitespace-nowrap relative z-10">
+            <div class="flex animate-marquee items-center font-mono text-[11px] uppercase tracking-wider">
+                <div class="flex items-center gap-10 px-6">
+                    <span class="text-[#888] flex items-center gap-2"><span
+                            class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> LIVE</span>
+                    <span class="flex items-center gap-2 text-[#888]">BTC <span
+                            class="text-white font-medium">$65,230.12</span> <span
+                            class="text-[#10b981]">+1.24%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">ETH <span
+                            class="text-white font-medium">$3,400.55</span> <span
+                            class="text-[#ef4444]">-0.52%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">SOL <span
+                            class="text-white font-medium">$145.20</span> <span
+                            class="text-[#10b981]">+4.21%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">BNB <span
+                            class="text-white font-medium">$590.10</span> <span
+                            class="text-[#10b981]">+0.88%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">XRP <span
+                            class="text-white font-medium">$0.62</span> <span
+                            class="text-[#ef4444]">-1.10%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">ADA <span
+                            class="text-white font-medium">$0.45</span> <span class="text-[#888]">0.00%</span></span>
+                </div>
+                <div class="flex items-center gap-10 px-6">
+                    <span class="text-[#888] flex items-center gap-2"><span
+                            class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> LIVE</span>
+                    <span class="flex items-center gap-2 text-[#888]">BTC <span
+                            class="text-white font-medium">$65,230.12</span> <span
+                            class="text-[#10b981]">+1.24%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">ETH <span
+                            class="text-white font-medium">$3,400.55</span> <span
+                            class="text-[#ef4444]">-0.52%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">SOL <span
+                            class="text-white font-medium">$145.20</span> <span
+                            class="text-[#10b981]">+4.21%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">BNB <span
+                            class="text-white font-medium">$590.10</span> <span
+                            class="text-[#10b981]">+0.88%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">XRP <span
+                            class="text-white font-medium">$0.62</span> <span
+                            class="text-[#ef4444]">-1.10%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">ADA <span
+                            class="text-white font-medium">$0.45</span> <span class="text-[#888]">0.00%</span></span>
+                </div>
+            </div>
+        </header>
+        <div class="flex-1 flex overflow-hidden p-4 gap-4">
+            <aside class="w-[20%] border border-[#333] flex flex-col bg-[#0A0A0A] min-w-[280px]">
+                <div class="h-11 flex items-center px-4 border-b border-[#333]">
+                    <span class="text-[10px] font-mono text-[#888] uppercase tracking-widest flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Latest Wire
+                    </span>
+                </div>
+                <div class="flex-1 overflow-y-auto p-2 space-y-2 custom-scrollbar">
+                    <div
+                        class="p-4 bg-[#000000] border border-[#333] hover:border-[#555] cursor-pointer transition-all">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-mono text-[#888]">2m ago</span>
+                            <span
+                                class="text-[10px] font-mono text-[#135bec] px-1 bg-[#135bec]/10 border border-[#135bec]/30">$ETH</span>
+                        </div>
+                        <h4 class="text-[13px] font-medium text-white leading-relaxed">SEC delays final decision on
+                            Ethereum Spot ETF applications to July.</h4>
+                    </div>
+                    <div
+                        class="p-4 bg-[#000000] border border-[#333] hover:border-[#555] cursor-pointer transition-all">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-mono text-[#888]">15m ago</span>
+                            <span
+                                class="text-[10px] font-mono text-[#135bec] px-1 bg-[#135bec]/10 border border-[#135bec]/30">$SOL</span>
+                        </div>
+                        <h4 class="text-[13px] font-medium text-white leading-relaxed">Solana network v1.18 upgrade goes
+                            live on mainnet beta.</h4>
+                    </div>
+                    <div
+                        class="p-4 bg-[#000000] border border-[#333] hover:border-[#555] cursor-pointer transition-all">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-mono text-[#888]">42m ago</span>
+                            <span
+                                class="text-[10px] font-mono text-purple-400 px-1 bg-purple-500/10 border border-purple-500/30">DEFI</span>
+                        </div>
+                        <h4 class="text-[13px] font-medium text-white leading-relaxed">Uniswap V4 hooks trigger new wave
+                            of liquidity pool innovation.</h4>
+                    </div>
+                    <div
+                        class="p-4 bg-[#000000] border border-[#333] hover:border-[#555] cursor-pointer transition-all">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-mono text-[#888]">1h ago</span>
+                            <span
+                                class="text-[10px] font-mono text-orange-400 px-1 bg-orange-500/10 border border-orange-500/30">$BTC</span>
+                        </div>
+                        <h4 class="text-[13px] font-medium text-white leading-relaxed">Miners accumulating aggressively
+                            ahead of halving event next month.</h4>
+                    </div>
+                    <div
+                        class="p-4 bg-[#000000] border border-[#333] hover:border-[#555] cursor-pointer transition-all opacity-60">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-mono text-[#888]">2h ago</span>
+                            <span
+                                class="text-[10px] font-mono text-white px-1 bg-white/10 border border-white/30">MACRO</span>
+                        </div>
+                        <h4 class="text-[13px] font-medium text-white leading-relaxed">Fed Chair Powell signals interest
+                            rates may remain steady through Q3.</h4>
+                    </div>
+                </div>
+            </aside>
+            <section class="flex-1 flex flex-col border border-[#333] bg-[#0A0A0A] overflow-y-auto custom-scrollbar">
+                <div class="h-11 flex items-center justify-between px-6 border-b border-[#333]">
+                    <span class="text-[10px] font-mono text-[#888] uppercase tracking-widest">Alpha Stream //
+                        $SOL-USDT</span>
+                    <div class="flex gap-4">
+                        <button
+                            class="text-[10px] font-mono text-[#888] hover:text-white transition-colors">SHARE</button>
+                        <button
+                            class="text-[10px] font-mono text-[#888] hover:text-white transition-colors">EXPORT</button>
+                    </div>
+                </div>
+                <div class="p-10 max-w-4xl mx-auto w-full">
+                    <div class="mb-10">
+                        <div class="flex items-center gap-4 mb-6">
+                            <span
+                                class="text-[10px] font-mono font-bold px-2 py-0.5 border border-[#135bec] text-[#135bec] bg-[#135bec]/10">TECHNICAL
+                                ANALYSIS</span>
+                            <span class="text-[10px] font-mono text-[#888]">ID: OA-9921-X</span>
+                        </div>
+                        <h1 class="text-[32px] font-semibold text-white tracking-tight leading-[1.2] mb-4">Solana
+                            Breakout Imminent: Technicals Align with On-Chain Surge</h1>
+                        <p class="text-[14px] text-[#888]">Analysis by <span class="text-white">AlphaBot v2.1</span> •
+                            Updated 12 mins ago</p>
+                    </div>
+                    <div
+                        class="mb-10 inline-flex items-center gap-6 p-1 pr-6 border border-[#135bec]/30 bg-[#000000] rounded-lg">
+                        <div class="flex items-center gap-3 px-6 py-3 border-r border-[#333]">
+                            <span class="w-2.5 h-2.5 rounded-full bg-[#135bec]"></span>
+                            <span class="font-mono font-bold tracking-[0.2em] text-[13px] text-white">AI VERDICT: STRONG
+                                BUY</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[10px] font-mono text-[#888] uppercase">Confidence</span>
+                            <span class="text-[14px] font-bold text-white">92.4%</span>
+                        </div>
+                    </div>
+                    <div class="border border-[#333] bg-[#000000] p-8 mb-10 relative">
+                        <div class="absolute top-0 left-0 w-1 h-full bg-[#135bec]"></div>
+                        <h3
+                            class="text-[11px] font-mono text-[#888] uppercase tracking-[0.2em] mb-6 flex items-center gap-3">
+                            <span class="material-symbols-outlined text-[18px]">format_list_bulleted</span> Executive
+                            Summary
+                        </h3>
+                        <ul class="space-y-4">
+                            <li class="flex items-start gap-4">
+                                <span class="mt-2 w-1.5 h-1.5 rounded-full bg-[#135bec] shrink-0"></span>
+                                <p class="text-[14px] text-[#888] leading-relaxed"><strong class="text-white">TVL
+                                        Explosion:</strong> Total Value Locked has surged 15% in the last 72 hours,
+                                    outpacing ETH L2s, indicating a rotation of capital back into the L1 ecosystem.</p>
+                            </li>
+                            <li class="flex items-start gap-4">
+                                <span class="mt-2 w-1.5 h-1.5 rounded-full bg-[#135bec] shrink-0"></span>
+                                <p class="text-[14px] text-[#888] leading-relaxed"><strong class="text-white">Resistance
+                                        Weakening:</strong> The $148 resistance level has been tested thrice in 24h with
+                                    decreasing sell volume. Breakout probability calculated at 78%.</p>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="text-[15px] text-[#888] leading-[1.7] space-y-6">
+                        <p>
+                            Solana (SOL) is currently positioned at a critical inflection point. Our algorithmic models
+                            have detected a classic <strong class="text-white underline decoration-[#333]">ascending
+                                triangle formation</strong> on the 4H chart, typically a bullish continuation pattern.
+                        </p>
+                        <div
+                            class="my-10 h-64 w-full border border-[#333] bg-[#000000] relative flex items-center justify-center chart-grid overflow-hidden">
+                            <svg class="w-full h-full text-[#135bec] opacity-40" preserveAspectRatio="none"
+                                viewBox="0 0 400 100">
+                                <path
+                                    d="M0,80 L40,82 L80,70 L120,55 L160,45 L200,35 L240,25 L280,20 L320,15 L360,10 L400,5"
+                                    fill="none" stroke="currentColor" stroke-width="1.5"></path>
+                            </svg>
+                            <span
+                                class="absolute bottom-3 right-3 text-[10px] font-mono text-[#888] bg-[#0A0A0A] border border-[#333] px-2 py-0.5 uppercase tracking-tighter">SOL/USDT
+                                4H</span>
+                        </div>
+                        <p>
+                            Furthermore, on-chain metrics reveal significant accumulation by "smart money" wallets. This
+                            divergence between price action and volume often precedes a violent move to the upside.
+                        </p>
+                    </div>
+                </div>
+            </section>
+            <aside class="w-[25%] flex flex-col border border-[#333] bg-[#0A0A0A] min-w-[320px]">
+                <div class="h-1/3 border-b border-[#333] flex flex-col relative">
+                    <div class="h-11 px-4 border-b border-[#333] flex items-center justify-between">
+                        <span class="text-[10px] font-mono text-[#888]">SOL/USDT • BINANCE</span>
+                        <span class="text-[10px] font-mono text-[#10b981] flex items-center gap-1.5"><span
+                                class="w-1.5 h-1.5 bg-[#10b981] rounded-full animate-pulse"></span> LIVE</span>
+                    </div>
+                    <div class="flex-1 bg-[#000000] chart-grid relative p-6 flex flex-col">
+                        <div class="text-[28px] font-bold text-white mb-2">$145.20</div>
+                        <div class="flex-1 flex items-end gap-[3px]">
+                            <div class="flex-1 flex flex-col items-center justify-end h-full">
+                                <div class="w-[1.5px] bg-[#333] h-full"></div>
+                                <div class="w-full bg-[#10b981] h-12 -mt-16"></div>
+                            </div>
+                            <div class="flex-1 flex flex-col items-center justify-end h-full">
+                                <div class="w-[1.5px] bg-[#333] h-full"></div>
+                                <div class="w-full bg-[#ef4444] h-8 -mt-12"></div>
+                            </div>
+                            <div class="flex-1 flex flex-col items-center justify-end h-full">
+                                <div class="w-[1.5px] bg-[#333] h-full"></div>
+                                <div class="w-full bg-[#10b981] h-20 -mt-24"></div>
+                            </div>
+                            <div class="flex-1 flex flex-col items-center justify-end h-full">
+                                <div class="w-[1.5px] bg-[#333] h-full"></div>
+                                <div class="w-full bg-[#10b981] h-24 -mt-32"></div>
+                            </div>
+                            <div class="flex-1 flex flex-col items-center justify-end h-full">
+                                <div class="w-[1.5px] bg-[#333] h-full"></div>
+                                <div class="w-full bg-[#ef4444] h-6 -mt-10"></div>
+                            </div>
+                            <div class="flex-1 flex flex-col items-center justify-end h-full">
+                                <div class="w-[1.5px] bg-[#333] h-full"></div>
+                                <div class="w-full bg-[#135bec] h-16 -mt-24 shadow-[0_0_10px_#135bec33]"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex border-b border-[#333]">
+                    <button
+                        class="flex-1 py-4 text-[10px] font-mono font-medium text-[#888] hover:text-white transition-colors">DATA</button>
+                    <button
+                        class="flex-1 py-4 text-[10px] font-mono font-medium text-white border-b border-[#135bec] bg-[#0A0A0A]">AI
+                        CHAT</button>
+                    <button
+                        class="flex-1 py-4 text-[10px] font-mono font-medium text-[#888] hover:text-white transition-colors">ALERTS</button>
+                </div>
+                <div class="flex-1 flex flex-col overflow-hidden">
+                    <div class="flex-1 p-5 space-y-6 overflow-y-auto">
+                        <div class="flex gap-4">
+                            <div class="w-6 h-6 rounded bg-[#135bec] flex items-center justify-center shrink-0">
+                                <span class="material-symbols-outlined text-[14px] text-white">smart_toy</span>
+                            </div>
+                            <div class="flex-1">
+                                <div
+                                    class="text-[13px] text-[#888] leading-relaxed bg-[#0A0A0A] border border-[#333] p-4 rounded">
+                                    Buying pressure is currently absorbing 65% of sell volume. Major resistance at <span
+                                        class="text-white">$148.50</span>.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex gap-4 flex-row-reverse">
+                            <div class="w-6 h-6 rounded bg-[#333] flex items-center justify-center shrink-0">
+                                <span class="material-symbols-outlined text-[14px] text-white">person</span>
+                            </div>
+                            <div class="flex-1 flex justify-end">
+                                <div
+                                    class="text-[13px] text-white leading-relaxed bg-[#135bec]/10 border border-[#135bec]/30 p-4 rounded">
+                                    What is the support level?
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="p-4 border-t border-[#333] bg-[#0A0A0A]">
+                        <div class="relative">
+                            <input
+                                class="w-full bg-[#000000] border border-[#333] rounded px-4 py-3 text-[13px] text-white placeholder-[#555] focus:outline-none focus:border-[#555] font-display"
+                                placeholder="Ask OnlyAlpha..." type="text" />
+                            <button
+                                class="absolute right-3 top-1/2 -translate-y-1/2 text-[#135bec] hover:text-white transition-colors">
+                                <span class="material-symbols-outlined text-[20px]">send</span>
+                            </button>
+                        </div>
+                        <div class="flex justify-between items-center mt-3">
+                            <span class="text-[9px] font-mono text-[#555] uppercase tracking-tighter">Model:
+                                Alpha-Turbo-4</span>
+                            <span class="text-[9px] font-mono text-[#10b981] flex items-center gap-1"><span
+                                    class="w-1.5 h-1.5 bg-[#10b981] rounded-full"></span> SYSTEM READY</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </main>
+
+</body>
+
+</html>
