@@ -4,9 +4,9 @@ import { env } from '../config/env';
 // Phase 2 (Aggregator): Scam check / investigation via Tavily
 export async function searchTavily(query: string): Promise<string> {
     try {
-        const apiKey = process.env['Tavily-Api'];
+        const apiKey = process.env.TAVILY_API_KEY;
         if (!apiKey) {
-            console.warn('[Tavily] No Tavily-Api key found in .env, skipping search.');
+            console.warn('[Tavily] No TAVILY_API_KEY found in .env, skipping search.');
             return '';
         }
 
