@@ -24,7 +24,10 @@ export async function getCoinInsight(req: Request, res: Response, next: NextFunc
             .orderBy(desc(marketInsights.analyzedAt))
             .limit(1);
 
-        if (!insight) throw new AppError(`No insights found for ${coin}`, 404);
+        if (!insight) {
+            res.json(null);
+            return;
+        }
 
         await setCache(cacheKey, insight, 300); // 5 min
         res.json(insight);
@@ -46,7 +49,10 @@ export async function getAlphaFocus(req: Request, res: Response, next: NextFunct
             .orderBy(desc(dailyAlphaFocus.selectedAt))
             .limit(1);
 
-        if (!focus) throw new AppError('No alpha focus for today yet', 404);
+        if (!focus) {
+            res.json(null);
+            return;
+        }
 
         // Fetch latest price from priceSnapshots
         const [latestPrice] = await db
@@ -166,7 +172,10 @@ export async function getMarketMood(req: Request, res: Response, next: NextFunct
             .where(eq(dailyMarketMood.validForDate, today))
             .limit(1);
 
-        if (!mood) throw new AppError('No market mood data for today', 404);
+        if (!mood) {
+            res.json(null);
+            return;
+        }
         await setCache(cacheKey, mood, 600);
         res.json(mood);
     } catch (err) { next(err); }

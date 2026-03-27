@@ -20,9 +20,15 @@ const NEWS_SOURCES = [
 async function fetchLatestNews(): Promise<Array<{ title: string; text?: string; source?: string }>> {
     try {
         console.log(`[TerminalEngine] Fetching from: ${NEWS_SOURCES[0]}`);
-        const { data } = await axios.get(NEWS_SOURCES[0], { timeout: 8000 });
-        console.log(`[TerminalEngine] Fetched ${data.Data?.length || 0} news items from API`);
-        return (data.Data || []).slice(0, 5).map((item: Record<string, any>) => ({
+        let { data } = await axios.get(NEWS_SOURCES[0], { timeout: 8000 });
+        
+        if (!data || !data.Data || !Array.isArray(data.Data)) {
+            console.error('[TerminalEngine] Invalid API response structure. Expected data.Data to be an array, but got:', data ? typeof data.Data : 'undefined');
+            return [];
+        }
+
+        console.log(`[TerminalEngine] Fetched ${data.Data.length} news items from API`);
+        return data.Data.slice(0, 5).map((item: Record<string, any>) => ({
             title: item.title as string,
             source: item.source_info?.name as string || item.source as string,
         }));
