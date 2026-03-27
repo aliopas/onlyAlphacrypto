@@ -29,16 +29,15 @@ export async function getCryptoPanicNews(filter?: string): Promise<string[]> {
 
 export async function searchCryptoPanic(query: string): Promise<string[]> {
     try {
-        // CryptoPanic search requires an auth token on API. If it fails, fallback gracefully.
-        // Since we are asked to use free features, we will attempt the public news and filter manually
-        // if the search endpoint fails without a key.
-        const res = await axios.get(`https://cryptopanic.com/api/v1/posts/?public=true`, { timeout: 10000 });
+        let url = `https://cryptopanic.com/api/v1/posts/?public=true&currencies=${encodeURIComponent(query.toUpperCase())}`;
+        if (process.env.CRYPTOPANIC_API_KEY) {
+            url += `&auth_token=${process.env.CRYPTOPANIC_API_KEY}`;
+        }
+
+        const res = await axios.get(url, { timeout: 10000 });
         if (!res.data || !res.data.results) return [];
 
-        const lowerQuery = query.toLowerCase();
-        return res.data.results
-            .filter((post: any) => post.title.toLowerCase().includes(lowerQuery))
-            .map((post: any) => post.title);
+        return res.data.results.map((post: any) => post.title);
 
     } catch (err: any) {
         console.warn(`[CryptoPanic] Search failed for ${query}:`, err.message);

@@ -21,6 +21,8 @@ export const marketInsights = pgTable('market_insights', {
     priceAtAnalysis: real('price_at_analysis'),
     riskLevel: varchar('risk_level', { length: 20 }),             // 'LOW' | 'MEDIUM' | 'HIGH' - New field for AI analysis
     redFlags: json('red_flags'),                                  // [] strings - New field for AI analysis
+    keyDrivers: json('key_drivers'),                              // [] strings - Key reasons for the verdict
+    marketContext: text('market_context'),                        // How this token fits in broader market
     analyzedAt: timestamp('analyzed_at').defaultNow().notNull(),
 });
 

@@ -21,6 +21,7 @@ const envSchema = z.object({
     // OpenRouter (OpenAI-compatible API)
     OPENROUTER_API_KEY: z.string().min(10, 'OPENROUTER_API_KEY is required'),
     ANALYSIS_MODEL: z.string().default('z-ai/glm-5'),
+    WRITER_MODEL: z.string().default('openai/gpt-5.4-nano'),
     SEO_MODEL: z.string().default('openai/gpt-5-nano'),
 
     // Binance

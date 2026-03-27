@@ -76,7 +76,7 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
                 const existingNewsContext: string[] = [];
 
                 for (const headline of rawNews) {
-                    const hash = crypto.createHash('sha256').update(headline).digest('hex');
+                    const hash = crypto.createHash('sha256').update(headline.trim().toLowerCase()).digest('hex');
                     const [existing] = await db.select().from(coinNews).where(eq(coinNews.sourceHash, hash)).limit(1);
                     
                     if (existing) {
@@ -143,6 +143,8 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
                     verdict: report.verdict,
                     confidenceScore: report.confidenceScore,
                     executiveSummary: report.executiveSummary,
+                    keyDrivers: report.keyDrivers || [],
+                    marketContext: report.marketContext || '',
                     riskLevel: report.riskVerdict,
                     redFlags: report.redFlags || [],
                     priceAtAnalysis: item.stats ? parseFloat(item.stats.priceUsd) : 0,
@@ -152,7 +154,7 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
                 if (item.recentNews && Array.isArray(item.recentNews)) {
                     for (const headline of item.recentNews) {
                         try {
-                            const hash = crypto.createHash('sha256').update(headline).digest('hex');
+                            const hash = crypto.createHash('sha256').update(headline.trim().toLowerCase()).digest('hex');
                             await db.insert(coinNews).values({
                                 coinSymbol: item.symbol,
                                 headline: headline,

@@ -5,7 +5,7 @@ import {
     marketInsights, dailyAlphaFocus, dailyMarketMood,
     coinNews, radarSignals, airdropProjects, priceSnapshots
 } from '../models/index';
-import { desc, eq, gte } from 'drizzle-orm';
+import { desc, eq, gte, and } from 'drizzle-orm';
 import { getLivePrices, getTopMovers } from '../services/binance.service';
 import { AppError } from '../middleware/errorHandler';
 
@@ -56,13 +56,34 @@ export async function getAlphaFocus(req: Request, res: Response, next: NextFunct
             .orderBy(desc(priceSnapshots.timestamp))
             .limit(1);
 
+        // Calculate real 24h price change
+        let priceChange24h = 0;
+        if (latestPrice) {
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const [oldPrice] = await db
+                .select()
+                .from(priceSnapshots)
+                .where(
+                    and(
+                        eq(priceSnapshots.coinSymbol, focus.coinSymbol),
+                        gte(priceSnapshots.timestamp, twentyFourHoursAgo)
+                    )
+                )
+                .orderBy(priceSnapshots.timestamp)
+                .limit(1);
+
+            if (oldPrice && oldPrice.price > 0) {
+                priceChange24h = ((latestPrice.price - oldPrice.price) / oldPrice.price) * 100;
+            }
+        }
+
         const mappedFocus = {
             ...focus,
             coin: focus.coinSymbol,
             confidence: focus.confidenceScore,
             summary: focus.executiveSummary,
             price: latestPrice ? latestPrice.price : 0,
-            priceChange24h: 5.5 // Mock change or calculate from DB if available
+            priceChange24h: priceChange24h
         };
 
         await setCache(cacheKey, mappedFocus, 600); // 10 min

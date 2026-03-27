@@ -26,6 +26,8 @@ export interface DeepIntelligenceReport {
     verdict: 'STRONG_BUY' | 'BUY' | 'NEUTRAL' | 'SELL' | 'STRONG_SELL';
     confidenceScore: number;
     executiveSummary: string;
+    keyDrivers: string[];
+    marketContext: string;
     redFlags: string[];
 }
 
@@ -142,7 +144,9 @@ Analyze the provided data and return a strict JSON object:
   "riskVerdict": "LOW|MEDIUM|HIGH|SCAM",
   "verdict": "STRONG_BUY|BUY|NEUTRAL|SELL|STRONG_SELL",
   "confidenceScore": <0-100>,
-  "executiveSummary": "<2-3 sentence summary>",
+  "executiveSummary": "<4-6 sentences explaining the WHY behind the verdict with specific data points>",
+  "keyDrivers": ["<numbered reason 1 referencing specific news>", "<reason 2>", "<reason 3>"],
+  "marketContext": "<brief explanation of how this token fits in the broader market>",
   "redFlags": ["<issue 1>", "<issue 2>"]
 }
 If 'Existing Context' is provided, it contains news we already analyzed. Use it for historical perspective but focus the 'Executive Summary' on what is NEW in 'Recent News'.`
@@ -177,23 +181,24 @@ export async function generateDualNewsOutput(
     const messages = [
         {
             role: 'system' as const,
-            content: `You process crypto news and produce two outputs in one JSON:
+            content: `You process crypto news and produce two SEO-optimized outputs in one JSON:
 {
   "wireCard": {
-    "headline": "<max 15 words>",
-    "summary": "<2-3 sentence analysis>",
+    "headline": "<SEO-friendly, keyword-rich, compelling title, max 15 words>",
+    "summary": "<3-5 sentence deep analysis with specific data points, written for a crypto audience>",
     "sentiment": "bullish|bearish|neutral",
     "impactScore": <0-100>,
     "isBreaking": <true|false>,
     "coinSymbol": "<optional, e.g. SOL>"
   },
   "radarCard": {
-    "signalText": "<1 punchy sentence, max 20 words>",
+    "signalText": "<2 punchy sentences, max 40 words, MUST include a specific data point or price level>",
     "sentiment": "bullish|bearish|neutral",
     "impactScore": <0-100>,
     "coinSymbol": "<optional>"
   }
 }
+SEO Instructions: Use strong action verbs, include price levels/percentages where relevant, and mention timeframes.
 isBreaking = true if the news contains keywords: Snapshot, TGE, Claim, Hack, Exploit, SEC, Crash.
 Tracked projects for keyword matching: ${trackedProjects.join(', ')}
 ${recentContext ? `\nIf recent analysis context is provided, use it to avoid repeating the same insights and to build on previous analysis.\nRecent context: ${recentContext}` : ''}`,
@@ -204,7 +209,7 @@ ${recentContext ? `\nIf recent analysis context is provided, use it to avoid rep
     for (let i = 0; i < 3; i++) {
         try {
             const response = await openrouter.chat.completions.create({
-                model: env.ANALYSIS_MODEL, // GLM-5
+                model: env.WRITER_MODEL, // GPT-5.4-nano for writing/SEO
                 temperature: 0.5,
                 response_format: { type: 'json_object' },
                 messages,

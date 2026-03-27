@@ -42,7 +42,18 @@ export async function getTopBoostedTokens(): Promise<Array<{ symbol: string; add
             const symbol = pair.baseToken.symbol;
             const address = pair.baseToken.address;
 
-            if (symbol && symbol.trim() !== '' && symbol.toUpperCase() !== 'UNKNOWN' && !seenAddresses.has(address)) {
+            const liquidityUsd = pair.liquidity?.usd || 0;
+            const volume24h = pair.volume?.h24 || 0;
+            const pairCreatedAtMsg = pair.pairCreatedAt || Date.now();
+            const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+
+            if (
+                symbol && symbol.trim() !== '' && symbol.toUpperCase() !== 'UNKNOWN' &&
+                !seenAddresses.has(address) &&
+                liquidityUsd >= 5000 &&
+                volume24h >= 1000 &&
+                pairCreatedAtMsg < twentyFourHoursAgo
+            ) {
                 seenAddresses.add(address);
                 validTokens.push({ symbol, address });
             }
