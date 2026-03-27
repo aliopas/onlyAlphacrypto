@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 
 import { getTopBoostedTokens, getTokenData } from '../services/dexscreener.service';
 import { getHotCryptoTopics } from '../services/reddit.service';
+import { extractSymbolsFromReddit } from '../utils/redditExtractor';
 import { searchCryptoPanic } from '../services/cryptopanic.service';
 import { searchTavily } from '../services/tavily.service';
 import { generateDeepIntelligenceReport } from '../services/openai.service';
@@ -37,10 +38,21 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
             dexscreenerTokens.forEach(t => memoryTopics.push({ symbol: t.symbol, address: t.address, source: 'DexScreener', keyword: t.symbol }));
 
             const redditTopics = await getHotCryptoTopics();
-            redditTopics.forEach(t => { /* Basic extraction for crypto symbols from Reddit titles could go here. For now we use the title as keyword. */ });
+            const redditSymbols = extractSymbolsFromReddit(redditTopics);
+            
+            redditSymbols.forEach(symbol => {
+                const exists = memoryTopics.some(t => t.symbol === symbol);
+                if (!exists) {
+                    memoryTopics.push({
+                        symbol,
+                        source: 'Reddit',
+                        keyword: symbol
+                    });
+                }
+            });
 
             // To keep things simple and token-focused:
-            console.log(`[Hunter] Found ${memoryTopics.length} from DexScreener and ${redditTopics.length} from Reddit.`);
+            console.log(`[Hunter] Found ${memoryTopics.length} unique topics (DexScreener + Reddit).`);
         }
 
         // --- PHASE 2: The Aggregator ---
@@ -49,6 +61,7 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
 
         if (targetedPhase === 'all' || targetedPhase === '2') {
             const topicsToProcess = memoryTopics.slice(0, 10); // Expanded from 5 to 10 because we now have cost optimization
+            const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
             for (const topic of topicsToProcess) {
                 console.log(`[Aggregator] Processing ${topic.symbol}...`);
@@ -93,6 +106,9 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
                         volume24h: tokenStats.volume24h,
                     });
                 }
+
+                // Prevents 429 Rate Limiting from CryptoPanic
+                await sleep(1000);
             }
         }
 

@@ -20,21 +20,35 @@ export interface DexTokenInfo {
 // Alternatively, we can search for popular keywords if "trending" is not available publicly.)
 export async function getTopBoostedTokens(): Promise<Array<{ symbol: string; address: string }>> {
     try {
-        // Since DexScreener doesn't have a free "top boosted" endpoint, 
-        // we'll fetch a popular chain's raw latest pairs and extract symbols. 
-        // For a more targeted approach, we might need a specific topic list.
-        // For now, we fetch latest from Ethereum as a proxy for 'hot' or 'new'.
-        // Another option is the `token-boosts` endpoint if available, but it often needs auth.
-        // Let's use the token-profiles/latest/v1 endpoint to get latest active tokens.
-        const res = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 10000 });
-        if (!res.data || !Array.isArray(res.data)) return [];
+        const resProfiles = await axios.get('https://api.dexscreener.com/token-profiles/latest/v1', { timeout: 10000 });
+        if (!resProfiles.data || !Array.isArray(resProfiles.data)) return [];
 
-        const validTokens = res.data.filter((t: any) => t.symbol && t.symbol.trim() !== '' && t.symbol.trim().toUpperCase() !== 'UNKNOWN');
+        const addresses = resProfiles.data
+            .map((t: any) => t.tokenAddress)
+            .filter(Boolean)
+            .slice(0, 30);
 
-        return validTokens.slice(0, 10).map((t: any) => ({
-            symbol: t.symbol,
-            address: t.tokenAddress,
-        }));
+        if (addresses.length === 0) return [];
+
+        const addressesString = addresses.join(',');
+        const resPairs = await axios.get(`https://api.dexscreener.com/latest/dex/tokens/${addressesString}`, { timeout: 10000 });
+
+        if (!resPairs.data || !resPairs.data.pairs) return [];
+
+        const validTokens: Array<{ symbol: string; address: string }> = [];
+        const seenAddresses = new Set<string>();
+
+        resPairs.data.pairs.forEach((pair: any) => {
+            const symbol = pair.baseToken.symbol;
+            const address = pair.baseToken.address;
+
+            if (symbol && symbol.trim() !== '' && symbol.toUpperCase() !== 'UNKNOWN' && !seenAddresses.has(address)) {
+                seenAddresses.add(address);
+                validTokens.push({ symbol, address });
+            }
+        });
+
+        return validTokens.slice(0, 10);
     } catch (err) {
         console.error('[DexScreener] Error fetching boosted tokens:', err);
         return [];

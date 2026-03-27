@@ -9,6 +9,7 @@ import { startAiWorkflowCron } from './crons/aiWorkflow.cron';
 import { startAirdropHunterCron } from './crons/airdropHunter.cron';
 import { startDailyAlphaCron } from './crons/dailyAlpha.cron';
 import { startMarketMoodCron } from './crons/marketMood.cron';
+import { startTerminalEngineCron } from './crons/terminalEngine.cron';
 
 const app = express();
 
@@ -52,6 +53,8 @@ async function bootstrap(): Promise<void> {
         startAirdropHunterCron();
         startDailyAlphaCron();
         startMarketMoodCron();
+        startTerminalEngineCron();
+        console.log('⏰ Terminal Engine cron scheduled — every 5 mins');
 
         const PORT = parseInt(env.PORT, 10);
         app.listen(PORT, () => {
