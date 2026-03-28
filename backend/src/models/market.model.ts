@@ -32,6 +32,10 @@ export const coinNews = pgTable('coin_news', {
     coinSymbol: varchar('coin_symbol', { length: 20 }),           // can be null for macro news
     headline: text('headline').notNull(),
     summary: text('summary'),
+    hook: text('hook'),                                            // Opening hook sentence (SEO)
+    metaTitle: varchar('meta_title', { length: 80 }),             // SEO meta title (max 60 chars)
+    metaDescription: varchar('meta_description', { length: 200 }),// SEO meta description (max 160 chars)
+    seoKeywords: json('seo_keywords'),                            // [] string array of target keywords
     sourceUrl: varchar('source_url', { length: 500 }),
     sentiment: varchar('sentiment', { length: 20 }),              // 'bullish' | 'bearish' | 'neutral'
     impactScore: real('impact_score'),                            // 0-100

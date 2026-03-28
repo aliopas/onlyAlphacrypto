@@ -19,9 +19,11 @@ const envSchema = z.object({
     JWT_EXPIRES_IN: z.string().default('7d'),
 
     // OpenRouter (OpenAI-compatible API)
+    // Pipeline:
+    //   ANALYSIS_MODEL = DeepSeek-R1 → deep crypto analysis (market insights, dual news step 1, airdrop)
+    //   SEO_MODEL      = GPT-5-nano   → final SEO formatting, hooks, meta tags (dual news step 2, chat)
     OPENROUTER_API_KEY: z.string().min(10, 'OPENROUTER_API_KEY is required'),
-    ANALYSIS_MODEL: z.string().default('z-ai/glm-5'),
-    WRITER_MODEL: z.string().default('openai/gpt-5.4-nano'),
+    ANALYSIS_MODEL: z.string().default('deepseek/deepseek-r1'),
     SEO_MODEL: z.string().default('openai/gpt-5-nano'),
 
     // Binance

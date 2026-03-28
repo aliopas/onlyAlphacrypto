@@ -108,11 +108,15 @@ export async function runTerminalEngine(): Promise<void> {
             // 3. Generate Analysis
             const output = await generateDualNewsOutput(rawText, trackedProjects, context);
 
-            // Write wire_card → coin_news table
+            // Write wire_card → coin_news table (with SEO fields from GPT-5-nano)
             const [savedNews] = await db.insert(coinNews).values({
                 coinSymbol: output.wireCard.coinSymbol,
                 headline: output.wireCard.headline,
+                hook: output.wireCard.hook,
                 summary: output.wireCard.summary,
+                metaTitle: output.wireCard.metaTitle,
+                metaDescription: output.wireCard.metaDescription,
+                seoKeywords: output.wireCard.seoKeywords,
                 sourceUrl: undefined,
                 sentiment: output.wireCard.sentiment,
                 impactScore: output.wireCard.impactScore,

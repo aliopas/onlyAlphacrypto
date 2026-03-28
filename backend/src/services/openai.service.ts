@@ -34,8 +34,12 @@ export interface DeepIntelligenceReport {
 
 export interface DualNewsOutput {
     wireCard: {
-        headline: string;
-        summary: string;
+        headline: string;        // SEO-optimized title (GPT-5-nano)
+        hook: string;            // Opening hook sentence to capture attention
+        summary: string;         // Full 3-5 sentence deep analysis
+        metaTitle: string;       // SEO meta title ≤60 chars
+        metaDescription: string; // SEO meta description ≤160 chars
+        seoKeywords: string[];   // Target search keywords
         sentiment: 'bullish' | 'bearish' | 'neutral';
         impactScore: number;
         isBreaking: boolean;
@@ -126,13 +130,12 @@ export async function generateDeepIntelligenceReport(
     // 100-5000% moves, so >10% was causing ALL tokens to route to DeepSeek-R1 unnecessarily.
     const isVolatile = aggregatedData.stats && Math.abs(aggregatedData.stats.priceChange24h || 0) > 30;
 
-    // Tier-1 (Complex): DeepSeek-R1 for high-stakes/complex data (many news OR scam signals OR extreme volatility)
-    // Tier-2 (Routine): GLM-5 for standard tracking
-    const aiModel = (hasManyNews || hasScamAlerts || isVolatile) 
-        ? 'deepseek/deepseek-r1' 
-        : env.ANALYSIS_MODEL; 
+    // Both tiers now use DeepSeek-R1 via ANALYSIS_MODEL env var (GLM-5 removed — DeepSeek is cheaper at scale)
+    // Complex tokens get DeepSeek with higher temperature, routine get lower temperature
+    const aiModel = env.ANALYSIS_MODEL; // Always deepseek/deepseek-r1
+    const temperature = (hasManyNews || hasScamAlerts || isVolatile) ? 0.4 : 0.2;
 
-    console.log(`[ModelRouting] Using ${aiModel} for ${coinSymbol} (Volatile: ${isVolatile}, News: ${aggregatedData.recentNews.length}, Scam: ${!!hasScamAlerts})`);
+    console.log(`[ModelRouting] Using ${aiModel} for ${coinSymbol} (Volatile: ${isVolatile}, News: ${aggregatedData.recentNews.length}, Scam: ${!!hasScamAlerts}, Temp: ${temperature})`);
 
     const response = await openrouter.chat.completions.create({
         model: aiModel,
@@ -174,58 +177,124 @@ ${JSON.stringify(aggregatedData.existingContext || [])}`
     return JSON.parse(content) as DeepIntelligenceReport;
 }
 
-// ─── Dual News Output (GLM-5 — analysis + radar) ─────────────────────────────
+// ─── Dual News Output: 2-Step Pipeline ───────────────────────────────────────
+// Step 1: DeepSeek-R1 analyzes the raw news and extracts structured data
+// Step 2: GPT-5-nano formats the analysis into SEO-optimized article output
+
+interface RawAnalysis {
+    analysis: string;       // Raw editorial analysis
+    sentiment: 'bullish' | 'bearish' | 'neutral';
+    impactScore: number;    // 0-100
+    isBreaking: boolean;
+    coinSymbol?: string;
+    signalText: string;     // 2-sentence radar signal
+    keyFacts: string[];     // Bullet facts for GPT to format
+}
 
 export async function generateDualNewsOutput(
     rawNewsItem: string,
     trackedProjects: string[],
     recentContext?: string
 ): Promise<DualNewsOutput> {
-    const messages = [
+
+    // ── STEP 1: DeepSeek-R1 — Deep Analysis ──────────────────────────────────
+    const analysisMessages = [
         {
             role: 'system' as const,
-            content: `You process crypto news and produce two SEO-optimized outputs in one JSON:
+            content: `You are an elite cryptocurrency news analyst. Analyze the given crypto news headline and return STRICT JSON:
 {
-  "wireCard": {
-    "headline": "<SEO-friendly, keyword-rich, compelling title, max 15 words>",
-    "summary": "<3-5 sentence deep analysis with specific data points, written for a crypto audience>",
-    "sentiment": "bullish|bearish|neutral",
-    "impactScore": <0-100>,
-    "isBreaking": <true|false>,
-    "coinSymbol": "<optional, e.g. SOL>"
-  },
-  "radarCard": {
-    "signalText": "<2 punchy sentences, max 40 words, MUST include a specific data point or price level>",
-    "sentiment": "bullish|bearish|neutral",
-    "impactScore": <0-100>,
-    "coinSymbol": "<optional>"
-  }
+  "analysis": "<3-4 sentence in-depth analysis with specific data points, market impact, and trader implications>",
+  "sentiment": "bullish|bearish|neutral",
+  "impactScore": <0-100>,
+  "isBreaking": <true if headline contains: Snapshot, TGE, Claim, Hack, Exploit, SEC, Crash, Listing; else false>,
+  "coinSymbol": "<ticker symbol if identifiable, else null>",
+  "signalText": "<2 punchy sentences max 40 words for radar, MUST include specific data/price level>",
+  "keyFacts": ["<fact 1>", "<fact 2>", "<fact 3>"]
 }
-SEO Instructions: Use strong action verbs, include price levels/percentages where relevant, and mention timeframes.
-isBreaking = true if the news contains keywords: Snapshot, TGE, Claim, Hack, Exploit, SEC, Crash.
-Tracked projects for keyword matching: ${trackedProjects.join(', ')}
-${recentContext ? `\nIf recent analysis context is provided, use it to avoid repeating the same insights and to build on previous analysis.\nRecent context: ${recentContext}` : ''}`,
+Tracked projects for isBreaking check: ${trackedProjects.join(', ')}
+${recentContext ? `Recent context (avoid repeating): ${recentContext}` : ''}`,
         },
         { role: 'user' as const, content: rawNewsItem },
     ];
 
+    let rawAnalysis: RawAnalysis;
     for (let i = 0; i < 3; i++) {
         try {
-            const response = await openrouter.chat.completions.create({
-                model: env.WRITER_MODEL, // GPT-5.4-nano for writing/SEO
+            const res = await openrouter.chat.completions.create({
+                model: env.ANALYSIS_MODEL, // deepseek/deepseek-r1
+                temperature: 0.3,
+                response_format: { type: 'json_object' },
+                messages: analysisMessages,
+            });
+            const content = res.choices[0].message.content;
+            if (!content) { if (i < 2) continue; throw new Error('Empty DeepSeek response'); }
+            rawAnalysis = JSON.parse(content) as RawAnalysis;
+            break;
+        } catch (err) {
+            if (i === 2) throw err;
+        }
+    }
+
+    // ── STEP 2: GPT-5-nano — SEO Formatting & Polish ────────────────────────────
+    const seoMessages = [
+        {
+            role: 'system' as const,
+            content: `You are an expert crypto SEO content editor. You receive a raw news analysis and format it into a high-quality, SEO-optimized article output. Return STRICT JSON:
+{
+  "headline": "<SEO-rich, action-verb title, keyword-first, max 15 words>",
+  "hook": "<1 powerful opening sentence that creates urgency or curiosity for the reader>",
+  "summary": "<Full article: start with hook, then 3-4 sentences of deep analysis with data points. Write for crypto traders. Include price levels, % moves, or timeframes where possible.>",
+  "metaTitle": "<Max 60 chars. Include primary keyword + brand: 'OnlyAlpha'>",
+  "metaDescription": "<Max 160 chars. Include primary keyword, summarize the insight, include a call to action like 'Read the full analysis'>",
+  "seoKeywords": ["<primary keyword>", "<secondary keyword>", "<long-tail keyword>", "<coin name + action>", "<market trend keyword>"]
+}
+SEO Rules:
+- Keywords: include the coin name, action (buy/sell/pump/hack), and market context
+- Headlines: Start with the most important keyword, use numbers/% where possible
+- Hook: Should make the reader NEED to read more in one sentence
+- metaTitle: Format as "Keyword Action | OnlyAlpha"
+- metaDescription: Include the keyword naturally and end with a CTA`,
+        },
+        {
+            role: 'user' as const,
+            content: JSON.stringify(rawAnalysis!),
+        },
+    ];
+
+    for (let i = 0; i < 3; i++) {
+        try {
+            const res = await openrouter.chat.completions.create({
+                model: env.SEO_MODEL, // openai/gpt-5-nano
                 temperature: 0.5,
                 response_format: { type: 'json_object' },
-                messages,
+                messages: seoMessages,
             });
+            const content = res.choices[0].message.content;
+            if (!content) { if (i < 2) continue; throw new Error('Empty GPT-5-nano SEO response'); }
+            const seoOutput = JSON.parse(content);
 
-            const content = response.choices[0].message.content;
-            if (!content) {
-                if (i < 2) continue; // retry
-                throw new Error('Empty response for news dual output');
-            }
-            return JSON.parse(content) as DualNewsOutput;
-        } catch (error) {
-            if (i === 2) throw error;
+            return {
+                wireCard: {
+                    headline: seoOutput.headline || rawNewsItem.slice(0, 100),
+                    hook: seoOutput.hook || '',
+                    summary: seoOutput.summary || rawAnalysis!.analysis,
+                    metaTitle: seoOutput.metaTitle || seoOutput.headline?.slice(0, 60) || '',
+                    metaDescription: seoOutput.metaDescription || '',
+                    seoKeywords: Array.isArray(seoOutput.seoKeywords) ? seoOutput.seoKeywords : [],
+                    sentiment: rawAnalysis!.sentiment,
+                    impactScore: rawAnalysis!.impactScore,
+                    isBreaking: rawAnalysis!.isBreaking,
+                    coinSymbol: rawAnalysis!.coinSymbol,
+                },
+                radarCard: {
+                    signalText: rawAnalysis!.signalText,
+                    sentiment: rawAnalysis!.sentiment,
+                    impactScore: rawAnalysis!.impactScore,
+                    coinSymbol: rawAnalysis!.coinSymbol,
+                },
+            } as DualNewsOutput;
+        } catch (err) {
+            if (i === 2) throw err;
         }
     }
     throw new Error('Failed to generate dual news output after retries');
