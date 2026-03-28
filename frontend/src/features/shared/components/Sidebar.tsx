@@ -16,7 +16,15 @@ export function Sidebar() {
         <nav className="fixed md:relative bottom-0 left-0 w-full md:w-[64px] h-[72px] md:h-full md:border-r border-[#222] flex md:flex-col items-center md:py-6 bg-black/80 backdrop-blur-md md:bg-black shrink-0 z-50 transition-all duration-300 shadow-[0_-10px_40px_-5px_rgba(0,0,0,0.8)] md:shadow-none pb-2 md:pb-0">
             {/* Logo (Desktop Only) */}
             <div className="hidden md:block mb-10">
-                <div className="text-xl font-bold tracking-tighter text-white" style={{ fontFamily: 'JetBrains Mono, monospace' }}>OA</div>
+                <div className="text-xl font-bold tracking-tighter text-white flex justify-center" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                    <span className="flex items-baseline">
+                        <span className="leading-none">O</span>
+                        <span className="relative leading-none">
+                            A
+                            <span className="absolute bottom-0 right-0 translate-x-[40%] translate-y-[45%] text-[13px] text-[var(--color-primary)] font-medium">c</span>
+                        </span>
+                    </span>
+                </div>
             </div>
 
             {/* Nav items */}
@@ -61,7 +69,13 @@ export function Sidebar() {
                     </span>
                 </Link>
                 <div className="w-8 h-8 flex items-center justify-center border border-[#333] bg-[#0A0A0A] text-[10px] font-mono text-[#888] cursor-pointer hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors">
-                    OA
+                    <span className="flex items-baseline">
+                        <span className="leading-none">O</span>
+                        <span className="relative leading-none">
+                            A
+                            <span className="absolute bottom-0 right-0 translate-x-[40%] translate-y-[45%] text-[6px] text-[var(--color-primary)] font-medium">c</span>
+                        </span>
+                    </span>
                 </div>
             </div>
 

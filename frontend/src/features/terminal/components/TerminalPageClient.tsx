@@ -41,6 +41,8 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
                 onSelectRadar={(id) => { setSelectedRadarId(id); setActiveTab('RADAR'); }}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
+                selectedRadarId={selectedRadarId}
+                selectedNewsId={selectedNewsId}
             />
 
             {/* Center — Alpha Stream / Analysis */}
