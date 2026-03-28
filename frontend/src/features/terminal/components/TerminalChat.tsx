@@ -87,11 +87,11 @@ export function TerminalChat({ coin, articleId, articleType }: Props) {
                 {/* Guest Locked Overlay */}
                 {isGuestLocked && (
                     <div className="absolute inset-x-0 bottom-[80px] z-20 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center border-t border-[#333] h-[200px]">
-                        <span className="material-symbols-outlined text-[40px] text-[#135bec] mb-4">lock</span>
+                        <span className="material-symbols-outlined text-[40px] text-[#135bec] mb-4">account_balance_wallet</span>
                         <h3 className="text-white text-[14px] font-bold mb-2">Free Prompts Exhausted</h3>
-                        <p className="text-[#888] text-[12px] mb-6">You've reached the limit of 3 free Ask OnlyAlpha uses. Please sign in to continue.</p>
-                        <a href="/login" className="px-6 py-2 bg-[#135bec] text-white text-[12px] font-bold uppercase tracking-wider hover:bg-[#0f4ac0] transition-colors">
-                            Sign In / Register
+                        <p className="text-[#888] text-[12px] mb-6">You've reached the limit of 3 free Ask OnlyAlpha uses. Please connect your wallet to continue.</p>
+                        <a href="/auth" className="px-6 py-2 bg-[#135bec] text-white text-[12px] font-bold uppercase tracking-wider hover:bg-[#0f4ac0] transition-colors rounded-lg shadow-[0_0_15px_rgba(19,91,236,0.3)]">
+                            Connect Wallet
                         </a>
                     </div>
                 )}

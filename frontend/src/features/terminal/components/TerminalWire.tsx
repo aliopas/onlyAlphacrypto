@@ -62,8 +62,8 @@ export function TerminalWire({
                     const minsAgo = isNaN(dateObj.getTime()) ? 0 : Math.floor((now - dateObj.getTime()) / 60000);
                     const timeStr = minsAgo < 60 ? `${minsAgo}m ago` : `${Math.floor(minsAgo / 60)}h ago`;
 
-                    // Find context news for this signal
-                    const itemNews = news.filter(n => n.coin === item.coin).slice(0, 2);
+                    // Find context news for this signal (handle both 'coin' and 'coinSymbol' field names)
+                    const itemNews = news.filter(n => (n.coin || n.coinSymbol) === item.coin).slice(0, 2);
                     const isSelectedRadar = activeTab === 'RADAR' && selectedRadarId === item.id;
 
                     return (

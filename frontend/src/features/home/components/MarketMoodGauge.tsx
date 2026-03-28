@@ -3,7 +3,7 @@ import { MarketMood } from '@/features/home/types';
 interface Props { mood: MarketMood | null; }
 
 export function MarketMoodGauge({ mood }: Props) {
-    const score = mood?.score ?? 50;
+    const score = mood?.finalScore ?? mood?.score ?? 50;
     const label = mood?.label ?? 'Neutral';
 
     // Map 0-100 to gauge rotation: -45deg (fear) to +90deg (greed) = 135deg range

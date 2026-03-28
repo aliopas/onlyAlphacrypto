@@ -44,15 +44,6 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
         if (!userMsg.trim() || streaming || isGuestLocked) return;
         
         const token = localStorage.getItem('token');
-        if (!token) {
-            const newCount = guestCount + 1;
-            setGuestCount(newCount);
-            localStorage.setItem('guest_chat_count', newCount.toString());
-            if (newCount >= 3) {
-                setTimeout(() => setIsGuestLocked(true), 1000); 
-            }
-        }
-
         setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
         setStreaming(true);
 
@@ -66,6 +57,15 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token || ''}` },
                 body: JSON.stringify({ messages: contextMessages, coin, mode, articleId, articleType }),
             });
+
+            if (!resp.ok) throw new Error('Failed to fetch');
+
+            // Increment guest count ONLY IF request was successful and user is a guest
+            if (!token) {
+                const newCount = guestCount + 1;
+                setGuestCount(newCount);
+                localStorage.setItem('guest_chat_count', newCount.toString());
+            }
 
             const reader = resp.body?.getReader();
             const decoder = new TextDecoder();
@@ -83,6 +83,12 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
             setMessages(prev => [...prev.slice(0, -1), { role: 'ai', content: 'Connection error. Please try again.' }]);
         } finally {
             setStreaming(false);
+            // Check if we should lock NOW after the response finished
+            const token = localStorage.getItem('token');
+            const storedCount = localStorage.getItem('guest_chat_count');
+            if (!token && storedCount && parseInt(storedCount, 10) >= 3) {
+                setIsGuestLocked(true);
+            }
         }
     };
 

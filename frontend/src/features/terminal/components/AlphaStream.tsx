@@ -131,13 +131,31 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                     <div className="flex items-center gap-3 mb-4">
                         <div className={`w-1 h-4 rounded-sm ${isRadarType ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                         <h3 className="text-sm font-mono tracking-widest text-[#888] uppercase m-0">
-                            {isRadarType ? 'Synthesized Intelligence' : 'GLM-5 Deep Analysis'}
+                            {isRadarType ? 'Synthesized Intelligence' : 'DeepSeek Analysis'}
                         </h3>
                     </div>
+
+                    {/* Hook sentence if available */}
+                    {!isRadarType && article?.hook && (
+                        <p className="text-[#00ff88] font-medium text-[14px] mb-3 relative z-10 italic border-l-2 border-[#00ff88]/30 pl-3">
+                            {article.hook}
+                        </p>
+                    )}
 
                     <p className="text-[#CCC] leading-relaxed text-[15px] font-sans relative z-10 whitespace-pre-line">
                         {displayBody || "No AI summary available for this signal."}
                     </p>
+
+                    {/* SEO Keywords if available */}
+                    {!isRadarType && article?.seoKeywords && article.seoKeywords.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-[#222] flex flex-wrap gap-2">
+                            {article.seoKeywords.map((kw, i) => (
+                                <span key={i} className="text-[10px] font-mono px-2 py-0.5 border border-[#333] text-[#555] bg-[#111]">
+                                    #{kw}
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
 

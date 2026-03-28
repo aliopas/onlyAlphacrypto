@@ -3,8 +3,8 @@
 export type MarketMood = {
     externalScore?: number;
     internalScore?: number;
-    finalScore?: number;
-    score: number;   // final 0-100 fear/greed score
+    finalScore?: number;  // primary score from backend
+    score?: number;       // alias (same as finalScore, kept for compatibility)
     label: string;
 };
 
