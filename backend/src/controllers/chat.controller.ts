@@ -1,57 +1,96 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { db } from '../config/db';
-import { coinNews, marketInsights } from '../models/index';
-import { eq, desc } from 'drizzle-orm';
+import { coinNews, marketInsights, radarSignals } from '../models/index';
+import { eq, desc, and, gt } from 'drizzle-orm';
 import { streamChatResponse } from '../services/openai.service';
 import { getLivePrice } from '../services/binance.service';
 import { AppError } from '../middleware/errorHandler';
 
-// POST /api/chat/stream
-// Body: { coinSlug: string, messages: [{role, content}] }
 export async function chatStream(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-        const { coinSlug, messages } = req.body as {
-            coinSlug: string;
+        const { coin, messages, mode, articleId, articleType } = req.body as {
+            coin: string;
             messages: Array<{ role: 'user' | 'assistant'; content: string }>;
+            mode?: 'general' | 'private';
+            articleId?: number;
+            articleType?: 'WIRE' | 'RADAR';
         };
 
-        if (!coinSlug || !messages?.length) {
-            throw new AppError('coinSlug and messages are required', 400);
+        if (!coin || !messages?.length) {
+            throw new AppError('coin and messages are required', 400);
         }
 
-        // Build coin context from DB + Binance
-        const [insight] = await db
-            .select()
-            .from(marketInsights)
-            .where(eq(marketInsights.coinSlug, coinSlug.toLowerCase()))
-            .orderBy(desc(marketInsights.analyzedAt))
-            .limit(1);
-
-        const news = await db
-            .select({ headline: coinNews.headline })
-            .from(coinNews)
-            .where(eq(coinNews.coinSymbol, insight?.coinSymbol || coinSlug.toUpperCase()))
-            .orderBy(desc(coinNews.publishedAt))
-            .limit(3);
-
-        let currentPrice = insight?.priceAtAnalysis || 0;
+        const symbol = coin.toUpperCase();
+        let contextText = '';
+        let currentPrice = 0;
+        
         try {
-            currentPrice = await getLivePrice(insight?.coinSymbol || coinSlug.toUpperCase());
-        } catch { /* use DB price as fallback */ }
+            currentPrice = await getLivePrice(symbol);
+        } catch { /* ignore */ }
 
-        const newsSummary = news.map((n) => n.headline).join(' | ') || 'No recent news';
+        if (mode === 'private' && articleId && articleType) {
+            // Context Aware / Private Mode
+            let baseArticleTime = new Date();
+            
+            if (articleType === 'WIRE') {
+                const [newsItem] = await db.select().from(coinNews).where(eq(coinNews.id, articleId)).limit(1);
+                if (newsItem) {
+                    baseArticleTime = newsItem.publishedAt;
+                    contextText = `[PRIMARY FOCUS - RECENT NEWS]: ${newsItem.headline}\nSummary: ${newsItem.summary}\n`;
+                }
+            } else if (articleType === 'RADAR') {
+                const [radarItem] = await db.select().from(radarSignals).where(eq(radarSignals.id, articleId)).limit(1);
+                if (radarItem) {
+                    baseArticleTime = radarItem.createdAt;
+                    contextText = `[PRIMARY FOCUS - AI SIGNAL]: ${radarItem.signalText}\nSentiment: ${radarItem.sentiment}\n`;
+                    // Fetch source news if it exists
+                    if (radarItem.newsId) {
+                        const [sourceNews] = await db.select().from(coinNews).where(eq(coinNews.id, radarItem.newsId)).limit(1);
+                        if (sourceNews) {
+                            contextText += `[SOURCE MATERIAL]: ${sourceNews.headline}\n`;
+                        }
+                    }
+                }
+            }
 
-        // Set SSE headers for streaming
+            // Fetch newer updates that appeared AFTER this article
+            const newUpdates = await db.select({ headline: coinNews.headline })
+                .from(coinNews)
+                .where(and(eq(coinNews.coinSymbol, symbol), gt(coinNews.publishedAt, baseArticleTime)))
+                .orderBy(desc(coinNews.publishedAt))
+                .limit(3);
+
+            if (newUpdates.length > 0) {
+                contextText += `\n[LATEST UPDATES SINCE ARTICLE]: ${newUpdates.map(n => n.headline).join(' | ')}`;
+            } else {
+                contextText += `\n[LATEST UPDATES]: No newer updates found since this article was published.`;
+            }
+
+            // Add the general system prompt modification tailored for Private mode
+            contextText += `\nINSTRUCTION: The user is asking about the PRIMARY FOCUS article. Analyze it and consider any LATEST UPDATES. Be concise.`;
+            
+        } else {
+            // General Mode fallback
+            const [insight] = await db.select().from(marketInsights).where(eq(marketInsights.coinSymbol, symbol)).orderBy(desc(marketInsights.analyzedAt)).limit(1);
+            const news = await db.select({ headline: coinNews.headline }).from(coinNews).where(eq(coinNews.coinSymbol, symbol)).orderBy(desc(coinNews.publishedAt)).limit(3);
+            
+            const newsStr = news.map((n) => n.headline).join(' | ') || 'No recent news';
+            contextText = `[GENERAL MARKET CONTEXT] Latest Insight Verdict: ${insight?.verdict || 'None'}\nRecent News: ${newsStr}`;
+            
+            if (!currentPrice) currentPrice = insight?.priceAtAnalysis || 0;
+        }
+
+        // Set SSE headers
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders();
 
         const stream = await streamChatResponse(messages, {
-            symbol: insight?.coinSymbol || coinSlug.toUpperCase(),
+            symbol,
             price: currentPrice,
-            newsSummary,
+            newsSummary: contextText,
         });
 
         for await (const chunk of stream) {

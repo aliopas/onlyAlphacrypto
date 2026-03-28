@@ -5,6 +5,7 @@ import { env } from '../config/env';
 const openrouter = new OpenAI({
     apiKey: env.OPENROUTER_API_KEY,
     baseURL: 'https://openrouter.ai/api/v1',
+    timeout: 90000, // 90s — prevents SIGTERM from slow DeepSeek reasoning
     defaultHeaders: {
         'HTTP-Referer': 'https://onlyalpha.app',
         'X-Title': 'OnlyAlpha',
@@ -121,15 +122,17 @@ export async function generateDeepIntelligenceReport(
     // Adaptive Model Routing Logic
     const hasManyNews = aggregatedData.recentNews.length > 3;
     const hasScamAlerts = aggregatedData.scamReport && aggregatedData.scamReport.length > 100;
-    const isVolatile = aggregatedData.stats && Math.abs(aggregatedData.stats.priceChange24h || 0) > 10;
+    // Threshold raised from >10% to >30% — small-cap DexScreener tokens routinely show
+    // 100-5000% moves, so >10% was causing ALL tokens to route to DeepSeek-R1 unnecessarily.
+    const isVolatile = aggregatedData.stats && Math.abs(aggregatedData.stats.priceChange24h || 0) > 30;
 
-    // Tier-1 (Complex): DeepSeek-R1 for high-stakes/complex data
+    // Tier-1 (Complex): DeepSeek-R1 for high-stakes/complex data (many news OR scam signals OR extreme volatility)
     // Tier-2 (Routine): GLM-5 for standard tracking
     const aiModel = (hasManyNews || hasScamAlerts || isVolatile) 
         ? 'deepseek/deepseek-r1' 
         : env.ANALYSIS_MODEL; 
 
-    console.log(`[ModelRouting] Using ${aiModel} for ${coinSymbol} (Volatile: ${isVolatile}, News: ${aggregatedData.recentNews.length})`);
+    console.log(`[ModelRouting] Using ${aiModel} for ${coinSymbol} (Volatile: ${isVolatile}, News: ${aggregatedData.recentNews.length}, Scam: ${!!hasScamAlerts})`);
 
     const response = await openrouter.chat.completions.create({
         model: aiModel,

@@ -54,7 +54,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
             </section>
 
             {/* Right — Chat + Price */}
-            <TerminalChat coin={selectedCoin} />
+            <TerminalChat coin={selectedCoin} articleId={activeTab === 'WIRE' ? selectedNewsId : selectedRadarId} articleType={activeTab} />
         </div>
     );
 }

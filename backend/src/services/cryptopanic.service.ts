@@ -40,6 +40,14 @@ export async function searchCryptoPanic(query: string): Promise<string[]> {
         return res.data.results.map((post: any) => post.title);
 
     } catch (err: any) {
+        if (err.response?.status === 404) {
+            // Token not indexed in CryptoPanic — expected for small/new DexScreener tokens
+            return [];
+        }
+        if (err.response?.status === 429) {
+            console.warn(`[CryptoPanic] Rate limited for "${query}" — returning empty. Consider adding CRYPTOPANIC_API_KEY.`);
+            return [];
+        }
         console.warn(`[CryptoPanic] Search failed for ${query}:`, err.message);
         return [];
     }

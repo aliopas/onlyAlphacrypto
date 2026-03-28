@@ -1,188 +1,60 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { TerminalChart } from './TerminalChart';
+import { useTerminalChat } from '../hooks/useTerminalChat';
 
-interface Message {
-    role: 'ai' | 'user';
-    content: string;
-}
 interface Props {
     coin: string;
+    articleId?: number | null;
+    articleType?: 'WIRE' | 'RADAR';
 }
 
-export function TerminalChat({ coin }: Props) {
-    const [messages, setMessages] = useState<Message[]>([
-        { role: 'ai', content: `Terminal Interface ready. Scanning data streams for $${coin}...` }
-    ]);
+export function TerminalChat({ coin, articleId, articleType }: Props) {
+    const { messages, streaming, mode, setMode, guestCount, isGuestLocked, isLoggedIn, send } = useTerminalChat({ coin, articleId, articleType });
     const [input, setInput] = useState('');
-    const [streaming, setStreaming] = useState(false);
-    const [price, setPrice] = useState<string>('...');
     const endRef = useRef<HTMLDivElement>(null);
-    const chartContainerRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        setMessages([{ role: 'ai', content: `Terminal Interface ready. Scanning data streams for $${coin}...` }]);
-    }, [coin]);
-
-    useEffect(() => {
-        if (!chartContainerRef.current) return;
-        let chart: any;
-        let isMounted = true;
-        let ws: WebSocket | null = null;
-
-        const initChart = async () => {
-            const { createChart, ColorType } = await import('lightweight-charts');
-            
-            if (!isMounted || !chartContainerRef.current) return;
-            
-            chart = createChart(chartContainerRef.current, {
-                layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#888' },
-                grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },
-                width: chartContainerRef.current.clientWidth,
-                height: chartContainerRef.current.clientHeight,
-                timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#333' },
-                rightPriceScale: { borderColor: '#333' }
-            });
-
-            const candlestickSeries = chart.addCandlestickSeries({
-                upColor: '#10b981', downColor: '#ef4444', borderVisible: false,
-                wickUpColor: '#10b981', wickDownColor: '#ef4444'
-            });
-
-            try {
-                const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin.toUpperCase()}USDT&interval=1h&limit=100`);
-                const data = await res.json();
-                const formattedData = data.map((d: any) => ({
-                    time: d[0] / 1000, open: parseFloat(d[1]), high: parseFloat(d[2]),
-                    low: parseFloat(d[3]), close: parseFloat(d[4])
-                }));
-                if (isMounted) {
-                    candlestickSeries.setData(formattedData);
-                    if (formattedData.length > 0) {
-                        const lastClose = formattedData[formattedData.length - 1].close;
-                        setPrice(lastClose < 1 ? lastClose.toFixed(4) : lastClose.toFixed(2));
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to fetch chart data', e);
-            }
-
-            if (!isMounted) return;
-
-            // Connect WebSocket for live updates
-            const wsUrl = `wss://stream.binance.com:9443/ws/${coin.toLowerCase()}usdt@kline_1h`;
-            ws = new WebSocket(wsUrl);
-            ws.onmessage = (event) => {
-                if (!isMounted) return;
-                try {
-                    const message = JSON.parse(event.data);
-                    if (message && message.k) {
-                        const k = message.k;
-                        const bar = {
-                            time: k.t / 1000,
-                            open: parseFloat(k.o),
-                            high: parseFloat(k.h),
-                            low: parseFloat(k.l),
-                            close: parseFloat(k.c)
-                        };
-                        candlestickSeries.update(bar);
-                        const currentPrice = bar.close;
-                        setPrice(currentPrice < 1 ? currentPrice.toFixed(4) : currentPrice.toFixed(2));
-                    }
-                } catch (err) {
-                    console.error('WS parsing error', err);
-                }
-            };
-
-            const handleResize = () => {
-                if (chartContainerRef.current && chart) {
-                    chart.applyOptions({ width: chartContainerRef.current.clientWidth, height: chartContainerRef.current.clientHeight });
-                }
-            };
-            window.addEventListener('resize', handleResize);
-            chart.cleanupResize = () => window.removeEventListener('resize', handleResize);
-        };
-
-        initChart();
-
-        return () => {
-            isMounted = false;
-            if (ws) ws.close();
-            if (chart) {
-                if (chart.cleanupResize) chart.cleanupResize();
-                chart.remove();
-            }
-            if (chartContainerRef.current) {
-                chartContainerRef.current.innerHTML = '';
-            }
-        };
-    }, [coin]);
 
     useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-    const send = async () => {
-        if (!input.trim() || streaming) return;
-        const userMsg = input.trim();
+    const handleSend = () => {
+        if (!input.trim() || streaming || isGuestLocked) return;
+        send(input);
         setInput('');
-        setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
-        setStreaming(true);
-
-        let aiBuffer = '';
-        setMessages(prev => [...prev, { role: 'ai', content: '' }]);
-
-        try {
-            const resp = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/chat/stream`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
-                body: JSON.stringify({ message: userMsg, coin }),
-            });
-
-            const reader = resp.body?.getReader();
-            const decoder = new TextDecoder();
-            while (reader) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                const text = decoder.decode(value);
-                text.split('\n').filter(l => l.startsWith('data:')).forEach(line => {
-                    const chunk = line.replace('data:', '').trim();
-                    if (chunk && chunk !== '[DONE]') { aiBuffer += chunk; }
-                });
-                setMessages(prev => [...prev.slice(0, -1), { role: 'ai', content: aiBuffer }]);
-            }
-        } catch {
-            setMessages(prev => [...prev.slice(0, -1), { role: 'ai', content: 'Connection error. Please try again.' }]);
-        } finally {
-            setStreaming(false);
-        }
     };
 
     return (
-        <aside className="w-full xl:w-[25%] flex flex-col border border-[#333] bg-[#0A0A0A] xl:min-w-[320px] h-[600px] xl:h-auto shrink-0">
-            {/* Price chart area */}
-            <div className="h-1/3 border-b border-[#333] flex flex-col relative min-h-[250px]">
-                <div className="h-11 px-4 border-b border-[#333] flex items-center justify-between z-10 bg-[#0A0A0A]">
-                    <span className="text-[10px] font-mono text-[#888]">{coin.toUpperCase()}/USDT • BINANCE</span>
-                    <span className="text-[10px] font-mono text-[#10b981] flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 bg-[#10b981] rounded-full animate-pulse inline-block" /> LIVE
-                    </span>
-                </div>
-                <div className="absolute top-14 left-4 z-10 pointer-events-none">
-                    <div className="text-[28px] font-bold text-white font-mono-nums drop-shadow-md">
-                        {price !== '...' ? `$${price}` : '---'}
-                    </div>
-                </div>
-                <div className="flex-1 bg-black relative w-full h-full" ref={chartContainerRef} />
-            </div>
+        <aside className="w-full xl:w-[25%] flex flex-col border border-[#333] bg-[#0A0A0A] xl:min-w-[320px] h-[600px] xl:h-[calc(100vh-80px)] shrink-0 relative">
+            {/* Price chart area (extracted) */}
+            <TerminalChart coin={coin} />
 
             {/* Tabs Header */}
             <div className="flex border-b border-[#333]">
-                <button className="flex-1 py-4 text-[10px] font-mono font-medium transition-colors text-white border-b border-[#135bec] bg-[#0A0A0A] cursor-default">
-                    AI CHAT
+                <button 
+                    onClick={() => setMode('general')}
+                    className={`flex-1 py-4 text-[10px] font-mono font-medium transition-colors border-b relative group ${mode === 'general' ? 'text-white border-[#135bec] bg-[#1a1a1a]' : 'text-[#888] border-transparent bg-[#0A0A0A] hover:bg-[#111]'}`}
+                >
+                    GENERAL AI
+                    {/* Tooltip */}
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-black border border-[#333] text-[#888] text-[9px] p-2 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                        Ask general questions about the market or technical analysis for this coin.
+                    </div>
+                </button>
+                <div className="w-px bg-[#333]"></div>
+                <button 
+                    onClick={() => setMode('private')}
+                    className={`flex-1 py-4 text-[10px] font-mono font-medium transition-colors border-b relative group ${mode === 'private' ? 'text-[#10b981] border-[#10b981] bg-[#1a1a1a]' : 'text-[#888] border-transparent bg-[#0A0A0A] hover:bg-[#111]'}`}
+                >
+                    CONTEXT AI
+                    {/* Tooltip */}
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-black border border-[#10b981]/50 text-[#888] text-[9px] p-2 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
+                        AI will analyze the currently selected article/insight and search for the newest updates since then.
+                    </div>
                 </button>
             </div>
 
             {/* Chat Content */}
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden relative">
                 <div className="flex-1 p-5 space-y-6 overflow-y-auto">
                     {messages.map((msg, i) => (
                         msg.role === 'ai' ? (
@@ -212,25 +84,40 @@ export function TerminalChat({ coin }: Props) {
                     <div ref={endRef} />
                 </div>
 
+                {/* Guest Locked Overlay */}
+                {isGuestLocked && (
+                    <div className="absolute inset-x-0 bottom-[80px] z-20 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center border-t border-[#333] h-[200px]">
+                        <span className="material-symbols-outlined text-[40px] text-[#135bec] mb-4">lock</span>
+                        <h3 className="text-white text-[14px] font-bold mb-2">Free Prompts Exhausted</h3>
+                        <p className="text-[#888] text-[12px] mb-6">You've reached the limit of 3 free Ask OnlyAlpha uses. Please sign in to continue.</p>
+                        <a href="/login" className="px-6 py-2 bg-[#135bec] text-white text-[12px] font-bold uppercase tracking-wider hover:bg-[#0f4ac0] transition-colors">
+                            Sign In / Register
+                        </a>
+                    </div>
+                )}
+
                 {/* Input */}
                 <div className="p-4 border-t border-[#333] bg-[#0A0A0A]">
                     <div className="relative">
                         <input
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && send()}
-                            className="w-full bg-black border border-[#333] px-4 py-3 text-[13px] text-white placeholder-[#555] focus:outline-none focus:border-[#555]"
-                            placeholder="Ask OnlyAlpha..."
+                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                            disabled={isGuestLocked}
+                            className="w-full bg-black border border-[#333] px-4 py-3 text-[13px] text-white placeholder-[#555] focus:outline-none focus:border-[#555] disabled:opacity-50 disabled:cursor-not-allowed"
+                            placeholder={isGuestLocked ? "Sign in to continue..." : "Ask OnlyAlpha..."}
                             type="text"
                         />
-                        <button onClick={send} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#135bec] hover:text-white transition-colors">
+                        <button onClick={handleSend} disabled={isGuestLocked} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#135bec] hover:text-white transition-colors disabled:opacity-50">
                             <span className="material-symbols-outlined text-[20px]">send</span>
                         </button>
                     </div>
                     <div className="flex justify-between items-center mt-3">
-                        <span className="text-[9px] font-mono text-[#555] uppercase tracking-tighter">Model: Alpha-Turbo-4</span>
-                        <span className="text-[9px] font-mono text-[#10b981] flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 bg-[#10b981] rounded-full inline-block" /> SYSTEM READY
+                        <span className="text-[9px] font-mono text-[#555] uppercase tracking-tighter">
+                            Model: {mode === 'general' ? 'Alpha-Turbo-4' : 'Alpha-Context-5'} {(!isLoggedIn && guestCount < 3) ? `(GUEST: ${guestCount}/3)` : ''}
+                        </span>
+                        <span className="text-[9px] font-mono flex items-center gap-1 text-[#10b981]">
+                            <span className="w-1.5 h-1.5 bg-[#10b981] rounded-full inline-block animate-pulse" /> SYSTEM READY
                         </span>
                     </div>
                 </div>

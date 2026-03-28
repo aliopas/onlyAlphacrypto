@@ -19,11 +19,17 @@ const NEWS_SOURCES = [
 
 async function fetchLatestNews(): Promise<Array<{ title: string; text?: string; source?: string }>> {
     try {
+        let url = NEWS_SOURCES[0];
+        if (process.env.CRYPTOCOMPARE_API_KEY) {
+            url += `&api_key=${process.env.CRYPTOCOMPARE_API_KEY}`;
+        }
         console.log(`[TerminalEngine] Fetching from: ${NEWS_SOURCES[0]}`);
-        let { data } = await axios.get(NEWS_SOURCES[0], { timeout: 8000 });
+        let { data } = await axios.get(url, { timeout: 8000 });
         
         if (!data || !data.Data || !Array.isArray(data.Data)) {
-            console.error('[TerminalEngine] Invalid API response structure. Expected data.Data to be an array, but got:', data ? typeof data.Data : 'undefined');
+            // Log the actual response to diagnose rate limits or auth errors from CryptoCompare
+            const snippet = JSON.stringify(data).slice(0, 300);
+            console.error(`[TerminalEngine] Invalid API structure. Response snippet: ${snippet}`);
             return [];
         }
 

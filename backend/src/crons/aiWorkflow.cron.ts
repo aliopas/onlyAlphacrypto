@@ -92,8 +92,8 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
                     symbol: actualSymbol,
                     name: tokenStats?.name || actualSymbol,
                     stats: tokenStats,
-                    recentNews: freshNews, // Only send NEW news to the AI
-                    existingContext: existingNewsContext, // Provide context of what we already know
+                    recentNews: freshNews.slice(0, 5), // Cap at 5 items to keep AI payloads manageable
+                    existingContext: existingNewsContext,
                     scamReport: scamCheck
                 });
 
@@ -107,8 +107,8 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
                     });
                 }
 
-                // Prevents 429 Rate Limiting from CryptoPanic
-                await sleep(1000);
+                // Increased from 1000ms → 2500ms to respect CryptoPanic free-tier rate limits
+                await sleep(2500);
             }
         }
 
