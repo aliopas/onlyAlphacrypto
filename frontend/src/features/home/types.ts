@@ -35,6 +35,7 @@ export type RadarSignal = {
     sentiment: string;
     impactScore?: number;
     createdAt: string;
+    formattedTime?: string;
 };
 
 export type TopMover = {

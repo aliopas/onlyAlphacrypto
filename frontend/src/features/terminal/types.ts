@@ -18,6 +18,7 @@ export type CoinNews = {
     isBreaking?: number;
     createdAt: string;
     publishedAt?: string;
+    formattedTime?: string;
 };
 
 export type AnalysisStream = {

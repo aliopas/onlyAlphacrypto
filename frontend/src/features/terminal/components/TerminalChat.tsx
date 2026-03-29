@@ -30,7 +30,7 @@ export function TerminalChat({ coin, articleId, articleType }: Props) {
 
             {/* Tabs Header */}
             <div className="flex border-b border-[#333]">
-                <button 
+                <button
                     onClick={() => setMode('general')}
                     className={`flex-1 py-4 text-[10px] font-mono font-medium transition-colors border-b relative group ${mode === 'general' ? 'text-white border-[#135bec] bg-[#1a1a1a]' : 'text-[#888] border-transparent bg-[#0A0A0A] hover:bg-[#111]'}`}
                 >
@@ -41,7 +41,7 @@ export function TerminalChat({ coin, articleId, articleType }: Props) {
                     </div>
                 </button>
                 <div className="w-px bg-[#333]"></div>
-                <button 
+                <button
                     onClick={() => setMode('private')}
                     className={`flex-1 py-4 text-[10px] font-mono font-medium transition-colors border-b relative group ${mode === 'private' ? 'text-[#10b981] border-[#10b981] bg-[#1a1a1a]' : 'text-[#888] border-transparent bg-[#0A0A0A] hover:bg-[#111]'}`}
                 >

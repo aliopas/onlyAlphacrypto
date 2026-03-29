@@ -14,6 +14,9 @@ interface Props {
     onSelectRadar?: (radarId: number) => void;
     selectedRadarId?: number | null;
     selectedNewsId?: number | null;
+    onLoadMore?: () => void;
+    hasMore?: boolean;
+    isLoadingMore?: boolean;
 }
 
 export function TerminalWire({
@@ -25,10 +28,12 @@ export function TerminalWire({
     onSelectNews,
     onSelectRadar,
     selectedRadarId,
-    selectedNewsId
+    selectedNewsId,
+    onLoadMore,
+    hasMore = true,
+    isLoadingMore = false
 }: Props) {
     const [now, setNow] = useState<number | null>(null);
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     useEffect(() => { setNow(Date.now()); }, []);
 
     if (!now) return null;
@@ -37,12 +42,12 @@ export function TerminalWire({
         ? radarSignals.filter(r => r.coin?.toLowerCase() === targetedCoin.toLowerCase())
         : radarSignals;
 
-    // Sort descending by date
-    filteredRadar.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Sort descending by date (if not handled by server)
+    // filteredRadar.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     return (
         <aside className="w-full xl:w-[20%] border border-[#333] flex flex-col bg-[#0A0A0A] xl:min-w-[280px] h-[300px] xl:h-auto shrink-0">
-            {/* Header */}
+            {/* Header - PRESERVED ORIGINAL LOOK */}
             <div className="h-11 flex items-center px-4 border-b border-[#333] bg-[#111]">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
                 <span className="text-[10px] font-mono uppercase tracking-widest text-white">AI Radar Stream</span>
@@ -57,14 +62,11 @@ export function TerminalWire({
                 ) : null}
 
                 {filteredRadar.map((item: any, i: number) => {
-                    const dateRaw = item.createdAt;
-                    const dateObj = new Date(dateRaw.endsWith('Z') ? dateRaw : `${dateRaw}Z`);
-                    const minsAgo = isNaN(dateObj.getTime()) ? 0 : Math.floor((now - dateObj.getTime()) / 60000);
-                    const timeStr = minsAgo < 60 ? `${minsAgo}m ago` : `${Math.floor(minsAgo / 60)}h ago`;
-
-                    // Find context news for this signal (handle both 'coin' and 'coinSymbol' field names)
-                    const itemNews = news.filter(n => (n.coin || n.coinSymbol) === item.coin).slice(0, 2);
                     const isSelectedRadar = activeTab === 'RADAR' && selectedRadarId === item.id;
+                    const timeStr = item.formattedTime || `${Math.floor((now - new Date(item.createdAt).getTime()) / 60000)}m ago`;
+
+                    // Find context news for this signal
+                    const itemNews = news.filter(n => (n.coin || n.coinSymbol) === item.coin).slice(0, 2);
 
                     return (
                         <div key={`radar-${item.id || i}`}
@@ -79,10 +81,10 @@ export function TerminalWire({
                                 ) : null}
                             </div>
                             <h4 className="text-[13px] font-medium text-white leading-relaxed line-clamp-4">
-                                {item.signal}
+                                {item.signal || item.signalText}
                             </h4>
 
-                            {/* News Sources Section integrated into Radar */}
+                            {/* News Sources Section integrated into Radar - PRESERVED */}
                             {itemNews.length > 0 && (
                                 <div className="mt-4 pt-3 border-t border-[#222]">
                                     <div className="text-[9px] font-mono text-[#666] mb-2 uppercase tracking-wider flex items-center gap-1">
@@ -108,6 +110,19 @@ export function TerminalWire({
                         </div>
                     );
                 })}
+
+                {/* Load More Button - NEW */}
+                {filteredRadar.length > 0 && hasMore && (
+                    <div className="pt-2 pb-4">
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onLoadMore?.(); }}
+                            disabled={isLoadingMore}
+                            className="w-full py-2 bg-[#111] hover:bg-[#181818] border border-[#222] text-[#888] text-[10px] font-mono uppercase tracking-widest transition-all disabled:opacity-50"
+                        >
+                            {isLoadingMore ? 'Fetching...' : 'Show More +'}
+                        </button>
+                    </div>
+                )}
             </div>
         </aside>
     );

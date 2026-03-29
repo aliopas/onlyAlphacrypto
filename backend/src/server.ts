@@ -5,6 +5,7 @@ import { env } from './config/env';
 import { testConnection } from './config/db';
 import routes from './routes/index';
 import { errorHandler } from './middleware/errorHandler';
+import { timeMiddleware } from './middleware/time.middleware';
 import { startAiWorkflowCron } from './crons/aiWorkflow.cron';
 import { startAirdropHunterCron } from './crons/airdropHunter.cron';
 import { startDailyAlphaCron } from './crons/dailyAlpha.cron';
@@ -16,6 +17,7 @@ const app = express();
 // ─── Global Middleware ────────────────────────────────────────────────────────
 
 app.use(helmet());
+app.set('trust proxy', true); // Essential for request-ip to work correctly
 app.use(cors({
     origin: [
         'http://localhost:3000',
@@ -26,6 +28,9 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// IP-based Time Formatting Middleware
+app.use(timeMiddleware);
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 

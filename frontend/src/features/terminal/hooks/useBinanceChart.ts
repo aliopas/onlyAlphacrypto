@@ -17,9 +17,9 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
 
         const initChart = async () => {
             const { createChart, ColorType } = await import('lightweight-charts');
-            
+
             if (!isMounted || !chartContainerRef.current) return;
-            
+
             chart = createChart(chartContainerRef.current, {
                 layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: '#888' },
                 grid: { vertLines: { color: '#222' }, horzLines: { color: '#222' } },

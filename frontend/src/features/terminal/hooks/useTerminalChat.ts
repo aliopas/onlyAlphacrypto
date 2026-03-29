@@ -42,7 +42,7 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
 
     const send = async (userMsg: string) => {
         if (!userMsg.trim() || streaming || isGuestLocked) return;
-        
+
         const token = localStorage.getItem('token');
         setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
         setStreaming(true);

@@ -97,25 +97,30 @@ export async function getAlphaFocus(req: Request, res: Response, next: NextFunct
     } catch (err) { next(err); }
 }
 
-// GET /api/market/radar
+// GET /api/market/radar?limit=20&offset=0
 export async function getRadarSignals(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const cacheKey = 'radar:latest';
+        const limitParam = req.query.limit as string | undefined;
+        const offsetParam = req.query.offset as string | undefined;
+        const limit = parseInt(limitParam || '20', 10);
+        const offset = parseInt(offsetParam || '0', 10);
+
+        const cacheKey = `radar:latest:${limit}:${offset}:${req.userTimezone || 'UTC'}`;
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
 
-        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
         const signals = await db
             .select()
             .from(radarSignals)
-            .where(gte(radarSignals.createdAt, sixHoursAgo))
             .orderBy(desc(radarSignals.createdAt))
-            .limit(6);
+            .limit(limit)
+            .offset(offset);
 
         const mappedSignals = signals.map(s => ({
             ...s,
             coin: s.coinSymbol,
             signal: s.signalText,
+            formattedTime: req.formatTime(s.createdAt)
         }));
 
         await setCache(cacheKey, mappedSignals, 60); // 1 min
@@ -132,16 +137,26 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
         const coin = Array.isArray(coinParam) ? coinParam[0] : coinParam;
         const limit = Array.isArray(limitParam) ? limitParam[0] : limitParam || '20';
 
-        const cacheKey = `wire:${coin || 'all'}:${limit}`;
+        const cacheKey = `wire:${coin || 'all'}:${limit}:${req.userTimezone || 'UTC'}`;
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
 
-        let query = db.select().from(coinNews).orderBy(desc(coinNews.publishedAt));
-        // We will just return the generic news
-        const news = await query.limit(parseInt(limit, 10));
+        let query = db.select().from(coinNews);
+        if (coin && coin.toUpperCase() !== 'ALL') {
+            query.where(eq(coinNews.coinSymbol, coin.toUpperCase()));
+        }
 
-        await setCache(cacheKey, news, 120);
-        res.json(news);
+        const news = await query
+            .orderBy(desc(coinNews.publishedAt))
+            .limit(parseInt(limit, 10));
+
+        const mappedNews = news.map(n => ({
+            ...n,
+            formattedTime: req.formatTime(n.publishedAt)
+        }));
+
+        await setCache(cacheKey, mappedNews, 120);
+        res.json(mappedNews);
     } catch (err) { next(err); }
 }
 
