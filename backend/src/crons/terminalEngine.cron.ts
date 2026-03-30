@@ -25,7 +25,6 @@ async function fetchLatestNews(): Promise<Array<{ title: string; text?: string; 
         }
         console.log(`[TerminalEngine] Fetching from: ${NEWS_SOURCES[0]}`);
         let { data } = await axios.get(url, { timeout: 8000 });
-        
         if (!data || !data.Data || !Array.isArray(data.Data)) {
             // Log the actual response to diagnose rate limits or auth errors from CryptoCompare
             const snippet = JSON.stringify(data).slice(0, 300);
@@ -47,27 +46,10 @@ async function fetchLatestNews(): Promise<Array<{ title: string; text?: string; 
     }
 }
 
-async function getTrackedProjectNames(): Promise<string[]> {
-    const projects = await db
-        .select({ name: airdropProjects.name })
-        .from(airdropProjects)
-        .where(eq(airdropProjects.isActive, true));
-    return projects.map((p) => p.name);
-}
-
-const BREAKING_KEYWORDS = ['snapshot', 'tge', 'claim', 'hack', 'exploit', 'sec', 'crash', 'listing'];
-
-async function triggerAirdropWebhook(projectName: string): Promise<void> {
-    console.log(`🔔 Breaking news detected for tracked project: ${projectName} — triggering airdrop update`);
-    // TODO: call airdrop hunter cron directly or via internal event
-}
-
-// ─── Main Cron: Every 5 minutes ──────────────────────────────────────────────
-
+// ─── Main Cron: Every 10 minutes (Phase 1A: Gathering Engine) ──────────────
 export async function runTerminalEngine(): Promise<void> {
-    console.log('🤖 [TerminalEngine] Running — fetching crypto news...');
+    console.log('🤖 [TerminalEngine] Running — gathering crypto news (Phase 1A)...');
 
-    const trackedProjects = await getTrackedProjectNames();
     const newsItems = await fetchLatestNews();
 
     if (!newsItems.length) {
@@ -75,92 +57,53 @@ export async function runTerminalEngine(): Promise<void> {
         return;
     }
 
+    let bufferedCount = 0;
+    let duplicateCount = 0;
+
     for (const newsItem of newsItems) {
         try {
             const rawText = newsItem.title;
             const hash = hashTitle(rawText);
 
-            // 1. Check if already processed (Deduplication)
-            const [existing] = await db
-                .select({ id: coinNews.id })
+            // 1. Check if already processed (Deduplication at application level)
+            const [existing] = await db.select({ id: coinNews.id }) // Check coinNews for already processed items
                 .from(coinNews)
                 .where(eq(coinNews.sourceHash, hash))
                 .limit(1);
 
             if (existing) {
-                console.log(`[TerminalEngine] Skipping duplicate: "${rawText.slice(0, 50)}..."`);
+                console.log(`[TerminalEngine] Skipping duplicate (in coinNews): "${rawText.slice(0, 50)}..."`);
+                duplicateCount++;
                 continue;
             }
 
-            // 2. Fetch context (Recent Summaries)
-            const recentSummaries = await db
-                .select({ summary: coinNews.summary, headline: coinNews.headline })
-                .from(coinNews)
-                .where(eq(coinNews.aiProcessed, 1))
-                .orderBy(desc(coinNews.createdAt))
-                .limit(3);
+            // 2. Insert into raw_news_buffer for later triage (Phase 1B)
+            // Note: raw_news_buffer table needs to be created via schema update
+            // Using raw SQL since raw_news_buffer model may not be imported yet
+            await db.execute(`
+                INSERT INTO raw_news_buffer (
+                    title, 
+                    source, 
+                    retrieved_at, 
+                    source_hash
+                ) VALUES (
+                    $1, $2, NOW(), $3
+                )
+                ON CONFLICT (source_hash) DO NOTHING
+            `, [rawText, newsItem.source || 'Unknown', hash]);
 
-            const context = recentSummaries
-                .filter(s => s.summary)
-                .map(s => `[${s.headline}]: ${s.summary}`)
-                .join('\n');
-
-            // 3. Generate Analysis
-            const output = await generateDualNewsOutput(rawText, trackedProjects, context);
-
-            // Write wire_card → coin_news table (with SEO fields from GPT-5-nano)
-            const [savedNews] = await db.insert(coinNews).values({
-                coinSymbol: output.wireCard.coinSymbol,
-                headline: output.wireCard.headline,
-                hook: output.wireCard.hook,
-                summary: output.wireCard.summary,
-                metaTitle: output.wireCard.metaTitle,
-                metaDescription: output.wireCard.metaDescription,
-                seoKeywords: output.wireCard.seoKeywords,
-                sourceUrl: undefined,
-                sentiment: output.wireCard.sentiment,
-                impactScore: output.wireCard.impactScore,
-                isBreaking: output.wireCard.isBreaking ? 1 : 0,
-                sourceHash: hash,
-                aiProcessed: 1,
-            }).returning({ id: coinNews.id });
-
-            // Write radar_card → radar_signals table
-            await db.insert(radarSignals).values({
-                coinSymbol: output.radarCard.coinSymbol,
-                signalText: output.radarCard.signalText,
-                sentiment: output.radarCard.sentiment,
-                impactScore: output.radarCard.impactScore,
-                newsId: savedNews.id,
-            });
-
-            // Invalidate radar cache
-            await deleteCache('radar:latest');
-            await deleteCache(`wire:all:20`);
-
-            // Check if breaking news affects a tracked airdrop
-            if (output.wireCard.isBreaking) {
-                const headline = output.wireCard.headline.toLowerCase();
-                const matchedProject = trackedProjects.find((p) =>
-                    headline.includes(p.toLowerCase()) &&
-                    BREAKING_KEYWORDS.some((kw) => headline.includes(kw))
-                );
-                if (matchedProject) {
-                    await triggerAirdropWebhook(matchedProject);
-                }
-            }
-
-            // Small delay between items to avoid OpenAI rate limiting
-            await new Promise((r) => setTimeout(r, 500));
+            bufferedCount++;
         } catch (err) {
-            console.error('[TerminalEngine] Error processing news item:', err);
+            console.error('[TerminalEngine] Error buffering news item:', err);
         }
     }
 
-    console.log(`✅ [TerminalEngine] Processed ${newsItems.length} news items.`);
+    console.log(`✅ [TerminalEngine] Buffered ${bufferedCount} new news items, skipped ${duplicateCount} duplicates.`);
 }
 
+// Export function to start the cron job
 export function startTerminalEngineCron(): void {
-    cron.schedule('*/5 * * * *', runTerminalEngine);
-    console.log('⏰ Terminal Intelligence Engine cron scheduled — every 5 minutes');
+    // Changed from '*/5 * * * *' to '*/10 * * * *' for 10-minute intervals (Phase 1A optimization)
+    cron.schedule('*/10 * * * *', runTerminalEngine);
+    console.log('⏰ Terminal Intelligence Engine cron scheduled — every 10 minutes (Phase 1A: Gathering Engine)');
 }

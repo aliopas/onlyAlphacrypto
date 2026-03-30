@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { env } from '../config/env';
+import crypto from 'crypto';
 
 // OpenRouter client — OpenAI-compatible with all models accessible via one API
 const openrouter = new OpenAI({
@@ -11,6 +12,44 @@ const openrouter = new OpenAI({
         'X-Title': 'OnlyAlpha',
     },
 });
+
+// ─── CACHING LAYER ──────────────────────────────────────────────────────────────
+// Cache for AI analysis results to prevent redundant API calls
+const analysisCache = new Map<string, { result: any; timestamp: number }>();
+const CACHE_TTL = 3600000; // 1 hour in milliseconds
+const MAX_CACHE_SIZE = 1000; // Cleanup when cache exceeds this size
+
+/**
+ * Generate a cache key from function parameters
+ */
+function generateCacheKey(prefix: string, ...args: any[]): string {
+    const keyData = args.map(arg =>
+        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+    ).join('||');
+    return `${prefix}:${crypto.createHash('sha256').update(keyData).digest('hex')}`;
+}
+
+/**
+ * Clean up expired cache entries */
+function cleanupCache(): void {
+    const now = Date.now();
+    for (const [key, value] of analysisCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL) {
+            analysisCache.delete(key);
+        }
+    }
+
+    // If still too large, remove oldest entries
+    if (analysisCache.size > MAX_CACHE_SIZE) {
+        const sortedEntries = Array.from(analysisCache.entries())
+            .sort((a, b) => a[1].timestamp - b[1].timestamp);
+
+        // Remove oldest 20% of entries        const removeCount = Math.ceil(sortedEntries.length * 0.2);
+        for (let i = 0; i < removeCount; i++) {
+            analysisCache.delete(sortedEntries[i][0]);
+        }
+    }
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +118,13 @@ export async function generateMarketVerdict(
         recentNews: string[];
     }
 ): Promise<MarketVerdictResult> {
+    // Check cache first
+    const cacheKey = generateCacheKey('marketVerdict', coinSymbol, data);
+    const cached = analysisCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.result as MarketVerdictResult;
+    }
+
     const response = await openrouter.chat.completions.create({
         model: env.ANALYSIS_MODEL, // GLM-5
         temperature: 0.3,
@@ -108,7 +154,13 @@ export async function generateMarketVerdict(
 
     const content = response.choices[0].message.content;
     if (!content) throw new Error('Empty response for market verdict');
-    return JSON.parse(content) as MarketVerdictResult;
+    const result = JSON.parse(content) as MarketVerdictResult;
+
+    // Store in cache
+    analysisCache.set(cacheKey, { result, timestamp: Date.now() });
+    cleanupCache(); // Periodic cleanup
+
+    return result;
 }
 
 // ─── Deep Intelligence Report (Adaptive Model Routing) ───
@@ -122,7 +174,13 @@ export async function generateDeepIntelligenceReport(
         scamReport?: string;
     }
 ): Promise<DeepIntelligenceReport> {
-    
+    // Check cache first
+    const cacheKey = generateCacheKey('deepIntelligence', coinSymbol, aggregatedData);
+    const cached = analysisCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.result as DeepIntelligenceReport;
+    }
+
     // Adaptive Model Routing Logic
     const hasManyNews = aggregatedData.recentNews.length > 3;
     const hasScamAlerts = aggregatedData.scamReport && aggregatedData.scamReport.length > 100;
@@ -144,8 +202,7 @@ export async function generateDeepIntelligenceReport(
         messages: [
             {
                 role: 'system',
-                content: `You are an elite cryptocurrency intelligence analyst. 
-Analyze the provided data and return a strict JSON object:
+                content: `You are an elite cryptocurrency intelligence analyst. Analyze the provided data and return a strict JSON object:
 {
   "riskVerdict": "LOW|MEDIUM|HIGH|SCAM",
   "verdict": "STRONG_BUY|BUY|NEUTRAL|SELL|STRONG_SELL",
@@ -154,7 +211,7 @@ Analyze the provided data and return a strict JSON object:
   "keyDrivers": ["<numbered reason 1 referencing specific news>", "<reason 2>", "<reason 3>"],
   "marketContext": "<brief explanation of how this token fits in the broader market>",
   "redFlags": ["<issue 1>", "<issue 2>"]
-}
+} 
 If 'Existing Context' is provided, it contains news we already analyzed. Use it for historical perspective but focus the 'Executive Summary' on what is NEW in 'Recent News'.`
             },
             {
@@ -174,12 +231,130 @@ ${JSON.stringify(aggregatedData.existingContext || [])}`
 
     const content = response.choices[0].message.content;
     if (!content) throw new Error('Empty response for deep intelligence report');
-    return JSON.parse(content) as DeepIntelligenceReport;
+    const result = JSON.parse(content) as DeepIntelligenceReport;
+
+    // Store in cache
+    analysisCache.set(cacheKey, { result, timestamp: Date.now() });
+    cleanupCache(); // Periodic cleanup
+    return result;
+}
+
+// ─── Lightweight Triage Function (Phase 1B) ───────────────────────────────────
+/**
+ * Generate lightweight triage scores for news batches
+ * Uses cheap/fast model (GPT-5-nano equivalent) to score relevance (0-100)
+ */
+export async function generateLightweightTriage(
+    newsBatch: Array<{ title: string; source?: string }>
+): Promise<Array<{ title: string; source?: string; relevanceScore: number; sentimentHint: string | null }>> {
+    // Check cache first
+    const cacheKey = generateCacheKey('lightweightTriage', newsBatch);
+    const cached = analysisCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.result as Array<{ title: string; source?: string; relevanceScore: number; sentimentHint: string | null }>;
+    }
+
+    try {
+        const response = await openrouter.chat.completions.create({
+            model: env.SEO_MODEL, // GPT-5-nano equivalent (cheap/fast model)
+            temperature: 0.2, // Low temperature for consistent scoring
+            response_format: { type: 'json_object' },
+            messages: [
+                {
+                    role: 'system',
+                    content: `You are a crypto news triage analyst. Your job is to quickly assess news items for their potential market impact and hype potential. For each news item, return a JSON object with:
+{
+  "relevanceScore": <0-100>, // 0 = irrelevant/noise, 100 = extremely high impact/hype
+  "sentimentHint": "bullish|bearish|neutral|null" // Quick sentiment assessment (null if unclear)
+}
+Focus on: 
+- Mentions of major cryptocurrencies (BTC, ETH, SOL, etc.)
+- Price-moving events (listings, delistings, major partnerships, regulatory news)
+- Social media virality indicators
+- Avoid deep analysis - this is a quick filter for prioritization`
+                },
+                {
+                    role: 'user',
+                    content: `Assess these news items for triage (return JSON array in same order):
+${newsBatch.map((item, index) => `${index + 1}. Title: "${item.title}"${item.source ? ` | Source: ${item.source}` : ''}`).join('\n')}`
+                }
+            ],
+        });
+
+        const content = response.choices[0].message.content;
+        if (!content) throw new Error('Empty response for lightweight triage');
+
+        const parsed = JSON.parse(content);
+        // Handle both array format and object format
+        const resultsArray = Array.isArray(parsed) ? parsed :
+            (parsed.results || parsed.triageScores || []);
+
+        // Map results back to original news items        const triagedNews = newsBatch.map((item, index) => {
+        const scoreObj = resultsArray[index] || {};
+        return {
+            ...item,
+            relevanceScore: Math.max(0, Math.min(100, Number(scoreObj.relevanceScore) || 50)),
+            sentimentHint: scoreObj.sentimentHint || null
+        };
+    });
+
+    // Store in cache
+    analysisCache.set(cacheKey, { result: triagedNews, timestamp: Date.now() });
+    cleanupCache(); // Periodic cleanup
+
+    return triagedNews;
+} catch (error) {
+    console.error('[OpenAI Service] Error in lightweight triage:', error);
+    // Fallback: return neutral scores for all items
+    const fallbackResults = newsBatch.map(item => ({
+        ...item,
+        relevanceScore: 50, // Neutral score
+        sentimentHint: null
+    }));
+
+    // Cache fallback results briefly (5 minutes) to prevent repeated failures on same batch
+    const fallbackCacheKey = generateCacheKey('lightweightTriage_fallback', newsBatch);
+    analysisCache.set(fallbackCacheKey, { result: fallbackResults, timestamp: Date.now() });
+
+    return fallbackResults;
+}
+}
+
+// ─── Deep Synthesis Function Signature (Phase 2) ───────────────────────────────
+/**
+ * DEEP SYNTHESIS FUNCTION - MUST USE DEEPSEEK R1 * 
+ * This function performs deep analysis using the most capable model (DeepSeek R1 via ANALYSIS_MODEL)
+ * It synthesizes multiple data sources:
+ * - Multiple news articles about the same coin
+ * - Real-time market data (price, volume)
+ * - On-chain data from Moralis
+ * - Tavily research/scamming context
+ * 
+ * Output structured for insertion into coin_news table and coin_memory table
+ * 
+ * NOTE: Implementation will be completed in later phases. This is the function signature only.
+ */
+export async function generateDeepSynthesis(
+    coinSymbol: string,
+    newsArticles: string[],
+    marketData: any,
+    onchainData: any,
+    tavilyContext: string
+): Promise<{
+    executiveSummary: string;
+    keyDrivers: string[];
+    marketContext: string;
+    riskAssessment: string; // 'LOW' | 'MEDIUM' | 'HIGH'
+    redFlags: string[];
+    confidenceScore: number;
+}> {
+    // Placeholder implementation - to be replaced in Phase 2
+    // This function will use DeepSeek R1 (env.ANALYSIS_MODEL) for deep analysis
+    throw new Error('generateDeepSynthesis not yet implemented - placeholder for Phase 2');
 }
 
 // ─── Dual News Output: 2-Step Pipeline ───────────────────────────────────────
-// Step 1: DeepSeek-R1 analyzes the raw news and extracts structured data
-// Step 2: GPT-5-nano formats the analysis into SEO-optimized article output
+// Step 1: DeepSeek-R1 analyzes the raw news and extracts structured data// Step 2: GPT-5-nano formats the analysis into SEO-optimized article output
 
 interface RawAnalysis {
     analysis: string;       // Raw editorial analysis
@@ -196,6 +371,11 @@ export async function generateDualNewsOutput(
     trackedProjects: string[],
     recentContext?: string
 ): Promise<DualNewsOutput> {
+    // Check cache first    const cacheKey = generateCacheKey('dualNewsOutput', rawNewsItem, trackedProjects, recentContext);
+    const cached = analysisCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.result as DualNewsOutput;
+    }
 
     // ── STEP 1: DeepSeek-R1 — Deep Analysis ──────────────────────────────────
     const analysisMessages = [
@@ -273,7 +453,7 @@ SEO Rules:
             if (!content) { if (i < 2) continue; throw new Error('Empty GPT-5-nano SEO response'); }
             const seoOutput = JSON.parse(content);
 
-            return {
+            const result = {
                 wireCard: {
                     headline: seoOutput.headline || rawNewsItem.slice(0, 100),
                     hook: seoOutput.hook || '',
@@ -293,6 +473,11 @@ SEO Rules:
                     coinSymbol: rawAnalysis!.coinSymbol,
                 },
             } as DualNewsOutput;
+
+            // Store in cache            analysisCache.set(cacheKey, { result, timestamp: Date.now() });
+            cleanupCache(); // Periodic cleanup
+
+            return result;
         } catch (err) {
             if (i === 2) throw err;
         }
@@ -305,6 +490,12 @@ SEO Rules:
 export async function validateAirdrop(
     projectData: string
 ): Promise<AirdropValidationResult> {
+    // Check cache first    const cacheKey = generateCacheKey('airdropValidation', projectData);
+    const cached = analysisCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.result as AirdropValidationResult;
+    }
+
     const response = await openrouter.chat.completions.create({
         model: env.ANALYSIS_MODEL, // GLM-5
         temperature: 0.2,
@@ -337,7 +528,12 @@ Rules: isAutoVerifiable = true ONLY if the task involves a specific on-chain act
 
     const content = response.choices[0].message.content;
     if (!content) throw new Error('Empty response for airdrop validation');
-    return JSON.parse(content) as AirdropValidationResult;
+    const result = JSON.parse(content) as AirdropValidationResult;
+
+    // Store in cache    analysisCache.set(cacheKey, { result, timestamp: Date.now() });
+    cleanupCache(); // Periodic cleanup
+
+    return result;
 }
 
 // ─── AI Chat Stream (GPT-5-nano — SEO optimized, user-facing) ────────────────
@@ -346,6 +542,7 @@ export async function streamChatResponse(
     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
     coinContext: { symbol: string; price: number; newsSummary: string }
 ) {
+    // No caching for chat streams as they are unique interactions
     return openrouter.chat.completions.create({
         model: env.SEO_MODEL, // GPT-5-nano
         stream: true,

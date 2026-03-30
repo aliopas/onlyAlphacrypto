@@ -1,6 +1,6 @@
 import {
     pgTable, serial, varchar, text, timestamp,
-    integer, real, json
+    integer, real, json, boolean, pgEnum
 } from 'drizzle-orm/pg-core';
 
 // ─── MARKET INSIGHTS (AI Verdicts per Coin) ───────────────────────────────────
@@ -22,8 +22,7 @@ export const marketInsights = pgTable('market_insights', {
     riskLevel: varchar('risk_level', { length: 20 }),             // 'LOW' | 'MEDIUM' | 'HIGH' - New field for AI analysis
     redFlags: json('red_flags'),                                  // [] strings - New field for AI analysis
     keyDrivers: json('key_drivers'),                              // [] strings - Key reasons for the verdict
-    marketContext: text('market_context'),                        // How this token fits in broader market
-    analyzedAt: timestamp('analyzed_at').defaultNow().notNull(),
+    marketContext: text('market_context'),                        // How this token fits in broader market    analyzedAt: timestamp('analyzed_at').defaultNow().notNull(),
 });
 
 // ─── COIN NEWS (LATEST WIRE feed) ────────────────────────────────────────────
@@ -41,17 +40,30 @@ export const coinNews = pgTable('coin_news', {
     impactScore: real('impact_score'),                            // 0-100
     isBreaking: integer('is_breaking').default(0),                // 0 | 1
     sourceHash: varchar('source_hash', { length: 64 }).unique(),  // SHA-256 of raw title
-    aiProcessed: integer('ai_processed').default(1),               // 1 = processed, 0 = pending
-    publishedAt: timestamp('published_at').defaultNow().notNull(),
+    aiProcessed: integer('ai_processed').default(1),               // 1 = processed, 0 = pending    publishedAt: timestamp('published_at').defaultNow().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ─── RAW NEWS BUFFER (Phase 1A: Gathering Engine) ───────────────────────────
+export const rawNewsBuffer = pgTable('raw_news_buffer', {
+    id: serial('id').primaryKey(),
+    title: text('title').notNull(),
+    source: varchar('source', { length: 100 }),
+    retrievedAt: timestamp('retrieved_at').defaultNow().notNull(),
+    sourceHash: varchar('source_hash', { length: 64 }).unique().notNull(),
+    ttlExpiresAt: timestamp('ttl_expires_at'),
+    processed: boolean('processed').default(false).notNull(),
+    processingAttempts: integer('processing_attempts').default(0).notNull(),
+    symbolMentions: json('symbol_mentions'), // TEXT[] equivalent using jsonb
+    sentimentHint: varchar('sentiment_hint', { length: 20 }),
+    relevanceScore: integer('relevance_score'),
 });
 
 // ─── RADAR SIGNALS (Home Live AI Radar) ──────────────────────────────────────
 export const radarSignals = pgTable('radar_signals', {
     id: serial('id').primaryKey(),
     coinSymbol: varchar('coin_symbol', { length: 20 }),
-    signalText: text('signal_text').notNull(),                    // 1-sentence AI signal
-    sentiment: varchar('sentiment', { length: 20 }),
+    signalText: text('signal_text').notNull(),                    // 1-sentence AI signal    sentiment: varchar('sentiment', { length: 20 }),
     impactScore: real('impact_score'),
     newsId: integer('news_id').references(() => coinNews.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -76,8 +88,7 @@ export const dailyAlphaFocus = pgTable('daily_alpha_focus', {
 export const dailyMarketMood = pgTable('daily_market_mood', {
     id: serial('id').primaryKey(),
     externalScore: real('external_score').notNull(),      // Alternative.me score (0-100)
-    internalScore: real('internal_score').notNull(),       // Our AI sentiment avg
-    finalScore: real('final_score').notNull(),             // 60% external + 40% internal
+    internalScore: real('internal_score').notNull(),       // Our AI sentiment avg    finalScore: real('final_score').notNull(),             // 60% external + 40% internal
     label: varchar('label', { length: 30 }).notNull(),     // 'Extreme Fear' | 'Fear' | 'Neutral' | 'Greed' | 'Extreme Greed'
     computedAt: timestamp('computed_at').defaultNow().notNull(),
     validForDate: varchar('valid_for_date', { length: 10 }).notNull(),
