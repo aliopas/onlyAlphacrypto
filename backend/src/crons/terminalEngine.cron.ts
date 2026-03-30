@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import axios from 'axios';
 import crypto from 'crypto';
 import { db } from '../config/db';
-import { coinNews, radarSignals, airdropProjects } from '../models/index';
+import { coinNews, rawNewsBuffer } from '../models/market.model';
 import { generateDualNewsOutput } from '../services/openai.service';
 import { deleteCache } from '../config/redis';
 import { env } from '../config/env';
@@ -78,19 +78,11 @@ export async function runTerminalEngine(): Promise<void> {
             }
 
             // 2. Insert into raw_news_buffer for later triage (Phase 1B)
-            // Note: raw_news_buffer table needs to be created via schema update
-            // Using raw SQL since raw_news_buffer model may not be imported yet
-            await db.execute(`
-                INSERT INTO raw_news_buffer (
-                    title, 
-                    source, 
-                    retrieved_at, 
-                    source_hash
-                ) VALUES (
-                    $1, $2, NOW(), $3
-                )
-                ON CONFLICT (source_hash) DO NOTHING
-            `, [rawText, newsItem.source || 'Unknown', hash]);
+            await db.insert(rawNewsBuffer).values({
+                title: rawText,
+                source: newsItem.source || 'Unknown',
+                sourceHash: hash,
+            }).onConflictDoNothing();
 
             bufferedCount++;
         } catch (err) {

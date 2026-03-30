@@ -4,13 +4,26 @@ import { db } from '../config/db';
 import { marketInsights, priceSnapshots, coinNews, radarSignals } from '../models/market.model';
 import { eq } from 'drizzle-orm';
 
-import { getTopBoostedTokens, getTokenData } from '../services/dexscreener.service';
+import { getTopBoostedTokens, getTokenData, DexTokenInfo } from '../services/dexscreener.service';
 import { getHotCryptoTopics } from '../services/reddit.service';
 import { extractSymbolsFromReddit } from '../utils/redditExtractor';
 import { searchCryptoPanic } from '../services/cryptopanic.service';
 import { searchTavily } from '../services/tavily.service';
-import { generateDeepIntelligenceReport } from '../services/openai.service';
+import { generateDeepIntelligenceReport, DeepIntelligenceReport } from '../services/openai.service';
 import { deleteCache } from '../config/redis';
+
+interface AggregatedCoinData {
+    symbol: string;
+    name: string;
+    stats: DexTokenInfo | null;
+    recentNews: string[];
+    existingContext: string[];
+    scamReport: string;
+}
+
+interface AiReportItem extends AggregatedCoinData {
+    aiReport: DeepIntelligenceReport;
+}
 
 // Simple boolean lock for the cron job to avoid running concurrently
 let isAiWorkflowRunning = false;
@@ -57,7 +70,7 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
 
         // --- PHASE 2: The Aggregator ---
         console.log('--- Phase 2: Aggregator ---');
-        const aggregatedDataList: any[] = [];
+        const aggregatedDataList: AggregatedCoinData[] = [];
 
         if (targetedPhase === 'all' || targetedPhase === '2') {
             const topicsToProcess = memoryTopics.slice(0, 10); // Expanded from 5 to 10 because we now have cost optimization
@@ -114,7 +127,7 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
 
         // --- PHASE 3: The Brain (AI Analysis) ---
         console.log('--- Phase 3: Brain ---');
-        const aiReports: any[] = [];
+        const aiReports: AiReportItem[] = [];
 
         if (targetedPhase === 'all' || targetedPhase === '3') {
             for (const data of aggregatedDataList) {
@@ -122,10 +135,16 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
 
                 // Wait for each response sequentially as requested
                 try {
-                    const report = await generateDeepIntelligenceReport(data.symbol, data);
+                    const report = await generateDeepIntelligenceReport(data.symbol, {
+                        recentNews: data.recentNews,
+                        existingContext: data.existingContext,
+                        stats: data.stats ? data.stats as unknown as Record<string, number | string> : undefined,
+                        scamReport: data.scamReport,
+                    });
                     aiReports.push({ ...data, aiReport: report });
-                } catch (err: any) {
-                    console.error(`[Brain] Failed to analyze ${data.symbol}:`, err.message);
+                } catch (err: unknown) {
+                    const message = err instanceof Error ? err.message : String(err);
+                    console.error(`[Brain] Failed to analyze ${data.symbol}:`, message);
                 }
             }
         }
@@ -147,7 +166,7 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
                     marketContext: report.marketContext || '',
                     riskLevel: report.riskVerdict,
                     redFlags: report.redFlags || [],
-                    priceAtAnalysis: item.stats ? parseFloat(item.stats.priceUsd) : 0,
+                    priceAtAnalysis: item.stats?.priceUsd ? parseFloat(item.stats.priceUsd) : 0,
                 });
 
                 // 2. Insert extracted news to coinNews table
@@ -162,7 +181,7 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
                                 aiProcessed: 1,
                                 sentiment: report.verdict === 'STRONG_BUY' || report.verdict === 'BUY' ? 'bullish' : 'neutral'
                             }).onConflictDoNothing();
-                        } catch (err) { }
+                        } catch (_err) { }
                     }
                 }
 

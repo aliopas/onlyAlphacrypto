@@ -3,6 +3,26 @@
 
 ---
 
+## 🔴 Bug Fixes (Priority — Must Do First)
+
+| ID | Status | Bug | File | Line |
+|----|--------|-----|------|------|
+| BF-1 | ✅ | `import { OpenAI }` should be `import OpenAI from` (default import) | `backend/src/services/ai/ai-gateway.ts` | L1 |
+| BF-2 | ✅ | `any[]` on aggregatedDataList | `backend/src/crons/aiWorkflow.cron.ts` | L60 |
+| BF-3 | ✅ | `any[]` on aiReports | `backend/src/crons/aiWorkflow.cron.ts` | L117 |
+| BF-4 | ✅ | `err: any` catch block | `backend/src/crons/aiWorkflow.cron.ts` | L127 |
+| BF-5 | ✅ | `err: any` catch block | `backend/src/crons/aiWorkflow.cron.ts` | L40 |
+| BF-6 | ✅ | Missing return type on `streamChatResponse` | `backend/src/services/openai.service.ts` | L362 |
+| BF-7 | ✅ | Formatting: two statements on one line in `RawAnalysis` interface | `backend/src/services/openai.service.ts` | L252 |
+| BF-8 | ✅ | market.model.ts — 4 merged-column lines breaking Drizzle types (analyzedAt, publishedAt, sentiment on radar, finalScore) | `backend/src/models/market.model.ts` | L25,43,66,91 |
+| BF-9 | ✅ | openai.service.ts — `rawAnalysis` used before assigned | `backend/src/services/openai.service.ts` | L275 |
+| BF-10 | ✅ | aiWorkflow.cron.ts — TokenStats type mismatch with DexTokenInfo | `backend/src/crons/aiWorkflow.cron.ts` | L116 |
+| BF-11 | ✅ | aiWorkflow.cron.ts — generateDeepIntelligenceReport arg type mismatch | `backend/src/crons/aiWorkflow.cron.ts` | L138 |
+| BF-12 | ✅ | terminalEngine.cron.ts — db.execute wrong arguments, replaced with Drizzle insert | `backend/src/crons/terminalEngine.cron.ts` | L83 |
+| BF-13 | ✅ | server.ts — stale log message removed | `backend/src/server.ts` | L66 |
+
+---
+
 ## Phase 1: Data Infrastructure & Pipeline Optimization
 
 ### Phase 1A: Gathering Engine
@@ -16,16 +36,15 @@
 |----|--------|------|-------|
 | 1B-1 | ✅ | Refactor `openai.service.ts` into CacheManager + PromptFactory + AIGateway | `backend/src/services/ai/*.ts`, `openai.service.ts` |
 | 1B-2 | ✅ | Fix 4 bugs (any types + unstable imports) | `backend/src/services/ai/*.ts`, `openai.service.ts` |
-| 1B-3 | ⏳ | Create triageEngine cron | `backend/src/crons/triageEngine.cron.ts` (NEW) |
-| 1B-4 | ⏳ | Register triageEngine in server startup | `backend/src/server.ts` |
-| 1B-5 | ⏳ | Create buffer cleanup cron (delete expired processed items) | `backend/src/crons/bufferCleanup.cron.ts` (NEW) |
+| 1B-3 | ✅ | Create triageEngine cron | `backend/src/crons/triageEngine.cron.ts` |
+| 1B-4 | ✅ | Register triageEngine in server startup + fix stale log message | `backend/src/server.ts` |
+| 1B-5 | ✅ | Create buffer cleanup cron (delete expired processed items) | `backend/src/crons/bufferCleanup.cron.ts` |
 
 ### Phase 1C: Routing to Deep Analysis
 | ID | Status | Task | Files |
 |----|--------|------|-------|
 | 1C-1 | ⏳ | Create deep-analysis-router service | `backend/src/services/ai/deep-analysis-router.ts` (NEW) |
 | 1C-2 | ⏳ | Modify aiWorkflow cron to use deep-analysis-router instead of hunter/aggregator | `backend/src/crons/aiWorkflow.cron.ts` |
-| 1C-3 | ⏳ | Fix `any` types in aiWorkflow.cron.ts (lines 60, 117, 127) | `backend/src/crons/aiWorkflow.cron.ts` |
 
 ---
 

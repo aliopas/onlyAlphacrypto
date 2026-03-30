@@ -1,3 +1,4 @@
+import OpenAI from 'openai';
 import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
 import { AIGateway } from './ai/ai-gateway';
@@ -82,7 +83,8 @@ export async function generateMarketVerdict(
         recentNews: string[];
     }
 ): Promise<MarketVerdictResult> {
-    // Check cache first    const cacheKey = cache.generateKey('marketVerdict', coinSymbol, data);
+    // Check cache first
+    const cacheKey = cache.generateKey('marketVerdict', coinSymbol, data);
     const cached = cache.get<MarketVerdictResult>(cacheKey);
     if (cached) {
         return cached;
@@ -119,11 +121,12 @@ export async function generateDeepIntelligenceReport(
         return cached;
     }
 
-    // Adaptive Model Routing Logic    const hasManyNews = aggregatedData.recentNews.length > 3;
+    // Adaptive Model Routing Logic
+    const hasManyNews = aggregatedData.recentNews.length > 3;
     const hasScamAlerts = aggregatedData.scamReport && aggregatedData.scamReport.length > 100;
     // Threshold raised from >10% to >30% — small-cap DexScreener tokens routinely show
     // 100-5000% moves, so >10% was causing ALL tokens to route to DeepSeek-R1 unnecessarily.
-    const isVolatile = aggregatedData.stats && Math.abs(aggregatedData.stats.priceChange24h || 0) > 30;
+    const isVolatile = aggregatedData.stats && Math.abs(Number(aggregatedData.stats.priceChange24h || 0)) > 30;
 
     // Both tiers now use DeepSeek-R1 via ANALYSIS_MODEL env var (GLM-5 removed — DeepSeek is cheaper at scale)
     // Complex tokens get DeepSeek with higher temperature, routine get lower temperature
@@ -145,7 +148,8 @@ export async function generateDeepIntelligenceReport(
     return result;
 }
 
-// ─── Lightweight Triage Function (Phase 1B) ───────────────────────────────────/**
+// ─── Lightweight Triage Function (Phase 1B) ───────────────────────────────────
+/**
  * Generate lightweight triage scores for news batches
  * Uses cheap/fast model (GPT-5-nano equivalent) to score relevance (0-100)
  */
@@ -180,7 +184,7 @@ export async function generateLightweightTriage(
             return {
                 ...item,
                 relevanceScore: Math.max(0, Math.min(100, Number(scoreObj.relevanceScore) || 50)),
-                sentimentHint: scoreObj.sentimentHint || null
+                sentimentHint: scoreObj.sentimentHint !== undefined && scoreObj.sentimentHint !== null ? String(scoreObj.sentimentHint) : null
             };
         });
 
@@ -249,7 +253,8 @@ interface RawAnalysis {
     impactScore: number;    // 0-100
     isBreaking: boolean;
     coinSymbol?: string;
-    signalText: string;     // 2-sentence radar signal    keyFacts: string[];     // Bullet facts for GPT to format
+    signalText: string;     // 2-sentence radar signal
+    keyFacts: string[];     // Bullet facts for GPT to format
 }
 
 export async function generateDualNewsOutput(
@@ -267,11 +272,11 @@ export async function generateDualNewsOutput(
     // ── STEP 1: DeepSeek-R1 — Deep Analysis ──────────────────────────────────
     const analysisMessages = prompts.buildDualNewsStep1Messages(rawNewsItem, trackedProjects, recentContext);
 
-    let rawAnalysis: RawAnalysis;
+    let rawAnalysis: RawAnalysis | undefined;
     for (let i = 0; i < 3; i++) {
         try {
             const res = await gateway.chat<RawAnalysis>({
-                model: env.ANALYSIS_MODEL, // deepseek/deepseek-r1
+                model: env.ANALYSIS_MODEL,
                 temperature: 0.3,
                 responseFormat: { type: 'json_object' },
                 messages: analysisMessages
@@ -283,7 +288,12 @@ export async function generateDualNewsOutput(
         }
     }
 
-    // ── STEP 2: GPT-5-nano — SEO Formatting & Polish ────────────────────────────    const seoMessages = prompts.buildDualNewsStep2Messages(rawAnalysis);
+    if (!rawAnalysis) {
+        throw new Error('Failed to generate raw analysis after retries');
+    }
+
+    // ── STEP 2: GPT-5-nano — SEO Formatting & Polish ────────────────────────────
+    const seoMessages = prompts.buildDualNewsStep2Messages(rawAnalysis);
 
     for (let i = 0; i < 3; i++) {
         try {
@@ -362,7 +372,7 @@ export async function validateAirdrop(
 export async function streamChatResponse(
     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
     coinContext: { symbol: string; price: number; newsSummary: string }
-) {
+): Promise<AsyncIterable<OpenAI.ChatCompletionChunk>> {
     // No caching for chat streams as they are unique interactions
     const chatMessages = prompts.buildChatMessages(messages, coinContext);
     return gateway.chatStream({

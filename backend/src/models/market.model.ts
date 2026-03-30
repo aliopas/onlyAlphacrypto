@@ -22,25 +22,27 @@ export const marketInsights = pgTable('market_insights', {
     riskLevel: varchar('risk_level', { length: 20 }),             // 'LOW' | 'MEDIUM' | 'HIGH' - New field for AI analysis
     redFlags: json('red_flags'),                                  // [] strings - New field for AI analysis
     keyDrivers: json('key_drivers'),                              // [] strings - Key reasons for the verdict
-    marketContext: text('market_context'),                        // How this token fits in broader market    analyzedAt: timestamp('analyzed_at').defaultNow().notNull(),
+    marketContext: text('market_context'),
+    analyzedAt: timestamp('analyzed_at').defaultNow().notNull(),
 });
 
 // ─── COIN NEWS (LATEST WIRE feed) ────────────────────────────────────────────
 export const coinNews = pgTable('coin_news', {
     id: serial('id').primaryKey(),
-    coinSymbol: varchar('coin_symbol', { length: 20 }),           // can be null for macro news
+    coinSymbol: varchar('coin_symbol', { length: 20 }),
     headline: text('headline').notNull(),
     summary: text('summary'),
-    hook: text('hook'),                                            // Opening hook sentence (SEO)
-    metaTitle: varchar('meta_title', { length: 80 }),             // SEO meta title (max 60 chars)
-    metaDescription: varchar('meta_description', { length: 200 }),// SEO meta description (max 160 chars)
-    seoKeywords: json('seo_keywords'),                            // [] string array of target keywords
+    hook: text('hook'),
+    metaTitle: varchar('meta_title', { length: 80 }),
+    metaDescription: varchar('meta_description', { length: 200 }),
+    seoKeywords: json('seo_keywords'),
     sourceUrl: varchar('source_url', { length: 500 }),
-    sentiment: varchar('sentiment', { length: 20 }),              // 'bullish' | 'bearish' | 'neutral'
-    impactScore: real('impact_score'),                            // 0-100
-    isBreaking: integer('is_breaking').default(0),                // 0 | 1
-    sourceHash: varchar('source_hash', { length: 64 }).unique(),  // SHA-256 of raw title
-    aiProcessed: integer('ai_processed').default(1),               // 1 = processed, 0 = pending    publishedAt: timestamp('published_at').defaultNow().notNull(),
+    sentiment: varchar('sentiment', { length: 20 }),
+    impactScore: real('impact_score'),
+    isBreaking: integer('is_breaking').default(0),
+    sourceHash: varchar('source_hash', { length: 64 }).unique(),
+    aiProcessed: integer('ai_processed').default(1),
+    publishedAt: timestamp('published_at').defaultNow().notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -54,7 +56,7 @@ export const rawNewsBuffer = pgTable('raw_news_buffer', {
     ttlExpiresAt: timestamp('ttl_expires_at'),
     processed: boolean('processed').default(false).notNull(),
     processingAttempts: integer('processing_attempts').default(0).notNull(),
-    symbolMentions: json('symbol_mentions'), // TEXT[] equivalent using jsonb
+    symbolMentions: json('symbol_mentions'),
     sentimentHint: varchar('sentiment_hint', { length: 20 }),
     relevanceScore: integer('relevance_score'),
 });
@@ -63,7 +65,8 @@ export const rawNewsBuffer = pgTable('raw_news_buffer', {
 export const radarSignals = pgTable('radar_signals', {
     id: serial('id').primaryKey(),
     coinSymbol: varchar('coin_symbol', { length: 20 }),
-    signalText: text('signal_text').notNull(),                    // 1-sentence AI signal    sentiment: varchar('sentiment', { length: 20 }),
+    signalText: text('signal_text').notNull(),
+    sentiment: varchar('sentiment', { length: 20 }),
     impactScore: real('impact_score'),
     newsId: integer('news_id').references(() => coinNews.id),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -81,15 +84,16 @@ export const dailyAlphaFocus = pgTable('daily_alpha_focus', {
     executiveSummary: text('executive_summary'),
     compositeScore: real('composite_score'),
     selectedAt: timestamp('selected_at').defaultNow().notNull(),
-    validForDate: varchar('valid_for_date', { length: 10 }).notNull(), // 'YYYY-MM-DD'
+    validForDate: varchar('valid_for_date', { length: 10 }).notNull(),
 });
 
 // ─── DAILY MARKET MOOD ───────────────────────────────────────────────────────
 export const dailyMarketMood = pgTable('daily_market_mood', {
     id: serial('id').primaryKey(),
-    externalScore: real('external_score').notNull(),      // Alternative.me score (0-100)
-    internalScore: real('internal_score').notNull(),       // Our AI sentiment avg    finalScore: real('final_score').notNull(),             // 60% external + 40% internal
-    label: varchar('label', { length: 30 }).notNull(),     // 'Extreme Fear' | 'Fear' | 'Neutral' | 'Greed' | 'Extreme Greed'
+    externalScore: real('external_score').notNull(),
+    internalScore: real('internal_score').notNull(),
+    finalScore: real('final_score').notNull(),
+    label: varchar('label', { length: 30 }).notNull(),
     computedAt: timestamp('computed_at').defaultNow().notNull(),
     validForDate: varchar('valid_for_date', { length: 10 }).notNull(),
 });
