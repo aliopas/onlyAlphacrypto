@@ -43,8 +43,8 @@
 ### Phase 1C: Routing to Deep Analysis
 | ID | Status | Task | Files |
 |----|--------|------|-------|
-| 1C-1 | ⏳ | Create deep-analysis-router service | `backend/src/services/ai/deep-analysis-router.ts` (NEW) |
-| 1C-2 | ⏳ | Modify aiWorkflow cron to use deep-analysis-router instead of hunter/aggregator | `backend/src/crons/aiWorkflow.cron.ts` |
+| 1C-1 | ✅ | Create deep-analysis-router service | `backend/src/services/ai/deep-analysis-router.ts` |
+| 1C-2 | ✅ | Modify aiWorkflow cron to use deep-analysis-router instead of hunter/aggregator | `backend/src/crons/aiWorkflow.cron.ts` |
 
 ---
 

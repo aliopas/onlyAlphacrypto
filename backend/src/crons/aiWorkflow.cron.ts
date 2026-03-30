@@ -1,29 +1,14 @@
 import cron from 'node-cron';
 import crypto from 'crypto';
 import { db } from '../config/db';
-import { marketInsights, priceSnapshots, coinNews, radarSignals } from '../models/market.model';
+import { marketInsights, coinNews, radarSignals } from '../models/market.model';
 import { eq } from 'drizzle-orm';
 
 import { getTopBoostedTokens, getTokenData, DexTokenInfo } from '../services/dexscreener.service';
-import { getHotCryptoTopics } from '../services/reddit.service';
-import { extractSymbolsFromReddit } from '../utils/redditExtractor';
-import { searchCryptoPanic } from '../services/cryptopanic.service';
 import { searchTavily } from '../services/tavily.service';
 import { generateDeepIntelligenceReport, DeepIntelligenceReport } from '../services/openai.service';
 import { deleteCache } from '../config/redis';
-
-interface AggregatedCoinData {
-    symbol: string;
-    name: string;
-    stats: DexTokenInfo | null;
-    recentNews: string[];
-    existingContext: string[];
-    scamReport: string;
-}
-
-interface AiReportItem extends AggregatedCoinData {
-    aiReport: DeepIntelligenceReport;
-}
+import { fetchTopItemsForDeepAnalysis } from '../services/ai/deep-analysis-router';
 
 // Simple boolean lock for the cron job to avoid running concurrently
 let isAiWorkflowRunning = false;
@@ -42,116 +27,83 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
     console.log(`🤖 [AI Workflow] Started. Mode: ${targetedPhase}`);
 
     try {
-        // --- PHASE 1: The Hunter (Discovery) ---
-        console.log('--- Phase 1: Hunter ---');
-        const memoryTopics: Array<{ symbol: string; address?: string; source: string; keyword: string }> = [];
+        // --- PHASE 1: Fetch top-scored items from buffer (replaces Hunter + Aggregator) ---
+        console.log('--- Phase 1: Deep Analysis Router ---');
+        const groupedCoins = await fetchTopItemsForDeepAnalysis(15);
 
-        if (targetedPhase === 'all' || targetedPhase === '1') {
-            const dexscreenerTokens = await getTopBoostedTokens();
-            dexscreenerTokens.forEach(t => memoryTopics.push({ symbol: t.symbol, address: t.address, source: 'DexScreener', keyword: t.symbol }));
-
-            const redditTopics = await getHotCryptoTopics();
-            const redditSymbols = extractSymbolsFromReddit(redditTopics);
-            
-            redditSymbols.forEach(symbol => {
-                const exists = memoryTopics.some(t => t.symbol === symbol);
-                if (!exists) {
-                    memoryTopics.push({
-                        symbol,
-                        source: 'Reddit',
-                        keyword: symbol
-                    });
-                }
-            });
-
-            // To keep things simple and token-focused:
-            console.log(`[Hunter] Found ${memoryTopics.length} unique topics (DexScreener + Reddit).`);
+        if (groupedCoins.length === 0) {
+            console.log('[AI Workflow] No high-scoring items to analyze.');
+            return;
         }
 
-        // --- PHASE 2: The Aggregator ---
-        console.log('--- Phase 2: Aggregator ---');
-        const aggregatedDataList: AggregatedCoinData[] = [];
+        const coinsToAnalyze = groupedCoins.filter(g => g.coinSymbol !== 'UNKNOWN');
+        console.log(`[AI Workflow] Found ${coinsToAnalyze.length} coins to analyze.`);
 
-        if (targetedPhase === 'all' || targetedPhase === '2') {
-            const topicsToProcess = memoryTopics.slice(0, 10); // Expanded from 5 to 10 because we now have cost optimization
-            const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+        // --- PHASE 2: The Brain (AI Analysis via DeepSeek R1) ---
+        console.log('--- Phase 2: Brain ---');
+        const aiReports: Array<{
+            symbol: string;
+            name: string;
+            stats: DexTokenInfo | null;
+            recentNews: string[];
+            aiReport: DeepIntelligenceReport;
+        }> = [];
 
-            for (const topic of topicsToProcess) {
-                console.log(`[Aggregator] Processing ${topic.symbol}...`);
-                const tokenStats = topic.address ? await getTokenData(topic.address) : null;
-                const actualSymbol = tokenStats?.symbol || topic.symbol;
+        // Pre-fetch DexScreener tokens for address resolution
+        const dexTokens = await getTopBoostedTokens();
+        const dexMap = new Map(dexTokens.map(t => [t.symbol.toUpperCase(), t.address]));
 
-                // 1. Fetch news
-                const rawNews = actualSymbol !== 'UNKNOWN' ? await searchCryptoPanic(actualSymbol) : [];
-                
-                // 2. Intelligence Deduplication (Hash Check)
+        for (const coin of coinsToAnalyze) {
+            console.log(`[Brain] Analyzing ${coin.coinSymbol} (${coin.newsTitles.length} news, avg score: ${coin.avgRelevanceScore.toFixed(0)})...`);
+
+            try {
+                // Try to get token stats from DexScreener via known address
+                const address = dexMap.get(coin.coinSymbol.toUpperCase());
+                const tokenStats = address ? await getTokenData(address) : null;
+
+                // Deduplication: check which news items already exist in coin_news
+                const existingContext: string[] = [];
                 const freshNews: string[] = [];
-                const existingNewsContext: string[] = [];
 
-                for (const headline of rawNews) {
-                    const hash = crypto.createHash('sha256').update(headline.trim().toLowerCase()).digest('hex');
+                for (const title of coin.newsTitles) {
+                    const hash = crypto.createHash('sha256').update(title.trim().toLowerCase()).digest('hex');
                     const [existing] = await db.select().from(coinNews).where(eq(coinNews.sourceHash, hash)).limit(1);
-                    
                     if (existing) {
-                        existingNewsContext.push(`${headline} (Sentiment: ${existing.sentiment})`);
+                        existingContext.push(`${title} (Sentiment: ${existing.sentiment})`);
                     } else {
-                        freshNews.push(headline);
+                        freshNews.push(title);
                     }
                 }
 
-                const scamCheck = (actualSymbol !== 'UNKNOWN' && freshNews.length > 0) ? await searchTavily(`${actualSymbol} crypto scam team`) : '';
+                // Scam check via Tavily
+                const scamCheck = freshNews.length > 0 ? await searchTavily(`${coin.coinSymbol} crypto scam team`) : '';
 
-                aggregatedDataList.push({
-                    symbol: actualSymbol,
-                    name: tokenStats?.name || actualSymbol,
-                    stats: tokenStats,
-                    recentNews: freshNews.slice(0, 5), // Cap at 5 items to keep AI payloads manageable
-                    existingContext: existingNewsContext,
-                    scamReport: scamCheck
+                // Deep analysis via DeepSeek R1
+                const report = await generateDeepIntelligenceReport(coin.coinSymbol, {
+                    recentNews: freshNews,
+                    existingContext,
+                    stats: tokenStats ? tokenStats as unknown as Record<string, number | string> : undefined,
+                    scamReport: scamCheck,
                 });
 
-                // Write price snapshot
-                if (tokenStats && tokenStats.priceUsd) {
-                    await db.insert(priceSnapshots).values({
-                        coinSymbol: actualSymbol,
-                        price: parseFloat(tokenStats.priceUsd),
-                        liquidity: tokenStats.liquidityUsd,
-                        volume24h: tokenStats.volume24h,
-                    });
-                }
-
-                // Increased from 1000ms → 2500ms to respect CryptoPanic free-tier rate limits
-                await sleep(2500);
+                aiReports.push({
+                    symbol: coin.coinSymbol,
+                    name: tokenStats?.name || coin.coinSymbol,
+                    stats: tokenStats,
+                    recentNews: freshNews,
+                    aiReport: report,
+                });
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                console.error(`[Brain] Failed to analyze ${coin.coinSymbol}:`, message);
             }
         }
 
-        // --- PHASE 3: The Brain (AI Analysis) ---
-        console.log('--- Phase 3: Brain ---');
-        const aiReports: AiReportItem[] = [];
-
-        if (targetedPhase === 'all' || targetedPhase === '3') {
-            for (const data of aggregatedDataList) {
-                console.log(`[Brain] Analyzing ${data.symbol}...`);
-
-                // Wait for each response sequentially as requested
-                try {
-                    const report = await generateDeepIntelligenceReport(data.symbol, {
-                        recentNews: data.recentNews,
-                        existingContext: data.existingContext,
-                        stats: data.stats ? data.stats as unknown as Record<string, number | string> : undefined,
-                        scamReport: data.scamReport,
-                    });
-                    aiReports.push({ ...data, aiReport: report });
-                } catch (err: unknown) {
-                    const message = err instanceof Error ? err.message : String(err);
-                    console.error(`[Brain] Failed to analyze ${data.symbol}:`, message);
-                }
-            }
-        }
-
-        // --- PHASE 4: The Publisher (Storage & Display) ---
-        console.log('--- Phase 4: Publisher ---');
-        if (targetedPhase === 'all' || targetedPhase === '4') {
+        // --- PHASE 3: The Publisher (Storage & Display) ---
+        console.log('--- Phase 3: Publisher ---');
+        if (aiReports.length === 0) {
+            console.log('[Publisher] No reports generated. Skipping publish.');
+        } else {
             for (const item of aiReports) {
                 const report = item.aiReport;
 
@@ -169,23 +121,19 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
                     priceAtAnalysis: item.stats?.priceUsd ? parseFloat(item.stats.priceUsd) : 0,
                 });
 
-                // 2. Insert extracted news to coinNews table
-                if (item.recentNews && Array.isArray(item.recentNews)) {
-                    for (const headline of item.recentNews) {
-                        try {
-                            const hash = crypto.createHash('sha256').update(headline.trim().toLowerCase()).digest('hex');
-                            await db.insert(coinNews).values({
-                                coinSymbol: item.symbol,
-                                headline: headline,
-                                sourceHash: hash,
-                                aiProcessed: 1,
-                                sentiment: report.verdict === 'STRONG_BUY' || report.verdict === 'BUY' ? 'bullish' : 'neutral'
-                            }).onConflictDoNothing();
-                        } catch (_err) { }
-                    }
+                for (const headline of item.recentNews) {
+                    try {
+                        const hash = crypto.createHash('sha256').update(headline.trim().toLowerCase()).digest('hex');
+                        await db.insert(coinNews).values({
+                            coinSymbol: item.symbol,
+                            headline: headline,
+                            sourceHash: hash,
+                            aiProcessed: 1,
+                            sentiment: report.verdict === 'STRONG_BUY' || report.verdict === 'BUY' ? 'bullish' : 'neutral'
+                        }).onConflictDoNothing();
+                    } catch (_err) { }
                 }
 
-                // 3. Insert Radar Signal if it's actionable or high risk
                 if (report.verdict === 'STRONG_BUY' || report.verdict === 'STRONG_SELL' || report.riskVerdict === 'HIGH' || report.riskVerdict === 'SCAM') {
                     await db.insert(radarSignals).values({
                         coinSymbol: item.symbol,
@@ -195,7 +143,6 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
                 }
             }
 
-            // Invalidate Caches if needed here
             await deleteCache('insight:all');
             console.log(`[Publisher] Saved ${aiReports.length} insights.`);
         }
@@ -210,7 +157,6 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
 }
 
 export function startAiWorkflowCron(): void {
-    // Run exactly at the top of every hour
     cron.schedule('0 * * * *', () => runAiWorkflow('all'));
     console.log('⏰ AI Intelligence Workflow scheduled — hourly');
 }
