@@ -15,7 +15,7 @@ export const marketInsights = pgTable('market_insights', {
     supportLevels: json('support_levels'),                        // { level1: 140, level2: 135 }
     resistanceLevels: json('resistance_levels'),
     rsiValue: real('rsi_value'),
-    volumeSurge: real('volume_surge'),                            // % change vs avg
+    volumeSurge: real('volume_surge'),
     tvlChange: real('tvl_change'),
     socialMomentum: real('social_momentum'),
     priceAtAnalysis: real('price_at_analysis'),
@@ -106,4 +106,20 @@ export const priceSnapshots = pgTable('price_snapshots', {
     liquidity: real('liquidity'),
     volume24h: real('volume_24h'),
     timestamp: timestamp('timestamp').defaultNow().notNull(),
+});
+
+// ─── COIN MEMORY (AI Event Memory) ───────────────────────────────────────────
+export const coinMemory = pgTable('coin_memory', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    eventType: varchar('event_type', { length: 50 }).notNull(),
+    eventTitle: text('event_title').notNull(),
+    eventSummary: text('event_summary'),
+    verdict: varchar('verdict', { length: 20 }),
+    confidenceScore: real('confidence_score'),
+    riskLevel: varchar('risk_level', { length: 20 }),
+    priceAtEvent: real('price_at_event'),
+    sourceHash: varchar('source_hash', { length: 64 }).unique(),
+    relatedNewsIds: json('related_news_ids'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 });
