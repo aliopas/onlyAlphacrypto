@@ -160,3 +160,69 @@ export async function checkDisclaimer(req: AuthRequest, res: Response, next: Nex
         res.json({ accepted: true });
     }
 }
+
+export async function getContext(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const articleId = parseInt(String(req.params.articleId), 10);
+        const articleType = String(req.params.articleType);
+
+        if (articleType !== 'WIRE' && articleType !== 'RADAR') {
+            res.status(400).json({ error: 'Invalid article type' });
+            return;
+        }
+
+        if (isNaN(articleId)) {
+            res.status(400).json({ error: 'Invalid article ID' });
+            return;
+        }
+
+        if (articleType === 'WIRE') {
+            const [newsItem] = await db.select({
+                id: coinNews.id,
+                coinSymbol: coinNews.coinSymbol,
+                headline: coinNews.headline,
+                summary: coinNews.summary,
+                hook: coinNews.hook,
+                sentiment: coinNews.sentiment,
+                impactScore: coinNews.impactScore,
+                publishedAt: coinNews.publishedAt,
+            }).from(coinNews).where(eq(coinNews.id, articleId)).limit(1);
+
+            if (!newsItem) {
+                res.status(404).json({ error: 'Article not found' });
+                return;
+            }
+
+            res.json({ type: 'WIRE', article: newsItem });
+            return;
+        }
+
+        const [radarItem] = await db.select({
+            id: radarSignals.id,
+            coinSymbol: radarSignals.coinSymbol,
+            signalText: radarSignals.signalText,
+            sentiment: radarSignals.sentiment,
+            impactScore: radarSignals.impactScore,
+            newsId: radarSignals.newsId,
+            createdAt: radarSignals.createdAt,
+        }).from(radarSignals).where(eq(radarSignals.id, articleId)).limit(1);
+
+        if (!radarItem) {
+            res.status(404).json({ error: 'Article not found' });
+            return;
+        }
+
+        let linkedNews: { id: number; headline: string } | null = null;
+        if (radarItem.newsId) {
+            const [news] = await db.select({ id: coinNews.id, headline: coinNews.headline })
+                .from(coinNews)
+                .where(eq(coinNews.id, radarItem.newsId))
+                .limit(1);
+            linkedNews = news ?? null;
+        }
+
+        res.json({ type: 'RADAR', article: { ...radarItem, linkedNews } });
+    } catch (err) {
+        next(err);
+    }
+}
