@@ -384,12 +384,12 @@ export async function validateAirdrop(
 
 export async function streamChatResponse(
     messages: Array<{ role: 'user' | 'assistant'; content: string }>,
-    coinContext: { symbol: string; price: number; newsSummary: string }
+    coinContext: { symbol: string; price: number; newsSummary: string },
+    mode?: 'general' | 'context'
 ): Promise<AsyncIterable<OpenAI.ChatCompletionChunk>> {
-    // No caching for chat streams as they are unique interactions
-    const chatMessages = prompts.buildChatMessages(messages, coinContext);
+    const chatMessages = prompts.buildChatMessages(messages, coinContext, mode);
     return gateway.chatStream({
-        model: env.SEO_MODEL, // GPT-5-nano
+        model: env.SEO_MODEL,
         temperature: 0.6,
         messages: chatMessages
     });

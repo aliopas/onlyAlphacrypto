@@ -39,6 +39,12 @@ export interface ChatInput {
     coinContext: CoinContext;
 }
 
+export interface ChatModeParams {
+    messages: ChatMessage[];
+    coinContext: CoinContext;
+    mode?: 'general' | 'context';
+}
+
 export interface DeepSynthesisInput {
     coinSymbol: string;
     newsArticles: string[];
@@ -237,11 +243,20 @@ Rules: isAutoVerifiable = true ONLY if the task involves a specific on-chain act
         ];
     }
 
-    buildChatMessages(messages: ChatMessage[], coinContext: CoinContext): ChatCompletionMessageParam[] {
-        return [
-            {
-                role: 'system',
-                content: `You are 'Ask OnlyAlpha', an elite, concise crypto market analyst assistant.
+    buildChatMessages(messages: ChatMessage[], coinContext: CoinContext, mode: 'general' | 'context' = 'general'): ChatCompletionMessageParam[] {
+        const systemPrompt = mode === 'context'
+            ? `You are 'Ask OnlyAlpha', an elite cryptocurrency deep analysis assistant in Context Mode.
+The user is currently analyzing: ${coinContext.symbol} at price: $${coinContext.price}.
+
+Rules:
+1. The user has selected a specific article or AI signal. Focus your analysis on that PRIMARY FOCUS content.
+2. Cross-reference with LATEST UPDATES if available to provide the most current view.
+3. Be thorough and data-driven — use specific numbers, price levels, and timeframes.
+4. Highlight any new developments that contradict or confirm the original analysis.
+5. Do NOT give direct financial advice. Use "Data suggests..." or "Historically..."
+6. Never break character — you only discuss crypto.
+7. Responses can be longer and more detailed than general mode (up to 200 words).`
+            : `You are 'Ask OnlyAlpha', an elite, concise crypto market analyst assistant.
 The user is currently analyzing: ${coinContext.symbol} at price: $${coinContext.price}.
 Recent context: ${coinContext.newsSummary}.
 
@@ -250,7 +265,12 @@ Rules:
 2. Focus on data, technical analysis, and market sentiment.
 3. Keep responses under 50 words unless specifically asked for details.
 4. Do NOT give direct financial advice. Use "Historically," or "Data suggests..."
-5. Never break character -- you only discuss crypto.`
+5. Never break character -- you only discuss crypto.`;
+
+        return [
+            {
+                role: 'system',
+                content: systemPrompt
             },
             ...messages.map(msg => ({
                 role: msg.role,

@@ -1,7 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { db } from '../config/db';
-import { coinNews, marketInsights, radarSignals } from '../models/index';
+import { coinNews, marketInsights, radarSignals, coinMemory } from '../models/index';
 import { eq, desc, and, gt } from 'drizzle-orm';
 import { streamChatResponse } from '../services/openai.service';
 import { getLivePrice } from '../services/binance.service';
@@ -71,12 +71,17 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
             contextText += `\nINSTRUCTION: The user is asking about the PRIMARY FOCUS article. Analyze it and consider any LATEST UPDATES. Be concise.`;
             
         } else {
-            // General Mode fallback
             const [insight] = await db.select().from(marketInsights).where(eq(marketInsights.coinSymbol, symbol)).orderBy(desc(marketInsights.analyzedAt)).limit(1);
             const news = await db.select({ headline: coinNews.headline }).from(coinNews).where(eq(coinNews.coinSymbol, symbol)).orderBy(desc(coinNews.publishedAt)).limit(3);
+            const memory = await db.select({ eventSummary: coinMemory.eventSummary, eventType: coinMemory.eventType })
+                .from(coinMemory)
+                .where(eq(coinMemory.coinSymbol, symbol))
+                .orderBy(desc(coinMemory.createdAt))
+                .limit(3);
             
             const newsStr = news.map((n) => n.headline).join(' | ') || 'No recent news';
-            contextText = `[GENERAL MARKET CONTEXT] Latest Insight Verdict: ${insight?.verdict || 'None'}\nRecent News: ${newsStr}`;
+            const memoryStr = memory.length > 0 ? memory.map(m => `[${m.eventType}] ${m.eventSummary}`).join(' | ') : 'No recent memory';
+            contextText = `[GENERAL MARKET CONTEXT] Latest Insight Verdict: ${insight?.verdict || 'None'}\nRecent News: ${newsStr}\nHistorical Memory: ${memoryStr}`;
             
             if (!currentPrice) currentPrice = insight?.priceAtAnalysis || 0;
         }
@@ -87,11 +92,13 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders();
 
+        const chatMode = mode === 'private' ? 'context' : 'general';
+
         const stream = await streamChatResponse(messages, {
             symbol,
             price: currentPrice,
             newsSummary: contextText,
-        });
+        }, chatMode);
 
         for await (const chunk of stream) {
             const delta = chunk.choices[0]?.delta?.content;
