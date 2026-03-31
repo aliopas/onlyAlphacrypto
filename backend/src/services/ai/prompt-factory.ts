@@ -39,6 +39,23 @@ export interface ChatInput {
     coinContext: CoinContext;
 }
 
+export interface DeepSynthesisInput {
+    coinSymbol: string;
+    newsArticles: string[];
+    recentMemory: Array<{
+        eventType: string;
+        eventSummary: string;
+        verdict?: string | null;
+        confidenceScore?: number | null;
+        riskVerdict?: string | null;
+        keyDrivers?: string[] | null;
+        redFlags?: string[] | null;
+    }>;
+    marketData: Record<string, unknown> | null;
+    onchainData: Record<string, unknown> | null;
+    tavilyContext: string;
+}
+
 // Define additional interfaces used in the prompts
 export interface RawAnalysisData {
     analysis: string;
@@ -238,6 +255,50 @@ Rules:
             ...messages.map(msg => ({
                 role: msg.role,
                 content: msg.content            }))
+        ];
+    }
+
+    buildDeepSynthesisMessages(data: DeepSynthesisInput): ChatCompletionMessageParam[] {
+        return [
+            {
+                role: 'system',
+                content: `You are an elite cryptocurrency deep analysis engine. Synthesize all provided data into a comprehensive analysis. Return STRICT JSON:
+{
+  "executiveSummary": "<4-6 sentences explaining the WHY behind current market action with specific data points>",
+  "keyDrivers": ["<reason 1 referencing specific news/data>", "<reason 2>", "<reason 3>", "<reason 4>"],
+  "marketContext": "<2-3 sentences explaining how this coin fits in the broader market>",
+  "riskAssessment": "LOW|MEDIUM|HIGH",
+  "redFlags": ["<flag 1 from tavily or memory>", "<flag 2>"],
+  "confidenceScore": <0-100>,
+  "fullArticle": "<800+ word article. Structure: 1) Hook: One attention-grabbing opening sentence. 2) Executive Brief: 3-4 sentence summary of the situation. 3) Deep Analysis: The WHY behind the movement with specific data (price levels, %, volumes). 4) Historical Context: Compare current event to recentMemory entries — what happened before and what can we learn. 5) Red Flags: Any scam signals, contract risks, or negative indicators from Tavily search. 6) Trader Implications: Actionable insights for traders (support/resistance levels, timeframes, risk/reward). Write in a professional but engaging tone for crypto traders.>"
+}
+Rules:
+- Use HISTORICAL MEMORY to add depth and compare past events to the current situation
+- Use TAVILY CONTEXT to validate claims and identify potential scams or red flags
+- Use MARKET DATA for specific price levels and metrics
+- The fullArticle MUST be 800+ words minimum
+- Be specific: include numbers, percentages, price levels, timeframes
+- Do NOT hedge — give clear, actionable analysis`
+            },
+            {
+                role: 'user',
+                content: `Analyze data for ${data.coinSymbol}:
+
+--- NEWS ARTICLES ---
+${JSON.stringify(data.newsArticles)}
+
+--- HISTORICAL MEMORY (Past Events) ---
+${JSON.stringify(data.recentMemory)}
+
+--- MARKET DATA ---
+${JSON.stringify(data.marketData)}
+
+--- ON-CHAIN DATA ---
+${JSON.stringify(data.onchainData)}
+
+--- TAVILY RESEARCH CONTEXT ---
+${data.tavilyContext}`
+            }
         ];
     }
 }
