@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
 import { AIGateway } from './ai/ai-gateway';
-import { PromptFactory } from './ai/prompt-factory';
+import { PromptFactory, DeepSynthesisInput } from './ai/prompt-factory';
 
 // Define interfaces locally to avoid circular imports
 export interface MarketVerdictResult {
@@ -57,6 +57,16 @@ export interface AirdropValidationResult {
     }>;
     estValue: string;
     aiReport: string;
+}
+
+export interface DeepSynthesisResult {
+    executiveSummary: string;
+    keyDrivers: string[];
+    marketContext: string;
+    riskAssessment: 'LOW' | 'MEDIUM' | 'HIGH';
+    redFlags: string[];
+    confidenceScore: number;
+    fullArticle: string;
 }
 
 // Instantiate the modular components
@@ -210,37 +220,40 @@ export async function generateLightweightTriage(
     }
 }
 
-// ─── Deep Synthesis Function Signature (Phase 2) ───────────────────────────────
-/**
- * DEEP SYNTHESIS FUNCTION - MUST USE DEEPSEEK R1 * 
- * This function performs deep analysis using the most capable model (DeepSeek R1 via ANALYSIS_MODEL)
- * It synthesizes multiple data sources:
- * - Multiple news articles about the same coin
- * - Real-time market data (price, volume)
- * - On-chain data from Moralis
- * - Tavily research/scamming context
- * 
- * Output structured for insertion into coin_news table and coin_memory table
- * 
- * NOTE: Implementation will be completed in later phases. This is the function signature only.
- */
 export async function generateDeepSynthesis(
     coinSymbol: string,
     newsArticles: string[],
     marketData: Record<string, number | string>,
     onchainData: Record<string, unknown>,
     tavilyContext: string
-): Promise<{
-    executiveSummary: string;
-    keyDrivers: string[];
-    marketContext: string;
-    riskAssessment: string; // 'LOW' | 'MEDIUM' | 'HIGH'
-    redFlags: string[];
-    confidenceScore: number;
-}> {
-    // Placeholder implementation - to be replaced in Phase 2
-    // This function will use DeepSeek R1 (env.ANALYSIS_MODEL) for deep analysis
-    throw new Error('generateDeepSynthesis not yet implemented - placeholder for Phase 2');
+): Promise<DeepSynthesisResult> {
+    const cacheKey = cache.generateKey('deepSynthesis', coinSymbol, newsArticles, marketData, tavilyContext);
+    const cached = cache.get<DeepSynthesisResult>(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    console.log(`[DeepSynthesis] Using ${env.ANALYSIS_MODEL} for ${coinSymbol}`);
+
+    const synthesisInput: DeepSynthesisInput = {
+        coinSymbol,
+        newsArticles,
+        recentMemory: [],
+        marketData,
+        onchainData,
+        tavilyContext,
+    };
+
+    const messages = prompts.buildDeepSynthesisMessages(synthesisInput);
+    const result = await gateway.chat<DeepSynthesisResult>({
+        model: env.ANALYSIS_MODEL,
+        temperature: 0.3,
+        responseFormat: { type: 'json_object' },
+        messages,
+    });
+
+    cache.set(cacheKey, result);
+    return result;
 }
 
 // ─── Dual News Output: 2-Step Pipeline ───────────────────────────────────────
