@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { db } from '../config/db';
+import { redis } from '../config/redis';
 import { coinNews, marketInsights, radarSignals, coinMemory } from '../models/index';
 import { eq, desc, and, gt } from 'drizzle-orm';
 import { streamChatResponse } from '../services/openai.service';
@@ -122,4 +123,40 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
         res.write('data: [DONE]\n\n');
         res.end();
     } catch (err) { next(err); }
+}
+
+export async function acceptDisclaimer(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+        if (!req.userId) {
+            res.status(401).json({ error: 'Authentication required' });
+            return;
+        }
+
+        if (redis) {
+            await redis.set(`disclaimer:${req.userId}`, 'accepted', 'EX', 31536000);
+        }
+
+        res.json({ success: true });
+    } catch (err) {
+        next(err);
+    }
+}
+
+export async function checkDisclaimer(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+        if (!redis) {
+            res.json({ accepted: true });
+            return;
+        }
+
+        if (!req.userId) {
+            res.json({ accepted: false });
+            return;
+        }
+
+        const status = await redis.get(`disclaimer:${req.userId}`);
+        res.json({ accepted: status === 'accepted' });
+    } catch {
+        res.json({ accepted: true });
+    }
 }
