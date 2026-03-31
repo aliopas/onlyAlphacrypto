@@ -26,6 +26,20 @@ async function fixSchema() {
                 symbol_mentions TEXT[],
                 sentiment_hint VARCHAR(20),
                 relevance_score INTEGER
+            )`,
+            `CREATE TABLE IF NOT EXISTS coin_memory (
+                id SERIAL PRIMARY KEY,
+                coin_symbol VARCHAR(20) NOT NULL,
+                event_type VARCHAR(50) NOT NULL,
+                event_summary TEXT NOT NULL,
+                price_at_event REAL,
+                verdict VARCHAR(20),
+                confidence_score REAL,
+                risk_verdict VARCHAR(20),
+                key_drivers JSONB,
+                red_flags JSONB,
+                source_news_hashes JSONB,
+                created_at TIMESTAMP DEFAULT NOW() NOT NULL
             )`
         ];
 
