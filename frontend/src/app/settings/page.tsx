@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { settingsApi } from '@/features/settings/api';
 import { UserProfile } from '@/features/settings/types';
-import { WalletManager, PreferencesPanel, ApiKeyManager } from '@/features/settings/components';
+import { WalletManager, PreferencesPanel, ApiKeyManager, PricingCards, OgBadge } from '@/features/settings/components';
 
 export default function SettingsPage() {
     const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -47,15 +47,7 @@ export default function SettingsPage() {
                             </h2>
                             <p className="text-[#888] font-mono text-sm mb-6 lowercase">{profile?.email || 'N/A'}</p>
 
-                            {profile?.isOgGenesis ? (
-                                <div className="inline-flex items-center gap-2 px-3 py-1 border border-[#FFD700] bg-[#FFD700]/5">
-                                    <span className="text-[10px] font-mono font-bold text-[#FFD700] tracking-widest uppercase">OG GENESIS MEMBER</span>
-                                </div>
-                            ) : (
-                                <div className="inline-flex items-center gap-2 px-3 py-1 border border-[#333]">
-                                    <span className="text-[10px] font-mono font-bold text-[#888] tracking-widest uppercase">{profile?.plan?.toUpperCase() || 'FREE'} PLAN</span>
-                                </div>
-                            )}
+                            <OgBadge isOgGenesis={profile?.isOgGenesis ?? false} plan={profile?.plan ?? 'free'} />
                         </div>
                         <div className="text-right">
                             <div className="text-[10px] font-mono text-[#333] uppercase mb-1">Status</div>
@@ -72,6 +64,9 @@ export default function SettingsPage() {
 
                 {/* Developer API Keys */}
                 <ApiKeyManager plan={profile?.plan || 'free'} />
+
+                {/* Pricing Cards */}
+                <PricingCards currentPlan={profile?.plan || 'free'} isOgGenesis={profile?.isOgGenesis ?? false} />
             </div>
 
             {/* Right 30% */}
