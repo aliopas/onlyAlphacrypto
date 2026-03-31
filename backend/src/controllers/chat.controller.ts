@@ -17,11 +17,14 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
             articleType?: 'WIRE' | 'RADAR';
         };
 
+        const isContextRoute = req.originalUrl?.includes('/context') ?? false;
+
         if (!coin || !messages?.length) {
             throw new AppError('coin and messages are required', 400);
         }
 
         const symbol = coin.toUpperCase();
+        const resolvedMode = isContextRoute ? 'private' : (mode || 'general');
         let contextText = '';
         let currentPrice = 0;
         
@@ -29,7 +32,7 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
             currentPrice = await getLivePrice(symbol);
         } catch { /* ignore */ }
 
-        if (mode === 'private' && articleId && articleType) {
+        if (resolvedMode === 'private' && articleId && articleType) {
             // Context Aware / Private Mode
             let baseArticleTime = new Date();
             
@@ -67,7 +70,16 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
                 contextText += `\n[LATEST UPDATES]: No newer updates found since this article was published.`;
             }
 
-            // Add the general system prompt modification tailored for Private mode
+            const memory = await db.select({ eventSummary: coinMemory.eventSummary, eventType: coinMemory.eventType, riskVerdict: coinMemory.riskVerdict })
+                .from(coinMemory)
+                .where(eq(coinMemory.coinSymbol, symbol))
+                .orderBy(desc(coinMemory.createdAt))
+                .limit(5);
+            if (memory.length > 0) {
+                const memoryStr = memory.map(m => `[${m.eventType}] ${m.eventSummary} (Risk: ${m.riskVerdict || 'N/A'})`).join('\n');
+                contextText += `\n[COIN MEMORY - Historical Events]:\n${memoryStr}`;
+            }
+
             contextText += `\nINSTRUCTION: The user is asking about the PRIMARY FOCUS article. Analyze it and consider any LATEST UPDATES. Be concise.`;
             
         } else {
@@ -92,7 +104,7 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders();
 
-        const chatMode = mode === 'private' ? 'context' : 'general';
+        const chatMode = resolvedMode === 'private' ? 'context' : 'general';
 
         const stream = await streamChatResponse(messages, {
             symbol,
