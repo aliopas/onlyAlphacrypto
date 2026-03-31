@@ -139,8 +139,8 @@ ${JSON.stringify(aggregatedData.existingContext || [])}`
                 role: 'system',
                 content: `You are a crypto news triage analyst. Your job is to quickly assess news items for their potential market impact and hype potential. For each news item, return a JSON object with:
 {
-  "relevanceScore": <0-100>, // 0 = irrelevant/noise, 100 = extremely high impact/hype
-  "sentimentHint": "bullish|bearish|neutral|null" // Quick sentiment assessment (null if unclear)
+  "relevanceScore": <0-100>,
+  "sentimentHint": "bullish|bearish|neutral|null"
 }
 Focus on: 
 - Mentions of major cryptocurrencies (BTC, ETH, SOL, etc.)
@@ -250,39 +250,37 @@ Rules:
 2. Focus on data, technical analysis, and market sentiment.
 3. Keep responses under 50 words unless specifically asked for details.
 4. Do NOT give direct financial advice. Use "Historically," or "Data suggests..."
-5. Never break character — you only discuss crypto.`
+5. Never break character -- you only discuss crypto.`
             },
             ...messages.map(msg => ({
                 role: msg.role,
-                content: msg.content            }))
+                content: msg.content
+            }))
         ];
     }
 
     buildDeepSynthesisMessages(data: DeepSynthesisInput): ChatCompletionMessageParam[] {
-        return [
-            {
-                role: 'system',
-                content: `You are an elite cryptocurrency deep analysis engine. Synthesize all provided data into a comprehensive analysis. Return STRICT JSON:
-{
-  "executiveSummary": "<4-6 sentences explaining the WHY behind current market action with specific data points>",
-  "keyDrivers": ["<reason 1 referencing specific news/data>", "<reason 2>", "<reason 3>", "<reason 4>"],
-  "marketContext": "<2-3 sentences explaining how this coin fits in the broader market>",
-  "riskAssessment": "LOW|MEDIUM|HIGH",
-  "redFlags": ["<flag 1 from tavily or memory>", "<flag 2>"],
-  "confidenceScore": <0-100>,
-  "fullArticle": "<800+ word article. Structure: 1) Hook: One attention-grabbing opening sentence. 2) Executive Brief: 3-4 sentence summary of the situation. 3) Deep Analysis: The WHY behind the movement with specific data (price levels, %, volumes). 4) Historical Context: Compare current event to recentMemory entries — what happened before and what can we learn. 5) Red Flags: Any scam signals, contract risks, or negative indicators from Tavily search. 6) Trader Implications: Actionable insights for traders (support/resistance levels, timeframes, risk/reward). Write in a professional but engaging tone for crypto traders.>"
-}
-Rules:
-- Use HISTORICAL MEMORY to add depth and compare past events to the current situation
-- Use TAVILY CONTEXT to validate claims and identify potential scams or red flags
-- Use MARKET DATA for specific price levels and metrics
-- The fullArticle MUST be 800+ words minimum
-- Be specific: include numbers, percentages, price levels, timeframes
-- Do NOT hedge — give clear, actionable analysis`
-            },
-            {
-                role: 'user',
-                content: `Analyze data for ${data.coinSymbol}:
+        const systemPrompt = [
+            'You are an elite cryptocurrency deep analysis engine. Synthesize all provided data into a comprehensive analysis. Return STRICT JSON:',
+            '{',
+            '  "executiveSummary": "<4-6 sentences explaining the WHY behind current market action with specific data points>",',
+            '  "keyDrivers": ["<reason 1 referencing specific news/data>", "<reason 2>", "<reason 3>", "<reason 4>"],',
+            '  "marketContext": "<2-3 sentences explaining how this coin fits in the broader market>",',
+            '  "riskAssessment": "LOW|MEDIUM|HIGH",',
+            '  "redFlags": ["<flag 1 from tavily or memory>", "<flag 2>"],',
+            '  "confidenceScore": <0-100>,',
+            '  "fullArticle": "<800+ word article. Structure: 1) Hook: One attention-grabbing opening sentence. 2) Executive Brief: 3-4 sentence summary of the situation. 3) Deep Analysis: The WHY behind the movement with specific data (price levels, %, volumes). 4) Historical Context: Compare current event to recentMemory entries. 5) Red Flags: Any scam signals, contract risks, or negative indicators from Tavily search. 6) Trader Implications: Actionable insights for traders (support/resistance levels, timeframes, risk/reward). Write in a professional but engaging tone for crypto traders.>"',
+            '}',
+            'Rules:',
+            '- Use HISTORICAL MEMORY to add depth and compare past events to the current situation',
+            '- Use TAVILY CONTEXT to validate claims and identify potential scams or red flags',
+            '- Use MARKET DATA for specific price levels and metrics',
+            '- The fullArticle MUST be 800+ words minimum',
+            '- Be specific: include numbers, percentages, price levels, timeframes',
+            '- Do NOT hedge -- give clear, actionable analysis'
+        ].join('\n');
+
+        const userPrompt = `Analyze data for ${data.coinSymbol}:
 
 --- NEWS ARTICLES ---
 ${JSON.stringify(data.newsArticles)}
@@ -297,7 +295,49 @@ ${JSON.stringify(data.marketData)}
 ${JSON.stringify(data.onchainData)}
 
 --- TAVILY RESEARCH CONTEXT ---
-${data.tavilyContext}`
+${data.tavilyContext}`;
+
+        return [
+            {
+                role: 'system',
+                content: systemPrompt
+            },
+            {
+                role: 'user',
+                content: userPrompt
+            }
+        ];
+    }
+
+    buildArticleSEOMessages(fullArticle: string, coinSymbol: string): ChatCompletionMessageParam[] {
+        const systemPrompt = [
+            'You are an expert crypto SEO content editor. Analyze the provided article and return STRICT JSON:',
+            '{',
+            '  "metaTitle": "<Max 60 chars. Include primary keyword + brand. Format: \'Keyword Action | OnlyAlpha\'>",',
+            '  "metaDescription": "<Max 160 chars. Include primary keyword, summarize the insight, include a CTA like \'Read the full analysis\'>",',
+            '  "seoKeywords": ["<primary keyword>", "<secondary keyword>", "<long-tail keyword>", "<coin name + action>", "<market trend keyword>"],',
+            '  "slug": "<url-friendly slug, lowercase, hyphens only, max 6 words>"',
+            '}',
+            'SEO Rules:',
+            '- metaTitle: Must include the coin name and most impactful action/event',
+            '- metaDescription: Must include the keyword naturally and end with a CTA',
+            '- seoKeywords: 5 keywords minimum, mix of short-tail and long-tail',
+            '- slug: Use the coin name + main event keyword (e.g., "solana-breaks-resistance-155")'
+        ].join('\n');
+
+        const userPrompt = `Coin: ${coinSymbol}
+
+Article:
+${fullArticle}`;
+
+        return [
+            {
+                role: 'system',
+                content: systemPrompt
+            },
+            {
+                role: 'user',
+                content: userPrompt
             }
         ];
     }
