@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { CoinNews } from '@/features/terminal/types';
 import { RadarSignal } from '@/features/home/types';
 
@@ -35,10 +35,7 @@ export function TerminalWire({
     isLoadingMore = false,
     hasSignals = true
 }: Props) {
-    const [now, setNow] = useState<number | null>(null);
-    useEffect(() => { setNow(Date.now()); }, []);
-
-    if (!now) return null;
+    const now = useMemo(() => Date.now(), []);
 
     const filteredRadar = targetedCoin
         ? radarSignals.filter(r => r.coin?.toLowerCase() === targetedCoin.toLowerCase())

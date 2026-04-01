@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { apiClient } from '@/features/shared/api/client';
 
 export type ChatMode = 'general' | 'private';
 
@@ -22,6 +23,7 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
     const [guestCount, setGuestCount] = useState(0);
     const [isGuestLocked, setIsGuestLocked] = useState(false);
     const [isLoggedIn, setIsLoggedIn] = useState(false);
+    const [disclaimerAccepted, setDisclaimerAccepted] = useState<boolean | null>(null);
 
     useEffect(() => {
         setMessages([{ role: 'ai', content: `Terminal Interface ready. Scanning data streams for $${coin}...` }]);
@@ -40,8 +42,31 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
         }
     }, []);
 
+    useEffect(() => {
+        async function checkDisclaimer() {
+            try {
+                const { data } = await apiClient.get('/chat/disclaimer-status');
+                setDisclaimerAccepted(data.accepted ?? false);
+            } catch {
+                setDisclaimerAccepted(false);
+            }
+        }
+        checkDisclaimer();
+    }, []);
+
+    const acceptDisclaimer = useCallback(async () => {
+        try {
+            await apiClient.post('/chat/accept-disclaimer');
+            setDisclaimerAccepted(true);
+        } catch (error) {
+            console.error('[Chat] Failed to accept disclaimer:', error);
+        }
+    }, []);
+
     const send = async (userMsg: string) => {
         if (!userMsg.trim() || streaming || isGuestLocked) return;
+        if (disclaimerAccepted === false) return;
+        if (disclaimerAccepted === null) return;
 
         const token = localStorage.getItem('token');
         setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
@@ -92,5 +117,5 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
         }
     };
 
-    return { messages, streaming, mode, setMode, guestCount, isGuestLocked, isLoggedIn, send };
+    return { messages, streaming, mode, setMode, guestCount, isGuestLocked, isLoggedIn, send, disclaimerAccepted, acceptDisclaimer };
 }

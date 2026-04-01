@@ -27,7 +27,7 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
         const symbol = coin.toUpperCase();
         const resolvedMode = isContextRoute ? 'private' : (mode || 'general');
         let contextText = '';
-        let currentPrice = 0;
+        let currentPrice: number | null = 0;
         
         try {
             currentPrice = await getLivePrice(symbol);
@@ -109,7 +109,7 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
 
         const stream = await streamChatResponse(messages, {
             symbol,
-            price: currentPrice,
+            price: currentPrice ?? 0,
             newsSummary: contextText,
         }, chatMode);
 

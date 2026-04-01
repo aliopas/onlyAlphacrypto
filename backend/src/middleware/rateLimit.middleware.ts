@@ -1,11 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { redis } from '../config/redis';
 import { AuthRequest } from './auth.middleware';
+import { logger } from '../utils/logger';
+import { env } from '../config/env';
 
 interface RateLimitOptions {
     windowSeconds: number;
     maxRequests: number;
 }
+
+
 
 // ── Per-plan request limits (requests per hour) ─────────────────────────────
 export const PLAN_LIMITS: Record<string, number> = {
@@ -17,7 +21,16 @@ export const PLAN_LIMITS: Record<string, number> = {
 // ── Generic rate limiter (IP-based) ─────────────────────────────────────────
 export function rateLimiter(options: RateLimitOptions) {
     return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-        if (!redis) { next(); return; }
+        if (!redis) {
+            if (env.NODE_ENV === 'development') {
+                logger.warn('[RateLimit] Redis unavailable — bypassing in development');
+                next();
+                return;
+            }
+            logger.error('[RateLimit] Redis unavailable — rejecting request');
+            res.status(503).json({ error: 'Service temporarily unavailable' });
+            return;
+        }
 
         const ip = req.ip || req.socket.remoteAddress || 'unknown';
         const key = `rl:${req.path}:${ip}`;
@@ -40,9 +53,22 @@ export function rateLimiter(options: RateLimitOptions) {
 // Reads req.userId and req.plan injected by authMiddleware
 export function tieredLimiter(windowSeconds = 3600) {
     return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
-        if (!redis || !req.userId) { next(); return; }
+        if (!redis || !req.userId) {
+            if (!redis) {
+                if (env.NODE_ENV === 'development') {
+                    logger.warn('[RateLimit] Redis unavailable — bypassing in development');
+                    next();
+                    return;
+                }
+                logger.error('[RateLimit] Redis unavailable — rejecting request');
+                res.status(503).json({ error: 'Service temporarily unavailable' });
+                return;
+            }
+            next();
+            return;
+        }
 
-        const plan = (req as any).plan || 'free';
+        const plan = req.userPlan || 'free';
         const maxRequests = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
         const key = `rl:tier:${req.userId}`;
 

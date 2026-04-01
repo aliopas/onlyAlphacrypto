@@ -1,6 +1,8 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth.middleware';
 import { redis } from '../config/redis';
+import { logger } from '../utils/logger';
+import { env } from '../config/env';
 
 export async function guestLimit(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     if (req.userId) {
@@ -9,7 +11,13 @@ export async function guestLimit(req: AuthRequest, res: Response, next: NextFunc
     }
 
     if (!redis) {
-        next();
+        if (env.NODE_ENV === 'development') {
+            logger.warn('[GuestLimit] Redis unavailable — bypassing in development');
+            next();
+            return;
+        }
+        logger.error('[GuestLimit] Redis unavailable — rejecting request');
+        res.status(503).json({ error: 'Service temporarily unavailable' });
         return;
     }
 
@@ -32,7 +40,8 @@ export async function guestLimit(req: AuthRequest, res: Response, next: NextFunc
         }
 
         next();
-    } catch {
+    } catch (error) {
+        logger.error('[GuestLimit] Redis error:', error instanceof Error ? error.message : String(error));
         next();
     }
 }
