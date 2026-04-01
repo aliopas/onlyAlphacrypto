@@ -1,6 +1,31 @@
 import { apiClient } from '@/features/shared/api/client';
 import { AirdropProject, ProgressResponse } from './types';
 
+export interface AirdropStats {
+    totalValue: number;
+    walletCount: number;
+    txCount: number;
+    completedTasks: number;
+}
+
+export interface AirdropActivity {
+    id: string;
+    description: string;
+    projectName: string;
+    completed: boolean;
+    completedAt: string | null;
+    txHash: string | null;
+}
+
+export interface AirdropDeadline {
+    id: string;
+    name: string;
+    deadline: string;
+    daysLeft: number;
+    countdown: string;
+    isCritical: boolean;
+}
+
 export const airdropApi = {
     getProjects: async (): Promise<AirdropProject[]> => {
         try {
@@ -43,5 +68,35 @@ export const airdropApi = {
             }
             throw new Error('Verification failed');
         }
-    }
+    },
+
+    getStats: async (): Promise<AirdropStats | null> => {
+        try {
+            const { data } = await apiClient.get<AirdropStats>('/airdrop/stats');
+            return data;
+        } catch (error) {
+            console.error('[API] getStats failed:', error);
+            return null;
+        }
+    },
+
+    getActivity: async (): Promise<AirdropActivity[] | null> => {
+        try {
+            const { data } = await apiClient.get<AirdropActivity[]>('/airdrop/activity');
+            return data;
+        } catch (error) {
+            console.error('[API] getActivity failed:', error);
+            return null;
+        }
+    },
+
+    getDeadlines: async (): Promise<AirdropDeadline[] | null> => {
+        try {
+            const { data } = await apiClient.get<AirdropDeadline[]>('/airdrop/sidebar-deadlines');
+            return data;
+        } catch (error) {
+            console.error('[API] getDeadlines failed:', error);
+            return null;
+        }
+    },
 };

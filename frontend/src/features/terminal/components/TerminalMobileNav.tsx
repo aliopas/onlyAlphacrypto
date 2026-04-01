@@ -7,7 +7,7 @@ interface Props {
 
 export function TerminalMobileNav({ activeTab, onTabChange }: Props) {
     return (
-        <nav className="fixed bottom-0 left-0 right-0 xl:hidden bg-black border-t border-[#222] flex justify-around items-center h-14 z-50">
+        <nav className="fixed bottom-[72px] left-0 right-0 xl:hidden bg-black border-t border-[#222] border-b-0 flex justify-around items-center h-14 z-50">
             <button
                 onClick={() => onTabChange('wire')}
                 className={`flex flex-col items-center gap-0.5 px-4 py-2 cursor-pointer transition-colors ${activeTab === 'wire' ? 'text-[#00ff88]' : 'text-[#555]'}`}

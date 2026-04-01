@@ -70,7 +70,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const selectedCoin = coin || activeItemCoin || 'SOL';
 
     return (
-        <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto xl:overflow-hidden p-4 gap-4 h-full pb-14 xl:pb-0">
+        <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto xl:overflow-hidden p-4 gap-4 h-full pb-[128px] xl:pb-0">
             {/* Left — AI Radar Stream Sidebar */}
             <div className={activeMobileTab === 'wire' ? 'flex w-full xl:w-auto' : 'hidden xl:flex'}>
                 <TerminalWire

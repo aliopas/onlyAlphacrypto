@@ -1,18 +1,66 @@
-import { airdropApi } from '@/features/airdrop/api';
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { airdropApi, AirdropStats, AirdropActivity, AirdropDeadline } from '@/features/airdrop/api';
+import { AirdropProject } from '@/features/airdrop/types';
 import Link from 'next/link';
 
-export const revalidate = 300;
+const STATUS_COLOR: Record<string, { text: string; bg: string; border: string }> = {
+    SAFE: { text: 'text-emerald-500', bg: 'bg-emerald-500/5', border: 'border-emerald-500/30' },
+    MEDIUM: { text: 'text-yellow-500', bg: 'bg-yellow-500/5', border: 'border-yellow-500/30' },
+    HIGH: { text: 'text-orange-500', bg: 'bg-orange-500/5', border: 'border-orange-500/30' },
+    SCAM: { text: 'text-red-500', bg: 'bg-red-500/5', border: 'border-red-500/30' },
+    TESTNET: { text: 'text-yellow-500', bg: 'bg-yellow-500/5', border: 'border-yellow-500/30' },
+};
 
-export default async function AirdropsPage() {
-    const projects = await airdropApi.getProjects();
+export default function AirdropsPage() {
+    const [projects, setProjects] = useState<AirdropProject[]>([]);
+    const [stats, setStats] = useState<AirdropStats | null>(null);
+    const [activity, setActivity] = useState<AirdropActivity[]>([]);
+    const [deadlines, setDeadlines] = useState<AirdropDeadline[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [sidebarLoading, setSidebarLoading] = useState(true);
 
-    const STATUS_COLOR: Record<string, { text: string; bg: string; border: string }> = {
-        SAFE: { text: 'text-emerald-500', bg: 'bg-emerald-500/5', border: 'border-emerald-500/30' },
-        MEDIUM: { text: 'text-yellow-500', bg: 'bg-yellow-500/5', border: 'border-yellow-500/30' },
-        HIGH: { text: 'text-orange-500', bg: 'bg-orange-500/5', border: 'border-orange-500/30' },
-        SCAM: { text: 'text-red-500', bg: 'bg-red-500/5', border: 'border-red-500/30' },
-        TESTNET: { text: 'text-yellow-500', bg: 'bg-yellow-500/5', border: 'border-yellow-500/30' },
-    };
+    const loadProjects = useCallback(async () => {
+        try {
+            const data = await airdropApi.getProjects();
+            setProjects(data);
+        } catch (error) {
+            console.error('[Airdrops] Failed to load projects:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const loadSidebarData = useCallback(async () => {
+        try {
+            const [statsData, activityData, deadlinesData] = await Promise.all([
+                airdropApi.getStats(),
+                airdropApi.getActivity(),
+                airdropApi.getDeadlines(),
+            ]);
+            if (statsData) setStats(statsData);
+            if (activityData) setActivity(activityData);
+            if (deadlinesData) setDeadlines(deadlinesData);
+        } catch (error) {
+            console.error('[Airdrops] Failed to load sidebar data:', error);
+        } finally {
+            setSidebarLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadProjects();
+        loadSidebarData();
+    }, [loadProjects, loadSidebarData]);
+
+    if (loading) {
+        return (
+            <div className="flex-1 flex items-center justify-center bg-black">
+                <div className="font-mono text-[#555] animate-pulse uppercase tracking-[0.5em]">Loading Farm Grid...</div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col lg:flex-row gap-6 h-full">
@@ -79,43 +127,51 @@ export default async function AirdropsPage() {
                 {/* Farming Stats */}
                 <div className="bg-[#0A0A0A] border border-[#333] p-6 flex flex-col">
                     <h3 className="text-[10px] font-mono text-[#888] uppercase tracking-[0.2em] mb-4">My Farming Stats</h3>
-                    <div className="space-y-6">
-                        <div>
-                            <span className="text-[10px] font-mono text-[#555] uppercase block">Total Unrealized Value</span>
-                            <div className="text-4xl font-mono-nums font-bold text-white tracking-tighter mt-1">$4,500+</div>
-                            <div className="text-[11px] font-mono text-emerald-500 mt-1">+$340 vs last week</div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-[#222]">
+                    {sidebarLoading ? (
+                        <div className="font-mono text-[#555] text-sm">Loading...</div>
+                    ) : stats ? (
+                        <div className="space-y-6">
                             <div>
-                                <span className="text-[10px] font-mono text-[#555] uppercase block">Wallets Active</span>
-                                <span className="text-xl font-mono-nums font-bold text-white">08</span>
+                                <span className="text-[10px] font-mono text-[#555] uppercase block">Total Unrealized Value</span>
+                                <div className="text-4xl font-mono-nums font-bold text-white tracking-tighter mt-1">${stats.totalValue.toLocaleString()}+</div>
+                                <div className="text-[11px] font-mono text-emerald-500 mt-1">{stats.completedTasks} tasks completed</div>
                             </div>
-                            <div>
-                                <span className="text-[10px] font-mono text-[#555] uppercase block">Total TXs</span>
-                                <span className="text-xl font-mono-nums font-bold text-white">1,242</span>
+                            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-[#222]">
+                                <div>
+                                    <span className="text-[10px] font-mono text-[#555] uppercase block">Wallets Active</span>
+                                    <span className="text-xl font-mono-nums font-bold text-white">{String(stats.walletCount).padStart(2, '0')}</span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-mono text-[#555] uppercase block">Total TXs</span>
+                                    <span className="text-xl font-mono-nums font-bold text-white">{stats.txCount.toLocaleString()}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="font-mono text-red-500 text-sm">Failed to load</div>
+                    )}
                 </div>
 
                 {/* Recent Activity */}
                 <div className="bg-[#0A0A0A] border border-[#333] p-6 flex flex-col">
                     <h3 className="text-[10px] font-mono text-[#888] uppercase tracking-[0.2em] mb-4">Recent Activity</h3>
-                    <div className="space-y-4">
-                        {[
-                            { dot: 'bg-blue-500', text: 'Swapped 0.2 ETH on ZkSync', time: '2 minutes ago' },
-                            { dot: 'bg-emerald-500', text: 'Completed "Linea Voyage" Task 4', time: '1 hour ago' },
-                            { dot: 'bg-yellow-500', text: 'BERA Faucet claim successful', time: '6 hours ago' },
-                        ].map((a, i) => (
-                            <div key={i} className="flex items-start gap-3">
-                                <div className={`w-2 h-2 rounded-full ${a.dot} mt-1.5 shrink-0`} />
-                                <div className="flex-1">
-                                    <p className="text-[12px] text-white leading-snug">{a.text}</p>
-                                    <span className="text-[10px] font-mono text-[#555]">{a.time}</span>
+                    {sidebarLoading ? (
+                        <div className="font-mono text-[#555] text-sm">Loading...</div>
+                    ) : activity.length > 0 ? (
+                        <div className="space-y-4">
+                            {activity.slice(0, 5).map((a, i) => (
+                                <div key={i} className="flex items-start gap-3">
+                                    <div className={`w-2 h-2 rounded-full ${a.completed ? 'bg-emerald-500' : 'bg-blue-500'} mt-1.5 shrink-0`} />
+                                    <div className="flex-1">
+                                        <p className="text-[12px] text-white leading-snug">{a.description}</p>
+                                        <span className="text-[10px] font-mono text-[#555]">{a.completedAt ? new Date(a.completedAt).toLocaleString() : 'Pending'}</span>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="font-mono text-[#555] text-sm">No activity yet</div>
+                    )}
                     <button className="mt-6 text-[10px] font-mono text-[#888] border border-[#333] py-2 hover:bg-white hover:text-black transition-colors uppercase tracking-widest">
                         View Full Audit Log
                     </button>
@@ -124,22 +180,23 @@ export default async function AirdropsPage() {
                 {/* Deadlines */}
                 <div className="bg-[#0A0A0A] border border-[#333] p-6 flex-1">
                     <h3 className="text-[10px] font-mono text-[#888] uppercase tracking-[0.2em] mb-4">Upcoming Deadlines</h3>
-                    <div className="space-y-5">
-                        <div className="p-3 bg-red-500/5 border-l-2 border-red-500">
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="text-[12px] font-bold text-white uppercase tracking-tight">LayerZero Snapshot</span>
-                                <span className="text-[10px] font-mono-nums text-red-500">CRITICAL</span>
-                            </div>
-                            <div className="text-[14px] font-mono-nums font-bold text-white tracking-widest">04D : 12H : 08M</div>
+                    {sidebarLoading ? (
+                        <div className="font-mono text-[#555] text-sm">Loading...</div>
+                    ) : deadlines.length > 0 ? (
+                        <div className="space-y-5">
+                            {deadlines.map((d) => (
+                                <div key={d.id} className={`p-3 ${d.isCritical ? 'bg-red-500/5 border-l-2 border-red-500' : 'bg-blue-500/5 border-l-2 border-blue-500'}`}>
+                                    <div className="flex justify-between items-center mb-1">
+                                        <span className="text-[12px] font-bold text-white uppercase tracking-tight">{d.name}</span>
+                                        <span className={`text-[10px] font-mono ${d.isCritical ? 'text-red-500' : 'text-blue-400'}`}>{d.isCritical ? 'CRITICAL' : 'NORMAL'}</span>
+                                    </div>
+                                    <div className="text-[14px] font-mono-nums font-bold text-white tracking-widest">{d.countdown}</div>
+                                </div>
+                            ))}
                         </div>
-                        <div className="p-3 bg-blue-500/5 border-l-2 border-blue-500">
-                            <div className="flex justify-between items-center mb-1">
-                                <span className="text-[12px] font-bold text-white uppercase tracking-tight">ZkSync TGE Est.</span>
-                                <span className="text-[10px] font-mono text-blue-400">NORMAL</span>
-                            </div>
-                            <div className="text-[14px] font-mono-nums font-bold text-white tracking-widest">18D : 04H : 55M</div>
-                        </div>
-                    </div>
+                    ) : (
+                        <div className="font-mono text-[#555] text-sm">No upcoming deadlines</div>
+                    )}
                 </div>
             </div>
         </div>
