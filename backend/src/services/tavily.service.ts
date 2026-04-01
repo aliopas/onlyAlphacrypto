@@ -1,12 +1,13 @@
 import axios from 'axios';
 import { env } from '../config/env';
+import { logger } from '../utils/logger';
 
 // Phase 2 (Aggregator): Scam check / investigation via Tavily
 export async function searchTavily(query: string): Promise<string> {
     try {
-        const apiKey = process.env.TAVILY_API_KEY;
+        const apiKey = env.TAVILY_API_KEY;
         if (!apiKey) {
-            console.warn('[Tavily] No TAVILY_API_KEY found in .env, skipping search.');
+            logger.warn('[Tavily] No TAVILY_API_KEY configured — search functionality disabled');
             return '';
         }
 

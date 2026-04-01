@@ -9,11 +9,31 @@ export class CacheManager {
     private cache: Map<string, CacheEntry<unknown>>;
     private readonly ttlMs: number;
     private readonly maxSize: number;
+    private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
     constructor(config: { ttlMs?: number; maxSize?: number } = {}) {
-        this.ttlMs = config.ttlMs ?? 3600000; // 1 hour default
-        this.maxSize = config.maxSize ?? 1000; // 1000 entries default
+        this.ttlMs = config.ttlMs ?? 3600000;
+        this.maxSize = config.maxSize ?? 1000;
         this.cache = new Map<string, CacheEntry<unknown>>();
+        this.cleanupInterval = setInterval(() => {
+            this.cleanup();
+        }, 5 * 60 * 1000);
+    }
+
+    destroy(): void {
+        if (this.cleanupInterval) {
+            clearInterval(this.cleanupInterval);
+            this.cleanupInterval = null;
+        }
+    }
+
+    cleanup(): void {
+        const now = Date.now();
+        for (const [key, value] of this.cache.entries()) {
+            if (now - value.timestamp > this.ttlMs) {
+                this.cache.delete(key);
+            }
+        }
     }
 
     get<T>(key: string): T | null {

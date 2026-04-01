@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { airdropApi } from '../api';
 import { AirdropTask, UserProgress } from '../types';
+import { apiClient } from '@/features/shared/api/client';
 
 interface Props {
     tasks: AirdropTask[];
@@ -12,6 +13,33 @@ interface Props {
 
 export function TaskList({ tasks, userProgress, onVerificationSuccess }: Props) {
     const [verifying, setVerifying] = useState<number | null>(null);
+
+    useEffect(() => {
+        const pendingTasks = tasks.filter(t => {
+            const progressRecord = userProgress.find(up => up.taskId === t.id);
+            return progressRecord?.status !== 'VERIFIED';
+        });
+        if (pendingTasks.length === 0) return;
+
+        const intervalId = setInterval(async () => {
+            try {
+                const promises = pendingTasks.map(async (task) => {
+                    const { data } = await apiClient.get(`/verification/check/${task.id}`);
+                    return data;
+                });
+                const results = await Promise.allSettled(promises);
+                results.forEach((result, index) => {
+                    if (result.status === 'fulfilled' && result.value.verified) {
+                        onVerificationSuccess();
+                    }
+                });
+            } catch (error) {
+                console.error('[TaskList] Verification poll failed:', error);
+            }
+        }, 30000);
+
+        return () => clearInterval(intervalId);
+    }, [tasks, userProgress, onVerificationSuccess]);
 
     const handleVerify = async (taskId: number) => {
         setVerifying(taskId);

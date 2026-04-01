@@ -105,7 +105,7 @@ export async function getRadarSignals(req: Request, res: Response, next: NextFun
         const limit = parseInt(limitParam || '20', 10);
         const offset = parseInt(offsetParam || '0', 10);
 
-        const cacheKey = `radar:latest:${limit}:${offset}:${req.userTimezone || 'UTC'}`;
+        const cacheKey = `radar:latest:${limit}:${offset}`;
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
 

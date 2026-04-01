@@ -38,7 +38,7 @@ const envSchema = z.object({
 
     // CoinCap & Tavily
     COINCAP_API_KEY: z.string().optional(),
-    TAVILY_API_KEY: z.string().optional(),
+    TAVILY_API_KEY: z.string().min(1).optional(),
 
     // Next.js revalidation
     NEXTJS_REVALIDATE_SECRET: z.string().optional(),

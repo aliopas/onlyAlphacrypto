@@ -41,7 +41,7 @@ export async function gatherCoinContext(coinSymbol: string): Promise<CoinContext
     
     let marketData: CoinContext['marketData'] = null;
     try {
-        const tokenData = await getTokenData("");
+        const tokenData = await getTokenData(coinSymbol);
         marketData = tokenData as unknown as Record<string, unknown> ?? null;
     } catch (error) {
         console.error(`[DataAugmenter] Error fetching market data for ${coinSymbol}:`, error);

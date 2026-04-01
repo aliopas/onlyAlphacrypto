@@ -13,6 +13,7 @@ import { startMarketMoodCron } from './crons/marketMood.cron';
 import { startTerminalEngineCron } from './crons/terminalEngine.cron';
 import { startTriageEngineCron } from './crons/triageEngine.cron';
 import { startBufferCleanupCron } from './crons/bufferCleanup.cron';
+import { logger } from './utils/logger';
 
 const app = express();
 
@@ -55,21 +56,34 @@ async function bootstrap(): Promise<void> {
         // Test DB connection
         await testConnection();
 
-        // Start all AI cron engines
-        startAiWorkflowCron();
-        startAirdropHunterCron();
-        startDailyAlphaCron();
-        startMarketMoodCron();
-        startTerminalEngineCron();
-        startTriageEngineCron();
-        startBufferCleanupCron();
-
         const PORT = parseInt(env.PORT, 10);
         app.listen(PORT, () => {
             console.log(`\n🚀 OnlyAlpha Backend running at http://localhost:${PORT}`);
             console.log(`📡 Environment: ${env.NODE_ENV}`);
             console.log(`🗄️  Database: Connected`);
-            console.log(`⏰ AI Engines: All crons started\n`);
+            console.log(`⏰ AI Engines: Starting...\n`);
+        });
+
+        const cronStartDelay = 5000;
+        const crons = [
+            { name: 'AiWorkflow', fn: startAiWorkflowCron },
+            { name: 'AirdropHunter', fn: startAirdropHunterCron },
+            { name: 'DailyAlpha', fn: startDailyAlphaCron },
+            { name: 'MarketMood', fn: startMarketMoodCron },
+            { name: 'TerminalEngine', fn: startTerminalEngineCron },
+            { name: 'TriageEngine', fn: startTriageEngineCron },
+            { name: 'BufferCleanup', fn: startBufferCleanupCron },
+        ];
+
+        crons.forEach((cron, index) => {
+            setTimeout(() => {
+                try {
+                    cron.fn();
+                    logger.info('[Server] Cron started: %s', cron.name);
+                } catch (error) {
+                    logger.error('[Server] Failed to start cron %s: %s', cron.name, error instanceof Error ? error.message : String(error));
+                }
+            }, index * cronStartDelay);
         });
     } catch (error) {
         console.error('❌ Failed to start server:', error);
@@ -78,5 +92,15 @@ async function bootstrap(): Promise<void> {
 }
 
 bootstrap();
+
+process.on('SIGTERM', () => {
+    logger.info('[Server] SIGTERM received — shutting down gracefully');
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    logger.info('[Server] SIGINT received — shutting down gracefully');
+    process.exit(0);
+});
 
 export default app;
