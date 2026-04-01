@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TerminalWire } from '@/features/terminal/components/TerminalWire';
 import { TerminalChat } from '@/features/terminal/components/TerminalChat';
 import { AlphaStream } from '@/features/terminal/components/AlphaStream';
@@ -17,18 +17,27 @@ interface Props {
 }
 
 export function TerminalPageClient({ initialNews, coin, radarSignals = [], initialRadarId, isAlphaFocus }: Props) {
-    const defaultTab = initialRadarId || isAlphaFocus ? 'RADAR' : 'WIRE';
-    const latestRadarForCoin = radarSignals.find(r => r.coin.toUpperCase() === coin?.toUpperCase())?.id;
-    const defaultRadarId = initialRadarId || (isAlphaFocus ? latestRadarForCoin : null);
+    const validSignals = radarSignals.filter(r => r.coin);
+    const defaultTab = (initialRadarId ?? null) !== null || isAlphaFocus ? 'RADAR' : 'WIRE';
+    const latestRadarForCoin = validSignals.find(r => r.coin?.toUpperCase() === coin?.toUpperCase())?.id;
+    const defaultRadarId = initialRadarId ?? (isAlphaFocus ? latestRadarForCoin : null);
+    const finalDefaultRadarId = defaultRadarId ?? validSignals[0]?.id ?? null;
 
     const [activeTab, setActiveTab] = useState<'WIRE' | 'RADAR'>(defaultTab);
     const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null);
-    const [selectedRadarId, setSelectedRadarId] = useState<number | null>(defaultRadarId || null);
+    const [selectedRadarId, setSelectedRadarId] = useState<number | null>(finalDefaultRadarId);
+    const hasSignals = validSignals.length > 0;
+
+    useEffect(() => {
+        if (selectedRadarId === null && hasSignals && !finalDefaultRadarId) {
+            setSelectedRadarId(validSignals[0]?.id ?? null);
+        }
+    }, [selectedRadarId, hasSignals, finalDefaultRadarId, validSignals]);
 
     // Pagination state for Radar
-    const [signals, setSignals] = useState<RadarSignal[]>(radarSignals);
-    const [radarOffset, setRadarOffset] = useState(radarSignals.length);
-    const [hasMoreRadar, setHasMoreRadar] = useState(radarSignals.length >= 20);
+    const [signals, setSignals] = useState<RadarSignal[]>(validSignals);
+    const [radarOffset, setRadarOffset] = useState(validSignals.length);
+    const [hasMoreRadar, setHasMoreRadar] = useState(validSignals.length >= 20);
     const [isLoadingMoreRadar, setIsLoadingMoreRadar] = useState(false);
 
     const handleLoadMoreRadar = async () => {
@@ -74,6 +83,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
                 onLoadMore={handleLoadMoreRadar}
                 hasMore={hasMoreRadar}
                 isLoadingMore={isLoadingMoreRadar}
+                hasSignals={hasSignals}
             />
 
             {/* Center — Alpha Stream / Analysis */}

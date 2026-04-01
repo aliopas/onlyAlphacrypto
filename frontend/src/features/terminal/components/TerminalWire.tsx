@@ -17,6 +17,7 @@ interface Props {
     onLoadMore?: () => void;
     hasMore?: boolean;
     isLoadingMore?: boolean;
+    hasSignals?: boolean;
 }
 
 export function TerminalWire({
@@ -31,7 +32,8 @@ export function TerminalWire({
     selectedNewsId,
     onLoadMore,
     hasMore = true,
-    isLoadingMore = false
+    isLoadingMore = false,
+    hasSignals = true
 }: Props) {
     const [now, setNow] = useState<number | null>(null);
     useEffect(() => { setNow(Date.now()); }, []);
@@ -41,6 +43,20 @@ export function TerminalWire({
     const filteredRadar = targetedCoin
         ? radarSignals.filter(r => r.coin?.toLowerCase() === targetedCoin.toLowerCase())
         : radarSignals;
+
+    if (!hasSignals) {
+        return (
+            <aside className="w-full xl:w-[20%] border border-[#333] flex flex-col bg-[#0A0A0A] xl:min-w-[280px] h-[300px] xl:h-auto shrink-0">
+                <div className="h-11 flex items-center px-4 border-b border-[#333] bg-[#111]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white">AI Radar Stream</span>
+                </div>
+                <div className="flex-1 flex items-center justify-center text-[#555] font-mono text-sm">
+                    No signals available. Signals will appear automatically when available.
+                </div>
+            </aside>
+        );
+    }
 
     // Sort descending by date (if not handled by server)
     // filteredRadar.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

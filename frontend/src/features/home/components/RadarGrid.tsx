@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { RadarSignal } from '@/features/home/types';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '@/features/shared/api/client';
 
 interface Props {
     signals: RadarSignal[];
@@ -74,7 +75,7 @@ export function RadarGrid({ signals: initialSignals }: Props) {
                     return (
                         <div
                             key={`radar-${s.id}-${i}`}
-                            onClick={() => router.push(`/terminal/${s.coin}?radarId=${s.id}`)}
+                            onClick={() => router.push(`/terminal/${s.coin || ''}?radarId=${s.id}`)}
                             className="bg-[#0A0A0A] border border-[#333] p-5 hover:border-[#555] transition-all cursor-pointer flex flex-col justify-between h-[180px] group"
                         >
                             <div>

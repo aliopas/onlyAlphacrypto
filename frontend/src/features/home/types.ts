@@ -30,7 +30,7 @@ export type RadarSignal = {
     coinSymbol?: string;
     signalText?: string;
     // mapped fields used in UI
-    coin: string;          // = coinSymbol
+    coin: string | null;          // = coinSymbol
     signal: string;        // = signalText
     sentiment: string;
     impactScore?: number;
