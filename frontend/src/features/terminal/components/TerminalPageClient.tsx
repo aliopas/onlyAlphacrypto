@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { TerminalWire } from '@/features/terminal/components/TerminalWire';
 import { TerminalChat } from '@/features/terminal/components/TerminalChat';
 import { AlphaStream } from '@/features/terminal/components/AlphaStream';
+import { TerminalMobileNav } from '@/features/terminal/components/TerminalMobileNav';
 import { CoinNews } from '@/features/terminal/types';
 import { RadarSignal } from '@/features/home/types';
 import { apiClient } from '@/features/shared/api/client';
@@ -26,6 +27,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const [activeTab, setActiveTab] = useState<'WIRE' | 'RADAR'>(defaultTab);
     const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null);
     const [selectedRadarId, setSelectedRadarId] = useState<number | null>(finalDefaultRadarId);
+    const [activeMobileTab, setActiveMobileTab] = useState<'wire' | 'stream' | 'chat'>('wire');
     const hasSignals = validSignals.length > 0;
 
     useEffect(() => {
@@ -68,26 +70,28 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const selectedCoin = coin || activeItemCoin || 'SOL';
 
     return (
-        <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto xl:overflow-hidden p-4 gap-4 h-full">
+        <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto xl:overflow-hidden p-4 gap-4 h-full pb-14 xl:pb-0">
             {/* Left — AI Radar Stream Sidebar */}
-            <TerminalWire
-                news={initialNews}
-                radarSignals={signals}
-                targetedCoin={selectedCoin}
-                onSelectNews={(id) => { setSelectedNewsId(id); setActiveTab('WIRE'); }}
-                onSelectRadar={(id) => { setSelectedRadarId(id); setActiveTab('RADAR'); }}
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                selectedRadarId={selectedRadarId}
-                selectedNewsId={selectedNewsId}
-                onLoadMore={handleLoadMoreRadar}
-                hasMore={hasMoreRadar}
-                isLoadingMore={isLoadingMoreRadar}
-                hasSignals={hasSignals}
-            />
+            <div className={activeMobileTab === 'wire' ? 'flex w-full xl:w-auto' : 'hidden xl:flex'}>
+                <TerminalWire
+                    news={initialNews}
+                    radarSignals={signals}
+                    targetedCoin={selectedCoin}
+                    onSelectNews={(id) => { setSelectedNewsId(id); setActiveTab('WIRE'); }}
+                    onSelectRadar={(id) => { setSelectedRadarId(id); setActiveTab('RADAR'); }}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                    selectedRadarId={selectedRadarId}
+                    selectedNewsId={selectedNewsId}
+                    onLoadMore={handleLoadMoreRadar}
+                    hasMore={hasMoreRadar}
+                    isLoadingMore={isLoadingMoreRadar}
+                    hasSignals={hasSignals}
+                />
+            </div>
 
             {/* Center — Alpha Stream / Analysis */}
-            <section className="flex-1 flex flex-col border border-[#333] bg-[#0A0A0A] overflow-y-auto">
+            <section className={`flex-1 flex flex-col border border-[#333] bg-[#0A0A0A] overflow-y-auto transition-all duration-200 ${activeMobileTab === 'stream' ? 'flex w-full xl:w-auto' : 'hidden xl:flex'}`}>
                 <AlphaStream
                     newsId={activeTab === 'WIRE' ? selectedNewsId : null}
                     radarSignal={activeTab === 'RADAR' ? activeRadar : undefined}
@@ -95,7 +99,11 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
             </section>
 
             {/* Right — Chat + Price */}
-            <TerminalChat coin={selectedCoin} articleId={activeTab === 'WIRE' ? selectedNewsId : selectedRadarId} articleType={activeTab} />
+            <div className={activeMobileTab === 'chat' ? 'flex w-full xl:w-auto' : 'hidden xl:flex'}>
+                <TerminalChat coin={selectedCoin} articleId={activeTab === 'WIRE' ? selectedNewsId : selectedRadarId} articleType={activeTab} />
+            </div>
+
+            <TerminalMobileNav activeTab={activeMobileTab} onTabChange={setActiveMobileTab} />
         </div>
     );
 }

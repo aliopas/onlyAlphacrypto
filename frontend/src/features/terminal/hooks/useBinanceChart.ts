@@ -1,8 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 
+interface BinanceKline {
+    0: number;
+    1: string;
+    2: string;
+    3: string;
+    4: string;
+    5: string;
+}
+
 interface UseBinanceChartProps {
     coin: string;
 }
+
+type ChartApi = {
+    applyOptions: (options: Record<string, unknown>) => void;
+    remove: () => void;
+    addCandlestickSeries: (options: Record<string, unknown>) => SeriesApi;
+};
+
+type SeriesApi = {
+    setData: (data: Array<{ time: number; open: number; high: number; low: number; close: number }>) => void;
+    update: (bar: { time: number; open: number; high: number; low: number; close: number }) => void;
+};
 
 export function useBinanceChart({ coin }: UseBinanceChartProps) {
     const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -10,13 +30,16 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
 
     useEffect(() => {
         if (!chartContainerRef.current) return;
-        let chart: any;
+        let chart: ChartApi | null = null;
+        let series: SeriesApi | null = null;
         let isMounted = true;
         let ws: WebSocket | null = null;
-        let candlestickSeries: any;
+        let cleanupResize: (() => void) | null = null;
 
         const initChart = async () => {
-            const { createChart, ColorType } = await import('lightweight-charts');
+            const lightweightCharts = await import('lightweight-charts');
+            const createChart = lightweightCharts.createChart as unknown as (container: HTMLElement, options: Record<string, unknown>) => ChartApi;
+            const ColorType = lightweightCharts.ColorType as { Solid: string };
 
             if (!isMounted || !chartContainerRef.current) return;
 
@@ -29,7 +52,7 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
                 rightPriceScale: { borderColor: '#333' }
             });
 
-            candlestickSeries = chart.addCandlestickSeries({
+            series = chart.addCandlestickSeries({
                 upColor: '#10b981', downColor: '#ef4444', borderVisible: false,
                 wickUpColor: '#10b981', wickDownColor: '#ef4444'
             });
@@ -37,12 +60,12 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
             try {
                 const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin.toUpperCase()}USDT&interval=1h&limit=100`);
                 const data = await res.json();
-                const formattedData = data.map((d: any) => ({
+                const formattedData = (data as BinanceKline[]).map((d) => ({
                     time: d[0] / 1000, open: parseFloat(d[1]), high: parseFloat(d[2]),
                     low: parseFloat(d[3]), close: parseFloat(d[4])
                 }));
-                if (isMounted) {
-                    candlestickSeries.setData(formattedData);
+                if (isMounted && series) {
+                    series.setData(formattedData);
                     if (formattedData.length > 0) {
                         const lastClose = formattedData[formattedData.length - 1].close;
                         setPrice(lastClose < 1 ? lastClose.toFixed(4) : lastClose.toFixed(2));
@@ -54,13 +77,12 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
 
             if (!isMounted) return;
 
-            // Connect WebSocket for live updates
             const wsUrl = `wss://stream.binance.com:9443/ws/${coin.toLowerCase()}usdt@kline_1h`;
             ws = new WebSocket(wsUrl);
             ws.onmessage = (event) => {
                 if (!isMounted) return;
                 try {
-                    const message = JSON.parse(event.data);
+                    const message = JSON.parse(event.data as string);
                     if (message && message.k) {
                         const k = message.k;
                         const bar = {
@@ -70,7 +92,7 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
                             low: parseFloat(k.l),
                             close: parseFloat(k.c)
                         };
-                        candlestickSeries.update(bar);
+                        if (series) series.update(bar);
                         const currentPrice = bar.close;
                         setPrice(currentPrice < 1 ? currentPrice.toFixed(4) : currentPrice.toFixed(2));
                     }
@@ -85,7 +107,7 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
                 }
             };
             window.addEventListener('resize', handleResize);
-            chart.cleanupResize = () => window.removeEventListener('resize', handleResize);
+            cleanupResize = () => window.removeEventListener('resize', handleResize);
         };
 
         initChart();
@@ -93,10 +115,8 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
         return () => {
             isMounted = false;
             if (ws) ws.close();
-            if (chart) {
-                if (chart.cleanupResize) chart.cleanupResize();
-                chart.remove();
-            }
+            if (cleanupResize) cleanupResize();
+            if (chart) chart.remove();
             if (chartContainerRef.current) {
                 chartContainerRef.current.innerHTML = '';
             }

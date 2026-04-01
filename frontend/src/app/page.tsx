@@ -26,7 +26,7 @@ export default async function HomePage() {
       </div>
 
       {/* Right — 30% */}
-      <div className="w-full lg:w-[30%] flex flex-col gap-4">
+      <div className="w-full lg:w-[30%] flex flex-col gap-4 lg:sticky lg:top-20 lg:self-start">
         <MarketMoodGauge mood={mood} />
         <TopMovers movers={movers} />
         <AirdropWatchlist projects={airdrops} />

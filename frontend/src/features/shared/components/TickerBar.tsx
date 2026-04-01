@@ -47,7 +47,23 @@ export function TickerBar() {
     const [movers, setMovers] = useState<TopMover[]>([]);
 
     useEffect(() => {
-        homeApi.getTopMovers().then(setMovers);
+        let intervalId: ReturnType<typeof setInterval> | null = null;
+
+        async function fetchMovers() {
+            try {
+                const data = await homeApi.getTopMovers();
+                if (data) setMovers(data);
+            } catch (error) {
+                console.error('[TickerBar] Failed to fetch top movers:', error);
+            }
+        }
+
+        fetchMovers();
+        intervalId = setInterval(fetchMovers, 15000);
+
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
     }, []);
 
     return (

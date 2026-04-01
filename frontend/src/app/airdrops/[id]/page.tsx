@@ -103,6 +103,17 @@ export default function AirdropDetailsPage() {
                     onVerificationSuccess={fetchDetails}
                 />
             </div>
+
+            {project.aiReport && (
+                <div className="mt-8 border border-[#222] bg-black p-6">
+                    <h3 className="text-xs font-mono font-bold text-[#00ff88] uppercase tracking-wider mb-4">
+                        AI Intelligence Report
+                    </h3>
+                    <div className="text-sm font-mono text-[#ccc] leading-relaxed whitespace-pre-wrap">
+                        {project.aiReport}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

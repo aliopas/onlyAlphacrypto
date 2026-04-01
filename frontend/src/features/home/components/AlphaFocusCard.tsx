@@ -1,3 +1,6 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import { AlphaFocus } from '@/features/home/types';
 import Link from 'next/link';
 
@@ -6,6 +9,48 @@ interface Props {
 }
 
 export function AlphaFocusCard({ data }: Props) {
+    const [sparklinePath, setSparklinePath] = useState<string>('M0,50 L400,50');
+    const [sparklineLoading, setSparklineLoading] = useState(true);
+
+    useEffect(() => {
+        const coinValue = data?.coin;
+        if (!coinValue) return;
+
+        let cancelled = false;
+
+        async function fetchSparkline() {
+            try {
+                const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coinValue!.toUpperCase()}USDT&interval=1h&limit=24`);
+                if (!response.ok) throw new Error('Binance API error');
+                const rawData = await response.json();
+                const klineData = rawData as unknown[][];
+                if (cancelled || !Array.isArray(klineData) || klineData.length === 0) return;
+
+                const prices = klineData.map((d) => Number(d[4]));
+                const min = Math.min(...prices);
+                const max = Math.max(...prices);
+                const range = max - min || 1;
+                const width = 400;
+                const height = 100;
+
+                const points = prices.map((price: number, i: number) => {
+                    const x = (i / (prices.length - 1)) * width;
+                    const y = height - ((price - min) / range) * (height - 10) - 5;
+                    return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+                });
+
+                setSparklinePath(points.join(' '));
+            } catch (error) {
+                console.error('[AlphaFocusCard] Sparkline fetch failed:', error);
+            } finally {
+                if (!cancelled) setSparklineLoading(false);
+            }
+        }
+
+        fetchSparkline();
+        return () => { cancelled = true; };
+    }, [data?.coin]);
+
     if (!data) {
         return (
             <div className="bg-[#0A0A0A] border border-[#333] p-8">
@@ -50,9 +95,11 @@ export function AlphaFocusCard({ data }: Props) {
                 <div className="flex-1 h-36 relative">
                     <svg className="w-full h-full text-[#00ff88] drop-shadow-[0_0_8px_rgba(0,255,136,0.3)]"
                         preserveAspectRatio="none" viewBox="0 0 400 100">
-                        <path
-                            d="M0,85 L20,88 L40,82 L60,85 L80,70 L100,75 L120,78 L140,65 L160,50 L180,55 L200,45 L220,38 L240,30 L260,32 L280,25 L300,28 L320,15 L340,18 L360,10 L380,8 L400,5"
-                            fill="none" stroke="currentColor" strokeWidth="2.5" />
+                        {sparklineLoading ? (
+                            <line x1="0" y1="50" x2="400" y2="50" stroke="currentColor" strokeWidth="1" opacity="0.3" />
+                        ) : (
+                            <path d={sparklinePath} fill="none" stroke="currentColor" strokeWidth="2.5" />
+                        )}
                     </svg>
                     <div className="absolute bottom-0 left-0 text-[10px] font-mono text-[#444] uppercase tracking-widest">
                         24H High-Density Execution Path
