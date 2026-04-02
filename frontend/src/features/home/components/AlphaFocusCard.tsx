@@ -53,8 +53,17 @@ export function AlphaFocusCard({ data }: Props) {
 
     if (!data) {
         return (
-            <div className="bg-[#0A0A0A] border border-[#333] p-8">
-                <p className="text-[#555] font-mono text-[12px] uppercase tracking-widest">No Alpha Focus data available.</p>
+            <div className="bg-[#0A0A0A] border border-[#333] p-8 relative flex flex-col">
+                <div className="flex justify-between items-start mb-10">
+                    <div className="space-y-4">
+                        <span className="text-[10px] font-mono text-[#888] uppercase tracking-[0.2em] block">
+                            Today&apos;s Alpha Focus
+                        </span>
+                    </div>
+                </div>
+                <div className="flex items-center justify-center py-8">
+                    <p className="text-[#555] font-mono text-[12px] uppercase tracking-widest">No Alpha Focus data available.</p>
+                </div>
             </div>
         );
     }
@@ -63,8 +72,8 @@ export function AlphaFocusCard({ data }: Props) {
 
     return (
         <div className="bg-[#0A0A0A] border border-[#333] p-8 relative flex flex-col">
-            <div className="flex justify-between items-start mb-10 gap-4 flex-wrap">
-                <div className="space-y-4 flex-1 min-w-[280px]">
+            <div className="flex justify-between items-start mb-10">
+                <div className="space-y-4">
                     <span className="text-[10px] font-mono text-[#888] uppercase tracking-[0.2em] block">
                         Today&apos;s Alpha Focus
                     </span>
@@ -81,7 +90,7 @@ export function AlphaFocusCard({ data }: Props) {
                         </span>
                     </div>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right">
                     <span className="text-[10px] font-mono text-[#888] uppercase block mb-1">Current Price</span>
                     <div className="text-3xl font-mono-nums font-bold text-white tracking-tight">${data.price?.toLocaleString()}</div>
                     <div className={`text-[12px] font-mono-nums ${isUp ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
@@ -107,12 +116,12 @@ export function AlphaFocusCard({ data }: Props) {
                 </div>
 
                 {/* Summary */}
-                <div className="w-[320px] xl:w-[400px] shrink-0 space-y-4 bg-black/50 p-4 rounded-xl border border-white/5">
+                <div className="w-[320px] space-y-4">
                     <div className="space-y-2">
                         <h3 className="text-[11px] font-mono text-[#888] uppercase tracking-widest border-b border-[#333] pb-1">
                             Executive Summary
                         </h3>
-                        <p className="text-[14px] text-[#A0A0A0] leading-relaxed line-clamp-5 overflow-hidden" title={data.summary}>
+                        <p className="text-[14px] text-[#888] leading-relaxed line-clamp-5 overflow-hidden" title={data.summary}>
                             {data.summary}
                         </p>
                     </div>

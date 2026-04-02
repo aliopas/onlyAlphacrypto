@@ -63,7 +63,7 @@ export default function AirdropsPage() {
     }
 
     return (
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col lg:flex-row gap-6 h-full">
+        <div className="flex-1 overflow-y-auto flex flex-col lg:flex-row gap-6 h-full">
             {/* Left 70% — Farm Grid */}
             <div className="w-full lg:w-[70%] flex flex-col gap-6">
                 <div className="flex items-center justify-between mb-2">

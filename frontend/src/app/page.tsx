@@ -18,7 +18,7 @@ export default async function HomePage() {
   ]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 flex flex-col lg:flex-row gap-4 h-full">
+    <div className="flex flex-col lg:flex-row gap-4">
       {/* Left — 70% */}
       <div className="w-full lg:w-[70%] flex flex-col gap-4">
         <AlphaFocusCard data={alpha} />
@@ -26,7 +26,7 @@ export default async function HomePage() {
       </div>
 
       {/* Right — 30% */}
-      <div className="w-full lg:w-[30%] flex flex-col gap-4 lg:sticky lg:top-20 lg:self-start">
+      <div className="w-full lg:w-[30%] flex flex-col gap-4 lg:self-start">
         <MarketMoodGauge mood={mood} />
         <TopMovers movers={movers} />
         <AirdropWatchlist projects={airdrops} />

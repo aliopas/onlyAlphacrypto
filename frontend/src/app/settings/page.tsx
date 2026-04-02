@@ -33,7 +33,7 @@ export default function SettingsPage() {
     }
 
     return (
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col lg:flex-row gap-6 h-full bg-black">
+        <div className="flex-1 overflow-y-auto flex flex-col lg:flex-row gap-6 h-full bg-black">
             {/* Left 70% */}
             <div className="w-full lg:w-[70%] flex flex-col gap-6">
 

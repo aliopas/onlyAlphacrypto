@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>OnlyAlpha Terminal Bento V1</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#135bec",
+                        "background-black": "#000000",
+                        "surface-dark": "#0A0A0A",
+                        "border-grey": "#333333",
+                        "text-muted": "#888888",
+                        "matte-blue": "#1e40af",
+                        "matte-green": "#10b981",
+                        "matte-red": "#ef4444",
+                        "neon-green": "#00ff88",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    borderRadius: { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+    <link href="https://fonts.googleapis.com" rel="preconnect" />
+    <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <style type="text/tailwindcss">
+        @layer base {
+            body {
+                @apply bg-[#000000] text-white;
+            }
+            .font-mono-nums {
+                font-family: 'JetBrains Mono', monospace;
+            }
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #000000; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #333333; 
+        }
+        @keyframes marquee {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+        .animate-marquee {
+            animation: marquee 40s linear infinite;
+        }
+        .gauge-container {
+            position: relative;
+            width: 140px;
+            height: 70px;
+            overflow: hidden;
+        }
+        .gauge-bg {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            border: 12px solid #1a1a1a;
+            border-bottom-color: transparent;
+            border-left-color: transparent;
+            transform: rotate(-135deg);
+        }
+        .gauge-fill {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            border: 12px solid #10b981;
+            border-bottom-color: transparent;
+            border-left-color: transparent;
+            transform: rotate(-45deg);
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+
+<body class="font-display h-screen flex overflow-hidden">
+    <nav class="w-[64px] border-r border-[#333] flex flex-col items-center py-6 bg-[#000000] shrink-0 z-20">
+        <div class="mb-10">
+            <div class="text-xl font-bold tracking-tighter text-white">OA</div>
+        </div>
+        <div class="flex flex-col gap-8 w-full items-center">
+            <button class="text-white bg-[#0A0A0A] border border-[#333] p-2 rounded transition-colors group relative">
+                <span class="material-symbols-outlined text-[24px]">home</span>
+            </button>
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[24px]">terminal</span>
+            </button>
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[24px]">account_balance_wallet</span>
+            </button>
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[24px]">monitoring</span>
+            </button>
+        </div>
+        <div class="mt-auto flex flex-col gap-6 items-center">
+            <button class="text-[#888] hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-[22px]">settings</span>
+            </button>
+            <div class="w-8 h-8 rounded-full bg-[#0A0A0A] border border-[#333] overflow-hidden grayscale opacity-80">
+                <img alt="User" class="w-full h-full object-cover"
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuAx2-CS-M7QTFuFigsWD2uoXhsbr7xcNi4vvnLju9xRoIhueJkC881OxYdLBGwXM2pHZUQts8jZaljRj0Iml1vA_weiJHHrphxtZV4JFGRmeFNOJQ1smKKxdx8wjSIpcY35ElpB9GHGnJo_CDeZsb2SzstJMiSlrs3zQhdeIo3pyiEQSbXY7mZx2zHpE5si2v_JSkHf2bKF_Rpzly7pCcOTnwetOp3D4MEmtZHRl8BNUJf47ytw2kVURhicECv47HcAwmfAgz05a7I" />
+            </div>
+        </div>
+    </nav>
+    <main class="flex-1 flex flex-col h-full min-w-0 bg-[#000000]">
+        <header
+            class="h-[42px] border-b border-[#333] bg-[#000000] flex items-center overflow-hidden whitespace-nowrap relative z-10">
+            <div class="flex animate-marquee items-center font-mono text-[11px] uppercase tracking-wider">
+                <div class="flex items-center gap-10 px-6">
+                    <span class="text-[#888] flex items-center gap-2"><span
+                            class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> LIVE</span>
+                    <span class="flex items-center gap-2 text-[#888]">BTC <span
+                            class="text-white font-mono-nums">$65,230.12</span> <span
+                            class="text-[#10b981] font-mono-nums">+1.24%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">ETH <span
+                            class="text-white font-mono-nums">$3,400.55</span> <span
+                            class="text-[#ef4444] font-mono-nums">-0.52%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">SOL <span
+                            class="text-white font-mono-nums">$145.20</span> <span
+                            class="text-[#10b981] font-mono-nums">+4.21%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">BNB <span
+                            class="text-white font-mono-nums">$590.10</span> <span
+                            class="text-[#10b981] font-mono-nums">+0.88%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">XRP <span
+                            class="text-white font-mono-nums">$0.62</span> <span
+                            class="text-[#ef4444] font-mono-nums">-1.10%</span></span>
+                </div>
+                <div class="flex items-center gap-10 px-6">
+                    <span class="text-[#888] flex items-center gap-2"><span
+                            class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> LIVE</span>
+                    <span class="flex items-center gap-2 text-[#888]">BTC <span
+                            class="text-white font-mono-nums">$65,230.12</span> <span
+                            class="text-[#10b981] font-mono-nums">+1.24%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">ETH <span
+                            class="text-white font-mono-nums">$3,400.55</span> <span
+                            class="text-[#ef4444] font-mono-nums">-0.52%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">SOL <span
+                            class="text-white font-mono-nums">$145.20</span> <span
+                            class="text-[#10b981] font-mono-nums">+4.21%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">BNB <span
+                            class="text-white font-mono-nums">$590.10</span> <span
+                            class="text-[#10b981] font-mono-nums">+0.88%</span></span>
+                    <span class="flex items-center gap-2 text-[#888]">XRP <span
+                            class="text-white font-mono-nums">$0.62</span> <span
+                            class="text-[#ef4444] font-mono-nums">-1.10%</span></span>
+                </div>
+            </div>
+        </header>
+        <div class="flex-1 overflow-y-auto p-4 flex gap-4">
+            <div class="w-[70%] flex flex-col gap-4">
+                <div class="bg-[#0A0A0A] border border-[#333] p-8 relative flex flex-col">
+                    <div class="flex justify-between items-start mb-10">
+                        <div class="space-y-4">
+                            <span class="text-[10px] font-mono text-[#888] uppercase tracking-[0.2em] block">Today's
+                                Alpha Focus</span>
+                            <div class="flex items-center gap-4">
+                                <h2 class="text-4xl font-bold text-white tracking-tighter uppercase">$SOL</h2>
+                                <div class="px-4 py-1.5 bg-[#135bec] flex items-center gap-2.5">
+                                    <span class="w-2 h-2 rounded-full bg-white"></span>
+                                    <span class="text-[12px] font-mono font-bold text-white uppercase tracking-wider">AI
+                                        VERDICT: STRONG BUY</span>
+                                </div>
+                                <span class="text-[12px] font-mono text-[#555] ml-2"><span
+                                        class="font-mono-nums">92.4%</span> Confidence</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[10px] font-mono text-[#888] uppercase block mb-1">Current Price</span>
+                            <div class="text-3xl font-mono-nums font-bold text-white tracking-tight">$145.20</div>
+                            <div class="text-[12px] font-mono-nums text-[#10b981]">+4.21% (24H)</div>
+                        </div>
+                    </div>
+                    <div class="flex gap-12 items-center">
+                        <div class="flex-1 h-36 relative">
+                            <svg class="w-full h-full text-[#00ff88] drop-shadow-[0_0_8px_rgba(0,255,136,0.3)]"
+                                preserveAspectRatio="none" viewBox="0 0 400 100">
+                                <path
+                                    d="M0,85 L20,88 L40,82 L60,85 L80,70 L100,75 L120,78 L140,65 L160,50 L180,55 L200,45 L220,38 L240,30 L260,32 L280,25 L300,28 L320,15 L340,18 L360,10 L380,8 L400,5"
+                                    fill="none" stroke="currentColor" stroke-width="2.5"></path>
+                            </svg>
+                            <div
+                                class="absolute bottom-0 left-0 text-[10px] font-mono text-[#444] uppercase tracking-widest">
+                                24H High-Density Execution Path</div>
+                        </div>
+                        <div class="w-[320px] space-y-4">
+                            <div class="space-y-2">
+                                <h3
+                                    class="text-[11px] font-mono text-[#888] uppercase tracking-widest border-b border-[#333] pb-1">
+                                    Executive Summary</h3>
+                                <p class="text-[14px] text-[#888] leading-relaxed">
+                                    Solana has breached the critical <span class="text-white font-mono-nums">$142</span>
+                                    resistance zone on high volume. ML models indicate aggressive TVL growth and
+                                    institutional demand positioning for a <span
+                                        class="text-white font-mono-nums">$160</span> target.
+                                </p>
+                            </div>
+                            <button
+                                class="text-[11px] font-mono text-white flex items-center gap-2 hover:translate-x-1 transition-transform group">
+                                <span class="border-b border-white/30 group-hover:border-white">EXPLORE FULL ON-CHAIN
+                                    ANALYSIS</span>
+                                <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="flex items-center justify-between mb-4 px-1">
+                        <h3
+                            class="text-[11px] font-mono text-[#888] uppercase tracking-[0.2em] flex items-center gap-2">
+                            <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span> Live AI Radar
+                        </h3>
+                        <span class="text-[10px] font-mono text-[#555] uppercase tracking-tighter">Scanning <span
+                                class="font-mono-nums">2,482</span> Assets</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-4">
+                        <div
+                            class="bg-[#0A0A0A] border border-[#333] p-5 hover:border-[#555] transition-colors cursor-pointer flex flex-col justify-between h-[160px]">
+                            <div>
+                                <div class="flex justify-between items-start mb-3">
+                                    <span
+                                        class="text-[10px] font-mono text-[#135bec] bg-[#135bec]/10 border border-[#135bec]/30 px-2 py-0.5">$LINK</span>
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                </div>
+                                <h4 class="text-[13px] font-medium text-white leading-snug">Smart money accumulation
+                                    detected in range <span class="font-mono-nums">$14.20</span> - <span
+                                        class="font-mono-nums">$14.50</span>.</h4>
+                            </div>
+                            <div class="flex justify-between items-center mt-4">
+                                <span class="text-[10px] font-mono text-[#555] uppercase">Bullish</span>
+                                <span class="text-[10px] font-mono-nums text-[#555]">4m ago</span>
+                            </div>
+                        </div>
+                        <div
+                            class="bg-[#0A0A0A] border border-[#333] p-5 hover:border-[#555] transition-colors cursor-pointer flex flex-col justify-between h-[160px]">
+                            <div>
+                                <div class="flex justify-between items-start mb-3">
+                                    <span
+                                        class="text-[10px] font-mono text-orange-400 bg-orange-400/10 border border-orange-400/30 px-2 py-0.5">$BTC</span>
+                                    <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+                                </div>
+                                <h4 class="text-[13px] font-medium text-white leading-snug">Resistance at <span
+                                        class="font-mono-nums">$66k</span> remains heavy. Neutral short-term stance
+                                    confirmed.</h4>
+                            </div>
+                            <div class="flex justify-between items-center mt-4">
+                                <span class="text-[10px] font-mono text-[#555] uppercase">Neutral</span>
+                                <span class="text-[10px] font-mono-nums text-[#555]">12m ago</span>
+                            </div>
+                        </div>
+                        <div
+                            class="bg-[#0A0A0A] border border-[#333] p-5 hover:border-[#555] transition-colors cursor-pointer flex flex-col justify-between h-[160px]">
+                            <div>
+                                <div class="flex justify-between items-start mb-3">
+                                    <span
+                                        class="text-[10px] font-mono text-purple-400 bg-purple-400/10 border border-purple-400/30 px-2 py-0.5">$UNI</span>
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                </div>
+                                <h4 class="text-[13px] font-medium text-white leading-snug">Uniswap governance proposal
+                                    sparks <span class="font-mono-nums">8%</span> pump in late trading.</h4>
+                            </div>
+                            <div class="flex justify-between items-center mt-4">
+                                <span class="text-[10px] font-mono text-[#555] uppercase">Bullish</span>
+                                <span class="text-[10px] font-mono-nums text-[#555]">28m ago</span>
+                            </div>
+                        </div>
+                        <div
+                            class="bg-[#0A0A0A] border border-[#333] p-5 hover:border-[#555] transition-colors cursor-pointer flex flex-col justify-between h-[160px]">
+                            <div>
+                                <div class="flex justify-between items-start mb-3">
+                                    <span
+                                        class="text-[10px] font-mono text-red-400 bg-red-400/10 border border-red-400/30 px-2 py-0.5">$XRP</span>
+                                    <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                                </div>
+                                <h4 class="text-[13px] font-medium text-white leading-snug">Large whale transfer to
+                                    exchange wallet (<span class="font-mono-nums">120M</span>) signals local top.</h4>
+                            </div>
+                            <div class="flex justify-between items-center mt-4">
+                                <span class="text-[10px] font-mono text-[#555] uppercase">Bearish</span>
+                                <span class="text-[10px] font-mono-nums text-[#555]">42m ago</span>
+                            </div>
+                        </div>
+                        <div
+                            class="bg-[#0A0A0A] border border-[#333] p-5 hover:border-[#555] transition-colors cursor-pointer flex flex-col justify-between h-[160px]">
+                            <div>
+                                <div class="flex justify-between items-start mb-3">
+                                    <span
+                                        class="text-[10px] font-mono text-emerald-400 bg-emerald-400/10 border border-emerald-400/30 px-2 py-0.5">$FET</span>
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                </div>
+                                <h4 class="text-[13px] font-medium text-white leading-snug">AI sector rotation: FET
+                                    breakout confirmed above <span class="font-mono-nums">$2.10</span> level.</h4>
+                            </div>
+                            <div class="flex justify-between items-center mt-4">
+                                <span class="text-[10px] font-mono text-[#555] uppercase">Bullish</span>
+                                <span class="text-[10px] font-mono-nums text-[#555]">1h ago</span>
+                            </div>
+                        </div>
+                        <div
+                            class="bg-[#0A0A0A] border border-[#333] p-5 hover:border-[#555] transition-colors cursor-pointer flex flex-col justify-between h-[160px]">
+                            <div>
+                                <div class="flex justify-between items-start mb-3">
+                                    <span
+                                        class="text-[10px] font-mono text-blue-300 bg-blue-300/10 border border-blue-300/30 px-2 py-0.5">$TIA</span>
+                                    <span class="w-2 h-2 rounded-full bg-yellow-500"></span>
+                                </div>
+                                <h4 class="text-[13px] font-medium text-white leading-snug">Major unlock scheduled in
+                                    <span class="font-mono-nums">48h</span>. Volatility expected.</h4>
+                            </div>
+                            <div class="flex justify-between items-center mt-4">
+                                <span class="text-[10px] font-mono text-[#555] uppercase">Volatile</span>
+                                <span class="text-[10px] font-mono-nums text-[#555]">2h ago</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="w-[30%] flex flex-col gap-4">
+                <div class="bg-[#0A0A0A] border border-[#333] p-6 flex flex-col items-center">
+                    <h3 class="text-[10px] font-mono text-[#888] uppercase tracking-[0.2em] mb-6 w-full text-center">
+                        Market Mood</h3>
+                    <div class="gauge-container mb-4">
+                        <div class="gauge-bg"></div>
+                        <div class="gauge-fill" style="transform: rotate(45deg);"></div>
+                        <div class="absolute bottom-0 left-0 w-full text-center">
+                            <span class="text-3xl font-mono-nums font-bold text-white">75</span>
+                            <div class="text-[10px] font-mono text-emerald-500 font-bold uppercase tracking-widest">
+                                Greed</div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between w-full text-[10px] font-mono text-[#555] mt-2">
+                        <span>FEAR</span>
+                        <span>GREED</span>
+                    </div>
+                </div>
+                <div class="bg-[#0A0A0A] border border-[#333] p-6">
+                    <h3 class="text-[10px] font-mono text-[#888] uppercase tracking-[0.2em] mb-4">Top Movers (24h)</h3>
+                    <table class="w-full text-[13px]">
+                        <thead>
+                            <tr class="text-[10px] font-mono text-[#555] uppercase border-b border-[#333]">
+                                <th class="text-left py-2 font-normal">Asset</th>
+                                <th class="text-right py-2 font-normal">Price</th>
+                                <th class="text-right py-2 font-normal">Change</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-[#333]">
+                            <tr>
+                                <td class="py-3 text-white font-medium">PENDLE</td>
+                                <td class="py-3 text-right font-mono-nums">$6.12</td>
+                                <td class="py-3 text-right font-mono-nums text-[#10b981]">+18.4%</td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 text-white font-medium">JUP</td>
+                                <td class="py-3 text-right font-mono-nums">$1.05</td>
+                                <td class="py-3 text-right font-mono-nums text-[#10b981]">+12.2%</td>
+                            </tr>
+                            <tr>
+                                <td class="py-3 text-white font-medium">ONDO</td>
+                                <td class="py-3 text-right font-mono-nums">$0.78</td>
+                                <td class="py-3 text-right font-mono-nums text-[#10b981]">+9.8%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="bg-[#0A0A0A] border border-[#333] p-6 flex-1">
+                    <h3 class="text-[10px] font-mono text-[#888] uppercase tracking-[0.2em] mb-4">Airdrop Watchlist</h3>
+                    <div class="space-y-5">
+                        <div class="border-l border-[#135bec] pl-4 py-1">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-[13px] font-medium text-white">LayerZero</span>
+                                <span
+                                    class="text-[9px] font-mono px-1.5 py-0.5 bg-[#135bec]/10 text-[#135bec] border border-[#135bec]/20 uppercase">Snapshotted</span>
+                            </div>
+                            <div class="text-[11px] font-mono text-[#555]">TGE EST: <span
+                                    class="font-mono-nums text-[#888]">14D 02H</span></div>
+                        </div>
+                        <div class="border-l border-emerald-500 pl-4 py-1">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-[13px] font-medium text-white">ZkSync Era</span>
+                                <span
+                                    class="text-[9px] font-mono px-1.5 py-0.5 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 uppercase">Active</span>
+                            </div>
+                            <div class="text-[11px] font-mono text-[#555]">TGE EST: <span
+                                    class="font-mono-nums text-[#888]">32D 11H</span></div>
+                        </div>
+                        <div class="border-l border-yellow-500 pl-4 py-1">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-[13px] font-medium text-white">Berachain</span>
+                                <span
+                                    class="text-[9px] font-mono px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 uppercase">Testnet</span>
+                            </div>
+                            <div class="text-[11px] font-mono text-[#555]">TGE EST: <span
+                                    class="font-mono-nums text-[#888]">Q3 2024</span></div>
+                        </div>
+                    </div>
+                    <div class="mt-8 pt-6 border-t border-[#333]">
+                        <div class="bg-[#000000] border border-[#333] p-3 rounded flex items-center gap-3">
+                            <span class="material-symbols-outlined text-[18px] text-[#135bec]">info</span>
+                            <span class="text-[11px] text-[#888]">3 new alpha alerts available in terminal.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+</body>
+
+</html>

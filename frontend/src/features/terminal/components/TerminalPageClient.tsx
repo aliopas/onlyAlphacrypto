@@ -70,9 +70,11 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const selectedCoin = coin || activeItemCoin || 'SOL';
 
     return (
-        <div className="flex-1 flex flex-col xl:flex-row overflow-y-auto xl:overflow-hidden p-4 gap-4 h-full pb-[128px] xl:pb-0">
+        <div className="flex-1 flex flex-col lg:flex-row gap-4 h-full lg:overflow-hidden pb-0">
+            <TerminalMobileNav activeTab={activeMobileTab} onTabChange={setActiveMobileTab} />
+
             {/* Left — AI Radar Stream Sidebar */}
-            <div className={activeMobileTab === 'wire' ? 'flex w-full xl:w-auto' : 'hidden xl:flex'}>
+            <div className={`flex flex-col h-full shrink-0 ${activeMobileTab === 'wire' ? 'w-full lg:w-[22%] lg:min-w-[280px]' : 'hidden lg:flex lg:w-[22%] lg:min-w-[280px]'}`}>
                 <TerminalWire
                     news={initialNews}
                     radarSignals={signals}
@@ -91,7 +93,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
             </div>
 
             {/* Center — Alpha Stream / Analysis */}
-            <section className={`flex-1 flex flex-col border border-[#333] bg-[#0A0A0A] overflow-y-auto transition-all duration-200 ${activeMobileTab === 'stream' ? 'flex w-full xl:w-auto' : 'hidden xl:flex'}`}>
+            <section className={`flex-1 flex flex-col h-full border border-[#333] bg-[#0A0A0A] overflow-hidden transition-all duration-200 ${activeMobileTab === 'stream' ? 'w-full lg:w-auto' : 'hidden lg:flex'}`}>
                 <AlphaStream
                     newsId={activeTab === 'WIRE' ? selectedNewsId : null}
                     radarSignal={activeTab === 'RADAR' ? activeRadar : undefined}
@@ -99,11 +101,10 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
             </section>
 
             {/* Right — Chat + Price */}
-            <div className={activeMobileTab === 'chat' ? 'flex w-full xl:w-auto' : 'hidden xl:flex'}>
+            <div className={`flex flex-col h-full shrink-0 ${activeMobileTab === 'chat' ? 'w-full lg:w-[28%] lg:min-w-[320px]' : 'hidden lg:flex lg:w-[28%] lg:min-w-[320px]'}`}>
                 <TerminalChat coin={selectedCoin} articleId={activeTab === 'WIRE' ? selectedNewsId : selectedRadarId} articleType={activeTab} />
             </div>
 
-            <TerminalMobileNav activeTab={activeMobileTab} onTabChange={setActiveMobileTab} />
         </div>
     );
 }

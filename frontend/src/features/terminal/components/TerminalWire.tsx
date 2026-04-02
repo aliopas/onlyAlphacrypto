@@ -43,24 +43,21 @@ export function TerminalWire({
 
     if (!hasSignals) {
         return (
-            <aside className="w-full xl:w-[20%] border border-[#333] flex flex-col bg-[#0A0A0A] xl:min-w-[280px] h-[300px] xl:h-auto shrink-0">
+            <aside className="w-full h-full flex flex-col border border-[#333] bg-[#0A0A0A] shrink-0 overflow-hidden">
                 <div className="h-11 flex items-center px-4 border-b border-[#333] bg-[#111]">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
                     <span className="text-[10px] font-mono uppercase tracking-widest text-white">AI Radar Stream</span>
                 </div>
-                <div className="flex-1 flex items-center justify-center text-[#555] font-mono text-sm">
+                <div className="flex-1 flex items-center justify-center text-[#555] font-mono text-sm p-4 text-center">
                     No signals available. Signals will appear automatically when available.
                 </div>
             </aside>
         );
     }
 
-    // Sort descending by date (if not handled by server)
-    // filteredRadar.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
     return (
-        <aside className="w-full xl:w-[20%] border border-[#333] flex flex-col bg-[#0A0A0A] xl:min-w-[280px] h-[300px] xl:h-auto shrink-0">
-            {/* Header - PRESERVED ORIGINAL LOOK */}
+        <aside className="w-full h-full flex flex-col border border-[#333] bg-[#0A0A0A] shrink-0 overflow-hidden">
+            {/* Header */}
             <div className="h-11 flex items-center px-4 border-b border-[#333] bg-[#111]">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
                 <span className="text-[10px] font-mono uppercase tracking-widest text-white">AI Radar Stream</span>
@@ -97,7 +94,7 @@ export function TerminalWire({
                                 {item.signal || item.signalText}
                             </h4>
 
-                            {/* News Sources Section integrated into Radar - PRESERVED */}
+                            {/* News Sources Section integrated into Radar */}
                             {itemNews.length > 0 && (
                                 <div className="mt-4 pt-3 border-t border-[#222]">
                                     <div className="text-[9px] font-mono text-[#666] mb-2 uppercase tracking-wider flex items-center gap-1">
@@ -124,7 +121,7 @@ export function TerminalWire({
                     );
                 })}
 
-                {/* Load More Button - NEW */}
+                {/* Load More Button */}
                 {filteredRadar.length > 0 && hasMore && (
                     <div className="pt-2 pb-4">
                         <button 
