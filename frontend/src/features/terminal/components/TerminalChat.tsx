@@ -24,7 +24,7 @@ export function TerminalChat({ coin, articleId, articleType }: Props) {
     };
 
     return (
-        <aside className="w-full h-full flex flex-col border border-[#333] bg-[#0A0A0A] shrink-0 relative overflow-hidden">
+        <aside className="w-full h-full flex flex-col border border-[#333] bg-[#0A0A0A] relative overflow-hidden">
             {/* Price chart area (extracted) */}
             <TerminalChart coin={coin} />
 
