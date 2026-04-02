@@ -28,7 +28,7 @@ export function Sidebar() {
             </div>
 
             {/* Nav items */}
-            <div className="flex md:flex-col gap-2 md:gap-6 w-full px-4 md:px-0 justify-around md:justify-start items-center h-full md:h-auto">
+            <div className="w-full h-full pt-1 md:pt-0 grid grid-cols-4 md:flex md:flex-col md:gap-6 md:px-0 items-center justify-items-center md:justify-start md:h-auto">
                 {NAV_ITEMS.map(({ href, icon, label }) => {
                     const isActive = pathname === href || (href !== '/' && pathname.startsWith(href));
                     return (
@@ -36,16 +36,16 @@ export function Sidebar() {
                             key={href}
                             href={href}
                             title={label}
-                            className={`group relative flex items-center justify-center p-2.5 rounded-lg transition-all duration-300 ${isActive
-                                ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/30'
+                            className={`group relative flex w-full h-full md:h-auto md:w-auto items-center justify-center p-2.5 rounded-lg transition-all duration-300 ${isActive
+                                ? 'text-[var(--color-primary)] md:bg-[var(--color-primary)]/10 md:ring-1 md:ring-[var(--color-primary)]/30'
                                 : 'text-[#666] hover:text-[#fff] hover:bg-[#111]'
                                 }`}
                         >
-                            <span className="material-symbols-outlined text-[26px] md:text-[22px] transition-transform duration-300 group-hover:-translate-y-1">
+                            <span className={`material-symbols-outlined text-[26px] md:text-[22px] transition-transform duration-300 group-hover:-translate-y-1 ${isActive ? 'text-[var(--color-primary)] md:text-[var(--color-primary)]' : ''}`}>
                                 {icon}
                             </span>
                             {/* Mobile Label */}
-                            <span className={`absolute bottom-0 text-[9px] font-medium transition-all duration-300 md:hidden ${isActive ? 'opacity-100 text-[var(--color-primary)]' : 'opacity-0 translate-y-1'}`}>
+                            <span className={`absolute bottom-1 text-[10px] font-medium transition-all duration-300 md:hidden pt-4 ${isActive ? 'opacity-100 text-[var(--color-primary)]' : 'opacity-0 translate-y-1'}`}>
                                 {label}
                             </span>
                             {/* Desktop Tooltip */}
@@ -55,9 +55,26 @@ export function Sidebar() {
                         </Link>
                     );
                 })}
+
+                {/* Mobile Settings Icon (Integrated into Grid for perfect symmetry) */}
+                <Link 
+                    href="/settings" 
+                    title="Settings"
+                    className={`md:hidden group relative flex w-full h-full items-center justify-center p-2.5 rounded-lg transition-all duration-300 ${pathname === '/settings'
+                        ? 'text-[var(--color-primary)]'
+                        : 'text-[#666] hover:text-white'
+                    }`}
+                >
+                    <span className={`material-symbols-outlined text-[26px] transition-transform duration-300 group-hover:-translate-y-1 ${pathname === '/settings' ? 'text-[var(--color-primary)]' : ''}`}>
+                        settings
+                    </span>
+                    <span className={`absolute bottom-1 text-[10px] font-medium transition-all duration-300 pt-4 ${pathname === '/settings' ? 'opacity-100 text-[var(--color-primary)]' : 'opacity-0 translate-y-1'}`}>
+                        Settings
+                    </span>
+                </Link>
             </div>
 
-            {/* Bottom: Settings + Avatar */}
+            {/* Bottom: Settings + Avatar (Desktop Only) */}
             <div className="mt-auto hidden md:flex flex-col gap-6 items-center">
                 <Link href="/settings" title="Settings" className={`group relative p-2.5 rounded-lg transition-all duration-300 ${pathname === '/settings'
                     ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10 ring-1 ring-[var(--color-primary)]/30'
@@ -77,13 +94,6 @@ export function Sidebar() {
                         </span>
                     </span>
                 </div>
-            </div>
-
-            {/* Mobile Settings Icon */}
-            <div className="md:hidden flex items-center pr-4">
-                <Link href="/settings" className={`p-2 transition-colors ${pathname === '/settings' ? 'text-[var(--color-primary)]' : 'text-[#666] hover:text-white'}`}>
-                    <span className="material-symbols-outlined text-[26px]">settings</span>
-                </Link>
             </div>
         </nav>
     );
