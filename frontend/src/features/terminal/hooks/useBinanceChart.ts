@@ -49,7 +49,8 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
                 width: chartContainerRef.current.clientWidth,
                 height: chartContainerRef.current.clientHeight,
                 timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#333' },
-                rightPriceScale: { borderColor: '#333' }
+                rightPriceScale: { borderColor: '#333' },
+                localization: { locale: 'en-US' }
             });
 
             series = chart.addCandlestickSeries({
