@@ -101,13 +101,21 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
                 }
             };
 
-            const handleResize = () => {
+            const resizeObserver = new ResizeObserver(() => {
                 if (chartContainerRef.current && chart) {
-                    chart.applyOptions({ width: chartContainerRef.current.clientWidth, height: chartContainerRef.current.clientHeight });
+                    const width = chartContainerRef.current.clientWidth;
+                    const height = chartContainerRef.current.clientHeight;
+                    if (width > 0 && height > 0) {
+                        chart.applyOptions({ width, height });
+                    }
                 }
-            };
-            window.addEventListener('resize', handleResize);
-            cleanupResize = () => window.removeEventListener('resize', handleResize);
+            });
+            
+            if (chartContainerRef.current) {
+                resizeObserver.observe(chartContainerRef.current);
+            }
+            
+            cleanupResize = () => resizeObserver.disconnect();
         };
 
         initChart();
