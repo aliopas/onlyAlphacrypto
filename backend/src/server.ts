@@ -37,6 +37,15 @@ app.use(timeMiddleware);
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 
+app.get('/api/health', async (_req, res) => {
+    try {
+        await testConnection();
+        res.json({ status: 'ok', db: 'connected', ts: new Date().toISOString() });
+    } catch {
+        res.status(503).json({ status: 'error', db: 'disconnected' });
+    }
+});
+
 app.use('/api', routes);
 
 // ─── 404 Handler ──────────────────────────────────────────────────────────────
