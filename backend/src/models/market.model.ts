@@ -1,6 +1,6 @@
 import {
     pgTable, serial, varchar, text, timestamp,
-    integer, real, json, boolean, pgEnum
+    integer, real, json, boolean, pgEnum, unique
 } from 'drizzle-orm/pg-core';
 
 // ─── MARKET INSIGHTS (AI Verdicts per Coin) ───────────────────────────────────
@@ -124,4 +124,38 @@ export const coinMemory = pgTable('coin_memory', {
     redFlags: json('red_flags'),
     sourceNewsHashes: json('source_news_hashes'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const coinIntelligenceCache = pgTable('coin_intelligence_cache', {
+    coinSymbol:     varchar('coin_symbol', { length: 20 }).primaryKey(),
+    ath:            real('ath'),
+    athDate:        varchar('ath_date', { length: 20 }),
+    trend8w:        varchar('trend_8w', { length: 20 }),
+    week52High:     real('week_52_high'),
+    week52Low:      real('week_52_low'),
+    priceChange30d: real('price_change_30d'),
+    wikiBackground: text('wiki_background'),
+    dexBoostActive: boolean('dex_boost_active').default(false).notNull(),
+    dataSource:     varchar('data_source', { length: 20 }),
+    cachedAt:       timestamp('cached_at').defaultNow().notNull(),
+});
+
+export const coinNewsHistory = pgTable('coin_news_history', {
+    id:            serial('id').primaryKey(),
+    coinSymbol:    varchar('coin_symbol', { length: 20 }).notNull(),
+    title:         text('title').notNull(),
+    source:        varchar('source', { length: 100 }),
+    publishedAt:   timestamp('published_at').notNull(),
+    sentiment:     varchar('sentiment', { length: 10 }),
+    eventType:     varchar('event_type', { length: 50 }),
+    eventSeverity: integer('event_severity').default(1),
+    priceAtTime:   real('price_at_time'),
+    price7dAfter:  real('price_7d_after'),
+    priceChange7d: real('price_change_7d'),
+    isRugPull:     boolean('is_rug_pull').default(false).notNull(),
+    fetchedAt:     timestamp('fetched_at').defaultNow().notNull(),
+}, (table) => {
+    return {
+        unq: unique(table.coinSymbol, table.title, table.publishedAt)
+    };
 });
