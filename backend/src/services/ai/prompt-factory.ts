@@ -1,5 +1,8 @@
 import OpenAI from 'openai';
 type ChatCompletionMessageParam = OpenAI.ChatCompletionMessageParam;
+import type { CoinIntelligence } from '../coinIntelligence.service';
+import type { TemporalPattern } from '../temporalIntelligence.service';
+import type { PriceResult } from '../priceService';
 
 export const LANGUAGE_MANDATE = `
 CRITICAL LANGUAGE RULE — NON-NEGOTIABLE:
@@ -68,6 +71,13 @@ export interface DeepSynthesisInput {
     marketData: Record<string, unknown> | null;
     onchainData: Record<string, unknown> | null;
     tavilyContext: string;
+}
+
+export interface DeepAnalysisInput {
+    headline: string;
+    intelligence: CoinIntelligence | null;
+    pattern: TemporalPattern | null;
+    price: PriceResult | null;
 }
 
 // Define additional interfaces used in the prompts
@@ -346,6 +356,106 @@ ${data.tavilyContext}`;
             {
                 role: 'user',
                 content: userPrompt
+            }
+        ];
+    }
+
+    buildDeepAnalysisMessages(input: DeepAnalysisInput): ChatCompletionMessageParam[] {
+        return [
+            {
+                role: 'system',
+                content: `${LANGUAGE_MANDATE}\n\nYou are a crypto data analyst. Your output feeds a downstream writing engine.
+DO NOT write articles. DO NOT write prose. Output STRICT JSON only.
+
+{
+  "sentiment":       "bullish|bearish|neutral",
+  "impactScore":     <0-100>,
+  "isBreaking":      <true if: Hack|Exploit|SEC|Listing|ETF|TokenLaunch|Mainnet>,
+  "coinSymbol":      "<TICKER>",
+  "eventType":       "<ETF|Hack|Listing|Upgrade|Partnership|Funding|Regulatory|Other>",
+  "eventSeverity":   <1|2|3>,
+  "analysis": {
+    "mainDriver":       "<1 sentence — core reason this matters>",
+    "priceImplication": "<1 sentence — what this means for price>",
+    "temporalContext":  "<1 sentence referencing historical pattern if provided, else null>",
+    "riskNote":         "<1 sentence — biggest risk or red flag>"
+  },
+  "keyFacts": [
+    "<fact with specific number>",
+    "<fact with specific number>",
+    "<fact with specific number>"
+  ],
+  "supportLevels":    [<price>, <price>],
+  "resistanceLevels": [<price>, <price>],
+  "signalText":       "<MAX 40 words. Bloomberg-style. One number required. English only.>",
+  "verdict":          "STRONG_BUY|BUY|NEUTRAL|SELL|STRONG_SELL",
+  "confidenceScore":  <0-100>
+}
+
+Rules:
+- Output ONLY the JSON object. No preamble. No text outside JSON.
+- All string values in English.
+- impactScore 80+: only events that directly move price (hacks, listings, SEC actions).
+- If temporal pattern provided → always reference it in analysis.temporalContext.
+- keyFacts: must contain specific numbers, dates, or verifiable claims.`
+            },
+            {
+                role: 'user',
+                content: `Analyze this news headline:
+
+Headline: ${input.headline}
+
+--- CURRENT PRICE ---
+${input.price ? `Price: $${input.price.price} (${input.price.source}, 24h change: ${input.price.change24h ?? 'N/A'}%)` : 'Price data unavailable'}
+
+--- COIN INTELLIGENCE ---
+${input.intelligence ? JSON.stringify({
+    ATH: input.intelligence.ath,
+    'ATH Date': input.intelligence.athDate,
+    '52w Range': `$${input.intelligence.week52Low ?? 'N/A'} - $${input.intelligence.week52High ?? 'N/A'}`,
+    '8-Week Trend': input.intelligence.trend8w ?? 'N/A',
+    '30d Change': input.intelligence.priceChange30d ? `${input.intelligence.priceChange30d}%` : 'N/A',
+    Background: input.intelligence.wikiBackground || 'No background available',
+    'DEX Boosted': input.intelligence.dexBoostActive,
+}, null, 2) : 'No intelligence data available'}
+
+--- HISTORICAL PATTERN ---
+${input.pattern ? JSON.stringify(input.pattern, null, 2) : 'No historical pattern available'}`
+            }
+        ];
+    }
+
+    buildArticleWriterMessages(analysisJson: string): ChatCompletionMessageParam[] {
+        return [
+            {
+                role: 'system',
+                content: `${LANGUAGE_MANDATE}\n\nYou are OnlyAlpha's senior market analyst and writer.
+You receive a JSON analysis object. Transform it into a compelling article.
+
+You are a WRITER, not an analyst. Do NOT add new analysis. Do NOT change verdicts. Do NOT invent facts.
+
+Output STRICT JSON:
+{
+  "headline":        "<SEO headline. Action verb first. Coin + event. MAX 15 words.>",
+  "hook":            "<One powerful opening sentence. Must include the most important number.>",
+  "fullArticle":     "<800+ words. Sections:
+    [HOOK] Expand the hook into 2-3 sentences.
+    [WHAT HAPPENED] Factual summary using keyFacts from input.
+    [WHY IT MATTERS] Use analysis.mainDriver and analysis.priceImplication.
+    [HISTORY REPEATS?] If analysis.temporalContext is not null — expand it with numbers.
+    [PRICE PICTURE] Use support/resistance levels. Reference trend and ATH distance.
+    [RISK CHECK] Use analysis.riskNote honestly.
+    [BOTTOM LINE] Verdict + confidenceScore. 'Analysis rates this as X with Y% confidence.'
+    Rules: Bloomberg meets Reddit tone. One number per paragraph minimum.
+    No vague language. No financial advice — use 'data suggests', 'analysis indicates'.>",
+  "metaTitle":       "<MAX 60 chars. Format: 'Coin Event | OnlyAlpha'>",
+  "metaDescription": "<MAX 160 chars. Primary keyword. End: Read the analysis on OnlyAlpha.>",
+  "seoKeywords":     ["<coin+event>", "<market action>", "<long-tail query>", "<coin+price>", "<trend>"]
+}`
+            },
+            {
+                role: 'user',
+                content: analysisJson
             }
         ];
     }

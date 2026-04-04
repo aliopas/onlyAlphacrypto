@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
 import { AIGateway } from './ai/ai-gateway';
-import { PromptFactory, DeepSynthesisInput } from './ai/prompt-factory';
+import { PromptFactory, DeepSynthesisInput, DeepAnalysisInput } from './ai/prompt-factory';
 
 // Define interfaces locally to avoid circular imports
 export interface MarketVerdictResult {
@@ -67,6 +67,36 @@ export interface DeepSynthesisResult {
     redFlags: string[];
     confidenceScore: number;
     fullArticle: string;
+}
+
+export interface DeepAnalysisResult {
+    sentiment: 'bullish' | 'bearish' | 'neutral';
+    impactScore: number;
+    isBreaking: boolean;
+    coinSymbol: string;
+    eventType: string;
+    eventSeverity: number;
+    analysis: {
+        mainDriver: string;
+        priceImplication: string;
+        temporalContext: string | null;
+        riskNote: string;
+    };
+    keyFacts: string[];
+    supportLevels: number[];
+    resistanceLevels: number[];
+    signalText: string;
+    verdict: 'STRONG_BUY' | 'BUY' | 'NEUTRAL' | 'SELL' | 'STRONG_SELL';
+    confidenceScore: number;
+}
+
+export interface ArticleWriterResult {
+    headline: string;
+    hook: string;
+    fullArticle: string;
+    metaTitle: string;
+    metaDescription: string;
+    seoKeywords: string[];
 }
 
 // Instantiate the modular components
@@ -411,6 +441,26 @@ export async function validateAirdrop(
     // Store in cache
     cache.set(cacheKey, result);
     return result;
+}
+
+export async function callDeepSeekAnalysis(input: DeepAnalysisInput): Promise<DeepAnalysisResult> {
+    const messages = prompts.buildDeepAnalysisMessages(input);
+    return gateway.chat<DeepAnalysisResult>({
+        model: env.ANALYSIS_MODEL,
+        temperature: 0.2,
+        responseFormat: { type: 'json_object' },
+        messages,
+    });
+}
+
+export async function callGptNanoWriter(analysisJson: string): Promise<ArticleWriterResult> {
+    const messages = prompts.buildArticleWriterMessages(analysisJson);
+    return gateway.chat<ArticleWriterResult>({
+        model: env.SEO_MODEL,
+        temperature: 0.5,
+        responseFormat: { type: 'json_object' },
+        messages,
+    });
 }
 
 // ─── AI Chat Stream (GPT-5-nano — SEO optimized, user-facing) ────────────────
