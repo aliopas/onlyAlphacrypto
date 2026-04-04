@@ -59,6 +59,8 @@ export const rawNewsBuffer = pgTable('raw_news_buffer', {
     symbolMentions: json('symbol_mentions'),
     sentimentHint: varchar('sentiment_hint', { length: 20 }),
     relevanceScore: integer('relevance_score'),
+    eventType: varchar('event_type', { length: 50 }),
+    eventSeverity: integer('event_severity'),
 });
 
 // ─── RADAR SIGNALS (Home Live AI Radar) ──────────────────────────────────────

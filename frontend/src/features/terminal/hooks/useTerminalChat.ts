@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '@/features/shared/api/client';
 
-export type ChatMode = 'general' | 'private';
+export type ChatMode = 'general' | 'context';
 
 interface Message {
     role: 'ai' | 'user';
@@ -43,15 +43,24 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
     }, []);
 
     useEffect(() => {
-        async function checkDisclaimer() {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        (async () => {
             try {
-                const { data } = await apiClient.get('/chat/disclaimer-status');
+                const { data } = await apiClient.get('/chat/disclaimer-status', {
+                    signal: controller.signal
+                });
                 setDisclaimerAccepted(data.accepted ?? false);
             } catch {
                 setDisclaimerAccepted(false);
             }
-        }
-        checkDisclaimer();
+        })();
+
+        return () => {
+            clearTimeout(timeoutId);
+            controller.abort();
+        };
     }, []);
 
     const acceptDisclaimer = useCallback(async () => {
@@ -99,7 +108,7 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
                 if (done) break;
                 const text = decoder.decode(value);
                 text.split('\n').filter(l => l.startsWith('data:')).forEach(line => {
-                    const chunk = line.replace('data:', '').trim();
+                    const chunk = line.slice(5).trim();
                     if (chunk && chunk !== '[DONE]') { aiBuffer += chunk; }
                 });
                 setMessages(prev => [...prev.slice(0, -1), { role: 'ai', content: aiBuffer }]);

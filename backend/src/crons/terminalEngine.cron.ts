@@ -1,56 +1,20 @@
 import cron from 'node-cron';
-import axios from 'axios';
 import crypto from 'crypto';
 import { db } from '../config/db';
 import { coinNews, rawNewsBuffer } from '../models/market.model';
-import { generateDualNewsOutput } from '../services/openai.service';
-import { deleteCache } from '../config/redis';
-import { env } from '../config/env';
+import { fetchAllRSSNews } from '../services/rssNews.service';
 import { eq, isNotNull, desc } from 'drizzle-orm';
 
 function hashTitle(title: string): string {
     return crypto.createHash('sha256').update(title.trim().toLowerCase()).digest('hex');
 }
 
-// ─── Crypto News Sources ──────────────────────────────────────────────────────
-const NEWS_SOURCES = [
-    'https://min-api.cryptocompare.com/data/v2/news/?lang=EN',
-];
-
-async function fetchLatestNews(): Promise<Array<{ title: string; text?: string; source?: string }>> {
-    try {
-        let url = NEWS_SOURCES[0];
-        if (process.env.CRYPTOCOMPARE_API_KEY) {
-            url += `&api_key=${process.env.CRYPTOCOMPARE_API_KEY}`;
-        }
-        console.log(`[TerminalEngine] Fetching from: ${NEWS_SOURCES[0]}`);
-        let { data } = await axios.get(url, { timeout: 8000 });
-        if (!data || !data.Data || !Array.isArray(data.Data)) {
-            // Log the actual response to diagnose rate limits or auth errors from CryptoCompare
-            const snippet = JSON.stringify(data).slice(0, 300);
-            console.error(`[TerminalEngine] Invalid API structure. Response snippet: ${snippet}`);
-            return [];
-        }
-
-        console.log(`[TerminalEngine] Fetched ${data.Data.length} news items from API`);
-        return data.Data.slice(0, 5).map((item: Record<string, any>) => ({
-            title: item.title as string,
-            source: item.source_info?.name as string || item.source as string,
-        }));
-    } catch (err: any) {
-        console.error('[TerminalEngine] Error fetching news:', err.message);
-        if (err.response) {
-            console.error('[TerminalEngine] API Error Data:', err.response.data);
-        }
-        return [];
-    }
-}
-
 // ─── Main Cron: Every 10 minutes (Phase 1A: Gathering Engine) ──────────────
 export async function runTerminalEngine(): Promise<void> {
     console.log('🤖 [TerminalEngine] Running — gathering crypto news (Phase 1A)...');
 
-    const newsItems = await fetchLatestNews();
+    const rssItems = await fetchAllRSSNews();
+    const newsItems = rssItems.map(item => ({ title: item.title, source: item.source }));
 
     if (!newsItems.length) {
         console.log('[TerminalEngine] No news to process.');

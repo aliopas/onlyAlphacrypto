@@ -163,21 +163,44 @@ export async function generateDeepIntelligenceReport(
  * Generate lightweight triage scores for news batches
  * Uses cheap/fast model (GPT-5-nano equivalent) to score relevance (0-100)
  */
+interface TriageResult {
+    title: string;
+    source?: string;
+    relevanceScore: number;
+    sentimentHint: string | null;
+    symbolMentions: string[];
+    eventType: string;
+    eventSeverity: number;
+}
+
 export async function generateLightweightTriage(
     newsBatch: Array<{ title: string; source?: string }>
-): Promise<Array<{ title: string; source?: string; relevanceScore: number; sentimentHint: string | null }>> {
+): Promise<TriageResult[]> {
     // Check cache first
     const cacheKey = cache.generateKey('lightweightTriage', newsBatch);
-    const cached = cache.get<Array<{ title: string; source?: string; relevanceScore: number; sentimentHint: string | null }>>(cacheKey);
+    const cached = cache.get<TriageResult[]>(cacheKey);
     if (cached) {
         return cached;
     }
 
     try {
         const messages = prompts.buildTriageMessages(newsBatch);
-        const parsed = await gateway.chat<{ 
-            results?: Array<{ relevanceScore: number; sentimentHint: string | null }>; 
-            triageScores?: Array<{ relevanceScore: number; sentimentHint: string | null }>         }>({
+        const parsed = await gateway.chat<{
+            results?: Array<{
+                relevanceScore: number;
+                sentimentHint: string | null;
+                symbolMentions?: string[];
+                eventType?: string;
+                eventSeverity?: number;
+            }>;
+            triageScores?: Array<{
+                relevanceScore: number;
+                sentimentHint: string | null;
+                symbolMentions?: string[];
+                eventType?: string;
+                eventSeverity?: number;
+            }>;
+        }>({
             model: env.SEO_MODEL, // GPT-5-nano equivalent (cheap/fast model)
             temperature: 0.2, // Low temperature for consistent scoring
             responseFormat: { type: 'json_object' },
@@ -185,16 +208,23 @@ export async function generateLightweightTriage(
         });
 
         // Handle both array format and object format
-        const resultsArray = Array.isArray(parsed) ? parsed as Array<Record<string, unknown>> : 
+        const resultsArray = Array.isArray(parsed) ? parsed as Array<Record<string, unknown>> :
             (parsed.results || parsed.triageScores || []);
 
         // Map results back to original news items
-        const triagedNews = newsBatch.map((item, index) => {
+        const triagedNews: TriageResult[] = newsBatch.map((item, index) => {
             const scoreObj = resultsArray[index] || {};
             return {
                 ...item,
                 relevanceScore: Math.max(0, Math.min(100, Number(scoreObj.relevanceScore) || 50)),
-                sentimentHint: scoreObj.sentimentHint !== undefined && scoreObj.sentimentHint !== null ? String(scoreObj.sentimentHint) : null
+                sentimentHint: scoreObj.sentimentHint !== undefined && scoreObj.sentimentHint !== null ? String(scoreObj.sentimentHint) : null,
+                symbolMentions: Array.isArray(scoreObj.symbolMentions)
+                    ? scoreObj.symbolMentions.map((s: string) => s.toUpperCase())
+                    : [],
+                eventType: typeof scoreObj.eventType === 'string' ? scoreObj.eventType : 'Other',
+                eventSeverity: typeof scoreObj.eventSeverity === 'number'
+                    ? Math.max(1, Math.min(3, Math.round(scoreObj.eventSeverity)))
+                    : 1,
             };
         });
 
@@ -204,10 +234,13 @@ export async function generateLightweightTriage(
     } catch (error) {
         console.error('[OpenAI Service] Error in lightweight triage:', error);
         // Fallback: return neutral scores for all items
-        const fallbackResults = newsBatch.map(item => ({
+        const fallbackResults: TriageResult[] = newsBatch.map(item => ({
             ...item,
             relevanceScore: 50, // Neutral score
-            sentimentHint: null
+            sentimentHint: null,
+            symbolMentions: [],
+            eventType: 'Other',
+            eventSeverity: 1,
         }));
 
         // Cache fallback results briefly (5 minutes) to prevent repeated failures on same batch

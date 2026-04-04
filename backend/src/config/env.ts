@@ -36,8 +36,7 @@ const envSchema = z.object({
     // Alternative.me (no key needed, public API)
     ALTERNATIVE_ME_URL: z.string().url().default('https://api.alternative.me/fng/'),
 
-    // CoinCap & Tavily
-    COINCAP_API_KEY: z.string().optional(),
+    // Tavily (emergency fallback only)
     TAVILY_API_KEY: z.string().min(1).optional(),
 
     // Next.js revalidation

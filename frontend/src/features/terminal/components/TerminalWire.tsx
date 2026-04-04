@@ -37,10 +37,6 @@ export function TerminalWire({
 }: Props) {
     const now = useMemo(() => Date.now(), []);
 
-    const filteredRadar = targetedCoin
-        ? radarSignals.filter(r => r.coin?.toLowerCase() === targetedCoin.toLowerCase())
-        : radarSignals;
-
     if (!hasSignals) {
         return (
             <aside className="w-full h-full flex flex-col border border-[#333] bg-[#0A0A0A] overflow-hidden">
@@ -65,14 +61,15 @@ export function TerminalWire({
 
             {/* Content List */}
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                {filteredRadar.length === 0 ? (
+                {radarSignals.length === 0 ? (
                     <div className="flex items-center justify-center p-4 h-full text-[#555] text-xs font-mono text-center">
                         No radar signals found for {targetedCoin ? `$${targetedCoin.toUpperCase()}` : 'this selection'}.
                     </div>
                 ) : null}
 
-                {filteredRadar.map((item: any, i: number) => {
+                {radarSignals.map((item, i) => {
                     const isSelectedRadar = activeTab === 'RADAR' && selectedRadarId === item.id;
+                    const isTargeted = targetedCoin && item.coin?.toLowerCase() === targetedCoin.toLowerCase();
                     const timeStr = item.formattedTime || `${Math.floor((now - new Date(item.createdAt).getTime()) / 60000)}m ago`;
 
                     // Find context news for this signal
@@ -80,7 +77,7 @@ export function TerminalWire({
 
                     return (
                         <div key={`radar-${item.id || i}`}
-                            className={`p-4 bg-black border cursor-pointer transition-all ${isSelectedRadar ? 'border-amber-500 bg-amber-500/5' : 'border-[#333] hover:border-[#555]'}`}
+                            className={`p-4 bg-black border cursor-pointer transition-all ${isSelectedRadar || isTargeted ? 'border-amber-500 bg-amber-500/5' : 'border-[#333] hover:border-[#555]'}`}
                             onClick={() => { onSelectRadar?.(item.id); setActiveTab('RADAR'); }}>
                             <div className="flex justify-between items-center mb-2">
                                 <span className={`text-[10px] font-mono ${isSelectedRadar ? 'text-amber-500' : 'text-[#888]'}`}>{timeStr}</span>
@@ -122,7 +119,7 @@ export function TerminalWire({
                 })}
 
                 {/* Load More Button */}
-                {filteredRadar.length > 0 && hasMore && (
+                {radarSignals.length > 0 && hasMore && (
                     <div className="pt-2 pb-4">
                         <button 
                             onClick={(e) => { e.stopPropagation(); onLoadMore?.(); }}

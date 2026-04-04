@@ -58,10 +58,13 @@ export async function runTriageEngine(): Promise<void> {
                     const item = batch[j];
                     const scoredItem = scoredBatch[j];
 
-                    await db                        .update(rawNewsBuffer)
+                    await db.update(rawNewsBuffer)
                         .set({
                             relevanceScore: scoredItem.relevanceScore,
                             sentimentHint: scoredItem.sentimentHint,
+                            symbolMentions: scoredItem.symbolMentions,
+                            eventType: scoredItem.eventType,
+                            eventSeverity: scoredItem.eventSeverity,
                             processed: true
                         })
                         .where(eq(rawNewsBuffer.id, item.id));
