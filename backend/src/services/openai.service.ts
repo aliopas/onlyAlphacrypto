@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
 import { AIGateway } from './ai/ai-gateway';
-import { PromptFactory, DeepSynthesisInput, DeepAnalysisInput } from './ai/prompt-factory';
+import { PromptFactory, DeepAnalysisInput } from './ai/prompt-factory';
 
 // Define interfaces locally to avoid circular imports
 export interface MarketVerdictResult {
@@ -60,15 +60,7 @@ export interface AirdropValidationResult {
     aiReport: string;
 }
 
-export interface DeepSynthesisResult {
-    executiveSummary: string;
-    keyDrivers: string[];
-    marketContext: string;
-    riskAssessment: 'LOW' | 'MEDIUM' | 'HIGH';
-    redFlags: string[];
-    confidenceScore: number;
-    fullArticle: string;
-}
+
 
 export interface DeepAnalysisResult {
     sentiment: 'bullish' | 'bearish' | 'neutral';
@@ -103,7 +95,7 @@ export interface ArticleWriterResult {
 const ArticleSchema = z.object({
     headline: z.string().max(120),
     hook: z.string(),
-    fullArticle: z.string().min(800),
+    fullArticle: z.string().min(4000),
     metaTitle: z.string().max(60),
     metaDescription: z.string().max(160),
     seoKeywords: z.array(z.string()).length(5),
@@ -293,41 +285,7 @@ export async function generateLightweightTriage(
     }
 }
 
-export async function generateDeepSynthesis(
-    coinSymbol: string,
-    newsArticles: string[],
-    marketData: Record<string, number | string>,
-    onchainData: Record<string, unknown>,
-    tavilyContext: string
-): Promise<DeepSynthesisResult> {
-    const cacheKey = cache.generateKey('deepSynthesis', coinSymbol, newsArticles, marketData, tavilyContext);
-    const cached = cache.get<DeepSynthesisResult>(cacheKey);
-    if (cached) {
-        return cached;
-    }
 
-    console.log(`[DeepSynthesis] Using ${env.ANALYSIS_MODEL} for ${coinSymbol}`);
-
-    const synthesisInput: DeepSynthesisInput = {
-        coinSymbol,
-        newsArticles,
-        recentMemory: [],
-        marketData,
-        onchainData,
-        tavilyContext,
-    };
-
-    const messages = prompts.buildDeepSynthesisMessages(synthesisInput);
-    const result = await gateway.chat<DeepSynthesisResult>({
-        model: env.ANALYSIS_MODEL,
-        temperature: 0.3,
-        responseFormat: { type: 'json_object' },
-        messages,
-    });
-
-    cache.set(cacheKey, result);
-    return result;
-}
 
 // ─── Dual News Output: 2-Step Pipeline ───────────────────────────────────────
 // Step 1: DeepSeek-R1 analyzes the raw news and extracts structured data
@@ -453,20 +411,34 @@ export async function validateAirdrop(
     return result;
 }
 
-export async function callDeepSeekAnalysis(input: DeepAnalysisInput): Promise<DeepAnalysisResult> {
-    const messages = prompts.buildDeepAnalysisMessages(input);
-    return gateway.chat<DeepAnalysisResult>({
-        model: env.ANALYSIS_MODEL,
-        temperature: 0.2,
-        responseFormat: { type: 'json_object' },
-        messages,
-    });
-}
-
-export async function callGptNanoWriter(analysisJson: string, attempt: number = 1): Promise<ArticleWriterResult> {
+export async function callDeepSeekAnalysis(input: DeepAnalysisInput, attempt: number = 1): Promise<DeepAnalysisResult> {
     const MAX_ATTEMPTS = 3;
 
-    const messages = prompts.buildArticleWriterMessages(analysisJson);
+    try {
+        const messages = prompts.buildDeepAnalysisMessages(input);
+        const result = await gateway.chat<DeepAnalysisResult>({
+            model: env.ANALYSIS_MODEL,
+            temperature: 0.2,
+            responseFormat: { type: 'json_object' },
+            messages,
+        });
+        if (typeof result.analysis?.temporalContext === 'string' && result.analysis.temporalContext === 'null') {
+            result.analysis.temporalContext = null;
+        }
+        return result;
+    } catch (error) {
+        if (attempt < MAX_ATTEMPTS) {
+            console.warn(`callDeepSeekAnalysis failed (attempt ${attempt}/${MAX_ATTEMPTS}), retrying...`, error);
+            return callDeepSeekAnalysis(input, attempt + 1);
+        }
+        throw error;
+    }
+}
+
+export async function callGptNanoWriter(analysisJson: string, tone?: string, attempt: number = 1): Promise<ArticleWriterResult> {
+    const MAX_ATTEMPTS = 3;
+
+    const messages = prompts.buildArticleWriterMessages(analysisJson, tone);
     const raw = await gateway.chatRaw({
         model: env.SEO_MODEL,
         temperature: 0.5,
@@ -479,14 +451,14 @@ export async function callGptNanoWriter(analysisJson: string, attempt: number = 
         parsed = JSON.parse(raw);
     } catch {
         console.warn(`[GPT-nano] JSON parse failed (attempt ${attempt}). Raw: ${raw.slice(0, 200)}`);
-        if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysisJson, attempt + 1);
+        if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysisJson, tone, attempt + 1);
         throw new Error('GPT-nano returned invalid JSON after 3 attempts');
     }
 
     const result = ArticleSchema.safeParse(parsed);
     if (!result.success) {
         console.warn(`[GPT-nano] Schema validation failed (attempt ${attempt}):`, result.error.issues);
-        if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysisJson, attempt + 1);
+        if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysisJson, tone, attempt + 1);
         throw new Error('GPT-nano response failed schema validation after 3 attempts');
     }
 

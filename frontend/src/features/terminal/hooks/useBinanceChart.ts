@@ -160,7 +160,6 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
             if (ws) ws.close();
             if (cleanupResize) cleanupResize();
             if (chart) chart.remove();
-            if (chartContainerRef.current) chartContainerRef.current.innerHTML = '';
         };
     }, [coin]);
 

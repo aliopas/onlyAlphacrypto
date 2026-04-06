@@ -19,11 +19,17 @@ export interface CoinContext {
 }
 
 export async function gatherCoinContext(coinSymbol: string): Promise<CoinContext> {
-    console.log(`[DataAugmenter] Fetching memory for ${coinSymbol}...`);
+    console.log(`[DataAugmenter] Fetching all context for ${coinSymbol} in parallel...`);
+
+    const [memoryResult, marketResult, tavilyResult] = await Promise.allSettled([
+        getRecentMemory(coinSymbol),
+        getTokenData(coinSymbol),
+        searchTavily(`${coinSymbol} crypto news analysis`),
+    ]);
+
     let recentMemory: CoinContext['recentMemory'] = [];
-    try {
-        const memoryResult = await getRecentMemory(coinSymbol);
-        recentMemory = memoryResult.map(m => ({
+    if (memoryResult.status === 'fulfilled') {
+        recentMemory = memoryResult.value.map(m => ({
             eventType: m.eventType,
             eventSummary: m.eventSummary,
             verdict: m.verdict,
@@ -32,42 +38,29 @@ export async function gatherCoinContext(coinSymbol: string): Promise<CoinContext
             keyDrivers: m.keyDrivers as string[] | undefined,
             redFlags: m.redFlags as string[] | undefined,
         }));
-    } catch (error) {
-        console.error(`[DataAugmenter] Error fetching memory for ${coinSymbol}:`, error);
-        recentMemory = [];
+    } else {
+        console.error(`[DataAugmenter] Memory fetch failed for ${coinSymbol}:`, memoryResult.reason);
     }
 
-    console.log(`[DataAugmenter] Fetching market data for ${coinSymbol}...`);
-    
     let marketData: CoinContext['marketData'] = null;
-    try {
-        const tokenData = await getTokenData(coinSymbol);
-        marketData = tokenData as unknown as Record<string, unknown> ?? null;
-    } catch (error) {
-        console.error(`[DataAugmenter] Error fetching market data for ${coinSymbol}:`, error);
-        marketData = null;
+    if (marketResult.status === 'fulfilled') {
+        marketData = marketResult.value as unknown as Record<string, unknown> ?? null;
+    } else {
+        console.error(`[DataAugmenter] Market data fetch failed for ${coinSymbol}:`, marketResult.reason);
     }
 
-    console.log(`[DataAugmenter] Fetching on-chain data for ${coinSymbol}...`);
-    let onchainData: CoinContext['onchainData'] = null;
-    // Skipping Moralis for now as it only supports wallet transactions, not token stats
-    // Token-level on-chain data will be added in a future phase
-
-    console.log(`[DataAugmenter] Fetching Tavily context for ${coinSymbol}...`);
     let tavilyContext: CoinContext['tavilyContext'] = '';
-    try {
-        const query = `${coinSymbol} crypto news analysis`;
-        tavilyContext = await searchTavily(query);
-    } catch (error) {
-        console.error(`[DataAugmenter] Error fetching Tavily context for ${coinSymbol}:`, error);
-        tavilyContext = '';
+    if (tavilyResult.status === 'fulfilled') {
+        tavilyContext = tavilyResult.value;
+    } else {
+        console.error(`[DataAugmenter] Tavily fetch failed for ${coinSymbol}:`, tavilyResult.reason);
     }
 
     return {
         coinSymbol,
         recentMemory,
         marketData,
-        onchainData,
-        tavilyContext
+        onchainData: null,
+        tavilyContext,
     };
 }

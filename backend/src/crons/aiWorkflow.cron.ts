@@ -6,17 +6,43 @@ import { fetchHistoricalNewsForCoins, buildTemporalPattern } from '../services/t
 import { getPriceWithFallback } from '../services/priceService';
 import { getDynamicThreshold, countPublishedLastHour } from '../services/dynamicThreshold.service';
 import { deepseekBreaker, gptNanoBreaker } from '../services/circuitBreaker.service';
-import { callDeepSeekAnalysis, callGptNanoWriter } from '../services/openai.service';
+import { callDeepSeekAnalysis, callGptNanoWriter, gateway } from '../services/openai.service';
+import type { DeepAnalysisResult } from '../services/openai.service';
+import type { ArticleWriterResult } from '../services/openai.service';
+import { AIRateLimitError } from '../services/ai/ai-gateway';
+import { validateFactualGrounding } from '../services/ai/factual-grounding';
+import { auditArticleQuality } from '../services/ai/quality-auditor';
 import { coinNews, radarSignals, rawNewsBuffer } from '../models/market.model';
 import { eq, gte, and, desc, sql, isNotNull, ne } from 'drizzle-orm';
 import { deleteCache } from '../config/redis';
 
-// Simple boolean lock for the cron job to avoid running concurrently
 let isAiWorkflowRunning = false;
 
-// Helpers
 function generateSlug(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+}
+
+function selectTone(eventType: string): string {
+    switch (eventType) {
+        case 'Hack':
+        case 'Exploit':
+            return 'urgent';
+        case 'ETF':
+        case 'Listing':
+        case 'TokenLaunch':
+            return 'exciting';
+        case 'Regulatory':
+            return 'cautious';
+        case 'Funding':
+        case 'Partnership':
+            return 'optimistic';
+        case 'Delisting':
+            return 'solemn';
+        case 'Upgrade':
+            return 'analytical';
+        default:
+            return 'professional';
+    }
 }
 
 export async function runAiWorkflow(): Promise<void> {
@@ -28,18 +54,15 @@ export async function runAiWorkflow(): Promise<void> {
     console.log('🤖 [AI Workflow] Started.');
 
     try {
-        // Step 1: Hard cap
         const hourlyCount = await countPublishedLastHour();
         if (hourlyCount >= 5) {
             console.log('[AI Workflow] Hourly cap reached (5). Skipping.');
             return;
         }
 
-        // Step 2: Dynamic threshold
         const threshold = await getDynamicThreshold();
         console.log(`[AI Workflow] Dynamic threshold: ${threshold}`);
 
-        // Step 3: Fetch eligible items from rawNewsBuffer
         const items = await db.select()
             .from(rawNewsBuffer)
             .where(and(
@@ -51,7 +74,6 @@ export async function runAiWorkflow(): Promise<void> {
             .orderBy(desc(rawNewsBuffer.relevanceScore))
             .limit(5 - hourlyCount);
 
-        // Step 4: Loop through items
         for (const item of items) {
             const mentions = (item.symbolMentions as string[]) || [];
             if (mentions.length === 0) continue;
@@ -62,14 +84,11 @@ export async function runAiWorkflow(): Promise<void> {
             console.log(`[AI Workflow] Processing: ${symbol} — "${item.title.slice(0, 60)}..."`);
 
             try {
-                // 4a. Coin Intelligence
                 const intelligence = await getCoinIntelligence(symbol);
 
-                // 4b. Temporal Pattern
                 await fetchHistoricalNewsForCoins([symbol]);
                 const pattern = await buildTemporalPattern(symbol, eventType, eventSeverity);
 
-                // 4c. Current Price
                 const price = await getPriceWithFallback(symbol);
 
                 // 4d. DeepSeek Analysis (circuit breaker)
@@ -78,13 +97,38 @@ export async function runAiWorkflow(): Promise<void> {
                     continue;
                 }
 
-                const analysisResult = await callDeepSeekAnalysis({
-                    headline: item.title,
-                    intelligence,
-                    pattern,
-                    price,
-                });
-                deepseekBreaker.recordSuccess();
+                let analysisResult: DeepAnalysisResult;
+                try {
+                    analysisResult = await callDeepSeekAnalysis({
+                        headline: item.title,
+                        intelligence,
+                        pattern,
+                        price,
+                    });
+                    deepseekBreaker.recordSuccess();
+                } catch (err) {
+                    if (err instanceof AIRateLimitError) {
+                        console.warn(`[AI Workflow] DeepSeek rate limited for ${symbol}, retry after ${err.retryAfterMs}ms — skipping`);
+                        continue;
+                    }
+                    deepseekBreaker.recordFailure('DeepSeek');
+                    throw err;
+                }
+
+                // B2. Factual grounding — sanitize price levels
+                const currentPrice = price?.price ?? 0;
+                if (currentPrice > 0) {
+                    const grounding = validateFactualGrounding(
+                        analysisResult.supportLevels,
+                        analysisResult.resistanceLevels,
+                        currentPrice,
+                    );
+                    if (grounding.removedLevels.length > 0) {
+                        console.warn(`[AI Workflow] Factual grounding removed hallucinated levels for ${symbol}:`, grounding.removedLevels);
+                        analysisResult.supportLevels = grounding.sanitizedSupport;
+                        analysisResult.resistanceLevels = grounding.sanitizedResistance;
+                    }
+                }
 
                 // 4e. GPT-nano Article (circuit breaker)
                 if (gptNanoBreaker.isOpen()) {
@@ -92,8 +136,32 @@ export async function runAiWorkflow(): Promise<void> {
                     continue;
                 }
 
-                const article = await callGptNanoWriter(JSON.stringify(analysisResult));
-                gptNanoBreaker.recordSuccess();
+                const tone = selectTone(eventType);
+                console.log(`[AI Workflow] Selected tone "${tone}" for ${eventType} event on ${symbol}`);
+
+                let article: ArticleWriterResult;
+                try {
+                    article = await callGptNanoWriter(JSON.stringify(analysisResult), tone);
+                    gptNanoBreaker.recordSuccess();
+                } catch (err) {
+                    if (err instanceof AIRateLimitError) {
+                        console.warn(`[AI Workflow] GPT-nano rate limited for ${symbol}, retry after ${err.retryAfterMs}ms — skipping`);
+                        continue;
+                    }
+                    gptNanoBreaker.recordFailure('GPT-nano');
+                    throw err;
+                }
+
+                // B1. Quality audit (cross-model: DeepSeek-R1 audits GPT-5-nano)
+                const audit = await auditArticleQuality(gateway, JSON.stringify(analysisResult), article);
+                if (!audit.passed) {
+                    console.warn(`[AI Workflow] Quality audit FAILED for ${symbol} (score: ${audit.score}):`, audit.issues);
+                    if (audit.suggestion) {
+                        console.warn(`[AI Workflow] Audit suggestion: ${audit.suggestion}`);
+                    }
+                } else {
+                    console.log(`[AI Workflow] Quality audit PASSED for ${symbol} (score: ${audit.score})`);
+                }
 
                 // 4f. Save to coinNews
                 const sourceHash = crypto.createHash('sha256').update(article.headline).digest('hex');
@@ -131,8 +199,6 @@ export async function runAiWorkflow(): Promise<void> {
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
                 console.error(`[AI Workflow] Failed for ${symbol}:`, message);
-                deepseekBreaker.recordFailure('DeepSeek');
-                gptNanoBreaker.recordFailure('GPT-nano');
             }
         }
 

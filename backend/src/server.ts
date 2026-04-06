@@ -22,11 +22,14 @@ const allowedOrigins = env.NODE_ENV === 'production'
     ? ['https://onlyalphacrypto.com', 'https://www.onlyalphacrypto.com']
     : ['http://localhost:3000'];
 
-app.use(helmet());
 app.set('trust proxy', true);
 app.use(cors({
     origin: allowedOrigins,
     credentials: true,
+}));
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
 }));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));

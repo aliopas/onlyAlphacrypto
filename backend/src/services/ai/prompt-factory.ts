@@ -4,13 +4,7 @@ import type { CoinIntelligence } from '../coinIntelligence.service';
 import type { TemporalPattern } from '../temporalIntelligence.service';
 import type { PriceResult } from '../priceService';
 
-export const LANGUAGE_MANDATE = `
-CRITICAL LANGUAGE RULE — NON-NEGOTIABLE:
-Write ALL output exclusively in English.
-Do NOT output Arabic, Chinese, Korean, Japanese, or any non-English characters.
-Translate any non-English input to English before using it.
-Violation makes the entire output invalid.
-`.trim();
+
 
 // Define input interfaces
 export interface MarketVerdictInput {
@@ -56,22 +50,7 @@ export interface ChatModeParams {
     mode?: 'general' | 'context';
 }
 
-export interface DeepSynthesisInput {
-    coinSymbol: string;
-    newsArticles: string[];
-    recentMemory: Array<{
-        eventType: string;
-        eventSummary: string;
-        verdict?: string | null;
-        confidenceScore?: number | null;
-        riskVerdict?: string | null;
-        keyDrivers?: string[] | null;
-        redFlags?: string[] | null;
-    }>;
-    marketData: Record<string, unknown> | null;
-    onchainData: Record<string, unknown> | null;
-    tavilyContext: string;
-}
+
 
 export interface DeepAnalysisInput {
     headline: string;
@@ -107,7 +86,7 @@ export class PromptFactory {
         return [
             {
                 role: 'system',
-                content: `${LANGUAGE_MANDATE}\n\nYou are an elite crypto market analyst. Analyze the provided data and return a strict JSON object with these exact fields:
+                content: `You are an elite crypto market analyst. Analyze the provided data and return a strict JSON object with these exact fields:
 {
   "verdict": "STRONG_BUY|BUY|NEUTRAL|SELL|STRONG_SELL",
   "confidenceScore": <0-100>,
@@ -130,7 +109,7 @@ export class PromptFactory {
         return [
             {
                 role: 'system',
-                content: `${LANGUAGE_MANDATE}\n\nYou are an elite cryptocurrency intelligence analyst. Analyze the provided data and return a strict JSON object:
+                content: `You are an elite cryptocurrency intelligence analyst. Analyze the provided data and return a strict JSON object:
 {
   "riskVerdict": "LOW|MEDIUM|HIGH|SCAM",
   "verdict": "STRONG_BUY|BUY|NEUTRAL|SELL|STRONG_SELL",
@@ -161,7 +140,7 @@ ${JSON.stringify(aggregatedData.existingContext || [])}`
         return [
             {
                 role: 'system',
-                content: `${LANGUAGE_MANDATE}\n\nYou are a crypto news triage analyst for OnlyAlpha.
+                content: `You are a crypto news triage analyst for OnlyAlpha.
 For EACH headline in the input array, return one JSON object.
 Return an array in the SAME ORDER as input, wrapped in { "results": [...] }.
 
@@ -197,7 +176,7 @@ ${newsBatch.map((item, index) => `${index + 1}. Title: "${item.title}"${item.sou
         return [
             {
                 role: 'system',
-                content: `${LANGUAGE_MANDATE}\n\nYou are an elite cryptocurrency news analyst. Analyze the given crypto news headline and return STRICT JSON:
+                content: `You are an elite cryptocurrency news analyst. Analyze the given crypto news headline and return STRICT JSON:
 {
   "analysis": "<3-4 sentence in-depth analysis with specific data points, market impact, and trader implications>",
   "sentiment": "bullish|bearish|neutral",
@@ -221,7 +200,7 @@ ${recentContext ? `Recent context (avoid repeating): ${recentContext}` : ''}`
         return [
             {
                 role: 'system',
-                content: `${LANGUAGE_MANDATE}\n\nYou are an expert crypto SEO content editor. You receive a raw news analysis and format it into a high-quality, SEO-optimized article output. Return STRICT JSON:
+                content: `You are an expert crypto SEO content editor. You receive a raw news analysis and format it into a high-quality, SEO-optimized article output. Return STRICT JSON:
 {
   "headline": "<SEO-rich, action-verb title, keyword-first, max 15 words>",
   "hook": "<1 powerful opening sentence that creates urgency or curiosity for the reader>",
@@ -248,7 +227,7 @@ SEO Rules:
         return [
             {
                 role: 'system',
-                content: `${LANGUAGE_MANDATE}\n\nYou are an expert at identifying legitimate crypto airdrop opportunities vs scams. Analyze the provided project data and return:
+                content: `You are an expert at identifying legitimate crypto airdrop opportunities vs scams. Analyze the provided project data and return:
 {
   "isLegitimate": <true|false>,
   "riskVerdict": "LOW|MEDIUM|HIGH|SCAM",
@@ -276,7 +255,7 @@ Rules: isAutoVerifiable = true ONLY if the task involves a specific on-chain act
 
     buildChatMessages(messages: ChatMessage[], coinContext: CoinContext, mode: 'general' | 'context' = 'general'): ChatCompletionMessageParam[] {
         const systemPrompt = mode === 'context'
-            ? `${LANGUAGE_MANDATE}\n\nYou are 'Ask OnlyAlpha', an elite cryptocurrency deep analysis assistant in Context Mode.
+            ? `You are 'Ask OnlyAlpha', an elite cryptocurrency deep analysis assistant in Context Mode.
 The user is currently analyzing: ${coinContext.symbol} at price: $${coinContext.price}.
 
 Rules:
@@ -287,7 +266,7 @@ Rules:
 5. Do NOT give direct financial advice. Use "Data suggests..." or "Historically..."
 6. Never break character — you only discuss crypto.
 7. Responses can be longer and more detailed than general mode (up to 200 words).`
-            : `${LANGUAGE_MANDATE}\n\nYou are 'Ask OnlyAlpha', an elite, concise crypto market analyst assistant.
+            : `You are 'Ask OnlyAlpha', an elite, concise crypto market analyst assistant.
 The user is currently analyzing: ${coinContext.symbol} at price: $${coinContext.price}.
 Recent context: ${coinContext.newsSummary}.
 
@@ -310,61 +289,13 @@ Rules:
         ];
     }
 
-    buildDeepSynthesisMessages(data: DeepSynthesisInput): ChatCompletionMessageParam[] {
-        const systemPrompt = [
-            `${LANGUAGE_MANDATE}\n\nYou are an elite cryptocurrency deep analysis engine. Synthesize all provided data into a comprehensive analysis. Return STRICT JSON:`,
-            '{',
-            '  "executiveSummary": "<4-6 sentences explaining the WHY behind current market action with specific data points>",',
-            '  "keyDrivers": ["<reason 1 referencing specific news/data>", "<reason 2>", "<reason 3>", "<reason 4>"],',
-            '  "marketContext": "<2-3 sentences explaining how this coin fits in the broader market>",',
-            '  "riskAssessment": "LOW|MEDIUM|HIGH",',
-            '  "redFlags": ["<flag 1 from tavily or memory>", "<flag 2>"],',
-            '  "confidenceScore": <0-100>,',
-            '  "fullArticle": "<800+ word article. Structure: 1) Hook: One attention-grabbing opening sentence. 2) Executive Brief: 3-4 sentence summary of the situation. 3) Deep Analysis: The WHY behind the movement with specific data (price levels, %, volumes). 4) Historical Context: Compare current event to recentMemory entries. 5) Red Flags: Any scam signals, contract risks, or negative indicators from Tavily search. 6) Trader Implications: Actionable insights for traders (support/resistance levels, timeframes, risk/reward). Write in a professional but engaging tone for crypto traders.>"',
-            '}',
-            'Rules:',
-            '- Use HISTORICAL MEMORY to add depth and compare past events to the current situation',
-            '- Use TAVILY CONTEXT to validate claims and identify potential scams or red flags',
-            '- Use MARKET DATA for specific price levels and metrics',
-            '- The fullArticle MUST be 800+ words minimum',
-            '- Be specific: include numbers, percentages, price levels, timeframes',
-            '- Do NOT hedge -- give clear, actionable analysis'
-        ].join('\n');
 
-        const userPrompt = `Analyze data for ${data.coinSymbol}:
-
---- NEWS ARTICLES ---
-${JSON.stringify(data.newsArticles)}
-
---- HISTORICAL MEMORY (Past Events) ---
-${JSON.stringify(data.recentMemory)}
-
---- MARKET DATA ---
-${JSON.stringify(data.marketData)}
-
---- ON-CHAIN DATA ---
-${JSON.stringify(data.onchainData)}
-
---- TAVILY RESEARCH CONTEXT ---
-${data.tavilyContext}`;
-
-        return [
-            {
-                role: 'system',
-                content: systemPrompt
-            },
-            {
-                role: 'user',
-                content: userPrompt
-            }
-        ];
-    }
 
     buildDeepAnalysisMessages(input: DeepAnalysisInput): ChatCompletionMessageParam[] {
         return [
             {
                 role: 'system',
-                content: `${LANGUAGE_MANDATE}\n\nYou are a crypto data analyst. Your output feeds a downstream writing engine.
+                content: `You are a crypto data analyst. Your output feeds a downstream writing engine.
 DO NOT write articles. DO NOT write prose. Output STRICT JSON only.
 
 {
@@ -417,22 +348,26 @@ ${input.intelligence ? JSON.stringify({
     '30d Change': input.intelligence.priceChange30d ? `${input.intelligence.priceChange30d}%` : 'N/A',
     Background: input.intelligence.wikiBackground || 'No background available',
     'DEX Boosted': input.intelligence.dexBoostActive,
-}, null, 2) : 'No intelligence data available'}
+}) : 'No intelligence data available'}
 
 --- HISTORICAL PATTERN ---
-${input.pattern ? JSON.stringify(input.pattern, null, 2) : 'No historical pattern available'}`
+${input.pattern ? JSON.stringify(input.pattern) : 'No historical pattern available'}`
             }
         ];
     }
 
-    buildArticleWriterMessages(analysisJson: string): ChatCompletionMessageParam[] {
+    buildArticleWriterMessages(analysisJson: string, tone?: string): ChatCompletionMessageParam[] {
+        const toneDirective = tone
+            ? `\nTONE: Write in a ${tone} tone. Adjust your language, urgency, and emotional register accordingly.`
+            : '';
+
         return [
             {
                 role: 'system',
-                content: `${LANGUAGE_MANDATE}\n\nYou are OnlyAlpha's senior market analyst and writer.
+                content: `You are OnlyAlpha's senior market analyst and writer.
 You receive a JSON analysis object. Transform it into a compelling article.
 
-You are a WRITER, not an analyst. Do NOT add new analysis. Do NOT change verdicts. Do NOT invent facts.
+You are a WRITER, not an analyst. Do NOT add new analysis. Do NOT change verdicts. Do NOT invent facts.${toneDirective}
 
 Output STRICT JSON:
 {
@@ -460,36 +395,5 @@ Output STRICT JSON:
         ];
     }
 
-    buildArticleSEOMessages(fullArticle: string, coinSymbol: string): ChatCompletionMessageParam[] {
-        const systemPrompt = [
-            `${LANGUAGE_MANDATE}\n\nYou are an expert crypto SEO content editor. Analyze the provided article and return STRICT JSON:`,
-            '{',
-            '  "metaTitle": "<Max 60 chars. Include primary keyword + brand. Format: \'Keyword Action | OnlyAlpha\'>",',
-            '  "metaDescription": "<Max 160 chars. Include primary keyword, summarize the insight, include a CTA like \'Read the full analysis\'>",',
-            '  "seoKeywords": ["<primary keyword>", "<secondary keyword>", "<long-tail keyword>", "<coin name + action>", "<market trend keyword>"],',
-            '  "slug": "<url-friendly slug, lowercase, hyphens only, max 6 words>"',
-            '}',
-            'SEO Rules:',
-            '- metaTitle: Must include the coin name and most impactful action/event',
-            '- metaDescription: Must include the keyword naturally and end with a CTA',
-            '- seoKeywords: 5 keywords minimum, mix of short-tail and long-tail',
-            '- slug: Use the coin name + main event keyword (e.g., "solana-breaks-resistance-155")'
-        ].join('\n');
 
-        const userPrompt = `Coin: ${coinSymbol}
-
-Article:
-${fullArticle}`;
-
-        return [
-            {
-                role: 'system',
-                content: systemPrompt
-            },
-            {
-                role: 'user',
-                content: userPrompt
-            }
-        ];
-    }
 }

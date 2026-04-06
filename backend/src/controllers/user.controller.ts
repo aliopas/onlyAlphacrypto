@@ -52,7 +52,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
 
         checkAndGrantOgBadge(user.id).catch(() => {});
 
-        const token = generateToken(user.id, user.plan);
+        const token = generateToken(user.id, user.plan ?? 'free');
         res.status(201).json({ token, user });
     } catch (err) { next(err); }
 }
@@ -70,7 +70,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
         const isValid = await bcrypt.compare(password, user.passwordHash);
         if (!isValid) throw new AppError('Invalid credentials', 401);
 
-        const token = generateToken(user.id, user.plan);
+        const token = generateToken(user.id, user.plan ?? 'free');
         res.json({ token, user: { id: user.id, email: user.email, plan: user.plan } });
     } catch (err) { next(err); }
 }

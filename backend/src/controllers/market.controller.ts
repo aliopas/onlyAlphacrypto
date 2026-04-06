@@ -139,7 +139,7 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
 
-        let query = db.select().from(coinNews);
+        let query = db.select().from(coinNews).$dynamic();
         if (coin && coin.toUpperCase() !== 'ALL') {
             query = query.where(eq(coinNews.coinSymbol, coin.toUpperCase()));
         }

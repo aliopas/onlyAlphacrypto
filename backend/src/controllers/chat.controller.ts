@@ -122,7 +122,16 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
 
         res.write('data: [DONE]\n\n');
         res.end();
-    } catch (err) { next(err); }
+    } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Stream error';
+        try {
+            res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`);
+            res.end();
+        } catch { /* headers may not be sent yet */ }
+        if (!res.headersSent) {
+            next(err);
+        }
+    }
 }
 
 export async function acceptDisclaimer(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
