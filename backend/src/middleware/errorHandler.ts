@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
+import { logger } from '../utils/logger';
 
-// Custom error class
 export class AppError extends Error {
     constructor(
         message: string,
@@ -14,21 +14,27 @@ export class AppError extends Error {
 }
 
 export function errorHandler(
-    err: AppError & { statusCode?: number; isOperational?: boolean },
+    err: Error & { statusCode?: number; isOperational?: boolean },
     req: Request,
     res: Response,
     _next: NextFunction
 ): void {
-    const statusCode = err.statusCode || 500;
-    const message = err.isOperational ? err.message : 'Internal server error';
+    const appErr = err instanceof AppError ? err : null;
+    const statusCode = appErr?.statusCode || 500;
+    const message = appErr?.isOperational ? err.message : 'Internal server error';
 
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV === 'production') {
+        logger.error(
+            '[ErrorHandler] %s %s → %d: %s',
+            req.method,
+            req.path,
+            statusCode,
+            err.message
+        );
+    } else {
         console.error(`[${req.method}] ${req.path} → ${statusCode}: ${err.message}`);
         if (err.stack) console.error(err.stack);
     }
 
-    res.status(statusCode).json({
-        error: message,
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-    });
+    res.status(statusCode).json({ error: message });
 }

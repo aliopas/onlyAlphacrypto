@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { AlphaFocus } from '@/features/home/types';
+import { apiClient } from '@/features/shared/api/client';
 import Link from 'next/link';
 
 interface Props {
@@ -20,13 +21,12 @@ export function AlphaFocusCard({ data }: Props) {
 
         async function fetchSparkline() {
             try {
-                const response = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coinValue!.toUpperCase()}USDT&interval=1h&limit=24`);
-                if (!response.ok) throw new Error('Binance API error');
-                const rawData = await response.json();
-                const klineData = rawData as unknown[][];
-                if (cancelled || !Array.isArray(klineData) || klineData.length === 0) return;
+                const response = await apiClient.get(`/chart/klines/${coinValue.toUpperCase()}?limit=24`);
+                const chartData = response.data as { candles?: Array<{ close: number }> } | undefined;
+                const candles = chartData?.candles;
+                if (cancelled || !Array.isArray(candles) || candles.length === 0) return;
 
-                const prices = klineData.map((d) => Number(d[4]));
+                const prices = candles.map((d) => d.close);
                 const min = Math.min(...prices);
                 const max = Math.max(...prices);
                 const range = max - min || 1;
@@ -100,7 +100,6 @@ export function AlphaFocusCard({ data }: Props) {
             </div>
 
             <div className="flex gap-12 items-center">
-                {/* Spark chart */}
                 <div className="flex-1 h-36 relative">
                     <svg className="w-full h-full text-[#00ff88] drop-shadow-[0_0_8px_rgba(0,255,136,0.3)]"
                         preserveAspectRatio="none" viewBox="0 0 400 100">
@@ -115,7 +114,6 @@ export function AlphaFocusCard({ data }: Props) {
                     </div>
                 </div>
 
-                {/* Summary */}
                 <div className="w-[320px] space-y-4">
                     <div className="space-y-2">
                         <h3 className="text-[11px] font-mono text-[#888] uppercase tracking-widest border-b border-[#333] pb-1">

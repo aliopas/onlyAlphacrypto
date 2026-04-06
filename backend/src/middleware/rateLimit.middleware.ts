@@ -9,16 +9,20 @@ interface RateLimitOptions {
     maxRequests: number;
 }
 
-
-
-// ── Per-plan request limits (requests per hour) ─────────────────────────────
 export const PLAN_LIMITS: Record<string, number> = {
     free: 60,
     pro: 500,
     institutional: 5000,
 };
 
-// ── Generic rate limiter (IP-based) ─────────────────────────────────────────
+const RATE_LIMIT_LUA = `
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return current
+`;
+
 export function rateLimiter(options: RateLimitOptions) {
     return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         if (!redis) {
@@ -35,22 +39,24 @@ export function rateLimiter(options: RateLimitOptions) {
         const ip = req.ip || req.socket.remoteAddress || 'unknown';
         const key = `rl:${req.path}:${ip}`;
 
-        const current = await redis.incr(key);
-        if (current === 1) await redis.expire(key, options.windowSeconds);
+        try {
+            const current = await redis.eval(RATE_LIMIT_LUA, 1, key, String(options.windowSeconds)) as number;
 
-        if (current > options.maxRequests) {
-            res.status(429).json({ error: 'Too many requests', retryAfter: options.windowSeconds });
-            return;
+            if (current > options.maxRequests) {
+                res.status(429).json({ error: 'Too many requests', retryAfter: options.windowSeconds });
+                return;
+            }
+
+            res.setHeader('X-RateLimit-Limit', options.maxRequests);
+            res.setHeader('X-RateLimit-Remaining', Math.max(0, options.maxRequests - current));
+            next();
+        } catch (err) {
+            logger.error('[RateLimit] Redis eval error: %s', err instanceof Error ? err.message : String(err));
+            next();
         }
-
-        res.setHeader('X-RateLimit-Limit', options.maxRequests);
-        res.setHeader('X-RateLimit-Remaining', Math.max(0, options.maxRequests - current));
-        next();
     };
 }
 
-// ── Tiered rate limiter (plan-aware, per user) ──────────────────────────────
-// Reads req.userId and req.plan injected by authMiddleware
 export function tieredLimiter(windowSeconds = 3600) {
     return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
         if (!redis || !req.userId) {
@@ -72,28 +78,31 @@ export function tieredLimiter(windowSeconds = 3600) {
         const maxRequests = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
         const key = `rl:tier:${req.userId}`;
 
-        const current = await redis.incr(key);
-        if (current === 1) await redis.expire(key, windowSeconds);
+        try {
+            const current = await redis.eval(RATE_LIMIT_LUA, 1, key, String(windowSeconds)) as number;
 
-        if (current > maxRequests) {
-            const planName = plan.charAt(0).toUpperCase() + plan.slice(1);
-            res.status(429).json({
-                error: `Rate limit exceeded for ${planName} plan (${maxRequests} req/hr). Upgrade for higher limits.`,
-                limit: maxRequests,
-                retryAfter: windowSeconds,
-                upgradeUrl: '/settings#upgrade',
-            });
-            return;
+            if (current > maxRequests) {
+                const planName = plan.charAt(0).toUpperCase() + plan.slice(1);
+                res.status(429).json({
+                    error: `Rate limit exceeded for ${planName} plan (${maxRequests} req/hr). Upgrade for higher limits.`,
+                    limit: maxRequests,
+                    retryAfter: windowSeconds,
+                    upgradeUrl: '/settings#upgrade',
+                });
+                return;
+            }
+
+            res.setHeader('X-RateLimit-Limit', maxRequests);
+            res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - current));
+            res.setHeader('X-RateLimit-Plan', plan);
+            next();
+        } catch (err) {
+            logger.error('[TieredLimit] Redis eval error: %s', err instanceof Error ? err.message : String(err));
+            next();
         }
-
-        res.setHeader('X-RateLimit-Limit', maxRequests);
-        res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - current));
-        res.setHeader('X-RateLimit-Plan', plan);
-        next();
     };
 }
 
-// ── Pre-configured limiters ──────────────────────────────────────────────────
 export const apiLimiter = rateLimiter({ windowSeconds: 60, maxRequests: 60 });
 export const chatLimiter = rateLimiter({ windowSeconds: 60, maxRequests: 5 });
-export const authLimiter = rateLimiter({ windowSeconds: 900, maxRequests: 10 }); // 15-min
+export const authLimiter = rateLimiter({ windowSeconds: 900, maxRequests: 10 });

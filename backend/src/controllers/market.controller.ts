@@ -5,14 +5,13 @@ import {
     marketInsights, dailyAlphaFocus, dailyMarketMood,
     coinNews, radarSignals, airdropProjects, priceSnapshots
 } from '../models/index';
-import { desc, eq, gte, and } from 'drizzle-orm';
+import { desc, eq, gte, and, asc } from 'drizzle-orm';
 import { getLivePrices, getTopMovers } from '../services/binance.service';
 import { AppError } from '../middleware/errorHandler';
 
-// GET /api/market/insights/:coin
 export async function getCoinInsight(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const coin = String(req.params['coin']);
+        const coin = String(req.params['coin'] || '');
         const cacheKey = `insight:${coin}`;
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
@@ -29,12 +28,11 @@ export async function getCoinInsight(req: Request, res: Response, next: NextFunc
             return;
         }
 
-        await setCache(cacheKey, insight, 300); // 5 min
+        await setCache(cacheKey, insight, 300);
         res.json(insight);
     } catch (err) { next(err); }
 }
 
-// GET /api/market/alpha-focus
 export async function getAlphaFocus(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const cacheKey = 'alpha-focus:today';
@@ -54,19 +52,19 @@ export async function getAlphaFocus(req: Request, res: Response, next: NextFunct
             return;
         }
 
-        // Fetch latest price from priceSnapshots
-        const [latestPrice] = await db
+        const latestPriceRows = await db
             .select()
             .from(priceSnapshots)
             .where(eq(priceSnapshots.coinSymbol, focus.coinSymbol))
             .orderBy(desc(priceSnapshots.timestamp))
             .limit(1);
 
-        // Calculate real 24h price change
+        const latestPrice = latestPriceRows[0];
+
         let priceChange24h = 0;
         if (latestPrice) {
             const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-            const [oldPrice] = await db
+            const oldPriceRows = await db
                 .select()
                 .from(priceSnapshots)
                 .where(
@@ -75,9 +73,10 @@ export async function getAlphaFocus(req: Request, res: Response, next: NextFunct
                         gte(priceSnapshots.timestamp, twentyFourHoursAgo)
                     )
                 )
-                .orderBy(priceSnapshots.timestamp)
+                .orderBy(asc(priceSnapshots.timestamp))
                 .limit(1);
 
+            const oldPrice = oldPriceRows[0];
             if (oldPrice && oldPrice.price > 0) {
                 priceChange24h = ((latestPrice.price - oldPrice.price) / oldPrice.price) * 100;
             }
@@ -92,18 +91,17 @@ export async function getAlphaFocus(req: Request, res: Response, next: NextFunct
             priceChange24h: priceChange24h
         };
 
-        await setCache(cacheKey, mappedFocus, 600); // 10 min
+        await setCache(cacheKey, mappedFocus, 600);
         res.json(mappedFocus);
     } catch (err) { next(err); }
 }
 
-// GET /api/market/radar?limit=20&offset=0
 export async function getRadarSignals(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const limitParam = req.query.limit as string | undefined;
         const offsetParam = req.query.offset as string | undefined;
-        const limit = parseInt(limitParam || '20', 10);
-        const offset = parseInt(offsetParam || '0', 10);
+        const limit = Math.min(parseInt(limitParam || '20', 10) || 20, 100);
+        const offset = Math.max(parseInt(offsetParam || '0', 10) || 0, 0);
 
         const cacheKey = `radar:latest:${limit}:${offset}`;
         const cached = await getCache(cacheKey);
@@ -120,39 +118,40 @@ export async function getRadarSignals(req: Request, res: Response, next: NextFun
             ...s,
             coin: s.coinSymbol,
             signal: s.signalText,
-            formattedTime: req.formatTime(s.createdAt)
+            formattedTime: (req as unknown as { formatTime?: (date: Date | string | number) => string }).formatTime?.(s.createdAt) ?? null
         }));
 
-        await setCache(cacheKey, mappedSignals, 60); // 1 min
+        await setCache(cacheKey, mappedSignals, 60);
         res.json(mappedSignals);
     } catch (err) { next(err); }
 }
 
-// GET /api/market/wire?coin=SOL&limit=20
 export async function getLatestWire(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const coinParam = req.query.coin as string | undefined;
         const limitParam = req.query.limit as string | undefined;
 
         const coin = Array.isArray(coinParam) ? coinParam[0] : coinParam;
-        const limit = Array.isArray(limitParam) ? limitParam[0] : limitParam || '20';
+        const limitStr = Array.isArray(limitParam) ? limitParam[0] : limitParam || '20';
+        const limit = Math.min(parseInt(limitStr, 10) || 20, 100);
 
-        const cacheKey = `wire:${coin || 'all'}:${limit}:${req.userTimezone || 'UTC'}`;
+        const cacheKey = `wire:${coin || 'all'}:${limit}:${(req as unknown as { userTimezone?: string }).userTimezone || 'UTC'}`;
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
 
         let query = db.select().from(coinNews);
         if (coin && coin.toUpperCase() !== 'ALL') {
-            query.where(eq(coinNews.coinSymbol, coin.toUpperCase()));
+            query = query.where(eq(coinNews.coinSymbol, coin.toUpperCase()));
         }
 
         const news = await query
             .orderBy(desc(coinNews.publishedAt))
-            .limit(parseInt(limit, 10));
+            .limit(limit);
 
+        const formatTime = (req as unknown as { formatTime?: (date: Date | string | number) => string }).formatTime;
         const mappedNews = news.map(n => ({
             ...n,
-            formattedTime: req.formatTime(n.publishedAt)
+            formattedTime: formatTime?.(n.publishedAt) ?? null
         }));
 
         await setCache(cacheKey, mappedNews, 120);
@@ -160,12 +159,12 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
     } catch (err) { next(err); }
 }
 
-// GET /api/market/wire/:id
 export async function getWireById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const idParam = req.params.id;
         const idString = Array.isArray(idParam) ? idParam[0] : idParam;
-        const id = parseInt(idString as string);
+        const id = parseInt(idString as string, 10);
+        if (isNaN(id)) throw new AppError('Invalid article ID', 400);
 
         const [article] = await db.select().from(coinNews).where(eq(coinNews.id, id)).limit(1);
         if (!article) throw new AppError('Article not found', 404);
@@ -173,7 +172,6 @@ export async function getWireById(req: Request, res: Response, next: NextFunctio
     } catch (err) { next(err); }
 }
 
-// GET /api/market/mood
 export async function getMarketMood(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const cacheKey = 'mood:today';
@@ -196,10 +194,14 @@ export async function getMarketMood(req: Request, res: Response, next: NextFunct
     } catch (err) { next(err); }
 }
 
-// GET /api/market/movers
 export async function getTopMoversController(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+        const cacheKey = 'top-movers:10';
+        const cached = await getCache(cacheKey);
+        if (cached) { res.json(cached); return; }
+
         const movers = await getTopMovers(10);
+        await setCache(cacheKey, movers, 30);
         res.json(movers);
     } catch (err) { next(err); }
 }
@@ -209,7 +211,6 @@ import { runDiscovery, runRoutineSync } from '../crons/airdropHunter.cron';
 import { computeMarketMood } from '../crons/marketMood.cron';
 import { selectDailyAlpha } from '../crons/dailyAlpha.cron';
 
-// POST /api/market/force-seed
 export async function forceSeed(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         console.log('--- Force Seed Triggered ---');

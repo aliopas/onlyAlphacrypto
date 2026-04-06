@@ -3,7 +3,16 @@ import { db } from '../config/db';
 import { apiKeys, users } from '../models/index';
 import { eq } from 'drizzle-orm';
 import { redis } from '../config/redis';
-import crypto from 'crypto';
+import { hashKey } from '../utils/crypto';
+import { logger } from '../utils/logger';
+
+const RATE_LIMIT_LUA = `
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return current
+`;
 
 export interface ApiKeyRequest extends Request {
     userId?: number;
@@ -11,58 +20,53 @@ export interface ApiKeyRequest extends Request {
     apiKeyId?: number;
 }
 
-// ── Hash helper ─────────────────────────────────────────────────────────────
-function hashKey(rawKey: string): string {
-    return crypto.createHash('sha256').update(rawKey).digest('hex');
-}
-
-// ── API Key Auth Middleware ──────────────────────────────────────────────────
-// Accepts: X-API-Key: onlyalpha_live_<random>
-// Attaches: req.userId, req.plan, req.apiKeyId
 export async function apiKeyAuth(req: ApiKeyRequest, res: Response, next: NextFunction): Promise<void> {
     const rawKey = req.headers['x-api-key'] as string | undefined;
     if (!rawKey) {
-        res.status(401).json({ error: 'API key required. Include X-API-Key header.' });
+        res.status(401).json({ error: 'Authentication required. Include X-API-Key header.' });
         return;
     }
 
     try {
         const keyHash = hashKey(rawKey);
-        const [keyRow] = await db.select({
-            id: apiKeys.id,
-            userId: apiKeys.userId,
-            rateLimit: apiKeys.rateLimit,
-        }).from(apiKeys).where(eq(apiKeys.keyHash, keyHash));
 
-        if (!keyRow) {
-            res.status(401).json({ error: 'Invalid API key.' });
+        const [row] = await db
+            .select({
+                id: apiKeys.id,
+                userId: apiKeys.userId,
+                rateLimit: apiKeys.rateLimit,
+                plan: users.plan,
+            })
+            .from(apiKeys)
+            .innerJoin(users, eq(apiKeys.userId, users.id))
+            .where(eq(apiKeys.keyHash, keyHash));
+
+        if (!row) {
+            res.status(401).json({ error: 'Authentication required. Invalid or expired API key.' });
             return;
         }
 
-        // Enforce this key's own rate limit using Redis
         if (redis) {
-            const rlKey = `rl:apikey:${keyRow.id}`;
-            const count = await redis.incr(rlKey);
-            if (count === 1) await redis.expire(rlKey, 3600);
-            if (count > (keyRow.rateLimit ?? 100)) {
-                res.status(429).json({ error: 'API key rate limit exceeded.', retryAfter: 3600 });
+            const rlKey = `rl:apikey:${row.id}`;
+            const rateLimit = row.rateLimit ?? 100;
+            const count = await redis.eval(RATE_LIMIT_LUA, 1, rlKey, '3600') as number;
+            if (count > rateLimit) {
+                res.status(429).json({ error: 'Rate limit exceeded. Please retry later.', retryAfter: 3600 });
                 return;
             }
         }
 
-        // Look up user plan
-        const [user] = await db.select({ plan: users.plan }).from(users).where(eq(users.id, keyRow.userId));
-
-        // Update lastUsedAt asynchronously (don't await to avoid latency)
         db.update(apiKeys)
             .set({ lastUsedAt: new Date() })
-            .where(eq(apiKeys.id, keyRow.id))
+            .where(eq(apiKeys.id, row.id))
             .execute()
-            .catch(() => { });
+            .catch((err) => {
+                logger.error('[ApiKeyAuth] Failed to update lastUsedAt: %s', err instanceof Error ? err.message : String(err));
+            });
 
-        req.userId = keyRow.userId;
-        req.plan = user?.plan ?? 'free';
-        req.apiKeyId = keyRow.id;
+        req.userId = row.userId;
+        req.plan = row.plan ?? 'free';
+        req.apiKeyId = row.id;
         next();
     } catch (err) {
         next(err);

@@ -2,7 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env';
-import { testConnection } from './config/db';
+import { testConnection, pool } from './config/db';
+import { redis } from './config/redis';
 import routes from './routes/index';
 import { errorHandler } from './middleware/errorHandler';
 import { timeMiddleware } from './middleware/time.middleware';
@@ -17,25 +18,19 @@ import { logger } from './utils/logger';
 
 const app = express();
 
-// ─── Global Middleware ────────────────────────────────────────────────────────
+const allowedOrigins = env.NODE_ENV === 'production'
+    ? ['https://onlyalphacrypto.com', 'https://www.onlyalphacrypto.com']
+    : ['http://localhost:3000'];
 
 app.use(helmet());
-app.set('trust proxy', true); // Essential for request-ip to work correctly
+app.set('trust proxy', true);
 app.use(cors({
-    origin: [
-        'http://localhost:3000',
-        'https://onlyalphacrypto.com',
-        'https://www.onlyalphacrypto.com'
-    ],
+    origin: allowedOrigins,
     credentials: true,
 }));
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
-
-// IP-based Time Formatting Middleware
 app.use(timeMiddleware);
-
-// ─── API Routes ───────────────────────────────────────────────────────────────
 
 app.get('/api/health', async (_req, res) => {
     try {
@@ -48,29 +43,29 @@ app.get('/api/health', async (_req, res) => {
 
 app.use('/api', routes);
 
-// ─── 404 Handler ──────────────────────────────────────────────────────────────
-
 app.use((_req, res) => {
     res.status(404).json({ error: 'Route not found' });
 });
 
-// ─── Global Error Handler ────────────────────────────────────────────────────
-
 app.use(errorHandler);
 
-// ─── Startup ──────────────────────────────────────────────────────────────────
+async function gracefulShutdown(signal: string): Promise<void> {
+    logger.info('[Server] %s received — shutting down gracefully', signal);
+    try { pool.end(); } catch {}
+    try { redis?.disconnect(); } catch {}
+    process.exit(0);
+}
 
 async function bootstrap(): Promise<void> {
     try {
-        // Test DB connection
         await testConnection();
 
         const PORT = parseInt(env.PORT, 10);
         app.listen(PORT, () => {
-            console.log(`\n🚀 OnlyAlpha Backend running at http://localhost:${PORT}`);
-            console.log(`📡 Environment: ${env.NODE_ENV}`);
-            console.log(`🗄️  Database: Connected`);
-            console.log(`⏰ AI Engines: Starting...\n`);
+            logger.info('OnlyAlpha Backend running at http://localhost:%d', PORT);
+            logger.info('Environment: %s', env.NODE_ENV);
+            logger.info('Database: Connected');
+            logger.info('AI Engines: Starting...');
         });
 
         const cronStartDelay = 5000;
@@ -95,21 +90,14 @@ async function bootstrap(): Promise<void> {
             }, index * cronStartDelay);
         });
     } catch (error) {
-        console.error('❌ Failed to start server:', error);
+        logger.error('[Server] Failed to start: %s', error instanceof Error ? error.message : String(error));
         process.exit(1);
     }
 }
 
 bootstrap();
 
-process.on('SIGTERM', () => {
-    logger.info('[Server] SIGTERM received — shutting down gracefully');
-    process.exit(0);
-});
-
-process.on('SIGINT', () => {
-    logger.info('[Server] SIGINT received — shutting down gracefully');
-    process.exit(0);
-});
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;
