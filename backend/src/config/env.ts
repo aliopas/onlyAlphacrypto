@@ -36,8 +36,14 @@ const envSchema = z.object({
     // Alternative.me (no key needed, public API)
     ALTERNATIVE_ME_URL: z.string().url().default('https://api.alternative.me/fng/'),
 
+    // CoinCap
+    COINCAP_API_KEY: z.string().optional(),
+
     // Tavily (emergency fallback only)
     TAVILY_API_KEY: z.string().min(1).optional(),
+
+    // Birdeye (DEX chart candles)
+    BIRDEYE_API_KEY: z.string().optional(),
 
     // Next.js revalidation
     NEXTJS_REVALIDATE_SECRET: z.string().optional(),

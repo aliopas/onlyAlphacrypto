@@ -13,7 +13,7 @@ router.use(apiLimiter);
 router.get('/projects', getProjects);
 router.get('/projects/:id', getProjectById);
 router.get('/deadlines', getDeadlines);
-router.get('/projects/:id/progress', authMiddleware, getProgress);
+router.get('/projects/:id/progress', optionalAuth, getProgress);
 router.post('/verify/:taskId', authMiddleware, triggerVerification);
 router.get('/stats', optionalAuth, getStats);
 router.get('/activity', optionalAuth, getActivity);

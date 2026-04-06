@@ -56,11 +56,15 @@ export async function triggerVerification(req: AuthRequest, res: Response, next:
     } catch (err) { next(err); }
 }
 
-// GET /api/airdrop/projects/:id/progress  (requires auth)
+// GET /api/airdrop/projects/:id/progress  (optional auth — returns empty for guests)
 export async function getProgress(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
         const projectId = parseInt(String(req.params['id']), 10);
-        const userId = req.userId!;
+        const userId = req.userId;
+        if (!userId) {
+            res.json({ projectId, completedTasks: 0, totalTasks: 0, tasks: [] });
+            return;
+        }
 
         const progress = await getProjectProgress(userId, projectId);
         res.json(progress);
@@ -91,12 +95,12 @@ export async function getDeadlines(req: Request, res: Response, next: NextFuncti
     } catch (err) { next(err); }
 }
 
-// GET /api/airdrop/stats (requires auth)
+// GET /api/airdrop/stats (optional auth — returns defaults for guests)
 export async function getStats(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
         const userId = req.userId;
         if (!userId) {
-            res.status(401).json({ error: 'Unauthorized' });
+            res.json({ totalValue: 0, walletCount: 0, txCount: 0, completedTasks: 0 });
             return;
         }
 
@@ -127,12 +131,12 @@ export async function getStats(req: AuthRequest, res: Response, next: NextFuncti
     }
 }
 
-// GET /api/airdrop/activity (requires auth)
+// GET /api/airdrop/activity (optional auth — returns empty for guests)
 export async function getActivity(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
         const userId = req.userId;
         if (!userId) {
-            res.status(401).json({ error: 'Unauthorized' });
+            res.json([]);
             return;
         }
 

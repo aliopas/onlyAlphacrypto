@@ -1,5 +1,4 @@
 import { homeApi } from '@/features/home/api';
-import { airdropApi } from '@/features/airdrop/api';
 import { AlphaFocusCard } from '@/features/home/components/AlphaFocusCard';
 import { RadarGrid } from '@/features/home/components/RadarGrid';
 import { MarketMoodGauge } from '@/features/home/components/MarketMoodGauge';
@@ -9,12 +8,9 @@ import { AirdropWatchlist } from '@/features/home/components/AirdropWatchlist';
 export const revalidate = 60;
 
 export default async function HomePage() {
-  const [mood, alpha, signals, movers, airdrops] = await Promise.all([
-    homeApi.getMarketMood(),
+  const [alpha, signals] = await Promise.all([
     homeApi.getAlphaFocus(),
     homeApi.getRadarSignals(),
-    homeApi.getTopMovers(),
-    airdropApi.getProjects(),
   ]);
 
   return (
@@ -27,9 +23,9 @@ export default async function HomePage() {
 
       {/* Right — 30% */}
       <div className="w-full lg:w-[30%] flex flex-col gap-4 lg:self-start">
-        <MarketMoodGauge mood={mood} />
-        <TopMovers movers={movers} />
-        <AirdropWatchlist projects={airdrops} />
+        <MarketMoodGauge />
+        <TopMovers />
+        <AirdropWatchlist />
       </div>
     </div>
   );

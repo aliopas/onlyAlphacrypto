@@ -71,7 +71,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
 
     return (
         <div className="flex-1 flex flex-col lg:flex-row gap-4 h-full lg:overflow-hidden pb-0">
-            <TerminalMobileNav activeTab={activeMobileTab} onTabChange={setActiveMobileTab} />
+            <TerminalMobileNav activeTab={activeMobileTab} onTabChange={setActiveMobileTab} hasStreamContent={!!(selectedNewsId || selectedRadarId)} />
 
             {/* Left — AI Radar Stream Sidebar */}
             <div className={`flex flex-col h-full min-h-0 flex-1 lg:flex-none ${activeMobileTab === 'wire' ? 'w-full lg:w-[22%] lg:min-w-[280px]' : 'hidden lg:flex lg:w-[22%] lg:min-w-[280px]'}`}>
@@ -79,8 +79,8 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
                     news={initialNews}
                     radarSignals={signals}
                     targetedCoin={selectedCoin}
-                    onSelectNews={(id) => { setSelectedNewsId(id); setActiveTab('WIRE'); }}
-                    onSelectRadar={(id) => { setSelectedRadarId(id); setActiveTab('RADAR'); }}
+                    onSelectNews={(id) => { setSelectedNewsId(id); setActiveTab('WIRE'); setActiveMobileTab('stream'); }}
+                    onSelectRadar={(id) => { setSelectedRadarId(id); setActiveTab('RADAR'); setActiveMobileTab('stream'); }}
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                     selectedRadarId={selectedRadarId}

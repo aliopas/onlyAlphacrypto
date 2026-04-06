@@ -1,7 +1,7 @@
 # Terminal Page Client (Controller)
 
 ## Overview
-The `TerminalPageClient` component serves as the main state controller for the Terminal interface. It orchestrates the communication between the three main panes: the Left feed (`TerminalWire`), the Center analysis (`AlphaStream`), and the Right sidebar (`TerminalChat`).
+The `TerminalPageClient` component serves as the main state controller for the Terminal interface. It orchestrates the communication between the three main panes: the Left feed (`TerminalWire`), the Center analysis (`AlphaStream`), and the Right sidِِebar (`TerminalChat`).
 
 ## Logic & Data Flow
 - **Props:** Receives `initialNews`, `coin`, `radarSignals`, `initialRadarId`, and `isAlphaFocus` from the server-side page wrappers (`page.tsx` or `[coin]/page.tsx`).

@@ -96,6 +96,7 @@ export function TerminalWire({
                                 <div className="mt-4 pt-3 border-t border-[#222]">
                                     <div className="text-[9px] font-mono text-[#666] mb-2 uppercase tracking-wider flex items-center gap-1">
                                         <span className="material-symbols-outlined text-[12px]">article</span> Sources Analyzed
+                                        <span className="text-[8px] font-mono text-emerald-500/60 bg-emerald-500/10 border border-emerald-500/20 px-1 rounded-sm ml-auto">STREAM</span>
                                     </div>
                                     <div className="space-y-1.5">
                                         {itemNews.map(n => {
@@ -106,8 +107,11 @@ export function TerminalWire({
                                                     onClick={(e) => { e.stopPropagation(); onSelectNews?.(n.id); setActiveTab('WIRE'); }}
                                                     className={`text-[11px] truncate cursor-pointer transition-colors flex items-center gap-1.5 ${isSelectedNews ? 'text-[#135bec] font-medium' : 'text-[#888] hover:text-white'}`}
                                                 >
-                                                    <span className={`w-1 h-1 rounded-full ${isSelectedNews ? 'bg-[#135bec]' : 'bg-[#135bec]/30'}`} />
-                                                    {n.headline}
+                                                    <span className={`w-1 h-1 rounded-full shrink-0 ${isSelectedNews ? 'bg-[#135bec]' : 'bg-[#135bec]/30'}`} />
+                                                    <span className="truncate flex-1">{n.headline}</span>
+                                                    <span className={`material-symbols-outlined shrink-0 text-[11px] ${isSelectedNews ? 'text-[#135bec]' : 'text-[#333]'}`}>
+                                                        open_in_new
+                                                    </span>
                                                 </div>
                                             );
                                         })}

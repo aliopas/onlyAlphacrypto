@@ -156,6 +156,6 @@ export const coinNewsHistory = pgTable('coin_news_history', {
     fetchedAt:     timestamp('fetched_at').defaultNow().notNull(),
 }, (table) => {
     return {
-        unq: unique(table.coinSymbol, table.title, table.publishedAt)
+        unq: unique('coin_news_history_unq').on(table.coinSymbol, table.title, table.publishedAt)
     };
 });

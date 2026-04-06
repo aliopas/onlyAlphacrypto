@@ -3,9 +3,10 @@
 interface Props {
     activeTab: 'wire' | 'stream' | 'chat';
     onTabChange: (tab: 'wire' | 'stream' | 'chat') => void;
+    hasStreamContent?: boolean;
 }
 
-export function TerminalMobileNav({ activeTab, onTabChange }: Props) {
+export function TerminalMobileNav({ activeTab, onTabChange, hasStreamContent = false }: Props) {
     return (
         <nav className="flex-none lg:hidden w-full bg-[#0A0A0A] border border-[#333] grid grid-cols-3 p-1 rounded-md relative shrink-0">
             <button
@@ -19,8 +20,11 @@ export function TerminalMobileNav({ activeTab, onTabChange }: Props) {
             </button>
             <button
                 onClick={() => onTabChange('stream')}
-                className={`w-full flex justify-center items-center gap-1.5 py-2 transition-all outline-none rounded-[4px] ${activeTab === 'stream' ? 'bg-[#181818] border border-[#555] text-white shadow-sm' : 'bg-transparent border border-transparent text-[#555] hover:text-[#888]'}`}
+                className={`relative w-full flex justify-center items-center gap-1.5 py-2 transition-all outline-none rounded-[4px] ${activeTab === 'stream' ? 'bg-[#181818] border border-[#555] text-white shadow-sm' : 'bg-transparent border border-transparent text-[#555] hover:text-[#888]'}`}
             >
+                {hasStreamContent && activeTab !== 'stream' && (
+                    <span className="absolute top-1 right-1/4 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
+                )}
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={activeTab === 'stream' ? 'text-emerald-500' : ''}>
                     <rect x="3" y="3" width="7" height="7" />
                     <rect x="14" y="3" width="7" height="7" />
