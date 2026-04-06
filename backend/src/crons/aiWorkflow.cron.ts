@@ -1,14 +1,15 @@
 import cron from 'node-cron';
 import crypto from 'crypto';
 import { db } from '../config/db';
-import { marketInsights, coinNews, radarSignals } from '../models/market.model';
-import { eq } from 'drizzle-orm';
-
-import { getTopBoostedTokens, getTokenData, DexTokenInfo } from '../services/dexscreener.service';
-import { searchTavily } from '../services/tavily.service';
-import { generateDeepIntelligenceReport, DeepIntelligenceReport } from '../services/openai.service';
+import { getCoinIntelligence } from '../services/coinIntelligence.service';
+import { fetchHistoricalNewsForCoins, buildTemporalPattern } from '../services/temporalIntelligence.service';
+import { getPriceWithFallback } from '../services/priceService';
+import { getDynamicThreshold, countPublishedLastHour } from '../services/dynamicThreshold.service';
+import { deepseekBreaker, gptNanoBreaker } from '../services/circuitBreaker.service';
+import { callDeepSeekAnalysis, callGptNanoWriter } from '../services/openai.service';
+import { coinNews, radarSignals, rawNewsBuffer } from '../models/market.model';
+import { eq, gte, and, desc, sql, isNotNull, ne } from 'drizzle-orm';
 import { deleteCache } from '../config/redis';
-import { fetchTopItemsForDeepAnalysis } from '../services/ai/deep-analysis-router';
 
 // Simple boolean lock for the cron job to avoid running concurrently
 let isAiWorkflowRunning = false;
@@ -18,133 +19,121 @@ function generateSlug(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
 }
 
-export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void> {
+export async function runAiWorkflow(): Promise<void> {
     if (isAiWorkflowRunning) {
         console.log('⏳ [AI Workflow] Already running. Skipping this cycle.');
         return;
     }
     isAiWorkflowRunning = true;
-    console.log(`🤖 [AI Workflow] Started. Mode: ${targetedPhase}`);
+    console.log('🤖 [AI Workflow] Started.');
 
     try {
-        // --- PHASE 1: Fetch top-scored items from buffer (replaces Hunter + Aggregator) ---
-        console.log('--- Phase 1: Deep Analysis Router ---');
-        const groupedCoins = await fetchTopItemsForDeepAnalysis(15);
-
-        if (groupedCoins.length === 0) {
-            console.log('[AI Workflow] No high-scoring items to analyze.');
+        // Step 1: Hard cap
+        const hourlyCount = await countPublishedLastHour();
+        if (hourlyCount >= 5) {
+            console.log('[AI Workflow] Hourly cap reached (5). Skipping.');
             return;
         }
 
-        const coinsToAnalyze = groupedCoins.filter(g => g.coinSymbol !== 'UNKNOWN');
-        console.log(`[AI Workflow] Found ${coinsToAnalyze.length} coins to analyze.`);
+        // Step 2: Dynamic threshold
+        const threshold = await getDynamicThreshold();
+        console.log(`[AI Workflow] Dynamic threshold: ${threshold}`);
 
-        // --- PHASE 2: The Brain (AI Analysis via DeepSeek R1) ---
-        console.log('--- Phase 2: Brain ---');
-        const aiReports: Array<{
-            symbol: string;
-            name: string;
-            stats: DexTokenInfo | null;
-            recentNews: string[];
-            aiReport: DeepIntelligenceReport;
-        }> = [];
+        // Step 3: Fetch eligible items from rawNewsBuffer
+        const items = await db.select()
+            .from(rawNewsBuffer)
+            .where(and(
+                gte(rawNewsBuffer.relevanceScore, threshold),
+                eq(rawNewsBuffer.processed, true),
+                isNotNull(rawNewsBuffer.symbolMentions),
+                ne(rawNewsBuffer.symbolMentions, sql`'[]'::jsonb`)
+            ))
+            .orderBy(desc(rawNewsBuffer.relevanceScore))
+            .limit(5 - hourlyCount);
 
-        // Pre-fetch DexScreener tokens for address resolution
-        const dexTokens = await getTopBoostedTokens();
-        const dexMap = new Map(dexTokens.map(t => [t.symbol.toUpperCase(), t.address]));
+        // Step 4: Loop through items
+        for (const item of items) {
+            const mentions = (item.symbolMentions as string[]) || [];
+            if (mentions.length === 0) continue;
+            const symbol = mentions[0];
+            const eventType = typeof item.eventType === 'string' ? item.eventType : 'Other';
+            const eventSeverity = typeof item.eventSeverity === 'number' ? item.eventSeverity : 1;
 
-        for (const coin of coinsToAnalyze) {
-            console.log(`[Brain] Analyzing ${coin.coinSymbol} (${coin.newsTitles.length} news, avg score: ${coin.avgRelevanceScore.toFixed(0)})...`);
+            console.log(`[AI Workflow] Processing: ${symbol} — "${item.title.slice(0, 60)}..."`);
 
             try {
-                // Try to get token stats from DexScreener via known address
-                const address = dexMap.get(coin.coinSymbol.toUpperCase());
-                const tokenStats = address ? await getTokenData(address) : null;
+                // 4a. Coin Intelligence
+                const intelligence = await getCoinIntelligence(symbol);
 
-                // Deduplication: check which news items already exist in coin_news
-                const existingContext: string[] = [];
-                const freshNews: string[] = [];
+                // 4b. Temporal Pattern
+                await fetchHistoricalNewsForCoins([symbol]);
+                const pattern = await buildTemporalPattern(symbol, eventType, eventSeverity);
 
-                for (const title of coin.newsTitles) {
-                    const hash = crypto.createHash('sha256').update(title.trim().toLowerCase()).digest('hex');
-                    const [existing] = await db.select().from(coinNews).where(eq(coinNews.sourceHash, hash)).limit(1);
-                    if (existing) {
-                        existingContext.push(`${title} (Sentiment: ${existing.sentiment})`);
-                    } else {
-                        freshNews.push(title);
-                    }
+                // 4c. Current Price
+                const price = await getPriceWithFallback(symbol);
+
+                // 4d. DeepSeek Analysis (circuit breaker)
+                if (deepseekBreaker.isOpen()) {
+                    console.warn(`[AI Workflow] DeepSeek circuit open — skipping ${symbol}`);
+                    continue;
                 }
 
-                // Scam check via Tavily
-                const scamCheck = freshNews.length > 0 ? await searchTavily(`${coin.coinSymbol} crypto scam team`) : '';
-
-                // Deep analysis via DeepSeek R1
-                const report = await generateDeepIntelligenceReport(coin.coinSymbol, {
-                    recentNews: freshNews,
-                    existingContext,
-                    stats: tokenStats ? tokenStats as unknown as Record<string, number | string> : undefined,
-                    scamReport: scamCheck,
+                const analysisResult = await callDeepSeekAnalysis({
+                    headline: item.title,
+                    intelligence,
+                    pattern,
+                    price,
                 });
+                deepseekBreaker.recordSuccess();
 
-                aiReports.push({
-                    symbol: coin.coinSymbol,
-                    name: tokenStats?.name || coin.coinSymbol,
-                    stats: tokenStats,
-                    recentNews: freshNews,
-                    aiReport: report,
-                });
-            } catch (err: unknown) {
-                const message = err instanceof Error ? err.message : String(err);
-                console.error(`[Brain] Failed to analyze ${coin.coinSymbol}:`, message);
-            }
-        }
-
-        // --- PHASE 3: The Publisher (Storage & Display) ---
-        console.log('--- Phase 3: Publisher ---');
-        if (aiReports.length === 0) {
-            console.log('[Publisher] No reports generated. Skipping publish.');
-        } else {
-            for (const item of aiReports) {
-                const report = item.aiReport;
-
-                await db.insert(marketInsights).values({
-                    coinSymbol: item.symbol,
-                    coinName: item.name,
-                    coinSlug: generateSlug(item.name),
-                    verdict: report.verdict,
-                    confidenceScore: report.confidenceScore,
-                    executiveSummary: report.executiveSummary,
-                    keyDrivers: report.keyDrivers || [],
-                    marketContext: report.marketContext || '',
-                    riskLevel: report.riskVerdict,
-                    redFlags: report.redFlags || [],
-                    priceAtAnalysis: item.stats?.priceUsd ? parseFloat(item.stats.priceUsd) : 0,
-                });
-
-                for (const headline of item.recentNews) {
-                    try {
-                        const hash = crypto.createHash('sha256').update(headline.trim().toLowerCase()).digest('hex');
-                        await db.insert(coinNews).values({
-                            coinSymbol: item.symbol,
-                            headline: headline,
-                            sourceHash: hash,
-                            aiProcessed: 1,
-                            sentiment: report.verdict === 'STRONG_BUY' || report.verdict === 'BUY' ? 'bullish' : 'neutral'
-                        }).onConflictDoNothing();
-                    } catch (_err) { }
+                // 4e. GPT-nano Article (circuit breaker)
+                if (gptNanoBreaker.isOpen()) {
+                    console.warn(`[AI Workflow] GPT-nano circuit open — skipping ${symbol}`);
+                    continue;
                 }
 
-                if (report.verdict === 'STRONG_BUY' || report.verdict === 'STRONG_SELL' || report.riskVerdict === 'HIGH' || report.riskVerdict === 'SCAM') {
+                const article = await callGptNanoWriter(JSON.stringify(analysisResult));
+                gptNanoBreaker.recordSuccess();
+
+                // 4f. Save to coinNews
+                const sourceHash = crypto.createHash('sha256').update(article.headline).digest('hex');
+                await db.insert(coinNews).values({
+                    coinSymbol: symbol,
+                    headline: article.headline,
+                    summary: article.fullArticle,
+                    hook: article.hook,
+                    metaTitle: article.metaTitle,
+                    metaDescription: article.metaDescription,
+                    seoKeywords: article.seoKeywords,
+                    sentiment: analysisResult.sentiment,
+                    impactScore: analysisResult.impactScore,
+                    isBreaking: analysisResult.isBreaking ? 1 : 0,
+                    sourceHash,
+                    aiProcessed: 1,
+                }).onConflictDoNothing();
+
+                // 4g. Radar signal for strong verdicts
+                if (analysisResult.verdict === 'STRONG_BUY' || analysisResult.verdict === 'STRONG_SELL') {
                     await db.insert(radarSignals).values({
-                        coinSymbol: item.symbol,
-                        signalText: report.executiveSummary,
-                        sentiment: report.verdict,
-                    });
+                        coinSymbol: symbol,
+                        signalText: analysisResult.signalText,
+                        sentiment: analysisResult.sentiment,
+                        impactScore: analysisResult.impactScore,
+                    }).onConflictDoNothing();
                 }
-            }
 
-            await deleteCache('insight:all');
-            console.log(`[Publisher] Saved ${aiReports.length} insights.`);
+                // 4h. Redis invalidation (targeted only)
+                await deleteCache(`news:${symbol}`);
+                await deleteCache('insight:all');
+
+                console.log(`[AI Workflow] Published: ${symbol} — "${article.headline.slice(0, 50)}..."`);
+
+            } catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                console.error(`[AI Workflow] Failed for ${symbol}:`, message);
+                deepseekBreaker.recordFailure('DeepSeek');
+                gptNanoBreaker.recordFailure('GPT-nano');
+            }
         }
 
         console.log('✅ [AI Workflow] Completed successfully.');
@@ -157,6 +146,6 @@ export async function runAiWorkflow(targetedPhase: string = 'all'): Promise<void
 }
 
 export function startAiWorkflowCron(): void {
-    cron.schedule('0 * * * *', () => runAiWorkflow('all'));
+    cron.schedule('0 * * * *', () => runAiWorkflow());
     console.log('⏰ AI Intelligence Workflow scheduled — hourly');
 }
