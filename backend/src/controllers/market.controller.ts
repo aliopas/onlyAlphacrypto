@@ -5,7 +5,7 @@ import {
     marketInsights, dailyAlphaFocus, dailyMarketMood,
     coinNews, radarSignals, airdropProjects, priceSnapshots
 } from '../models/index';
-import { desc, eq, gte, and, asc } from 'drizzle-orm';
+import { desc, eq, gte, and, asc, sql } from 'drizzle-orm';
 import { getLivePrices, getTopMovers } from '../services/binance.service';
 import { AppError } from '../middleware/errorHandler';
 
@@ -123,6 +123,22 @@ export async function getRadarSignals(req: Request, res: Response, next: NextFun
 
         await setCache(cacheKey, mappedSignals, 60);
         res.json(mappedSignals);
+    } catch (err) { next(err); }
+}
+
+export async function getAssetCount(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const cacheKey = 'stats:asset-count';
+        const cached = await getCache(cacheKey);
+        if (cached !== null) { res.json(cached); return; }
+
+        const [{ count }] = await db
+            .select({ count: sql<number>`COUNT(DISTINCT ${marketInsights.coinSymbol})` })
+            .from(marketInsights);
+
+        const result = { count };
+        await setCache(cacheKey, result, 300);
+        res.json(result);
     } catch (err) { next(err); }
 }
 

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { RadarSignal } from '@/features/home/types';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/features/shared/api/client';
+import { homeApi } from '@/features/home/api';
 
 interface Props {
     signals: RadarSignal[];
@@ -29,6 +30,11 @@ export function RadarGrid({ signals: initialSignals }: Props) {
     const [offset, setOffset] = useState(initialSignals.length);
     const [hasMore, setHasMore] = useState(initialSignals.length >= 6);
     const [isLoading, setIsLoading] = useState(false);
+    const [assetCount, setAssetCount] = useState<number | null>(null);
+
+    useEffect(() => {
+        homeApi.getAssetCount().then(setAssetCount);
+    }, []);
 
     const handleLoadMore = async () => {
         if (isLoading || !hasMore) return;
@@ -58,7 +64,7 @@ export function RadarGrid({ signals: initialSignals }: Props) {
                     <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block" /> Live AI Radar
                 </h3>
                 <span className="text-[10px] font-mono text-[#555] uppercase tracking-tighter">
-                    Scanning <span className="font-mono-nums">2,482</span> Assets
+                    Scanning <span className="font-mono-nums">{assetCount !== null ? assetCount.toLocaleString() : '---'}</span> Assets
                 </span>
             </div>
 

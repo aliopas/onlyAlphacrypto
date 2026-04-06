@@ -40,6 +40,16 @@ export const homeApi = {
             console.error('[API] getTopMovers failed:', error);
             return [];
         }
+    },
+
+    getAssetCount: async (): Promise<number> => {
+        try {
+            const { data } = await apiClient.get<{ count: number }>('/market/asset-count');
+            return data.count;
+        } catch (error) {
+            console.error('[API] getAssetCount failed:', error);
+            return 0;
+        }
     }
 };
 
