@@ -17,11 +17,12 @@ export function AlphaFocusCard({ data }: Props) {
         const coinValue = data?.coin;
         if (!coinValue) return;
 
+        const symbol = coinValue.toUpperCase();
         let cancelled = false;
 
         async function fetchSparkline() {
             try {
-                const response = await apiClient.get(`/chart/klines/${coinValue.toUpperCase()}?limit=24`);
+                const response = await apiClient.get(`/chart/klines/${symbol}?limit=24`);
                 const chartData = response.data as { candles?: Array<{ close: number }> } | undefined;
                 const candles = chartData?.candles;
                 if (cancelled || !Array.isArray(candles) || candles.length === 0) return;
