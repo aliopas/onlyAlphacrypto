@@ -1,13 +1,10 @@
 import axios from 'axios';
 
-// Phase 1 & 2: Get news from CryptoPanic
-// CryptoPanic has a free tier that doesn't strictly always require an API key for public endpoints, 
-// though using an API key gives better limits. We'll use the public endpoint as requested.
 export async function getCryptoPanicNews(filter?: string): Promise<string[]> {
     try {
         let url = 'https://cryptopanic.com/api/v1/posts/?public=true';
         if (filter) {
-            url += `&filter=${filter}`; // e.g. 'rising', 'hot', 'bullish', 'bearish'
+            url += `&filter=${filter}`;
         }
 
         const res = await axios.get(url, { timeout: 10000 });
@@ -16,12 +13,16 @@ export async function getCryptoPanicNews(filter?: string): Promise<string[]> {
             return [];
         }
 
-        return res.data.results.map((post: any) => post.title);
-    } catch (err: any) {
-        if (err.response && err.response.status === 403) {
-            console.error('[CryptoPanic] API key required or rate limited.');
+        return res.data.results.map((post: { title?: string }) => post.title ?? '').filter(Boolean);
+    } catch (err: unknown) {
+        if (axios.isAxiosError(err)) {
+            if (err.response?.status === 403) {
+                console.error('[CryptoPanic] API key required or rate limited.');
+            } else {
+                console.error('[CryptoPanic] Error fetching news:', err.message);
+            }
         } else {
-            console.error('[CryptoPanic] Error fetching news:', err.message);
+            console.error('[CryptoPanic] Error fetching news:', err instanceof Error ? err.message : String(err));
         }
         return [];
     }
@@ -37,18 +38,19 @@ export async function searchCryptoPanic(query: string): Promise<string[]> {
         const res = await axios.get(url, { timeout: 10000 });
         if (!res.data || !res.data.results) return [];
 
-        return res.data.results.map((post: any) => post.title);
+        return res.data.results.map((post: { title?: string }) => post.title ?? '').filter(Boolean);
 
-    } catch (err: any) {
-        if (err.response?.status === 404) {
-            // Token not indexed in CryptoPanic — expected for small/new DexScreener tokens
-            return [];
+    } catch (err: unknown) {
+        if (axios.isAxiosError(err)) {
+            if (err.response?.status === 404) {
+                return [];
+            }
+            if (err.response?.status === 429) {
+                console.warn(`[CryptoPanic] Rate limited for "${query}" — returning empty.`);
+                return [];
+            }
+            console.warn(`[CryptoPanic] Search failed for ${query}:`, err.message);
         }
-        if (err.response?.status === 429) {
-            console.warn(`[CryptoPanic] Rate limited for "${query}" — returning empty. Consider adding CRYPTOPANIC_API_KEY.`);
-            return [];
-        }
-        console.warn(`[CryptoPanic] Search failed for ${query}:`, err.message);
         return [];
     }
 }

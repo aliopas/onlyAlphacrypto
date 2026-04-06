@@ -24,8 +24,8 @@ export async function getTopBoostedTokens(): Promise<Array<{ symbol: string; add
         if (!resProfiles.data || !Array.isArray(resProfiles.data)) return [];
 
         const addresses = resProfiles.data
-            .map((t: any) => t.tokenAddress)
-            .filter(Boolean)
+            .map((t: { tokenAddress?: string }) => t.tokenAddress)
+            .filter((addr): addr is string => Boolean(addr))
             .slice(0, 30);
 
         if (addresses.length === 0) return [];
@@ -38,9 +38,9 @@ export async function getTopBoostedTokens(): Promise<Array<{ symbol: string; add
         const validTokens: Array<{ symbol: string; address: string }> = [];
         const seenAddresses = new Set<string>();
 
-        resPairs.data.pairs.forEach((pair: any) => {
-            const symbol = pair.baseToken.symbol;
-            const address = pair.baseToken.address;
+        resPairs.data.pairs.forEach((pair: { baseToken?: { symbol?: string; address?: string }; liquidity?: { usd?: number }; volume?: { h24?: number }; pairCreatedAt?: number }) => {
+            const symbol = pair.baseToken?.symbol;
+            const address = pair.baseToken?.address;
 
             const liquidityUsd = pair.liquidity?.usd || 0;
             const volume24h = pair.volume?.h24 || 0;
@@ -49,7 +49,7 @@ export async function getTopBoostedTokens(): Promise<Array<{ symbol: string; add
 
             if (
                 symbol && symbol.trim() !== '' && symbol.toUpperCase() !== 'UNKNOWN' &&
-                !seenAddresses.has(address) &&
+                address && !seenAddresses.has(address) &&
                 liquidityUsd >= 5000 &&
                 volume24h >= 1000 &&
                 pairCreatedAtMsg < twentyFourHoursAgo

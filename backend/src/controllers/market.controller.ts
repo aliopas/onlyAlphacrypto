@@ -212,33 +212,22 @@ import { selectDailyAlpha } from '../crons/dailyAlpha.cron';
 // POST /api/market/force-seed
 export async function forceSeed(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const phaseParam = req.query.phase as string | undefined;
-        const targetedPhase = phaseParam || 'all';
+        console.log('--- Force Seed Triggered ---');
 
-        console.log(`--- Force Seed Triggered (Phase: ${targetedPhase}) ---`);
+        await runAiWorkflow();
 
-        // 1. AI Intelligence Workflow
-        await runAiWorkflow(targetedPhase);
+        await selectDailyAlpha();
+        await computeMarketMood();
 
-        if (targetedPhase === 'all' || targetedPhase === '4') {
-            // 2. Select today's Alpha Focus based on the insights just generated
-            await selectDailyAlpha();
-
-            // 3. Compute Market Mood
-            await computeMarketMood();
-
-            // 4. Optionally run Airdrop Hunter (might be slow due to AI, but let's try)
-            // Only run discovery if DB has no active projects, or if forced
-            const [aCount] = await db.select({ id: airdropProjects.id }).from(airdropProjects).limit(1);
-            if (!aCount) {
-                await runDiscovery();
-            } else {
-                await runRoutineSync();
-            }
+        const [aCount] = await db.select({ id: airdropProjects.id }).from(airdropProjects).limit(1);
+        if (!aCount) {
+            await runDiscovery();
+        } else {
+            await runRoutineSync();
         }
 
         console.log('--- Force Seed Complete ---');
-        res.json({ success: true, message: `All crons executed successfully for phase: ${targetedPhase}.` });
+        res.json({ success: true, message: 'All crons executed successfully.' });
     } catch (err) {
         next(err);
     }

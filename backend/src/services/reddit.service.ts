@@ -15,7 +15,7 @@ export async function getHotCryptoTopics(): Promise<string[]> {
         }
 
         const topics = res.data.data.children
-            .map((child: any) => child.data.title)
+            .map((child: { data?: { title?: string } }) => child.data?.title ?? '')
             .filter((title: string) => title && title.length > 5);
 
         return topics;

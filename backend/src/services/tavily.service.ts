@@ -28,12 +28,12 @@ export async function searchTavily(query: string): Promise<string> {
         }
 
         if (res.data && res.data.results && res.data.results.length > 0) {
-            return res.data.results.map((r: any) => r.content).join(' | ');
+            return res.data.results.map((r: { content?: string }) => r.content ?? '').filter(Boolean).join(' | ');
         }
 
         return '';
-    } catch (err: any) {
-        console.error(`[Tavily] Error searching for "${query}":`, err.message);
+    } catch (err: unknown) {
+        console.error(`[Tavily] Error searching for "${query}":`, err instanceof Error ? err.message : String(err));
         return '';
     }
 }
