@@ -39,6 +39,27 @@ export class AIGateway {
         return JSON.parse(content) as T;
     }
 
+    async chatRaw(params: {
+        model: string;
+        messages: OpenAI.ChatCompletionMessageParam[];
+        temperature?: number;
+        responseFormat?: { type: 'json_object' };
+    }): Promise<string> {
+        const response = await this._client.chat.completions.create({
+            model: params.model,
+            messages: params.messages,
+            temperature: params.temperature,
+            response_format: params.responseFormat,
+        });
+
+        const content = response.choices[0].message.content;
+        if (!content) {
+            throw new Error('Empty response from AI gateway');
+        }
+
+        return content;
+    }
+
     async *chatStream(params: {
         model: string;
         messages: OpenAI.ChatCompletionMessageParam[];

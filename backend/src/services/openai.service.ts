@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { z } from 'zod';
 import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
 import { AIGateway } from './ai/ai-gateway';
@@ -98,6 +99,15 @@ export interface ArticleWriterResult {
     metaDescription: string;
     seoKeywords: string[];
 }
+
+const ArticleSchema = z.object({
+    headline: z.string().max(120),
+    hook: z.string(),
+    fullArticle: z.string().min(800),
+    metaTitle: z.string().max(60),
+    metaDescription: z.string().max(160),
+    seoKeywords: z.array(z.string()).length(5),
+});
 
 // Instantiate the modular components
 const cache = new CacheManager();
@@ -453,14 +463,34 @@ export async function callDeepSeekAnalysis(input: DeepAnalysisInput): Promise<De
     });
 }
 
-export async function callGptNanoWriter(analysisJson: string): Promise<ArticleWriterResult> {
+export async function callGptNanoWriter(analysisJson: string, attempt: number = 1): Promise<ArticleWriterResult> {
+    const MAX_ATTEMPTS = 3;
+
     const messages = prompts.buildArticleWriterMessages(analysisJson);
-    return gateway.chat<ArticleWriterResult>({
+    const raw = await gateway.chatRaw({
         model: env.SEO_MODEL,
         temperature: 0.5,
         responseFormat: { type: 'json_object' },
         messages,
     });
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        console.warn(`[GPT-nano] JSON parse failed (attempt ${attempt}). Raw: ${raw.slice(0, 200)}`);
+        if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysisJson, attempt + 1);
+        throw new Error('GPT-nano returned invalid JSON after 3 attempts');
+    }
+
+    const result = ArticleSchema.safeParse(parsed);
+    if (!result.success) {
+        console.warn(`[GPT-nano] Schema validation failed (attempt ${attempt}):`, result.error.issues);
+        if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysisJson, attempt + 1);
+        throw new Error('GPT-nano response failed schema validation after 3 attempts');
+    }
+
+    return result.data;
 }
 
 // ─── AI Chat Stream (GPT-5-nano — SEO optimized, user-facing) ────────────────
@@ -477,3 +507,6 @@ export async function streamChatResponse(
         messages: chatMessages
     });
 }
+
+export { gateway };
+export { prompts };

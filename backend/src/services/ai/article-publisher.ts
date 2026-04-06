@@ -1,9 +1,7 @@
 import { db } from '../../config/db';
 import { coinNews, radarSignals } from '../../models/market.model';
 import { createHash } from 'crypto';
-import { PromptFactory } from './prompt-factory';
-import { AIGateway } from './ai-gateway';
-import { CacheManager } from './cache-manager';
+import { gateway, prompts } from '../openai.service';
 import { env } from '../../config/env';
 import { eq } from 'drizzle-orm';
 import type { DeepSynthesisResult } from '../openai.service';
@@ -16,19 +14,7 @@ interface ArticleSEOResult {
 }
 
 export async function publishArticle(coinSymbol: string, synthesis: DeepSynthesisResult, newsArticles: string[]): Promise<{ newsId: number; seo: ArticleSEOResult }> {
-    const promptFactory = new PromptFactory();
-    const gateway = new AIGateway({
-        apiKey: env.OPENROUTER_API_KEY,
-        baseURL: 'https://openrouter.ai/api/v1',
-        timeoutMs: 90000,
-        defaultHeaders: {
-            'HTTP-Referer': 'https://onlyalpha.app',
-            'X-Title': 'OnlyAlpha',
-        },
-    });
-    const cache = new CacheManager();
-
-    const seoMessages = promptFactory.buildArticleSEOMessages(synthesis.fullArticle, coinSymbol);
+    const seoMessages = prompts.buildArticleSEOMessages(synthesis.fullArticle, coinSymbol);
     const seoResult = await gateway.chat<ArticleSEOResult>({
         model: env.SEO_MODEL,
         messages: seoMessages,

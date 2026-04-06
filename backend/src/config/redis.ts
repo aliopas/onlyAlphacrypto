@@ -31,3 +31,11 @@ export async function deleteCache(key: string): Promise<void> {
     if (!redis) return;
     await redis.del(key);
 }
+
+export async function deleteCachePattern(pattern: string): Promise<void> {
+    if (!redis) return;
+    const keys = await redis.keys(pattern);
+    if (keys.length > 0) {
+        await redis.del(...keys);
+    }
+}
