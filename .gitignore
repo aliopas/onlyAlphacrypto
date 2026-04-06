@@ -42,3 +42,6 @@ Thumbs.db
 # Gemini / CLI related
 .gemini/
 .specify/
+
+# Kilo CLI
+.kilo/
