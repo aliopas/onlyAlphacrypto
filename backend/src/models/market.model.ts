@@ -1,6 +1,6 @@
 import {
     pgTable, serial, varchar, text, timestamp,
-    integer, real, jsonb, boolean, pgEnum, unique
+    integer, real, json, jsonb, boolean, pgEnum, unique
 } from 'drizzle-orm/pg-core';
 
 // ─── MARKET INSIGHTS (AI Verdicts per Coin) ───────────────────────────────────
