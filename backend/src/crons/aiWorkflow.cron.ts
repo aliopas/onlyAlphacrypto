@@ -14,7 +14,7 @@ import { validateFactualGrounding } from '../services/ai/factual-grounding';
 import { auditArticleQuality } from '../services/ai/quality-auditor';
 import { coinNews, radarSignals, rawNewsBuffer } from '../models/market.model';
 import { eq, gte, and, desc, sql, isNotNull, ne } from 'drizzle-orm';
-import { deleteCache } from '../config/redis';
+import { deleteCache, deleteCachePattern } from '../config/redis';
 
 let isAiWorkflowRunning = false;
 
@@ -180,8 +180,9 @@ export async function runAiWorkflow(): Promise<void> {
                     aiProcessed: 1,
                 }).onConflictDoNothing();
 
-                // 4g. Radar signal for strong verdicts
-                if (analysisResult.verdict === 'STRONG_BUY' || analysisResult.verdict === 'STRONG_SELL') {
+                // 4g. Radar signal for actionable verdicts
+                const actionableVerdicts = ['STRONG_BUY', 'STRONG_SELL', 'BUY', 'SELL'];
+                if (actionableVerdicts.includes(analysisResult.verdict)) {
                     await db.insert(radarSignals).values({
                         coinSymbol: symbol,
                         signalText: analysisResult.signalText,
@@ -209,6 +210,39 @@ export async function runAiWorkflow(): Promise<void> {
     } finally {
         isAiWorkflowRunning = false;
     }
+}
+
+export async function backfillRadarSignals(): Promise<{ created: number }> {
+    const actionableSentiments = ['bullish', 'bearish', 'strong_bullish', 'strong_bearish'];
+
+    const existingNews = await db.select().from(coinNews).where(
+        and(
+            isNotNull(coinNews.sentiment),
+            isNotNull(coinNews.coinSymbol),
+        )
+    );
+
+    const existingRadar = await db.select({ newsId: radarSignals.newsId }).from(radarSignals);
+    const radarNewsIds = new Set(existingRadar.filter(r => r.newsId != null).map(r => r.newsId));
+
+    let created = 0;
+    for (const article of existingNews) {
+        if (radarNewsIds.has(article.id)) continue;
+        if (!actionableSentiments.includes(article.sentiment ?? '')) continue;
+
+        await db.insert(radarSignals).values({
+            coinSymbol: article.coinSymbol,
+            signalText: article.hook || article.headline,
+            sentiment: article.sentiment,
+            impactScore: article.impactScore,
+            newsId: article.id,
+        }).onConflictDoNothing();
+        created++;
+    }
+
+    console.log(`[Backfill] Created ${created} radar signals from existing articles.`);
+    await deleteCachePattern('radar:latest:*');
+    return { created };
 }
 
 export function startAiWorkflowCron(): void {

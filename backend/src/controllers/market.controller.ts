@@ -222,7 +222,7 @@ export async function getTopMoversController(req: Request, res: Response, next: 
     } catch (err) { next(err); }
 }
 
-import { runAiWorkflow } from '../crons/aiWorkflow.cron';
+import { runAiWorkflow, backfillRadarSignals } from '../crons/aiWorkflow.cron';
 import { runDiscovery, runRoutineSync } from '../crons/airdropHunter.cron';
 import { computeMarketMood } from '../crons/marketMood.cron';
 import { selectDailyAlpha } from '../crons/dailyAlpha.cron';
@@ -232,6 +232,7 @@ export async function forceSeed(req: Request, res: Response, next: NextFunction)
         console.log('--- Force Seed Triggered ---');
 
         await runAiWorkflow();
+        const backfillResult = await backfillRadarSignals();
 
         await selectDailyAlpha();
         await computeMarketMood();
