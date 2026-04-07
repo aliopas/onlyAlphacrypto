@@ -1,6 +1,6 @@
 import {
     pgTable, serial, varchar, text, timestamp,
-    integer, real, json, boolean, pgEnum, unique
+    integer, real, jsonb, boolean, pgEnum, unique
 } from 'drizzle-orm/pg-core';
 
 // ─── MARKET INSIGHTS (AI Verdicts per Coin) ───────────────────────────────────
@@ -56,7 +56,7 @@ export const rawNewsBuffer = pgTable('raw_news_buffer', {
     ttlExpiresAt: timestamp('ttl_expires_at'),
     processed: boolean('processed').default(false).notNull(),
     processingAttempts: integer('processing_attempts').default(0).notNull(),
-    symbolMentions: json('symbol_mentions'),
+    symbolMentions: jsonb('symbol_mentions'),
     sentimentHint: varchar('sentiment_hint', { length: 20 }),
     relevanceScore: integer('relevance_score'),
     eventType: varchar('event_type', { length: 50 }),

@@ -10,7 +10,7 @@ export const airdropProjects = pgTable('airdrop_projects', {
     name: varchar('name', { length: 100 }).notNull(),              // 'ZkSync Era'
     network: varchar('network', { length: 50 }).notNull(),          // 'Mainnet' | 'Testnet'
     logoUrl: varchar('logo_url', { length: 500 }),
-    estValue: varchar('est_value', { length: 30 }),                 // '$1,200'
+    estValue: varchar('est_value', { length: 255 }),                 // '$1,200'
     aiReport: text('ai_report'),                                    // Full AI audit (for Drawer)
     riskVerdict: varchar('risk_verdict', { length: 20 }),           // 'LOW' | 'MEDIUM' | 'HIGH' | 'SCAM'
     fundingRound: varchar('funding_round', { length: 100 }),        // 'Series A – $50M'

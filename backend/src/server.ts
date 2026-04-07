@@ -77,7 +77,7 @@ async function bootstrap(): Promise<void> {
         const cronStartDelay = 5000;
         const crons = [
             { name: 'AiWorkflow', fn: startAiWorkflowCron },
-            { name: 'AirdropHunter', fn: startAirdropHunterCron },
+            // { name: 'AirdropHunter', fn: startAirdropHunterCron }, // TEMPORARILY DISABLED
             { name: 'DailyAlpha', fn: startDailyAlphaCron },
             { name: 'MarketMood', fn: startMarketMoodCron },
             { name: 'TerminalEngine', fn: startTerminalEngineCron },
