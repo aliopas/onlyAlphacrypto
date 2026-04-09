@@ -67,8 +67,8 @@
 
 **Verify:** "Scanning X Assets" shows correct count > 0.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 
