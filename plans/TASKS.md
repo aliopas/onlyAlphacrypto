@@ -5,6 +5,53 @@
 
 ---
 
+## Tech Lead Architectural Review — 2026-04-09
+
+### Current Progress
+| Phase | Status | Tasks |
+|-------|--------|-------|
+| Phase 0 (Hotfixes) | COMPLETE | 1-6 all done |
+| Phase 1 (Cost Opt) | COMPLETE | 7-10 all done |
+| Phase 2 (Living Articles) | NEXT | 11-14 pending |
+| Phase 3 (Temporal Intel) | PENDING | 15 pending |
+| Phase 4 (Chat Rebuild) | PENDING | 16 pending |
+| Phase 5 (Frontend) | PENDING | 17-19 pending |
+| Phase 6 (Embeddings) | OPTIONAL | 20 pending |
+
+### Critical Architectural Gaps Found
+
+**1. MISSING: Living Article API Endpoints (Phase 2 gap)**
+Phase 2 creates `coin_master_articles` + `coin_timeline_updates` tables and cron logic, but NO API endpoints are planned. Phase 5 frontend (Tasks 18, 5.3, 5.4) needs these endpoints to fetch data.
+-> Added as **Task 11b** (new task between 11 and 12)
+
+**2. MISSING: Data Migration Script**
+When we switch to Living Articles, existing `coin_news` articles with high quality should be migrated to `coin_master_articles` (one per coin). Without this, the system starts empty.
+-> Added as **Task 11c** (new task)
+
+**3. RISK: Triage Field Naming Conflict**
+Plan adds `classification` (MAJOR/MINOR/NOISE) + `triggerType` (whale/regulation/technical) to triage. But `rawNewsBuffer` already has `eventType` (ETF/Hack/etc). The values of `eventType` and `triggerType` overlap conceptually. The existing `eventType` should be KEPT as-is (it's a useful field), and `classification` added separately. `triggerType` values should be a SUBSET derivation from `eventType`, not a parallel field.
+-> Decision: Keep `eventType`, ADD `classification` only. Derive `triggerType` from `eventType` mapping in code (no AI needed).
+-> Updated Task 12 scope below.
+
+**4. WEAKNESS: Conviction Score Algorithm (Task 14)**
+- No recency decay: events from 29 days ago = events from today
+- Sentiment weighting ignores magnitude (score += 5 for any bullish, regardless of impactScore)
+- Trend calculation is too simplistic
+-> Added detailed improvements to Task 14 scope.
+
+**5. BUG: Task 4.2 Chat Quotas Uses `any`**
+The quota lookup code `(QUOTAS[plan as keyof QuotaConfig] as any)?.contextDaily` violates the zero-`any` rule.
+-> Must be fixed during Task 16 implementation.
+
+**6. RISK: Historical Cron Timeout (Task 9)**
+`fetchHistoricalNewsForCoins(symbols)` runs for ALL coins from last 7 days. If 100+ coins, this will timeout.
+-> Recommendation: Add batching (max 20 coins per batch with 2s delay). Low priority — only matters at scale.
+
+**7. DEPENDENCY: Phase 4 depends on Phase 2**
+Task 16 (Context AI prompt) references `coinMasterArticles` and `coinTimelineUpdates`. These don't exist until Tasks 11-13 complete. This is implicitly correct in ordering but should be explicit.
+
+---
+
 ## Task 1: Fix Chat Context Mode Mismatch
 **Phase:** 0 | **Priority:** CRITICAL
 **Files:**
@@ -158,8 +205,8 @@
 
 **Verify:** Historical fetch no longer runs every hour. Daily cron registered.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 
@@ -174,8 +221,8 @@
 
 **Verify:** Audit skipped for low-impact articles. `coinMemory` populated after publish.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 

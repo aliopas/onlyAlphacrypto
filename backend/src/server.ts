@@ -10,6 +10,7 @@ import { timeMiddleware } from './middleware/time.middleware';
 import { startAiWorkflowCron } from './crons/aiWorkflow.cron';
 import { startAirdropHunterCron } from './crons/airdropHunter.cron';
 import { startDailyAlphaCron } from './crons/dailyAlpha.cron';
+import { startHistoricalNewsCron } from './crons/historicalNews.cron';
 import { startMarketMoodCron } from './crons/marketMood.cron';
 import { startTerminalEngineCron } from './crons/terminalEngine.cron';
 import { startTriageEngineCron } from './crons/triageEngine.cron';
@@ -79,6 +80,7 @@ async function bootstrap(): Promise<void> {
             { name: 'AiWorkflow', fn: startAiWorkflowCron },
             // { name: 'AirdropHunter', fn: startAirdropHunterCron }, // TEMPORARILY DISABLED
             { name: 'DailyAlpha', fn: startDailyAlphaCron },
+            { name: 'HistoricalNews', fn: startHistoricalNewsCron },
             { name: 'MarketMood', fn: startMarketMoodCron },
             { name: 'TerminalEngine', fn: startTerminalEngineCron },
             { name: 'TriageEngine', fn: startTriageEngineCron },

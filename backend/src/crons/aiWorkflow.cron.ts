@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import crypto from 'crypto';
 import { db } from '../config/db';
 import { getCoinIntelligence } from '../services/coinIntelligence.service';
-import { fetchHistoricalNewsForCoins, buildTemporalPattern } from '../services/temporalIntelligence.service';
+import { buildTemporalPattern } from '../services/temporalIntelligence.service';
 import { getPriceWithFallback } from '../services/priceService';
 import { getDynamicThreshold, countPublishedLastHour } from '../services/dynamicThreshold.service';
 import { deepseekBreaker, gptNanoBreaker } from '../services/circuitBreaker.service';
@@ -12,6 +12,7 @@ import type { ArticleWriterResult } from '../services/openai.service';
 import { AIRateLimitError } from '../services/ai/ai-gateway';
 import { validateFactualGrounding } from '../services/ai/factual-grounding';
 import { auditArticleQuality } from '../services/ai/quality-auditor';
+import { saveMemory } from '../services/coin-memory.service';
 import { coinNews, radarSignals, rawNewsBuffer } from '../models/market.model';
 import { eq, gte, and, desc, sql, isNotNull, ne } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern } from '../config/redis';
@@ -86,7 +87,6 @@ export async function runAiWorkflow(): Promise<void> {
             try {
                 const intelligence = await getCoinIntelligence(symbol);
 
-                await fetchHistoricalNewsForCoins([symbol]);
                 const pattern = await buildTemporalPattern(symbol, eventType, eventSeverity);
 
                 const price = await getPriceWithFallback(symbol);
@@ -152,15 +152,19 @@ export async function runAiWorkflow(): Promise<void> {
                     throw err;
                 }
 
-                // B1. Quality audit (cross-model: DeepSeek-R1 audits GPT-5-nano)
-                const audit = await auditArticleQuality(deepseekGateway || gateway, JSON.stringify(analysisResult), article);
-                if (!audit.passed) {
-                    console.warn(`[AI Workflow] Quality audit FAILED for ${symbol} (score: ${audit.score}):`, audit.issues);
-                    if (audit.suggestion) {
-                        console.warn(`[AI Workflow] Audit suggestion: ${audit.suggestion}`);
+                // B1. Quality audit (cross-model: DeepSeek-R1 audits GPT-5-nano) — only for high-impact or breaking news
+                if (analysisResult.impactScore >= 75 || analysisResult.isBreaking) {
+                    const audit = await auditArticleQuality(deepseekGateway || gateway, JSON.stringify(analysisResult), article);
+                    if (!audit.passed) {
+                        console.warn(`[AI Workflow] Quality audit FAILED for ${symbol} (score: ${audit.score}):`, audit.issues);
+                        if (audit.suggestion) {
+                            console.warn(`[AI Workflow] Audit suggestion: ${audit.suggestion}`);
+                        }
+                    } else {
+                        console.log(`[AI Workflow] Quality audit PASSED for ${symbol} (score: ${audit.score})`);
                     }
                 } else {
-                    console.log(`[AI Workflow] Quality audit PASSED for ${symbol} (score: ${audit.score})`);
+                    console.log(`[AI Workflow] Skipping quality audit for ${symbol} (impact: ${analysisResult.impactScore}, breaking: ${analysisResult.isBreaking})`);
                 }
 
                 // 4f. Save to coinNews
@@ -194,7 +198,25 @@ export async function runAiWorkflow(): Promise<void> {
                     }).onConflictDoNothing();
                 }
 
-                // 4h. Redis invalidation (targeted only)
+                // 4h. Save to coinMemory (non-blocking)
+                try {
+                    await saveMemory({
+                        coinSymbol: symbol,
+                        eventType: eventType,
+                        eventSummary: article.headline,
+                        priceAtEvent: price?.price,
+                        verdict: analysisResult.verdict,
+                        confidenceScore: analysisResult.confidenceScore,
+                        riskVerdict: analysisResult.analysis.riskNote,
+                        keyDrivers: [analysisResult.analysis.mainDriver],
+                        redFlags: analysisResult.keyFacts,
+                        sourceNewsHashes: [sourceHash],
+                    });
+                } catch (memErr) {
+                    console.error(`[AI Workflow] Failed to save memory for ${symbol}:`, memErr);
+                }
+
+                // 4i. Redis invalidation (targeted only)
                 await deleteCache(`news:${symbol}`);
                 await deleteCache('insight:all');
 
