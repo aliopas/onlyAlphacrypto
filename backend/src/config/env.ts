@@ -27,6 +27,11 @@ const envSchema = z.object({
     // DeepSeek (via OpenRouter — thinking model for analysis)
     DEEPSEEK_MODEL: z.string().default('deepseek/deepseek-r1'),
 
+    // DeepSeek Direct API (for production analysis)
+    DEEPSEEK_API_KEY: z.string().optional(),
+    DEEPSEEK_BASE_URL: z.string().default('https://api.deepseek.com/v1'),
+    DEEPSEEK_MODEL_DIRECT: z.string().default('deepseek-chat'),
+
     // Binance
     BINANCE_API_KEY: z.string().optional(),
     BINANCE_SECRET: z.string().optional(),

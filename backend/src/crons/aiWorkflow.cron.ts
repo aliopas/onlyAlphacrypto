@@ -6,7 +6,7 @@ import { fetchHistoricalNewsForCoins, buildTemporalPattern } from '../services/t
 import { getPriceWithFallback } from '../services/priceService';
 import { getDynamicThreshold, countPublishedLastHour } from '../services/dynamicThreshold.service';
 import { deepseekBreaker, gptNanoBreaker } from '../services/circuitBreaker.service';
-import { callDeepSeekAnalysis, callGptNanoWriter, gateway } from '../services/openai.service';
+import { callDeepSeekAnalysis, callGptNanoWriter, gateway, deepseekGateway } from '../services/openai.service';
 import type { DeepAnalysisResult } from '../services/openai.service';
 import type { ArticleWriterResult } from '../services/openai.service';
 import { AIRateLimitError } from '../services/ai/ai-gateway';
@@ -153,7 +153,7 @@ export async function runAiWorkflow(): Promise<void> {
                 }
 
                 // B1. Quality audit (cross-model: DeepSeek-R1 audits GPT-5-nano)
-                const audit = await auditArticleQuality(gateway, JSON.stringify(analysisResult), article);
+                const audit = await auditArticleQuality(deepseekGateway || gateway, JSON.stringify(analysisResult), article);
                 if (!audit.passed) {
                     console.warn(`[AI Workflow] Quality audit FAILED for ${symbol} (score: ${audit.score}):`, audit.issues);
                     if (audit.suggestion) {
@@ -165,7 +165,7 @@ export async function runAiWorkflow(): Promise<void> {
 
                 // 4f. Save to coinNews
                 const sourceHash = crypto.createHash('sha256').update(article.headline).digest('hex');
-                await db.insert(coinNews).values({
+                const insertedNews = await db.insert(coinNews).values({
                     coinSymbol: symbol,
                     headline: article.headline,
                     summary: article.fullArticle,
@@ -178,7 +178,9 @@ export async function runAiWorkflow(): Promise<void> {
                     isBreaking: analysisResult.isBreaking ? 1 : 0,
                     sourceHash,
                     aiProcessed: 1,
-                }).onConflictDoNothing();
+                }).onConflictDoNothing().returning({ id: coinNews.id });
+
+                const newsId = insertedNews.length > 0 ? insertedNews[0].id : null;
 
                 // 4g. Radar signal for actionable verdicts
                 const actionableVerdicts = ['STRONG_BUY', 'STRONG_SELL', 'BUY', 'SELL'];
@@ -188,6 +190,7 @@ export async function runAiWorkflow(): Promise<void> {
                         signalText: analysisResult.signalText,
                         sentiment: analysisResult.sentiment,
                         impactScore: analysisResult.impactScore,
+                        newsId,
                     }).onConflictDoNothing();
                 }
 

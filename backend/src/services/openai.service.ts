@@ -6,44 +6,6 @@ import { AIGateway } from './ai/ai-gateway';
 import { PromptFactory, DeepAnalysisInput } from './ai/prompt-factory';
 
 // Define interfaces locally to avoid circular imports
-export interface MarketVerdictResult {
-    verdict: 'STRONG_BUY' | 'BUY' | 'NEUTRAL' | 'SELL' | 'STRONG_SELL';
-    confidenceScore: number;
-    executiveSummary: string;
-    supportLevels: number[];
-    resistanceLevels: number[];
-}
-
-export interface DeepIntelligenceReport {
-    riskVerdict: 'LOW' | 'MEDIUM' | 'HIGH' | 'SCAM';
-    verdict: 'STRONG_BUY' | 'BUY' | 'NEUTRAL' | 'SELL' | 'STRONG_SELL';
-    confidenceScore: number;
-    executiveSummary: string;
-    keyDrivers: string[];
-    marketContext: string;
-    redFlags: string[];
-}
-
-export interface DualNewsOutput {
-    wireCard: {
-        headline: string;        // SEO-optimized title (GPT-5-nano)
-        hook: string;            // Opening hook sentence to capture attention
-        summary: string;         // Full 3-5 sentence deep analysis
-        metaTitle: string;       // SEO meta title ≤60 chars
-        metaDescription: string; // SEO meta description ≤160 chars
-        seoKeywords: string[];   // Target search keywords
-        sentiment: 'bullish' | 'bearish' | 'neutral';
-        impactScore: number;
-        isBreaking: boolean;
-        coinSymbol?: string;
-    };
-    radarCard: {
-        signalText: string;
-        sentiment: 'bullish' | 'bearish' | 'neutral';
-        impactScore: number;
-        coinSymbol?: string;
-    };
-}
 
 export interface AirdropValidationResult {
     isLegitimate: boolean;
@@ -103,6 +65,8 @@ const ArticleSchema = z.object({
 
 // Instantiate the modular components
 const cache = new CacheManager();
+
+// OpenRouter gateway (fallback)
 const gateway = new AIGateway({
     apiKey: env.OPENROUTER_API_KEY,
     baseURL: 'https://openrouter.ai/api/v1',
@@ -112,81 +76,21 @@ const gateway = new AIGateway({
         'X-Title': 'OnlyAlpha',
     }
 });
+
+// DeepSeek Direct gateway (primary for analysis)
+const deepseekGateway = env.DEEPSEEK_API_KEY ? new AIGateway({
+    apiKey: env.DEEPSEEK_API_KEY,
+    baseURL: env.DEEPSEEK_BASE_URL,
+    timeoutMs: 90000,
+    defaultHeaders: {
+        'HTTP-Referer': 'https://onlyalpha.app',
+        'X-Title': 'OnlyAlpha',
+    }
+}) : null;
+
 const prompts = new PromptFactory();
 
-// ─── Market Verdict (DeepSeek-R1 — deep analysis) ──────────────────────────────────
 
-export async function generateMarketVerdict(
-    coinSymbol: string,
-    data: {
-        price: number;
-        rsi: number;
-        volumeChange: number;
-        recentNews: string[];
-    }
-): Promise<MarketVerdictResult> {
-    // Check cache first
-    const cacheKey = cache.generateKey('marketVerdict', coinSymbol, data);
-    const cached = cache.get<MarketVerdictResult>(cacheKey);
-    if (cached) {
-        return cached;
-    }
-
-    const messages = prompts.buildMarketVerdictMessages(coinSymbol, data);
-    const result = await gateway.chat<MarketVerdictResult>({
-        model: env.DEEPSEEK_MODEL,
-        temperature: 0.3,
-        responseFormat: { type: 'json_object' },
-        messages
-    });
-
-    // Store in cache
-    cache.set(cacheKey, result);
-    return result;
-}
-
-// ─── Deep Intelligence Report (Adaptive Model Routing) ───
-
-export async function generateDeepIntelligenceReport(
-    coinSymbol: string,
-    aggregatedData: {
-        recentNews: string[];
-        existingContext?: string[];
-        stats?: Record<string, number | string>;
-        scamReport?: string;
-    }
-): Promise<DeepIntelligenceReport> {
-    // Check cache first
-    const cacheKey = cache.generateKey('deepIntelligence', coinSymbol, aggregatedData);
-    const cached = cache.get<DeepIntelligenceReport>(cacheKey);
-    if (cached) {
-        return cached;
-    }
-
-    // Adaptive Model Routing Logic
-    const hasManyNews = aggregatedData.recentNews.length > 3;
-    const hasScamAlerts = aggregatedData.scamReport && aggregatedData.scamReport.length > 100;
-    // Threshold raised from >10% to >30% — small-cap DexScreener tokens routinely show
-    // 100-5000% moves, so >10% was causing ALL tokens to route to DeepSeek-R1 unnecessarily.
-    const isVolatile = aggregatedData.stats && Math.abs(Number(aggregatedData.stats.priceChange24h || 0)) > 30;
-
-    // DeepSeek-R1 is used for all analysis
-    const temperature = (hasManyNews || hasScamAlerts || isVolatile) ? 0.4 : 0.2;
-
-    console.log(`[ModelRouting] Using DeepSeek ${env.DEEPSEEK_MODEL} for ${coinSymbol} (Volatile: ${isVolatile}, News: ${aggregatedData.recentNews.length}, Scam: ${!!hasScamAlerts}, Temp: ${temperature})`);
-
-    const messages = prompts.buildDeepIntelligenceMessages(coinSymbol, aggregatedData);
-    const result = await gateway.chat<DeepIntelligenceReport>({
-        model: env.DEEPSEEK_MODEL,
-        temperature,
-        responseFormat: { type: 'json_object' },
-        messages
-    });
-
-    // Store in cache
-    cache.set(cacheKey, result);
-    return result;
-}
 
 // ─── Lightweight Triage Function (Phase 1B) ───────────────────────────────────
 /**
@@ -215,7 +119,11 @@ export async function generateLightweightTriage(
 
     try {
         const messages = prompts.buildTriageMessages(newsBatch);
-        const parsed = await gateway.chat<{
+        // Use DeepSeek Direct for triage if available, otherwise fallback to OpenRouter
+        const targetGateway = deepseekGateway || gateway;
+        const targetModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.SEO_MODEL;
+
+        const parsed = await targetGateway.chat<{
             results?: Array<{
                 relevanceScore: number;
                 sentimentHint: string | null;
@@ -231,7 +139,7 @@ export async function generateLightweightTriage(
                 eventSeverity?: number;
             }>;
         }>({
-            model: env.SEO_MODEL, // GPT-5-nano equivalent (cheap/fast model)
+            model: targetModel,
             temperature: 0.2, // Low temperature for consistent scoring
             responseFormat: { type: 'json_object' },
             messages
@@ -289,100 +197,7 @@ export async function generateLightweightTriage(
 // Step 1: DeepSeek-R1 analyzes the raw news and extracts structured data
 // Step 2: GPT-5-nano formats the analysis into SEO-optimized article output
 
-interface RawAnalysis {
-    analysis: string;       // Raw editorial analysis
-    sentiment: 'bullish' | 'bearish' | 'neutral';
-    impactScore: number;    // 0-100
-    isBreaking: boolean;
-    coinSymbol?: string;
-    signalText: string;     // 2-sentence radar signal
-    keyFacts: string[];     // Bullet facts for GPT to format
-}
 
-export async function generateDualNewsOutput(
-    rawNewsItem: string,
-    trackedProjects: string[],
-    recentContext?: string
-): Promise<DualNewsOutput> {
-    // Check cache first
-    const cacheKey = cache.generateKey('dualNewsOutput', rawNewsItem, trackedProjects, recentContext);
-    const cached = cache.get<DualNewsOutput>(cacheKey);
-    if (cached) {
-        return cached;
-    }
-
-    // ── STEP 1: DeepSeek-R1 — Deep Analysis ──────────────────────────────────
-    const analysisMessages = prompts.buildDualNewsStep1Messages(rawNewsItem, trackedProjects, recentContext);
-
-    let rawAnalysis: RawAnalysis | undefined;
-    for (let i = 0; i < 3; i++) {
-        try {
-            const res = await gateway.chat<RawAnalysis>({
-                model: env.DEEPSEEK_MODEL,
-                temperature: 0.3,
-                responseFormat: { type: 'json_object' },
-                messages: analysisMessages
-            });
-            rawAnalysis = res;
-            break;
-        } catch (err) {
-            if (i === 2) throw err;
-        }
-    }
-
-    if (!rawAnalysis) {
-        throw new Error('Failed to generate raw analysis after retries');
-    }
-
-    // ── STEP 2: GPT-5-nano — SEO Formatting & Polish ────────────────────────────
-    const seoMessages = prompts.buildDualNewsStep2Messages(rawAnalysis);
-
-    for (let i = 0; i < 3; i++) {
-        try {
-            const seoOutput = await gateway.chat<{
-                headline: string;
-                hook: string;
-                summary: string;
-                metaTitle: string;
-                metaDescription: string;
-                seoKeywords: string[];
-            }>({
-                model: env.SEO_MODEL, // openai/gpt-5-nano
-                temperature: 0.5,
-                responseFormat: { type: 'json_object' },
-                messages: seoMessages
-            });
-
-            const result = {
-                wireCard: {
-                    headline: seoOutput.headline || rawNewsItem.slice(0, 100),
-                    hook: seoOutput.hook || '',
-                    summary: seoOutput.summary || rawAnalysis.analysis,
-                    metaTitle: seoOutput.metaTitle || seoOutput.headline?.slice(0, 60) || '',
-                    metaDescription: seoOutput.metaDescription || '',
-                    seoKeywords: Array.isArray(seoOutput.seoKeywords) ? seoOutput.seoKeywords : [],
-                    sentiment: rawAnalysis.sentiment,
-                    impactScore: rawAnalysis.impactScore,
-                    isBreaking: rawAnalysis.isBreaking,
-                    coinSymbol: rawAnalysis.coinSymbol,
-                },
-                radarCard: {
-                    signalText: rawAnalysis.signalText,
-                    sentiment: rawAnalysis.sentiment,
-                    impactScore: rawAnalysis.impactScore,
-                    coinSymbol: rawAnalysis.coinSymbol,
-                },
-            } as DualNewsOutput;
-
-            // Store in cache
-            cache.set(cacheKey, result);
-            return result;
-        } catch (err) {
-            if (i === 2) throw err;
-        }
-    }
-    throw new Error('Failed to generate dual news output after retries');
-}
 
 // ─── Airdrop Validation (DeepSeek-R1 — deep analysis) ──────────────────────────────
 
@@ -414,8 +229,12 @@ export async function callDeepSeekAnalysis(input: DeepAnalysisInput, attempt: nu
 
     try {
         const messages = prompts.buildDeepAnalysisMessages(input);
-        const result = await gateway.chat<DeepAnalysisResult>({
-            model: env.DEEPSEEK_MODEL,
+        // Use DeepSeek Direct if available, otherwise fallback to OpenRouter
+        const targetGateway = deepseekGateway || gateway;
+        const targetModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.DEEPSEEK_MODEL;
+
+        const result = await targetGateway.chat<DeepAnalysisResult>({
+            model: targetModel,
             temperature: 0.2,
             responseFormat: { type: 'json_object' },
             messages,
@@ -479,4 +298,5 @@ export async function streamChatResponse(
 }
 
 export { gateway };
+export { deepseekGateway };
 export { prompts };

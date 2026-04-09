@@ -84,8 +84,8 @@
 
 **Verify:** Unauthenticated `/force-seed` returns 401. No duplicate radar entries for same news.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 
@@ -102,8 +102,8 @@
 
 **Verify:** App builds with no errors. All imports resolve.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 
@@ -124,8 +124,8 @@
 
 **Verify:** DeepSeek analysis calls go to direct API when key is present. Fallback to OpenRouter when missing.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 
@@ -139,8 +139,8 @@
 
 **Verify:** Triage runs through DeepSeek API. Output format unchanged.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 

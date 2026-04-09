@@ -1,5 +1,6 @@
 import type { AIGateway } from './ai-gateway';
 import type { ArticleWriterResult } from '../openai.service';
+import { env } from '../../config/env';
 
 export interface QualityAuditResult {
     passed: boolean;
@@ -8,7 +9,7 @@ export interface QualityAuditResult {
     suggestion: string | null;
 }
 
-const AUDITOR_MODEL = process.env.ANALYSIS_MODEL ?? 'deepseek/deepseek-r1';
+const AUDITOR_MODEL = env.DEEPSEEK_MODEL_DIRECT;
 
 export async function auditArticleQuality(
     gateway: AIGateway,
