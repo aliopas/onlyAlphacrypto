@@ -85,8 +85,9 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
         setMessages(prev => [...prev, { role: 'ai', content: '' }]);
 
         const contextMessages = [...messages, { role: 'user', content: userMsg }];
+        const endpoint = mode === 'context' ? '/chat/stream/context' : '/chat/stream';
         try {
-            const resp = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/chat/stream`, {
+            const resp = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}${endpoint}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token || ''}` },
                 body: JSON.stringify({ messages: contextMessages, coin, mode, articleId, articleType }),

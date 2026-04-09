@@ -13,19 +13,23 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
         const { coin, messages, mode, articleId, articleType } = req.body as {
             coin: string;
             messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-            mode?: 'general' | 'private';
+            mode?: 'general' | 'private' | 'context';
             articleId?: number;
             articleType?: 'WIRE' | 'RADAR';
         };
 
         const isContextRoute = req.originalUrl?.includes('/context') ?? false;
 
+        if (mode === 'context' && !req.userId && !isContextRoute) {
+            throw new AppError('Authentication required for context mode', 401);
+        }
+
         if (!coin || !messages?.length) {
             throw new AppError('coin and messages are required', 400);
         }
 
         const symbol = coin.toUpperCase();
-        const resolvedMode = isContextRoute ? 'private' : (mode || 'general');
+        const resolvedMode = isContextRoute || mode === 'context' ? 'private' : (mode || 'general');
         let contextText = '';
         let currentPrice: number | null = 0;
         
