@@ -65,6 +65,7 @@ export async function runTriageEngine(): Promise<void> {
                             symbolMentions: scoredItem.symbolMentions,
                             eventType: scoredItem.eventType,
                             eventSeverity: scoredItem.eventSeverity,
+                            classification: scoredItem.classification || 'MINOR',
                             processed: true
                         })
                         .where(eq(rawNewsBuffer.id, item.id));

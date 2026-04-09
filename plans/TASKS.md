@@ -240,13 +240,63 @@ Task 16 (Context AI prompt) references `coinMasterArticles` and `coinTimelineUpd
 
 **Verify:** Tables exist in DB. Models exported and importable.
 
+- [x] Implement
+- [x] Verify
+
+---
+
+## Task 11b: Living Article API Endpoints
+**Phase:** 2 | **Priority:** HIGH | **DEPENDS ON:** Task 11
+**Files:**
+- `backend/src/controllers/market.controller.ts`
+- `backend/src/routes/market.routes.ts`
+
+**Scope:**
+- `GET /api/market/master/:symbol` — Fetch master article by coin symbol (returns null if none exists)
+  - Response: `{ masterArticle, timelineUpdates[], convictionScore, posture }`
+  - Include latest 10 timeline updates ordered by createdAt DESC
+  - Cache: 60s (articles update frequently)
+- `GET /api/market/timeline/:symbol` — Fetch timeline only (for infinite scroll)
+  - Query params: `offset` (default 0), `limit` (default 20, max 50)
+  - Response: `{ updates[], total }`
+  - Cache: 30s
+- Both endpoints use `optionalAuth` (public read, no login required)
+
+**Why Critical:** Without these, Phase 5 frontend (Task 18: LivingArticle.tsx, AlphaSnapshot.tsx) has no data source.
+
+**Verify:** `GET /api/market/master/BTC` returns master article or 404. `GET /api/market/timeline/BTC?offset=0&limit=10` returns timeline array.
+
 - [ ] Implement
 - [ ] Verify
 
 ---
 
-## Task 12: Upgrade Triage — MAJOR/MINOR/NOISE
-**Phase:** 2 | **Priority:** HIGH
+## Task 11c: Seed Master Articles from Existing coin_news
+**Phase:** 2 | **Priority:** MEDIUM | **DEPENDS ON:** Task 11
+**Files:**
+- `backend/src/scripts/seed-master-articles.ts` (new file, one-time script)
+
+**Scope:**
+One-time migration script (NOT a cron):
+1. Fetch all unique coin symbols from `coin_news` that have published articles
+2. For each symbol, pick the most recent article (highest impactScore if available)
+3. Parse the article's `fullArticle` text using `extractSection()` to populate modular sections
+4. Insert into `coin_master_articles` with available metadata (sentiment, verdict, etc.)
+5. Create initial timeline entries from the last 3 articles per coin
+6. Run: `npx tsx backend/src/scripts/seed-master-articles.ts`
+7. Script should be idempotent — skip coins that already have master articles
+
+**Why Needed:** Without this, Living Article system starts completely empty. Users won't see any master articles until new MAJOR events trigger creation.
+
+**Verify:** After running script, `coin_master_articles` has rows for top coins. Timeline has historical entries.
+
+- [ ] Implement
+- [ ] Verify
+
+---
+
+## Task 12: Upgrade Triage — MAJOR/MINOR/NOISE Classification
+**Phase:** 2 | **Priority:** HIGH | **DEPENDS ON:** Task 11 ✅
 **Files:**
 - `backend/src/services/ai/prompt-factory.ts`
 - `backend/src/services/openai.service.ts` (TriageResult interface)
@@ -254,15 +304,28 @@ Task 16 (Context AI prompt) references `coinMasterArticles` and `coinTimelineUpd
 - `backend/src/crons/triageEngine.cron.ts`
 
 **Scope:**
-- 2.2.1: Add classification + triggerType to triage prompt
-- 2.2.2: Update TriageResult interface
-- 2.2.3: Add columns to rawNewsBuffer
-- 2.2.4: Save classification in triageEngine
+- 2.2.1: Add `classification` field to triage prompt output — values: `MAJOR`, `MINOR`, `NOISE`
+  - MAJOR: ETF approvals, major hacks, SEC actions, top-10 listings, mainnet launches, $100M+ funding
+  - MINOR: Price milestones, whale moves, partnerships, upgrades, small funding
+  - NOISE: Rehashed/duplicate, promotional, opinion, old news rewritten
+  - **DO NOT add `triggerType` as separate AI output** — derive it from existing `eventType` via mapping:
+    ```typescript
+    const TRIGGER_TYPE_MAP: Record<string, string> = {
+      'Hack': 'security', 'Exploit': 'security',
+      'ETF': 'regulation', 'Regulatory': 'regulation',
+      'Listing': 'market', 'Delisting': 'market',
+      'Funding': 'whale', 'Partnership': 'news',
+      'Upgrade': 'technical', 'TokenLaunch': 'market',
+    };
+    ```
+- 2.2.2: Update `TriageResult` interface — add `classification: 'MAJOR' | 'MINOR' | 'NOISE'` only
+- 2.2.3: Add `classification` column to `rawNewsBuffer` schema (varchar 10). Do NOT add `triggerType` column.
+- 2.2.4: Save classification in triageEngine. Derive triggerType in aiWorkflow from eventType mapping above.
 
-**Verify:** Triage output includes `classification` and `triggerType`. Saved to DB.
+**Verify:** Triage output includes `classification`. Saved to `rawNewsBuffer.classification`. `triggerType` derived in code, not from AI.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 
@@ -283,23 +346,31 @@ Task 16 (Context AI prompt) references `coinMasterArticles` and `coinTimelineUpd
 
 **Verify:** NOISE items skipped. MINOR creates timeline updates only. MAJOR creates/updates master articles.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 
 ## Task 14: Conviction Score Service + Cron
-**Phase:** 2 | **Priority:** HIGH
+**Phase:** 2 | **Priority:** HIGH | **DEPENDS ON:** Task 13
 **Files:**
 - `backend/src/services/conviction.service.ts` (new file)
 - `backend/src/crons/convictionUpdate.cron.ts` (new file)
 - `backend/src/server.ts` (register cron)
 
 **Scope:**
-- 2.4: Algorithmic conviction calculation (no AI calls)
+- 2.4: Algorithmic conviction calculation (no AI calls). Must include:
+  - **Recency decay:** Events older than 7 days get 0.5x weight, older than 14 days get 0.25x
+  - **Impact-weighted scoring:** Use `impactScore` from timeline update, not fixed +/- 5
+    - Bullish: `+impactScore * weight * severityMultiplier` (severityMultiplier: MAJOR=3, MINOR=1)
+    - Bearish: `-impactScore * weight * severityMultiplier * 1.4` (bearish weighted 40% harder — risk management)
+  - **ConvictionDelta from timeline:** Use the `convictionDelta` field if available from timeline updates
+  - **Base score:** Start at 50 (neutral), clamp 0-100
+  - **Posture thresholds:** >=80 strong_accumulate, >=60 accumulate, >=40 neutral, >=20 distribute, <20 strong_distribute
+  - **Trend:** Compare weighted average of last 7 days vs previous 7 days (not just split array in half)
 - 2.5: Cron every 6 hours to recalculate for all active coins
 
-**Verify:** `calculateConviction` returns score/posture/trend. Cron updates master articles.
+**Verify:** `calculateConviction` returns score/posture/trend. Recent events have more weight than old ones. Bearish events penalize harder. Cron updates master articles.
 
 - [ ] Implement
 - [ ] Verify
@@ -327,7 +398,7 @@ Task 16 (Context AI prompt) references `coinMasterArticles` and `coinTimelineUpd
 ---
 
 ## Task 16: Chat System Rebuild — Context AI + Quotas
-**Phase:** 4 | **Priority:** MEDIUM
+**Phase:** 4 | **Priority:** MEDIUM | **DEPENDS ON:** Task 13
 **Files:**
 - `backend/src/controllers/chat.controller.ts`
 - `backend/src/middleware/chat-quota.middleware.ts` (new file)
@@ -336,8 +407,16 @@ Task 16 (Context AI prompt) references `coinMasterArticles` and `coinTimelineUpd
 **Scope:**
 - 4.1: Context AI prompt fed by Master Article + Timeline + Memory
 - 4.2: Redis-based chat quotas (guest: 5, free: 15, pro: 999+30 context)
+  - **CRITICAL: NO `any` types.** Use proper type narrowing for quota lookup:
+    ```typescript
+    type PlanTier = 'guest' | 'free' | 'pro';
+    interface PlanQuota { daily: number; contextDaily: number }
+    const QUOTAS: Record<PlanTier, PlanQuota> = { ... };
+    const planQuota = QUOTAS[plan as PlanTier];
+    ```
+  - If Redis is unavailable, fall through (don't block users)
 
-**Verify:** Context AI uses living article data. Rate limits enforced per plan.
+**Verify:** Context AI uses living article data. Rate limits enforced per plan. Zero `any` types.
 
 - [ ] Implement
 - [ ] Verify

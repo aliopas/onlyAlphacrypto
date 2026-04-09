@@ -61,6 +61,7 @@ export const rawNewsBuffer = pgTable('raw_news_buffer', {
     relevanceScore: integer('relevance_score'),
     eventType: varchar('event_type', { length: 50 }),
     eventSeverity: integer('event_severity'),
+    classification: varchar('classification', { length: 10 }),
 });
 
 // ─── RADAR SIGNALS (Home Live AI Radar) ──────────────────────────────────────
@@ -158,4 +159,51 @@ export const coinNewsHistory = pgTable('coin_news_history', {
     return {
         unq: unique('coin_news_history_unq').on(table.coinSymbol, table.title, table.publishedAt)
     };
+});
+
+// ─── COIN MASTER ARTICLES (Living Articles) ───────────────────────────────────
+export const coinMasterArticles = pgTable('coin_master_articles', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull().unique(),
+    coreCatalyst: text('core_catalyst'),
+    marketContext: text('market_context'),
+    strategicImpact: text('strategic_impact'),
+    historicalContext: text('historical_context'),
+    technicalLevels: text('technical_levels'),
+    riskAssessment: text('risk_assessment'),
+    bottomLine: text('bottom_line'),
+    headline: text('headline').notNull(),
+    hook: text('hook'),
+    metaTitle: varchar('meta_title', { length: 80 }),
+    metaDescription: varchar('meta_description', { length: 200 }),
+    seoKeywords: json('seo_keywords'),
+    sentiment: varchar('sentiment', { length: 20 }),
+    verdict: varchar('verdict', { length: 20 }),
+    confidenceScore: real('confidence_score'),
+    convictionScore: real('conviction_score'),
+    posture: varchar('posture', { length: 30 }),
+    riskTags: json('risk_tags'),
+    triggerType: varchar('trigger_type', { length: 20 }),
+    majorUpdateCount: integer('major_update_count').default(0).notNull(),
+    minorUpdateCount: integer('minor_update_count').default(0).notNull(),
+    lastMajorUpdate: timestamp('last_major_update'),
+    lastMinorUpdate: timestamp('last_minor_update'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// ─── COIN TIMELINE UPDATES (Living Article Events) ───────────────────────────
+export const coinTimelineUpdates = pgTable('coin_timeline_updates', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    masterArticleId: integer('master_article_id').references(() => coinMasterArticles.id).notNull(),
+    updateText: text('update_text').notNull(),
+    triggerType: varchar('trigger_type', { length: 20 }),
+    severity: varchar('severity', { length: 10 }).notNull(),
+    sourceTitle: text('source_title'),
+    sourceHash: varchar('source_hash', { length: 64 }),
+    sentiment: varchar('sentiment', { length: 20 }),
+    impactScore: real('impact_score'),
+    convictionDelta: real('conviction_delta'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
 });

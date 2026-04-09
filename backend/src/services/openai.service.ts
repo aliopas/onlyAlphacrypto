@@ -4,6 +4,7 @@ import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
 import { AIGateway } from './ai/ai-gateway';
 import { PromptFactory, DeepAnalysisInput } from './ai/prompt-factory';
+import { coinMasterArticles } from '../models/market.model';
 
 // Define interfaces locally to avoid circular imports
 
@@ -105,6 +106,7 @@ interface TriageResult {
     symbolMentions: string[];
     eventType: string;
     eventSeverity: number;
+    classification: 'MAJOR' | 'MINOR' | 'NOISE';
 }
 
 export async function generateLightweightTriage(
@@ -130,6 +132,7 @@ export async function generateLightweightTriage(
                 symbolMentions?: string[];
                 eventType?: string;
                 eventSeverity?: number;
+                classification?: string;
             }>;
             triageScores?: Array<{
                 relevanceScore: number;
@@ -137,6 +140,7 @@ export async function generateLightweightTriage(
                 symbolMentions?: string[];
                 eventType?: string;
                 eventSeverity?: number;
+                classification?: string;
             }>;
         }>({
             model: targetModel,
@@ -163,6 +167,10 @@ export async function generateLightweightTriage(
                 eventSeverity: typeof scoreObj.eventSeverity === 'number'
                     ? Math.max(1, Math.min(3, Math.round(scoreObj.eventSeverity)))
                     : 1,
+                classification: (typeof scoreObj.classification === 'string' &&
+                    ['MAJOR', 'MINOR', 'NOISE'].includes(scoreObj.classification))
+                    ? scoreObj.classification as 'MAJOR' | 'MINOR' | 'NOISE'
+                    : 'MINOR' as const,
             };
         });
 
@@ -179,6 +187,7 @@ export async function generateLightweightTriage(
             symbolMentions: [],
             eventType: 'Other',
             eventSeverity: 1,
+            classification: 'MINOR' as const,
         }));
 
         // Cache fallback results briefly (5 minutes) to prevent repeated failures on same batch
@@ -295,6 +304,77 @@ export async function streamChatResponse(
         temperature: 0.6,
         messages: chatMessages
     });
+}
+
+export async function callGptNanoMinorUpdate(newsTitle: string, existingHeadline: string): Promise<string> {
+    const messages = [
+        {
+            role: 'system' as const,
+            content: 'You are a crypto news update writer. Write factual, concise updates.'
+        },
+        {
+            role: 'user' as const,
+            content: `Given this new development: ${newsTitle}, in context of the existing story: ${existingHeadline}, write a concise 1-2 paragraph timeline update. Factual, no filler.`
+        }
+    ];
+
+    const raw = await gateway.chatRaw({
+        model: env.SEO_MODEL,
+        temperature: 0.3,
+        messages,
+    });
+
+    return raw.trim();
+}
+
+export async function callGptNanoMasterUpdate(analysisResult: DeepAnalysisResult, existingArticle: Record<string, unknown>): Promise<Partial<typeof coinMasterArticles.$inferInsert>> {
+    const sections = [
+        'coreCatalyst',
+        'marketContext',
+        'strategicImpact',
+        'historicalContext',
+        'technicalLevels',
+        'riskAssessment',
+        'bottomLine'
+    ];
+
+    const existingSections = sections.map(section => `${section}: ${existingArticle[section] || 'N/A'}`).join('\n\n');
+
+    const messages = [
+        {
+            role: 'system' as const,
+            content: 'You are a crypto article updater. Output ONLY JSON with updated sections.'
+        },
+        {
+            role: 'user' as const,
+            content: `Update the following living article sections based on this new analysis: ${JSON.stringify(analysisResult)}\n\nExisting sections:\n${existingSections}\n\nOutput ONLY the sections that need updating as JSON.`
+        }
+    ];
+
+    const raw = await gateway.chatRaw({
+        model: env.SEO_MODEL,
+        temperature: 0.3,
+        responseFormat: { type: 'json_object' },
+        messages,
+    });
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        console.warn('[callGptNanoMasterUpdate] JSON parse failed. Raw:', raw.slice(0, 200));
+        return {};
+    }
+
+    if (typeof parsed !== 'object' || parsed === null) return {};
+
+    return parsed as Record<string, unknown>;
+}
+
+export function extractSection(fullArticle: string, sectionTag: string): string | null {
+    const regex = new RegExp(`\\[(${sectionTag}\\??)\\]([\\s\\S]*?)(?=\\[|$)`, 'i');
+    const match = fullArticle.match(regex);
+    return match ? match[2].trim() : null;
 }
 
 export { gateway };

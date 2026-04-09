@@ -64,8 +64,14 @@ Per item:
   "sentimentHint": "bullish|bearish|neutral",
   "symbolMentions": ["BTC", "ETH"],
   "eventType": "<ETF|Hack|Exploit|Listing|Delisting|Upgrade|TokenLaunch|Regulatory|Funding|Partnership|Other>",
-  "eventSeverity": <1|2|3>
+  "eventSeverity": <1|2|3>,
+  "classification": "MAJOR|MINOR|NOISE"
 }
+
+Classification rules:
+- MAJOR: ETF approvals, major hacks/exploits, SEC actions, top-10 exchange listings, mainnet launches, $100M+ funding, protocol breaking changes
+- MINOR: Price milestones, whale moves, partnerships, upgrades, small-to-medium funding
+- NOISE: Rehashed/duplicate news, promotional content, opinion pieces, old news rewritten
 
 Scoring:
 90-100  Exchange listings, hacks, SEC actions, ETF approvals, exploits, token launches

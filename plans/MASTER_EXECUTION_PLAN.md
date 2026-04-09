@@ -1743,6 +1743,60 @@ if (resolvedMode === 'context' && !req.userId) {
 # Execution Checklist
 
 ```
+Phase 0: [x] 0.1  [x] 0.1b [x] 0.2  [x] 0.3  [x] 0.4  [x] 0.5  [x] 0.6
+Phase 1: [x] 1.1  [x] 1.2  [x] 1.3  [x] 1.4  [x] 1.5
+Phase 2: [ ] 2.1  [ ] 2.1b(API) [ ] 2.1c(Seed) [ ] 2.2  [ ] 2.3  [ ] 2.4  [ ] 2.5
+Phase 3: [ ] 3.1  [ ] 3.2
+Phase 4: [ ] 4.1  [ ] 4.2
+Phase 5: [ ] 5.1  [ ] 5.2  [ ] 5.3  [ ] 5.4  [ ] 5.5  [ ] 5.6
+Phase 6: [ ] 6.1  [ ] 6.2  [ ] 6.3  [ ] 6.4  [ ] 6.5
+Cleanup: [x] Dead code removal
+```
+
+---
+
+# Tech Lead Review Log
+
+## 2026-04-09 — Full Architecture Audit
+
+### Completed: Phase 0 + Phase 1
+All tasks verified through codebase inspection:
+- Chat context mode, SSE parsing, buffer cleanup, asset count, force-seed auth, radar dedup
+- Dual gateway (OpenRouter + DeepSeek Direct), triage on DeepSeek, historical cron, conditional audit, coinMemory feed
+- Dead code removed (~400 lines)
+
+### Critical Gaps Found & Fixed
+
+1. **Missing API Endpoints for Living Articles** (Task 2.1b added)
+   Phase 2 creates tables but no endpoints. Frontend needs `GET /market/master/:symbol` and `GET /market/timeline/:symbol`.
+
+2. **Missing Data Migration** (Task 2.1c added)
+   System would start empty without migrating existing coin_news to coin_master_articles.
+
+3. **Triage Field Naming Conflict** (Task 2.2 scope updated)
+   Removed `triggerType` from AI output. Now derived from existing `eventType` via code mapping. Saves 1 field on DB and reduces AI output complexity.
+
+4. **Conviction Algorithm Weaknesses** (Task 2.4 scope updated)
+   Added recency decay, impact-weighted scoring, bearish penalty multiplier, proper trend windowing.
+
+5. **Chat Quotas `any` Type** (Task 4.2 scope updated)
+   Must use `Record<PlanTier, PlanQuota>` with proper type narrowing. Zero `any` policy.
+
+### Phase Dependency Chain
+```
+Phase 0 → Phase 1 → Phase 2 (11 → 11b → 11c → 12 → 13 → 14)
+                                    ↓
+                              Phase 3 (15)  ← can run parallel with 14
+                                    ↓
+                              Phase 4 (16)  ← depends on Phase 2 tables
+                                    ↓
+                              Phase 5 (17-19)
+                                    ↓
+                              Phase 6 (20)  ← optional
+```
+
+### Next Action
+Start **Task 11: Living Article DB Schema** — create `coin_master_articles` + `coin_timeline_updates` tables, run migration.
 Phase 0: [  ] 0.1  [  ] 0.1b [  ] 0.2  [  ] 0.3  [  ] 0.4  [  ] 0.5  [  ] 0.6
 Phase 1: [  ] 1.1  [  ] 1.2  [  ] 1.3  [  ] 1.4  [  ] 1.5
 Phase 2: [  ] 2.1  [  ] 2.2  [  ] 2.3  [  ] 2.4  [  ] 2.5

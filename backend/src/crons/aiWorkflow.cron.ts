@@ -6,18 +6,30 @@ import { buildTemporalPattern } from '../services/temporalIntelligence.service';
 import { getPriceWithFallback } from '../services/priceService';
 import { getDynamicThreshold, countPublishedLastHour } from '../services/dynamicThreshold.service';
 import { deepseekBreaker, gptNanoBreaker } from '../services/circuitBreaker.service';
-import { callDeepSeekAnalysis, callGptNanoWriter, gateway, deepseekGateway } from '../services/openai.service';
+import { callDeepSeekAnalysis, callGptNanoWriter, callGptNanoMinorUpdate, callGptNanoMasterUpdate, extractSection, gateway, deepseekGateway } from '../services/openai.service';
 import type { DeepAnalysisResult } from '../services/openai.service';
 import type { ArticleWriterResult } from '../services/openai.service';
 import { AIRateLimitError } from '../services/ai/ai-gateway';
 import { validateFactualGrounding } from '../services/ai/factual-grounding';
 import { auditArticleQuality } from '../services/ai/quality-auditor';
 import { saveMemory } from '../services/coin-memory.service';
-import { coinNews, radarSignals, rawNewsBuffer } from '../models/market.model';
+import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates } from '../models/market.model';
 import { eq, gte, and, desc, sql, isNotNull, ne } from 'drizzle-orm';
-import { deleteCache, deleteCachePattern } from '../config/redis';
+import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 
 let isAiWorkflowRunning = false;
+
+const TRIGGER_TYPE_MAP: Record<string, string> = {
+    'Hack': 'security',
+    'Exploit': 'security',
+    'ETF': 'regulation',
+    'Regulatory': 'regulation',
+    'Listing': 'market',
+    'Delisting': 'market',
+    'Funding': 'whale',
+    'Partnership': 'news',
+    'Upgrade': 'technical',
+};
 
 function generateSlug(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
@@ -54,6 +66,16 @@ export async function runAiWorkflow(): Promise<void> {
     isAiWorkflowRunning = true;
     console.log('🤖 [AI Workflow] Started.');
 
+    // Redis mutex
+    const lockKey = 'cron:aiworkflow:lock';
+    if (redis) {
+        const lockAcquired = await redis.set(lockKey, '1', 'EX', 3600, 'NX');
+        if (!lockAcquired) {
+            console.log('⏳ [AI Workflow] Mutex locked. Skipping.');
+            return;
+        }
+    }
+
     try {
         const hourlyCount = await countPublishedLastHour();
         if (hourlyCount >= 5) {
@@ -81,8 +103,62 @@ export async function runAiWorkflow(): Promise<void> {
             const symbol = mentions[0];
             const eventType = typeof item.eventType === 'string' ? item.eventType : 'Other';
             const eventSeverity = typeof item.eventSeverity === 'number' ? item.eventSeverity : 1;
+            const classification = (typeof item.classification === 'string' && ['MAJOR', 'MINOR', 'NOISE'].includes(item.classification)) ? item.classification : 'MINOR';
 
-            console.log(`[AI Workflow] Processing: ${symbol} — "${item.title.slice(0, 60)}..."`);
+            console.log(`[AI Workflow] Processing: ${symbol} (${classification}) — "${item.title.slice(0, 60)}..."`);
+
+            const triggerType = TRIGGER_TYPE_MAP[eventType] ?? 'news';
+
+            if (classification === 'NOISE') {
+                console.log(`[AI Workflow] Skipping NOISE: ${symbol}`);
+                continue;
+            }
+
+            if (classification === 'MINOR') {
+                const master = await db.select().from(coinMasterArticles).where(eq(coinMasterArticles.coinSymbol, symbol)).limit(1);
+                if (master.length === 0) {
+                    console.log(`[AI Workflow] No master article for MINOR ${symbol}, skipping`);
+                    continue;
+                }
+                const existingHeadline = master[0].headline;
+                const updateText = await callGptNanoMinorUpdate(item.title, existingHeadline);
+
+                await db.insert(coinTimelineUpdates).values({
+                    coinSymbol: symbol,
+                    masterArticleId: master[0].id,
+                    updateText,
+                    triggerType,
+                    severity: 'MINOR',
+                    sourceTitle: item.title,
+                    sourceHash: item.sourceHash,
+                    sentiment: item.sentimentHint || null,
+                    impactScore: item.relevanceScore || null,
+                    convictionDelta: null,
+                });
+
+                await db.update(coinMasterArticles).set({
+                    minorUpdateCount: sql`${coinMasterArticles.minorUpdateCount} + 1`,
+                    lastMinorUpdate: sql`NOW()`,
+                    updatedAt: sql`NOW()`,
+                }).where(eq(coinMasterArticles.id, master[0].id));
+
+                // Write to coinNews for backward compatibility
+                const sourceHash = crypto.createHash('sha256').update(item.title).digest('hex');
+                await db.insert(coinNews).values({
+                    coinSymbol: symbol,
+                    headline: `Update: ${item.title.slice(0, 50)}...`,
+                    summary: updateText,
+                    sentiment: item.sentimentHint || null,
+                    impactScore: item.relevanceScore || null,
+                    sourceHash,
+                    aiProcessed: 1,
+                }).onConflictDoNothing();
+
+                console.log(`[AI Workflow] MINOR update for ${symbol}`);
+                continue;
+            }
+
+            // MAJOR path
 
             try {
                 const intelligence = await getCoinIntelligence(symbol);
@@ -150,6 +226,78 @@ export async function runAiWorkflow(): Promise<void> {
                     }
                     gptNanoBreaker.recordFailure('GPT-nano');
                     throw err;
+                }
+
+                // Master article logic
+                const master = await db.select().from(coinMasterArticles).where(eq(coinMasterArticles.coinSymbol, symbol)).limit(1);
+                if (master.length === 0) {
+                    // Create new master article
+                    const fullArticle = article.fullArticle;
+                    const newMaster = {
+                        coinSymbol: symbol,
+                        headline: article.headline,
+                        hook: article.hook,
+                        metaTitle: article.metaTitle,
+                        metaDescription: article.metaDescription,
+                        seoKeywords: article.seoKeywords,
+                        sentiment: analysisResult.sentiment,
+                        verdict: analysisResult.verdict,
+                        confidenceScore: analysisResult.confidenceScore,
+                        convictionScore: analysisResult.confidenceScore || 0,
+                        posture: 'neutral',
+                        riskTags: [],
+                        triggerType,
+                        coreCatalyst: extractSection(fullArticle, 'HOOK') || article.hook,
+                        marketContext: extractSection(fullArticle, 'WHAT HAPPENED'),
+                        strategicImpact: extractSection(fullArticle, 'WHY IT MATTERS'),
+                        historicalContext: extractSection(fullArticle, 'HISTORY REPEATS?'),
+                        technicalLevels: extractSection(fullArticle, 'PRICE PICTURE'),
+                        riskAssessment: extractSection(fullArticle, 'RISK CHECK'),
+                        bottomLine: extractSection(fullArticle, 'BOTTOM LINE'),
+                        majorUpdateCount: 1,
+                        lastMajorUpdate: sql`NOW()`,
+                    };
+                    const insertedMaster = await db.insert(coinMasterArticles).values(newMaster).returning({ id: coinMasterArticles.id });
+                    const masterId = insertedMaster[0].id;
+
+                    // Insert MAJOR timeline
+                    await db.insert(coinTimelineUpdates).values({
+                        coinSymbol: symbol,
+                        masterArticleId: masterId,
+                        updateText: article.fullArticle.slice(0, 1000),
+                        triggerType,
+                        severity: 'MAJOR',
+                        sourceTitle: item.title,
+                        sourceHash: item.sourceHash,
+                        sentiment: analysisResult.sentiment,
+                        impactScore: analysisResult.impactScore,
+                        convictionDelta: null,
+                    });
+                } else {
+                    // Update existing master article
+                    const existing = master[0];
+                    const updatedSections = await callGptNanoMasterUpdate(analysisResult, existing);
+
+                    await db.update(coinMasterArticles).set({
+                        ...updatedSections,
+                        majorUpdateCount: sql`${coinMasterArticles.majorUpdateCount} + 1`,
+                        lastMajorUpdate: sql`NOW()`,
+                        updatedAt: sql`NOW()`,
+                    }).where(eq(coinMasterArticles.id, existing.id));
+
+                    // Insert MAJOR timeline
+                    await db.insert(coinTimelineUpdates).values({
+                        coinSymbol: symbol,
+                        masterArticleId: existing.id,
+                        updateText: article.fullArticle.slice(0, 1000),
+                        triggerType,
+                        severity: 'MAJOR',
+                        sourceTitle: item.title,
+                        sourceHash: item.sourceHash,
+                        sentiment: analysisResult.sentiment,
+                        impactScore: analysisResult.impactScore,
+                        convictionDelta: null,
+                    });
                 }
 
                 // B1. Quality audit (cross-model: DeepSeek-R1 audits GPT-5-nano) — only for high-impact or breaking news
@@ -234,6 +382,9 @@ export async function runAiWorkflow(): Promise<void> {
         console.error('❌ [AI Workflow] Failed:', err);
     } finally {
         isAiWorkflowRunning = false;
+        if (redis) {
+            await redis.del(lockKey);
+        }
     }
 }
 
