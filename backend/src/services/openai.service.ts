@@ -114,7 +114,7 @@ const gateway = new AIGateway({
 });
 const prompts = new PromptFactory();
 
-// ─── Market Verdict (GLM-5 — deep analysis) ──────────────────────────────────
+// ─── Market Verdict (DeepSeek-R1 — deep analysis) ──────────────────────────────────
 
 export async function generateMarketVerdict(
     coinSymbol: string,
@@ -134,7 +134,7 @@ export async function generateMarketVerdict(
 
     const messages = prompts.buildMarketVerdictMessages(coinSymbol, data);
     const result = await gateway.chat<MarketVerdictResult>({
-        model: env.ANALYSIS_MODEL,
+        model: env.DEEPSEEK_MODEL,
         temperature: 0.3,
         responseFormat: { type: 'json_object' },
         messages
@@ -170,16 +170,14 @@ export async function generateDeepIntelligenceReport(
     // 100-5000% moves, so >10% was causing ALL tokens to route to DeepSeek-R1 unnecessarily.
     const isVolatile = aggregatedData.stats && Math.abs(Number(aggregatedData.stats.priceChange24h || 0)) > 30;
 
-    // Both tiers now use DeepSeek-R1 via ANALYSIS_MODEL env var (GLM-5 removed — DeepSeek is cheaper at scale)
-    // Complex tokens get DeepSeek with higher temperature, routine get lower temperature
-    const aiModel = env.ANALYSIS_MODEL; // Always deepseek/deepseek-r1
+    // DeepSeek-R1 is used for all analysis
     const temperature = (hasManyNews || hasScamAlerts || isVolatile) ? 0.4 : 0.2;
 
-    console.log(`[ModelRouting] Using ${aiModel} for ${coinSymbol} (Volatile: ${isVolatile}, News: ${aggregatedData.recentNews.length}, Scam: ${!!hasScamAlerts}, Temp: ${temperature})`);
+    console.log(`[ModelRouting] Using DeepSeek ${env.DEEPSEEK_MODEL} for ${coinSymbol} (Volatile: ${isVolatile}, News: ${aggregatedData.recentNews.length}, Scam: ${!!hasScamAlerts}, Temp: ${temperature})`);
 
     const messages = prompts.buildDeepIntelligenceMessages(coinSymbol, aggregatedData);
     const result = await gateway.chat<DeepIntelligenceReport>({
-        model: aiModel,
+        model: env.DEEPSEEK_MODEL,
         temperature,
         responseFormat: { type: 'json_object' },
         messages
@@ -320,7 +318,7 @@ export async function generateDualNewsOutput(
     for (let i = 0; i < 3; i++) {
         try {
             const res = await gateway.chat<RawAnalysis>({
-                model: env.ANALYSIS_MODEL,
+                model: env.DEEPSEEK_MODEL,
                 temperature: 0.3,
                 responseFormat: { type: 'json_object' },
                 messages: analysisMessages
@@ -386,7 +384,7 @@ export async function generateDualNewsOutput(
     throw new Error('Failed to generate dual news output after retries');
 }
 
-// ─── Airdrop Validation (GLM-5 — deep analysis) ──────────────────────────────
+// ─── Airdrop Validation (DeepSeek-R1 — deep analysis) ──────────────────────────────
 
 export async function validateAirdrop(
     projectData: string
@@ -400,7 +398,7 @@ export async function validateAirdrop(
 
     const messages = prompts.buildAirdropValidationMessages(projectData);
     const result = await gateway.chat<AirdropValidationResult>({
-        model: env.ANALYSIS_MODEL, // GLM-5
+        model: env.DEEPSEEK_MODEL, // DeepSeek-R1
         temperature: 0.2,
         responseFormat: { type: 'json_object' },
         messages
@@ -417,7 +415,7 @@ export async function callDeepSeekAnalysis(input: DeepAnalysisInput, attempt: nu
     try {
         const messages = prompts.buildDeepAnalysisMessages(input);
         const result = await gateway.chat<DeepAnalysisResult>({
-            model: env.ANALYSIS_MODEL,
+            model: env.DEEPSEEK_MODEL,
             temperature: 0.2,
             responseFormat: { type: 'json_object' },
             messages,

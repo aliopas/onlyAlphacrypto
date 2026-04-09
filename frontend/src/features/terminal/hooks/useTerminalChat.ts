@@ -110,7 +110,15 @@ export function useTerminalChat({ coin, articleId, articleType }: UseTerminalCha
                 const text = decoder.decode(value);
                 text.split('\n').filter(l => l.startsWith('data:')).forEach(line => {
                     const chunk = line.slice(5).trim();
-                    if (chunk && chunk !== '[DONE]') { aiBuffer += chunk; }
+                    if (chunk && chunk !== '[DONE]') {
+                        try {
+                            const parsed = JSON.parse(chunk) as { content?: string; error?: string };
+                            if (parsed.content) aiBuffer += parsed.content;
+                            if (parsed.error) aiBuffer += `\n⚠️ ${parsed.error}`;
+                        } catch {
+                            aiBuffer += chunk;
+                        }
+                    }
                 });
                 setMessages(prev => [...prev.slice(0, -1), { role: 'ai', content: aiBuffer }]);
             }

@@ -1,1083 +1,1754 @@
-# 🚀 OnlyAlpha — Master Execution Plan v4.2
-### Free Sources Only — Phased Execution, Zero Conflicts
-> **Date:** April 4, 2026
-> **Changes from v4.1:** Phases split for clean dependency order + JSON safety + targeted Redis invalidation + deployment phase
+# 🚀 OnlyAlpha — Master Execution Plan
+### From Zero to Production-Ready
+
+**Created:** 2026-04-09
+**Status:** Active
+**Total Phases:** 7 | **Estimated Duration:** 6-8 weeks
 
 ---
 
-## 📊 Final Stack
+## 📋 Table of Contents
 
-### ✅ Free Data Sources
-| Service | Purpose | Cost | API Key |
-|:---|:---|:---|:---|
-| **RSS Scraper** | Primary news — CoinDesk, Cointelegraph, Decrypt, The Block | $0.00 | No |
-| **Google News RSS** | Historical news per coin (rate-limited) | $0.00 | No |
-| **DexScreener Boosts** | Hype detection `/token-boosts/top/v1` | $0.00 | No |
-| **DexScreener Price** | Price fallback for coins NOT on Binance | $0.00 | No |
-| **Binance Public API** | Primary price + 24hr stats + 4yr klines | $0.00 | No |
-| **Wikipedia REST API** | Coin background for major coins | $0.00 | No |
-
-### ✅ AI Engines — Role Separation
-| Service | Role | Reason |
-|:---|:---|:---|
-| **DeepSeek R1** | Analysis ONLY → outputs JSON (facts, scores, signals) | Deep reasoning, strict JSON |
-| **GPT-5-nano** | Writing + Triage + SEO + Chat → outputs prose | Better English, consistent tone, no خرفنة |
-
-### ❌ Killed Services
-| Service | Reason |
-|:---|:---|
-| **CryptoCompare** | Auth expired — hard-coded 429 |
-| **CoinCap** | 4,000 req/month cap |
-| **NewsData.io** | 12-hour delay |
-| **CoinGecko** | News = PRO only since 2024 |
-| **Tavily** | 1,000/month cap — keep key as emergency fallback only |
+1. [Phase 0: Critical Hotfixes](#phase-0-critical-hotfixes)
+2. [Phase 1: AI Cost Optimization & Infrastructure](#phase-1-ai-cost-optimization--infrastructure)
+3. [Phase 2: Living Article System](#phase-2-living-article-system)
+4. [Phase 3: Temporal Intelligence Layer](#phase-3-temporal-intelligence-layer)
+5. [Phase 4: Chat System Rebuild](#phase-4-chat-system-rebuild)
+6. [Phase 5: Frontend Refactor & Institutional Branding](#phase-5-frontend-refactor--institutional-branding)
+7. [Phase 6: Text Embeddings & Semantic Dedup](#phase-6-text-embeddings--semantic-dedup)
+8. [Appendix A: Dead Code Cleanup](#appendix-a-dead-code-cleanup)
+9. [Appendix B: Model Cost Map](#appendix-b-model-cost-map)
 
 ---
 
-## 🗺️ Phase Map — Dependency Order
+## Legend
 
 ```
-PHASE 0  →  PHASE 1  →  PHASE 2  →  PHASE 3
-Bug Fixes   DB Schema   Data Svcs   Coin Intel
-    ↓           ↓           ↓           ↓
-                        PHASE 4  →  PHASE 5
-                        Temporal    AI Roles
-                            ↓           ↓
-                        PHASE 6  →  PHASE 7
-                        Resilience  Wire All
-                                        ↓
-                                    PHASE 8
-                                    Cache & Publish
-                                        ↓
-                                    PHASE 9
-                                    Test & QA
-                                        ↓
-                                    PHASE 10
-                                    Deploy
+[ ] = Not started
+[~] = In progress
+[x] = Done
+[!] = Blocked / needs decision
 ```
-
-> **Rule:** Never start a phase until all phases it depends on are complete and tested.
 
 ---
 
-## 🛠️ PHASE 0 — Critical Bug Fixes
-> **Depends on:** Nothing — do this first.
-> **Goal:** Bring the broken pipeline back to life.
-> **Time:** Day 1.
+# Phase 0: Critical Hotfixes
+**Priority:** 🔴 CRITICAL — Do before ANYTHING else
+**Duration:** 1-2 days
+**Goal:** Make the existing product actually work
 
-### P0-A: Replace CryptoCompare with RSS 🔴
-**File:** `terminalEngine.cron.ts`
-**Problem:** Lines 16-47 call `cryptocompare.com` → auth error every 10 min.
-**Fix:** Replace `fetchLatestNews()` body with `fetchAllRSSNews()` from `rssNews.service.ts` (already built and tested).
+---
 
-### P0-B: Language Mandate in All Prompts 🔴
-**File:** `prompt-factory.ts`
-**Problem:** No English constraint → DeepSeek outputs Chinese/Arabic.
+## Task 0.1: Fix Chat Context Mode Mismatch
+**Bug:** Context AI never activates — users always get General AI regardless of mode selection.
+**Root Cause:** Backend checks for `resolvedMode === 'private'` but frontend sends `mode: 'context'`.
+
+### 0.1.1 — Backend: Accept 'context' as valid mode
+**File:** `backend/src/controllers/chat.controller.ts`
+
+```diff
+ // Line 36 — Change the condition to accept both 'private' and 'context'
+-if (resolvedMode === 'private' && articleId && articleType) {
++if ((resolvedMode === 'private' || resolvedMode === 'context') && articleId && articleType) {
+```
+
+### 0.1.2 — Backend: Read mode from request body too
+**File:** `backend/src/controllers/chat.controller.ts`
+
+```diff
+ // Line 28 — Also check the body mode field
+-const resolvedMode = isContextRoute ? 'private' : (mode || 'general');
++const resolvedMode = isContextRoute ? 'private' : (mode === 'context' ? 'context' : 'general');
+```
+
+### 0.1.3 — Frontend: Route to correct endpoint based on mode
+**File:** `frontend/src/features/terminal/hooks/useTerminalChat.ts`
+
+The frontend must send Context requests to `/chat/stream/context` (which has `authMiddleware`), not the general `/chat/stream` endpoint.
+
+```diff
+ // Line 89 — Change endpoint based on mode
+-const resp = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/chat/stream`, {
++const chatEndpoint = mode === 'context'
++    ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/chat/stream/context`
++    : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/chat/stream`;
++const resp = await fetch(chatEndpoint, {
+```
+
+> **Note on `userPlan`:** The `AuthRequest` interface already includes `userPlan?: string` (line 7 of `auth.middleware.ts`) and it's already populated from the JWT in both `authMiddleware` (line 23) and `optionalAuth` (line 38). No changes needed.
+
+**Status:** `[ ]`
+
+---
+
+## Task 0.1b: General AI Ignores Article Context
+**Bug:** When in "General AI" mode, the chat completely ignores `articleId` — users can't ask questions about the article they're viewing.
+**Source:** `Issues_And_Improvements_Log.md` — Issue #4 under AI Chat System Failures
+**Root Cause:** The General branch in `chat.controller.ts` skips the article context fetch entirely.
+
+**File:** `backend/src/controllers/chat.controller.ts`
+
+Even in General mode, if an `articleId` is provided, inject a lightweight context:
+
+```diff
+ // After the context branch (line ~85), add fallback for General mode:
++// Even in general mode, if user is viewing an article, include it as light context
++if (resolvedMode === 'general' && articleId && articleType) {
++    try {
++        const table = articleType === 'WIRE' ? coinNews : radarSignals;
++        const [item] = await db.select().from(table).where(eq(table.id, articleId)).limit(1);
++        if (item) {
++            const headline = 'headline' in item ? item.headline : ('signalText' in item ? item.signalText : '');
++            systemPrompt += `\n\n[ARTICLE CONTEXT]: The user is currently viewing: "${headline}". You may reference this if relevant to their question.`;
++        }
++    } catch { /* non-blocking */ }
++}
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 0.2: Fix SSE Stream Parsing Bug
+**Bug:** Users see raw JSON like `{"content":"Hello"}` instead of plain text.
+**Root Cause:** Frontend appends raw JSON string to buffer without parsing.
+
+**File:** `frontend/src/features/terminal/hooks/useTerminalChat.ts`
+
+```diff
+ // Lines 110-113 — Parse the JSON to extract content
+ text.split('\n').filter(l => l.startsWith('data:')).forEach(line => {
+     const chunk = line.slice(5).trim();
+-    if (chunk && chunk !== '[DONE]') { aiBuffer += chunk; }
++    if (chunk && chunk !== '[DONE]') {
++        try {
++            const parsed = JSON.parse(chunk);
++            if (parsed.content) aiBuffer += parsed.content;
++            if (parsed.error) aiBuffer += `\n⚠️ ${parsed.error}`;
++        } catch {
++            // If not valid JSON, append as-is (fallback)
++            aiBuffer += chunk;
++        }
++    }
+ });
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 0.3: Fix Buffer Cleanup (ttlExpiresAt never set)
+**Bug:** `raw_news_buffer` grows forever — cleanup cron deletes nothing because `ttlExpiresAt` is always NULL.
+**Root Cause:** `terminalEngine.cron.ts` inserts rows without setting `ttlExpiresAt`.
+
+**File:** `backend/src/crons/terminalEngine.cron.ts`
+
+```diff
+ // Lines 45-49 — Add ttlExpiresAt when inserting
+ await db.insert(rawNewsBuffer).values({
+     title: rawText,
+     source: newsItem.source || 'Unknown',
+     sourceHash: hash,
++    ttlExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000), // 48 hours
+ }).onConflictDoNothing();
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 0.4: Fix Asset Count Showing 0
+**Bug:** "Scanning X Assets" always shows 0.
+**Root Cause:** Counting from `market_insights` table (never populated by current workflow) instead of `coin_news`.
+
+**File:** `backend/src/controllers/market.controller.ts`
+
+```diff
+ // Lines 135-137 — Count from the table that actually has data
++import { coinNews } from '../models/index';
++
+ const [{ count }] = await db
+-    .select({ count: sql<number>`COUNT(DISTINCT ${marketInsights.coinSymbol})` })
+-    .from(marketInsights);
++    .select({ count: sql<number>`COUNT(DISTINCT ${coinNews.coinSymbol})` })
++    .from(coinNews);
+```
+
+> **Note:** `coinNews` is already imported at the top of the file. Only the query itself needs to change.
+
+**Status:** `[ ]`
+
+### 0.4.2 — Fix Aggressive Caching on Zero
+**Bug:** Asset count cached for 300 seconds. If initial result is 0, UI shows 0 for 5 minutes even after data appears.
+**Source:** `Issues_And_Improvements_Log.md` — Issue #2 under Scanning Assets
+
+```diff
+ // market.controller.ts — Line 140
+-await setCache(cacheKey, result, 300);
++await setCache(cacheKey, result, count > 0 ? 300 : 30); // Short cache if 0 to re-check quickly
+```
+
+### 0.4.3 — Fix Misleading Metric Source
+**Bug:** "Scanning Assets" should reflect total monitored tokens, not only those with full insights.
+**Source:** `Issues_And_Improvements_Log.md` — Issue #3 under Scanning Assets
+
+The fix in 0.4 (switching to `coinNews`) already addresses this. But for an even more accurate count, use `radarSignals`:
 
 ```typescript
-// Add this constant at the top of prompt-factory.ts
-export const LANGUAGE_MANDATE = `
-CRITICAL LANGUAGE RULE — NON-NEGOTIABLE:
-Write ALL output exclusively in English.
-Do NOT output Arabic, Chinese, Korean, Japanese, or any non-English characters.
-Translate any non-English input to English before using it.
-Violation makes the entire output invalid.
-`.trim();
-
-// Inject into ALL 8 prompt builder functions as the first line.
+// Alternative — count from radar_signals (reflects actual AI-processed tokens)
+const [{ count }] = await db
+    .select({ count: sql<number>`COUNT(DISTINCT ${radarSignals.coinSymbol})` })
+    .from(radarSignals);
 ```
 
-### P0-C: Fix UI Bugs 🔴
-1. `TerminalWire.tsx` L40-42 → Show ALL signals. Use `targetedCoin` for amber border highlight only — not as a filter.
-2. `useTerminalChat.ts` L4 → `'private'` → `'context'`
-3. `TerminalChat.tsx` L45 → `setMode('private')` → `setMode('context')`
-4. `useTerminalChat.ts` L69 → Add 3-second timeout fallback for disclaimer deadlock.
-5. `useTerminalChat.ts` L102 → `line.replace('data:', '')` → `line.slice(5)` for correct SSE parsing.
-
-### P0-D: Environment Cleanup 🟡
-**Files:** `.env` local + production
-```bash
-# REMOVE these dead keys
-CRYPTOCOMPARE_API_KEY=...  # DELETE
-COINCAP_API_KEY=...        # DELETE
-
-# VERIFY these are set correctly
-ANALYSIS_MODEL=deepseek/deepseek-r1
-SEO_MODEL=openai/gpt-5-nano
-TAVILY_API_KEY=...         # KEEP — emergency fallback only
-```
-
-### P0-E: Fix Triage → Deep Analysis Link 🔴
-**Problem:** Triage doesn't save `symbolMentions` → everything becomes `UNKNOWN` → `deep-analysis-router.ts` L39 filters them all out → zero articles published.
-**Fix:** Update `buildTriageMessages` to also extract `symbolMentions`, `eventType`, `eventSeverity`. Update `triageEngine.cron.ts` to save all three to the buffer row.
+**Status:** `[ ]`
 
 ---
 
-## 🗄️ PHASE 1 — DB Schema & Migrations
-> **Depends on:** Phase 0 complete.
-> **Goal:** Create all new tables before any service tries to use them.
-> **Time:** Day 1 (same day, after Phase 0).
+## Task 0.5: Protect force-seed Endpoint
+**Bug:** `/api/market/force-seed` has no authentication — anyone can trigger all AI crons.
+**Root Cause:** Missing `authMiddleware`.
 
-Run `npx drizzle-kit push` after adding these to your schema file.
+**File:** `backend/src/routes/market.routes.ts`
 
+```diff
++import { authMiddleware } from '../middleware/auth.middleware';
++
+ // Line 17 — Add auth protection
+-router.post('/force-seed', forceSeed);
++router.post('/force-seed', authMiddleware, forceSeed);
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 0.6: Fix Radar Backfill Duplication
+**Bug:** `backfillRadarSignals` can create duplicate Radar entries for news articles that already have signals.
+**Root Cause:** The newsId check uses a Set but doesn't also check for content similarity.
+
+**File:** `backend/src/crons/aiWorkflow.cron.ts`
+
+```diff
+ // Line 184 — Also link the newly created signal to the news ID
+ if (actionableVerdicts.includes(analysisResult.verdict)) {
+     await db.insert(radarSignals).values({
+         coinSymbol: symbol,
+         signalText: analysisResult.signalText,
+         sentiment: analysisResult.sentiment,
+         impactScore: analysisResult.impactScore,
++        newsId: (await db.select({ id: coinNews.id })
++            .from(coinNews)
++            .where(eq(coinNews.sourceHash, sourceHash))
++            .limit(1)
++        )[0]?.id ?? null,
+     }).onConflictDoNothing();
+ }
+```
+
+**Status:** `[ ]`
+
+---
+
+# Phase 1: AI Cost Optimization & Infrastructure
+**Priority:** 🟠 HIGH — Directly saves money
+**Duration:** 1 week
+**Goal:** Cut AI costs by ~35% without changing any user-visible behavior
+
+---
+
+## Task 1.1: Dual Gateway — DeepSeek Direct API
+**What:** Create a second AIGateway instance for DeepSeek direct API (bypassing OpenRouter markup).
+**Files:** `backend/src/config/env.ts` + `backend/src/services/openai.service.ts`
+
+### 1.1.1 — Add DeepSeek Direct env vars
+**File:** `backend/src/config/env.ts`
+
+```diff
+ // After line 28 (DEEPSEEK_MODEL)
++    // DeepSeek Direct API (cheaper than OpenRouter for reasoning tasks)
++    DEEPSEEK_API_KEY: z.string().optional(),
++    DEEPSEEK_BASE_URL: z.string().url().default('https://api.deepseek.com/v1'),
++    DEEPSEEK_DIRECT_MODEL: z.string().default('deepseek-reasoner'),
+```
+
+### 1.1.2 — Add to .env file
+**File:** `backend/.env`
+
+```
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_DIRECT_MODEL=deepseek-reasoner
+```
+
+### 1.1.3 — Create dual gateways
+**File:** `backend/src/services/openai.service.ts`
+
+```diff
+ // Replace the single gateway (lines 106-114) with dual gateways
+-const gateway = new AIGateway({
+-    apiKey: env.OPENROUTER_API_KEY,
+-    baseURL: 'https://openrouter.ai/api/v1',
+-    timeoutMs: 90000,
+-    defaultHeaders: {
+-        'HTTP-Referer': 'https://onlyalpha.app',
+-        'X-Title': 'OnlyAlpha',
+-    }
+-});
++// OpenRouter — for GPT-5-nano (writing, chat, SEO)
++const openRouterGateway = new AIGateway({
++    apiKey: env.OPENROUTER_API_KEY,
++    baseURL: 'https://openrouter.ai/api/v1',
++    timeoutMs: 90000,
++    defaultHeaders: {
++        'HTTP-Referer': 'https://onlyalpha.app',
++        'X-Title': 'OnlyAlpha',
++    }
++});
++
++// DeepSeek Direct — for analysis, triage, audit (cheaper, no OpenRouter markup)
++const deepseekGateway = env.DEEPSEEK_API_KEY
++    ? new AIGateway({
++        apiKey: env.DEEPSEEK_API_KEY,
++        baseURL: env.DEEPSEEK_BASE_URL,
++        timeoutMs: 120000,
++        defaultHeaders: {},
++    })
++    : openRouterGateway; // Fallback to OpenRouter if no direct key
++
++// Legacy alias — keep existing code working during migration
++const gateway = openRouterGateway;
+```
+
+### 1.1.4 — Route analysis calls through DeepSeek Direct
+**File:** `backend/src/services/openai.service.ts`
+
+```diff
+ // callDeepSeekAnalysis (line ~417)
+ const result = await gateway.chat<DeepAnalysisResult>({
+-    model: env.DEEPSEEK_MODEL,
++    model: env.DEEPSEEK_API_KEY ? env.DEEPSEEK_DIRECT_MODEL : env.DEEPSEEK_MODEL,
+```
+
+Apply the same pattern to:
+- `callDeepSeekAnalysis` (line 417)
+- `auditArticleQuality` in `quality-auditor.ts` (line 49) — pass `deepseekGateway` instead of `gateway`
+- `generateLightweightTriage` (Task 1.2 below)
+
+### 1.1.5 — Update quality-auditor to accept gateway parameter
+**File:** `backend/src/services/ai/quality-auditor.ts`
+
+```diff
+-const AUDITOR_MODEL = process.env.ANALYSIS_MODEL ?? 'deepseek/deepseek-r1';
++import { env } from '../../config/env';
++const AUDITOR_MODEL = env.DEEPSEEK_API_KEY ? env.DEEPSEEK_DIRECT_MODEL : env.DEEPSEEK_MODEL;
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 1.2: Move Triage to DeepSeek
+**What:** Triage is classification, not writing. DeepSeek-R1 is better and vastly cheaper for this.
+**File:** `backend/src/services/openai.service.ts`
+
+```diff
+ // generateLightweightTriage (line ~234)
+-    model: env.SEO_MODEL, // GPT-5-nano equivalent (cheap/fast model)
++    model: env.DEEPSEEK_API_KEY ? env.DEEPSEEK_DIRECT_MODEL : env.DEEPSEEK_MODEL,
+```
+
+And use the correct gateway:
+```diff
+-        const parsed = await gateway.chat<{
++        const parsed = await deepseekGateway.chat<{
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 1.3: Move Historical News Fetch to Daily Cron
+**What:** `fetchHistoricalNewsForCoins()` currently runs every hour inside `aiWorkflow`. Historical news doesn't change hourly.
+
+### 1.3.1 — Remove from aiWorkflow
+**File:** `backend/src/crons/aiWorkflow.cron.ts`
+
+```diff
+ // Line 89 — Remove the per-run historical fetch
+-await fetchHistoricalNewsForCoins([symbol]);
+ const pattern = await buildTemporalPattern(symbol, eventType, eventSeverity);
+```
+
+### 1.3.2 — Create daily historical fetch cron
+**File:** `backend/src/crons/historicalNews.cron.ts` (NEW FILE)
+
+```typescript
+import cron from 'node-cron';
+import { db } from '../config/db';
+import { coinNews } from '../models/market.model';
+import { sql } from 'drizzle-orm';
+import { fetchHistoricalNewsForCoins, backfillPriceOutcomes } from '../services/temporalIntelligence.service';
+
+export async function runHistoricalNewsFetch(): Promise<void> {
+    console.log('📚 [HistoricalNews] Running daily historical news fetch...');
+
+    try {
+        // Get unique coins from last 7 days of published articles
+        const recentCoins = await db
+            .selectDistinct({ coinSymbol: coinNews.coinSymbol })
+            .from(coinNews)
+            .where(sql`${coinNews.publishedAt} > NOW() - INTERVAL '7 days'`);
+
+        const symbols = recentCoins
+            .map(r => r.coinSymbol)
+            .filter((s): s is string => !!s);
+
+        if (symbols.length === 0) {
+            console.log('[HistoricalNews] No recent coins to fetch history for.');
+            return;
+        }
+
+        console.log(`[HistoricalNews] Fetching history for ${symbols.length} coins: ${symbols.join(', ')}`);
+        await fetchHistoricalNewsForCoins(symbols);
+
+        // Also backfill price outcomes for old events
+        await backfillPriceOutcomes();
+
+        console.log('✅ [HistoricalNews] Daily fetch completed.');
+    } catch (error) {
+        console.error('❌ [HistoricalNews] Failed:', error);
+    }
+}
+
+export function startHistoricalNewsCron(): void {
+    // Run daily at 04:00 UTC (before the 06:00 UTC daily alpha cron)
+    cron.schedule('0 4 * * *', runHistoricalNewsFetch, { timezone: 'UTC' });
+    console.log('⏰ Historical News cron scheduled — 04:00 UTC daily');
+}
+```
+
+### 1.3.3 — Register in server.ts
+**File:** `backend/src/server.ts`
+
+```diff
++import { startHistoricalNewsCron } from './crons/historicalNews.cron';
+
+ const crons = [
+     { name: 'AiWorkflow', fn: startAiWorkflowCron },
++    { name: 'HistoricalNews', fn: startHistoricalNewsCron },
+     { name: 'DailyAlpha', fn: startDailyAlphaCron },
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 1.4: Conditional Audit (MAJOR only)
+**What:** Only run DeepSeek audit on high-impact articles.
+**File:** `backend/src/crons/aiWorkflow.cron.ts`
+
+```diff
+ // Lines 155-164 — Add condition before audit
+-const audit = await auditArticleQuality(gateway, JSON.stringify(analysisResult), article);
++// Only audit high-impact articles to save costs
++let audit = { passed: true, score: 0, issues: [] as string[], suggestion: null as string | null };
++if (analysisResult.impactScore >= 75 || analysisResult.isBreaking) {
++    audit = await auditArticleQuality(deepseekGateway, JSON.stringify(analysisResult), article);
++} else {
++    console.log(`[AI Workflow] Skipping audit for ${symbol} (impact: ${analysisResult.impactScore} < 75)`);
++}
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 1.5: Feed coinMemory After Every Published Article
+**What:** The `coinMemory` table is empty — the chat system has no historical context.
+**File:** `backend/src/crons/aiWorkflow.cron.ts`
+
+```diff
++import { saveMemory } from '../services/coin-memory.service';
+
+ // After line 198 (after successful publish log) — Save to coinMemory
+ console.log(`[AI Workflow] Published: ${symbol} — "${article.headline.slice(0, 50)}..."`);
+
++// Save to coinMemory for chat context and temporal intelligence
++try {
++    await saveMemory({
++        coinSymbol: symbol,
++        eventType,
++        eventSummary: `${article.headline}. ${analysisResult.analysis.mainDriver}`,
++        priceAtEvent: price?.price ?? undefined,
++        verdict: analysisResult.verdict,
++        confidenceScore: analysisResult.confidenceScore,
++        riskVerdict: analysisResult.analysis.riskNote ? 'MEDIUM' : 'LOW',
++        keyDrivers: analysisResult.keyFacts,
++        redFlags: analysisResult.analysis.riskNote ? [analysisResult.analysis.riskNote] : [],
++        sourceNewsHashes: [sourceHash],
++    });
++    console.log(`[AI Workflow] Memory saved for ${symbol}`);
++} catch (memErr) {
++    console.error(`[AI Workflow] Failed to save memory for ${symbol}:`, memErr);
++}
+```
+
+**Status:** `[ ]`
+
+---
+
+# Phase 2: Living Article System
+**Priority:** 🟠 HIGH — Core product improvement
+**Duration:** 2-3 weeks
+**Goal:** One evolving article per coin instead of duplicate full articles
+
+---
+
+## Task 2.1: New Database Schema
+
+### 2.1.1 — Add `coin_master_articles` table
+**File:** `backend/src/models/market.model.ts` (ADD at bottom)
+
+```typescript
+// ─── MASTER ARTICLES (Living Article per Coin) ───────────────────────────────
+export const coinMasterArticles = pgTable('coin_master_articles', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull().unique(),
+
+    // Modular sections (not one big summary field)
+    coreCatalyst: text('core_catalyst'),              // [HOOK] expanded
+    marketContext: text('market_context'),             // [WHAT HAPPENED]
+    strategicImpact: text('strategic_impact'),         // [WHY IT MATTERS]
+    historicalContext: text('historical_context'),      // [HISTORY REPEATS?]
+    technicalLevels: text('technical_levels'),         // [PRICE PICTURE] — support/resistance
+    riskAssessment: text('risk_assessment'),            // [RISK CHECK]
+    bottomLine: text('bottom_line'),                   // [BOTTOM LINE] verdict
+
+    // Meta
+    headline: text('headline').notNull(),
+    hook: text('hook'),
+    metaTitle: varchar('meta_title', { length: 80 }),
+    metaDescription: varchar('meta_description', { length: 200 }),
+    seoKeywords: json('seo_keywords'),
+
+    // Analytical fields
+    sentiment: varchar('sentiment', { length: 20 }),
+    verdict: varchar('verdict', { length: 20 }),
+    confidenceScore: real('confidence_score'),
+    convictionScore: real('conviction_score'),         // Algorithmic, not AI
+    posture: varchar('posture', { length: 30 }),       // 'accumulation', 'distribution', 'neutral'
+
+    // Risk tags (array of active tags)
+    riskTags: json('risk_tags'),                       // ['High Volatility', 'Whale Active']
+    triggerType: varchar('trigger_type', { length: 20 }), // 'whale', 'regulation', 'technical'
+
+    // Tracking
+    majorUpdateCount: integer('major_update_count').default(0),
+    minorUpdateCount: integer('minor_update_count').default(0),
+    lastMajorUpdate: timestamp('last_major_update'),
+    lastMinorUpdate: timestamp('last_minor_update'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+```
+
+### 2.1.2 — Add `coin_timeline_updates` table
+**File:** `backend/src/models/market.model.ts` (ADD after master articles)
+
+```typescript
+// ─── TIMELINE UPDATES (Minor events under Master Article) ────────────────────
+export const coinTimelineUpdates = pgTable('coin_timeline_updates', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    masterArticleId: integer('master_article_id')
+        .references(() => coinMasterArticles.id)
+        .notNull(),
+
+    // Content
+    updateText: text('update_text').notNull(),         // 1-2 paragraph update
+    triggerType: varchar('trigger_type', { length: 20 }), // 'whale', 'regulation', 'technical', 'news'
+    severity: varchar('severity', { length: 10 }).notNull(), // 'MAJOR', 'MINOR'
+
+    // Source tracking
+    sourceTitle: text('source_title'),                 // The news headline that caused this
+    sourceHash: varchar('source_hash', { length: 64 }),
+
+    // Impact
+    sentiment: varchar('sentiment', { length: 20 }),
+    impactScore: real('impact_score'),
+    convictionDelta: real('conviction_delta'),         // How much this changed conviction
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+```
+
+### 2.1.3 — Export new models
+**File:** `backend/src/models/index.ts`
+
+```diff
+-export { marketInsights, coinNews, rawNewsBuffer, radarSignals, dailyAlphaFocus, dailyMarketMood, priceSnapshots, coinMemory, coinIntelligenceCache, coinNewsHistory } from './market.model';
++export { marketInsights, coinNews, rawNewsBuffer, radarSignals, dailyAlphaFocus, dailyMarketMood, priceSnapshots, coinMemory, coinIntelligenceCache, coinNewsHistory, coinMasterArticles, coinTimelineUpdates } from './market.model';
+```
+
+### 2.1.4 — Run Drizzle migration
+
+> [!CAUTION]
+> **NEVER use `drizzle-kit push` on a production database with user data!**
+> `push` can drop columns/tables to match the schema. Always use `generate` → review SQL → `migrate`.
+
+**Development:**
+```bash
+npx drizzle-kit generate
+npx drizzle-kit push   # ← OK in dev only
+```
+
+**Production:**
+```bash
+npx drizzle-kit generate              # Creates SQL migration file
+# Review the generated SQL in drizzle/ folder!
+npx drizzle-kit migrate               # Applies reviewed migration safely
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 2.2: Upgrade Triage — MAJOR/MINOR/NOISE Classification
+
+### 2.2.1 — Update Triage Prompt
+**File:** `backend/src/services/ai/prompt-factory.ts`
+
+Update `buildTriageMessages` to add classification output:
+
+```diff
+ // Inside the system prompt of buildTriageMessages (line ~143)
+ Per item:
+ {
+   "relevanceScore": <0-100>,
+   "sentimentHint": "bullish|bearish|neutral",
+   "symbolMentions": ["BTC", "ETH"],
+   "eventType": "<ETF|Hack|Exploit|Listing|Delisting|Upgrade|TokenLaunch|Regulatory|Funding|Partnership|Other>",
+-  "eventSeverity": <1|2|3>
++  "eventSeverity": <1|2|3>,
++  "classification": "MAJOR|MINOR|NOISE",
++  "triggerType": "whale|regulation|technical|market|news|other"
+ }
++
++Classification rules:
++MAJOR: ETF approvals, major hacks/exploits, SEC actions, top-10 exchange listings, mainnet launches,
++        $100M+ funding, protocol breaking changes. Requires full article update.
++MINOR: Price milestones, whale moves, partnerships, upgrades, small-to-medium funding.
++        Gets a timeline update only.
++NOISE: Rehashed/duplicate news, promotional, opinion pieces, old news rewritten.
++        Gets discarded entirely.
+```
+
+### 2.2.2 — Update TriageResult interface
+**File:** `backend/src/services/openai.service.ts`
+
+```diff
+ interface TriageResult {
+     title: string;
+     source?: string;
+     relevanceScore: number;
+     sentimentHint: string | null;
+     symbolMentions: string[];
+     eventType: string;
+     eventSeverity: number;
++    classification: 'MAJOR' | 'MINOR' | 'NOISE';
++    triggerType: string;
+ }
+```
+
+### 2.2.3 — Save classification to rawNewsBuffer
+**File:** `backend/src/models/market.model.ts`
+
+```diff
+ export const rawNewsBuffer = pgTable('raw_news_buffer', {
+     // ... existing fields ...
+     eventType: varchar('event_type', { length: 50 }),
+     eventSeverity: integer('event_severity'),
++    classification: varchar('classification', { length: 10 }),  // MAJOR, MINOR, NOISE
++    triggerType: varchar('trigger_type', { length: 20 }),
+ });
+```
+
+### 2.2.4 — Update triageEngine to save new fields
+**File:** `backend/src/crons/triageEngine.cron.ts`
+
+```diff
+ .set({
+     relevanceScore: scoredItem.relevanceScore,
+     sentimentHint: scoredItem.sentimentHint,
+     symbolMentions: scoredItem.symbolMentions,
+     eventType: scoredItem.eventType,
+     eventSeverity: scoredItem.eventSeverity,
++    classification: scoredItem.classification || 'MINOR',
++    triggerType: scoredItem.triggerType || 'other',
+     processed: true
+ })
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 2.3: Refactor aiWorkflow for Living Articles
+
+### Rewrite `runAiWorkflow` to follow MAJOR/MINOR/NOISE paths
+
+**File:** `backend/src/crons/aiWorkflow.cron.ts` — Major rewrite
+
+The core logic becomes:
+
+```typescript
+// Pseudo-code — full implementation details:
+
+for (const item of items) {
+    const symbol = mentions[0];
+    const classification = item.classification || 'MINOR';
+
+    // 1. Skip NOISE
+    if (classification === 'NOISE') {
+        console.log(`[AI Workflow] NOISE — skipping ${symbol}: "${item.title.slice(0, 50)}"`);
+        continue;
+    }
+
+    // 2. Check if master article exists
+    const [existingMaster] = await db.select()
+        .from(coinMasterArticles)
+        .where(eq(coinMasterArticles.coinSymbol, symbol))
+        .limit(1);
+
+    if (classification === 'MINOR' && existingMaster) {
+        // === MINOR PATH ===
+        // 1 AI call only: GPT-nano writes a timeline update paragraph
+        // No DeepSeek analysis, no audit
+        const updateText = await callGptNanoMinorUpdate(item.title, existingMaster.headline);
+        await db.insert(coinTimelineUpdates).values({
+            coinSymbol: symbol,
+            masterArticleId: existingMaster.id,
+            updateText,
+            triggerType: item.triggerType || 'news',
+            severity: 'MINOR',
+            sourceTitle: item.title,
+            sourceHash: hashTitle(item.title),
+            sentiment: item.sentimentHint,
+            impactScore: item.relevanceScore,
+        });
+        // Update minor count
+        await db.update(coinMasterArticles)
+            .set({
+                minorUpdateCount: sql`${coinMasterArticles.minorUpdateCount} + 1`,
+                lastMinorUpdate: new Date(),
+                updatedAt: new Date(),
+            })
+            .where(eq(coinMasterArticles.id, existingMaster.id));
+
+    } else {
+        // === MAJOR PATH (or first article for this coin) ===
+        // Full pipeline: DeepSeek analysis → GPT-nano writer → optional audit
+
+        // Step A: DeepSeek Analysis (same as current)
+        const analysisResult = await callDeepSeekAnalysis({ ... });
+
+        // Step B: Factual grounding (same as current)
+        // ...
+
+        // Step C: GPT-nano writes/updates master article
+        if (existingMaster) {
+            // UPDATE existing sections that changed
+            const updatedSections = await callGptNanoMasterUpdate(
+                analysisResult, existingMaster
+            );
+            await db.update(coinMasterArticles)
+                .set({
+                    ...updatedSections,
+                    majorUpdateCount: sql`${coinMasterArticles.majorUpdateCount} + 1`,
+                    lastMajorUpdate: new Date(),
+                    updatedAt: new Date(),
+                })
+                .where(eq(coinMasterArticles.id, existingMaster.id));
+        } else {
+            // CREATE new master article
+            const article = await callGptNanoWriter(JSON.stringify(analysisResult), tone);
+            await db.insert(coinMasterArticles).values({
+                coinSymbol: symbol,
+                headline: article.headline,
+                hook: article.hook,
+                coreCatalyst: extractSection(article.fullArticle, 'HOOK'),
+                marketContext: extractSection(article.fullArticle, 'WHAT HAPPENED'),
+                strategicImpact: extractSection(article.fullArticle, 'WHY IT MATTERS'),
+                historicalContext: extractSection(article.fullArticle, 'HISTORY REPEATS'),
+                technicalLevels: extractSection(article.fullArticle, 'PRICE PICTURE'),
+                riskAssessment: extractSection(article.fullArticle, 'RISK CHECK'),
+                bottomLine: extractSection(article.fullArticle, 'BOTTOM LINE'),
+                // ... meta fields ...
+            });
+        }
+
+        // Step D: Also add MAJOR update to timeline
+        await db.insert(coinTimelineUpdates).values({
+            coinSymbol: symbol,
+            masterArticleId: existingMaster?.id || newId,
+            updateText: `MAJOR: ${analysisResult.analysis.mainDriver}`,
+            triggerType: item.triggerType || eventType,
+            severity: 'MAJOR',
+            sourceTitle: item.title,
+            sentiment: analysisResult.sentiment,
+            impactScore: analysisResult.impactScore,
+        });
+
+        // Step E: Audit (MAJOR only, impact >= 75)
+        if (analysisResult.impactScore >= 75 || analysisResult.isBreaking) {
+            await auditArticleQuality(deepseekGateway, ...);
+        }
+
+        // Step F: Save to coinMemory
+        await saveMemory({ ... });
+    }
+
+    // Still write to coin_news for backward compatibility during migration
+    await db.insert(coinNews).values({ ... }).onConflictDoNothing();
+}
+```
+
+### Helper functions needed:
+
+```typescript
+// New function: Minor update writer (1 AI call, nano only)
+export async function callGptNanoMinorUpdate(
+    newsTitle: string,
+    existingHeadline: string
+): Promise<string> {
+    // Single call to GPT-5-nano to write 1-2 paragraph timeline update
+    // Much cheaper than full article generation
+}
+
+// New function: Master article section updater
+export async function callGptNanoMasterUpdate(
+    analysisResult: DeepAnalysisResult,
+    existingArticle: typeof coinMasterArticles.$inferSelect
+): Promise<Partial<typeof coinMasterArticles.$inferInsert>> {
+    // Tells nano which sections to update based on analysis diff
+    // Returns only the changed sections
+}
+
+// Helper: Extract section from article text
+function extractSection(fullArticle: string, sectionTag: string): string | null {
+    const regex = new RegExp(`\\[${sectionTag}\\??\\]\\s*([\\s\\S]*?)(?=\\[|$)`, 'i');
+    const match = fullArticle.match(regex);
+    return match?.[1]?.trim() || null;
+}
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 2.4: Algorithmic Conviction Score
+**What:** Calculate conviction locally without AI calls.
+**File:** `backend/src/services/conviction.service.ts` (NEW FILE)
+
+```typescript
+import { db } from '../config/db';
+import { coinTimelineUpdates, coinMasterArticles, coinMemory } from '../models/market.model';
+import { eq, gte, desc, and, sql } from 'drizzle-orm';
+
+interface ConvictionInput {
+    coinSymbol: string;
+}
+
+interface ConvictionResult {
+    score: number;         // 0-100
+    posture: string;       // 'strong_accumulate' | 'accumulate' | 'neutral' | 'distribute' | 'strong_distribute'
+    trend: 'improving' | 'stable' | 'declining';
+}
+
+export async function calculateConviction({ coinSymbol }: ConvictionInput): Promise<ConvictionResult> {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    // Fetch recent timeline updates
+    const updates = await db.select()
+        .from(coinTimelineUpdates)
+        .where(and(
+            eq(coinTimelineUpdates.coinSymbol, coinSymbol),
+            gte(coinTimelineUpdates.createdAt, thirtyDaysAgo)
+        ))
+        .orderBy(desc(coinTimelineUpdates.createdAt));
+
+    // Count by type
+    let score = 50; // base neutral
+
+    for (const update of updates) {
+        const weight = update.severity === 'MAJOR' ? 3 : 1;
+        const sentiment = update.sentiment?.toLowerCase();
+
+        if (sentiment === 'bullish' || sentiment === 'strong_bullish') {
+            score += 5 * weight;
+        } else if (sentiment === 'bearish' || sentiment === 'strong_bearish') {
+            score -= 7 * weight; // bearish weighted harder (risk management)
+        }
+    }
+
+    // Clamp
+    score = Math.max(0, Math.min(100, score));
+
+    // Determine posture
+    let posture: string;
+    if (score >= 80) posture = 'strong_accumulate';
+    else if (score >= 60) posture = 'accumulate';
+    else if (score >= 40) posture = 'neutral';
+    else if (score >= 20) posture = 'distribute';
+    else posture = 'strong_distribute';
+
+    // Trend: compare first half vs second half of updates
+    const mid = Math.floor(updates.length / 2);
+    const recentAvg = updates.slice(0, mid).reduce((s, u) => s + (u.impactScore || 0), 0) / (mid || 1);
+    const olderAvg = updates.slice(mid).reduce((s, u) => s + (u.impactScore || 0), 0) / ((updates.length - mid) || 1);
+    const trend = recentAvg > olderAvg + 5 ? 'improving' : recentAvg < olderAvg - 5 ? 'declining' : 'stable';
+
+    return { score, posture, trend };
+}
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 2.5: ConvictionUpdate Cron
+**What:** The `conviction.service.ts` from Task 2.4 has no caller. This cron recalculates conviction for all active coins every 6 hours.
+**File:** `backend/src/crons/convictionUpdate.cron.ts` (NEW FILE)
+
+```typescript
+import cron from 'node-cron';
+import { db } from '../config/db';
+import { coinMasterArticles } from '../models/market.model';
+import { calculateConviction } from '../services/conviction.service';
+import { eq } from 'drizzle-orm';
+
+export async function runConvictionUpdate(): Promise<void> {
+    console.log('📊 [ConvictionUpdate] Recalculating conviction scores...');
+
+    try {
+        const articles = await db.select({
+            id: coinMasterArticles.id,
+            coinSymbol: coinMasterArticles.coinSymbol,
+        }).from(coinMasterArticles);
+
+        if (articles.length === 0) {
+            console.log('[ConvictionUpdate] No master articles yet. Skipping.');
+            return;
+        }
+
+        let updated = 0;
+        for (const article of articles) {
+            try {
+                const result = await calculateConviction({ coinSymbol: article.coinSymbol });
+                await db.update(coinMasterArticles)
+                    .set({
+                        convictionScore: result.score,
+                        posture: result.posture,
+                    })
+                    .where(eq(coinMasterArticles.id, article.id));
+                updated++;
+            } catch (err) {
+                console.error(`[ConvictionUpdate] Failed for ${article.coinSymbol}:`, err);
+            }
+        }
+
+        console.log(`✅ [ConvictionUpdate] Updated ${updated}/${articles.length} coins.`);
+    } catch (error) {
+        console.error('❌ [ConvictionUpdate] Failed:', error);
+    }
+}
+
+export function startConvictionUpdateCron(): void {
+    cron.schedule('0 */6 * * *', runConvictionUpdate);
+    console.log('⏰ ConvictionUpdate cron scheduled — every 6 hours');
+}
+```
+
+### Register in server.ts
+**File:** `backend/src/server.ts`
+
+```diff
++import { startConvictionUpdateCron } from './crons/convictionUpdate.cron';
+
+ const crons = [
+     // ... existing crons ...
++    { name: 'ConvictionUpdate', fn: startConvictionUpdateCron },
+ ];
+```
+
+**Status:** `[ ]`
+
+---
+
+# Phase 3: Temporal Intelligence Layer
+**Priority:** 🟡 MEDIUM
+**Duration:** 1 week
+**Goal:** Make the AI understand market history and filter noise intelligently
+
+---
+
+## Task 3.1: Local Similarity Check (No AI Cost)
+**What:** Before sending any news to AI, check if something very similar was already processed.
+**File:** `backend/src/services/similarity.service.ts` (NEW FILE)
+
+```typescript
+import { db } from '../config/db';
+import { coinNews, coinTimelineUpdates } from '../models/market.model';
+import { desc, gte, sql } from 'drizzle-orm';
+
+/**
+ * Keyword-based similarity check — no AI required.
+ * Returns true if a similar headline was processed in the last 24 hours.
+ */
+export async function isDuplicateByKeywords(headline: string): Promise<boolean> {
+    const keywords = extractKeywords(headline);
+    if (keywords.length < 2) return false;
+
+    const recentHeadlines = await db.select({ headline: coinNews.headline })
+        .from(coinNews)
+        .where(gte(coinNews.publishedAt, sql`NOW() - INTERVAL '24 hours'`))
+        .orderBy(desc(coinNews.publishedAt))
+        .limit(50);
+
+    for (const existing of recentHeadlines) {
+        const existingKeywords = extractKeywords(existing.headline);
+        const overlap = keywords.filter(k => existingKeywords.includes(k));
+        const similarity = overlap.length / Math.max(keywords.length, existingKeywords.length);
+
+        if (similarity >= 0.6) {
+            return true; // 60%+ keyword overlap = duplicate
+        }
+    }
+
+    return false;
+}
+
+function extractKeywords(text: string): string[] {
+    const stopWords = new Set([
+        'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+        'should', 'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for',
+        'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'about',
+        'after', 'before', 'between', 'and', 'but', 'or', 'not', 'no', 'so',
+        'if', 'then', 'than', 'too', 'very', 'just', 'that', 'this', 'its',
+        'it', 'he', 'she', 'they', 'we', 'you', 'i', 'my', 'your', 'his',
+        'her', 'their', 'our', 'new', 'says', 'said', 'report', 'reports',
+        'crypto', 'cryptocurrency', 'market', 'price', 'token', 'coin',
+    ]);
+
+    return text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .split(/\s+/)
+        .filter(word => word.length > 2 && !stopWords.has(word));
+}
+```
+
+### Integration into aiWorkflow:
+**File:** `backend/src/crons/aiWorkflow.cron.ts`
+
+```diff
++import { isDuplicateByKeywords } from '../services/similarity.service';
+
+ for (const item of items) {
++    // Pre-AI similarity check (free, no API calls)
++    const isDup = await isDuplicateByKeywords(item.title);
++    if (isDup) {
++        console.log(`[AI Workflow] Keyword-similar to recent article — skipping: "${item.title.slice(0, 50)}"`);
++        continue;
++    }
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 3.2: Fix buildTemporalPattern — Fuzzy Matching
+**What:** Current implementation requires exact match on eventType + severity → returns null 99% of time.
+
+**File:** `backend/src/services/temporalIntelligence.service.ts`
+
+```diff
+ // buildTemporalPattern (line 63-74)
+ const rows = await db.select()
+     .from(coinNewsHistory)
+     .where(and(
+         eq(coinNewsHistory.coinSymbol, symbol),
+-        eq(coinNewsHistory.eventType, eventType),
+-        eq(coinNewsHistory.eventSeverity, severity),
+         isNotNull(coinNewsHistory.price7dAfter),
+         gte(coinNewsHistory.publishedAt, sql`NOW() - INTERVAL '365 days'`)
+     ))
+     .orderBy(desc(coinNewsHistory.publishedAt))
+-    .limit(5);
++    .limit(20);
++
++// Post-query fuzzy filter: prefer same eventType, but accept any
++const exactMatch = rows.filter(r => r.eventType === eventType);
++const filtered = exactMatch.length >= 3 ? exactMatch.slice(0, 5) : rows.slice(0, 5);
++
++if (filtered.length === 0) return null;
+```
+
+Then use `filtered` instead of `rows` for the rest of the function.
+
+**Status:** `[ ]`
+
+---
+
+# Phase 4: Chat System Rebuild
+**Priority:** 🟡 MEDIUM
+**Duration:** 1 week
+**Goal:** Working General + Context AI with proper data and rate limits
+
+---
+
+## Task 4.1: Context AI Prompt — Fed by Master Article + Timeline
+
+**File:** `backend/src/controllers/chat.controller.ts`
+
+Rewrite the Context mode branch (lines 36-84) to use the new tables:
+
+```typescript
+if ((resolvedMode === 'private' || resolvedMode === 'context') && articleId && articleType) {
+    // --- NEW: Fetch from Master Article ---
+    const [masterArticle] = await db.select()
+        .from(coinMasterArticles)
+        .where(eq(coinMasterArticles.coinSymbol, symbol))
+        .limit(1);
+
+    if (masterArticle) {
+        contextText = `[MASTER ARTICLE - ${symbol}]
+Headline: ${masterArticle.headline}
+Conviction Score: ${masterArticle.convictionScore || 'N/A'}/100
+Posture: ${masterArticle.posture || 'N/A'}
+Risk Tags: ${JSON.stringify(masterArticle.riskTags || [])}
+
+Core Catalyst: ${masterArticle.coreCatalyst || 'N/A'}
+Market Context: ${masterArticle.marketContext || 'N/A'}
+Technical Levels: ${masterArticle.technicalLevels || 'N/A'}
+Risk Assessment: ${masterArticle.riskAssessment || 'N/A'}
+Bottom Line: ${masterArticle.bottomLine || 'N/A'}
+`;
+    }
+
+    // Also fetch the selected article/radar for direct context
+    // ... (keep existing specific article fetch logic) ...
+
+    // Fetch recent timeline
+    const timeline = await db.select()
+        .from(coinTimelineUpdates)
+        .where(eq(coinTimelineUpdates.coinSymbol, symbol))
+        .orderBy(desc(coinTimelineUpdates.createdAt))
+        .limit(5);
+
+    if (timeline.length > 0) {
+        const tlStr = timeline.map(t =>
+            `[${t.severity}|${t.triggerType}] ${t.updateText.slice(0, 100)}`
+        ).join('\n');
+        contextText += `\n[RECENT TIMELINE]:\n${tlStr}`;
+    }
+
+    // Memory (now actually populated by Phase 1 Task 1.5)
+    const memory = await db.select(...)
+        .from(coinMemory)
+        .where(eq(coinMemory.coinSymbol, symbol))
+        .orderBy(desc(coinMemory.createdAt))
+        .limit(5);
+
+    // ... rest stays similar ...
+}
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 4.2: Redis-Based Chat Quotas
+
+**File:** `backend/src/middleware/chat-quota.middleware.ts` (NEW FILE)
+
+```typescript
+import { Response, NextFunction } from 'express';
+import { AuthRequest } from './auth.middleware';
+import { redis } from '../config/redis';
+import { logger } from '../utils/logger';
+
+interface QuotaConfig {
+    guest: { daily: number };
+    free: { daily: number; contextDaily: number };
+    pro: { daily: number; contextDaily: number };
+}
+
+const QUOTAS: QuotaConfig = {
+    guest: { daily: 5 },
+    free: { daily: 15, contextDaily: 0 },     // No context for free
+    pro: { daily: 999, contextDaily: 30 },
+};
+
+export async function chatQuota(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    if (!redis) { next(); return; }
+
+    const isContext = req.originalUrl?.includes('/context') || req.body?.mode === 'context';
+    const plan = req.userPlan || 'free';
+    const isGuest = !req.userId;
+
+    try {
+        if (isGuest) {
+            const ip = req.ip || 'unknown';
+            const key = `quota:guest:${ip}`;
+            const count = await redis.incr(key);
+            if (count === 1) await redis.expire(key, 86400);
+            if (count > QUOTAS.guest.daily) {
+                res.status(429).json({
+                    error: 'Daily limit reached. Sign in for more.',
+                    limit: QUOTAS.guest.daily,
+                    loginUrl: '/auth',
+                });
+                return;
+            }
+        } else {
+            const quotaKey = isContext
+                ? `quota:context:${req.userId}`
+                : `quota:chat:${req.userId}`;
+
+            const limit = isContext
+                ? (QUOTAS[plan as keyof QuotaConfig] as any)?.contextDaily || 0
+                : (QUOTAS[plan as keyof QuotaConfig] as any)?.daily || 15;
+
+            if (limit === 0 && isContext) {
+                res.status(403).json({
+                    error: 'Context AI is a Pro feature. Upgrade to access.',
+                    upgradeUrl: '/settings#upgrade',
+                });
+                return;
+            }
+
+            const count = await redis.incr(quotaKey);
+            if (count === 1) await redis.expire(quotaKey, 86400);
+            if (count > limit) {
+                res.status(429).json({
+                    error: `Daily ${isContext ? 'Context AI' : 'chat'} limit reached (${limit}/day).`,
+                    limit,
+                    remaining: 0,
+                });
+                return;
+            }
+
+            res.setHeader('X-Chat-Remaining', Math.max(0, limit - count));
+        }
+
+        next();
+    } catch (err) {
+        logger.error('[ChatQuota] Error:', err);
+        next(); // Don't block on quota errors
+    }
+}
+```
+
+### Integration:
+**File:** `backend/src/routes/chat.routes.ts`
+
+```diff
++import { chatQuota } from '../middleware/chat-quota.middleware';
+
+-router.post('/stream', optionalAuth, guestLimit, chatLimiter, chatStream);
+-router.post('/stream/context', authMiddleware, chatLimiter, chatStream);
++router.post('/stream', optionalAuth, chatQuota, chatLimiter, chatStream);
++router.post('/stream/context', authMiddleware, chatQuota, chatLimiter, chatStream);
+```
+
+**Status:** `[ ]`
+
+---
+
+# Phase 5: Frontend Refactor & Institutional Branding
+**Priority:** 🟡 MEDIUM
+**Duration:** 1 week
+**Goal:** Premium, institutional-grade UI
+
+---
+
+## Task 5.1: Parse Article Sections in AlphaStream
+**What:** Display the 800-word article as structured accordion sections.
+**File:** `frontend/src/features/terminal/components/AlphaStream.tsx`
+
+Replace the raw `displayBody` with parsed sections:
+```typescript
+function parseArticleSections(summary: string): Record<string, string> {
+    const sections: Record<string, string> = {};
+    const sectionNames = [
+        'HOOK', 'WHAT HAPPENED', 'WHY IT MATTERS',
+        'HISTORY REPEATS', 'PRICE PICTURE', 'RISK CHECK', 'BOTTOM LINE'
+    ];
+
+    for (let i = 0; i < sectionNames.length; i++) {
+        const current = `[${sectionNames[i]}`;
+        const nextPatterns = sectionNames.slice(i + 1).map(s => `[${s}`);
+
+        const startIdx = summary.indexOf(current);
+        if (startIdx === -1) continue;
+
+        const contentStart = summary.indexOf(']', startIdx) + 1;
+        let endIdx = summary.length;
+        for (const pattern of nextPatterns) {
+            const idx = summary.indexOf(pattern, contentStart);
+            if (idx !== -1) { endIdx = idx; break; }
+        }
+
+        sections[sectionNames[i]] = summary.slice(contentStart, endIdx).trim();
+    }
+
+    return sections;
+}
+```
+
+Render with accordion:
+```tsx
+{Object.entries(sections).map(([name, content]) => (
+    <details key={name} open={name === 'HOOK' || name === 'BOTTOM LINE'}>
+        <summary className="cursor-pointer text-sm font-mono tracking-widest text-[#888] uppercase py-2 hover:text-white">
+            {SECTION_LABELS[name] || name}
+        </summary>
+        <p className="text-[#CCC] leading-relaxed text-[15px] pl-4 pb-4">{content}</p>
+    </details>
+))}
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 5.2: Institutional Branding Rename
+**Files:** Multiple frontend components
+
+| Current Term | New Term | Files to Change |
+|-------------|----------|-----------------|
+| `AI Radar Stream` | `Alpha Detection Stream` | `TerminalWire.tsx:45,59` |
+| `AI Radar Detection Event` | `Verified Alpha Catalyst` | `AlphaStream.tsx:76` |
+| `DeepSeek Analysis` | `Neural Consensus Verdict` | `AlphaStream.tsx:134` |
+| `GENERAL AI` | `Macro Intelligence` | `TerminalChat.tsx:37` |
+| `CONTEXT AI` | `Asset Context` | `TerminalChat.tsx:48` |
+| `Network Secure` | `Data Integrity: Verified` | `AlphaStream.tsx:166` |
+| `Alpha-Turbo-4` | `Alpha-Macro` | `TerminalChat.tsx:117` |
+| `Alpha-Context-5` | `Alpha-Context` | `TerminalChat.tsx:117` |
+
+**Status:** `[ ]`
+
+---
+
+## Task 5.3: Living Article View + Timeline
+New component: `frontend/src/features/terminal/components/LivingArticle.tsx`
+
+Shows:
+1. **Alpha Snapshot** header (Conviction Score, Posture, Risk Tags)
+2. **Master Article** sections as accordion
+3. **Contextual Timeline** feed below
+
+**Status:** `[ ]`
+
+---
+
+## Task 5.4: Alpha Snapshot Widget
+New component for the coin header:
+
+```
+┌─────────────────────────────────────────────────┐
+│  ₿ BITCOIN                          🟢 Accumulate│
+│  Conviction Score        ████████░░  85/100      │
+│  [⚠️ High Volatility]  [🐋 Whale Active]         │
+└─────────────────────────────────────────────────┘
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 5.5: Fix Terminal Selection & Pagination Bugs
+**Source:** `Issues_And_Improvements_Log.md` — Terminal Page section
+
+### 5.5.1 — Fix Non-Unique Selection Highlighting
+**Bug:** If multiple radar items share the same ID (pagination boundary or data bug), all light up as "Active".
+**File:** `frontend/src/features/terminal/components/TerminalWire.tsx`
+
+```diff
+ // Line 71 — Add index-based uniqueness fallback
+-const isSelectedRadar = activeTab === 'RADAR' && selectedRadarId === item.id;
++const isSelectedRadar = activeTab === 'RADAR' && selectedRadarId === item.id && selectedRadarId !== null;
+```
+
+### 5.5.2 — Fix Pagination Duplicates
+**Bug:** "Show More" appends data without ID deduplication.
+**File:** `frontend/src/features/terminal/components/TerminalPageClient.tsx`
+
+```diff
+ // Line 53 — Deduplicate by ID before appending
+-setSignals(prev => [...prev, ...data]);
++setSignals(prev => {
++    const existingIds = new Set(prev.map(s => s.id));
++    const newItems = data.filter((s: RadarSignal) => !existingIds.has(s.id));
++    return [...prev, ...newItems];
++});
+```
+
+### 5.5.3 — Add Wire Tab Pagination
+**Bug:** WIRE tab only shows initial 20 articles with no "Load More" button.
+**File:** `frontend/src/features/terminal/components/TerminalPageClient.tsx`
+
+Add state + handler for wire pagination (same pattern as radar):
+
+```typescript
+// Add alongside radar pagination state:
+const [wireNews, setWireNews] = useState<CoinNews[]>(initialNews);
+const [wireOffset, setWireOffset] = useState(initialNews.length);
+const [hasMoreWire, setHasMoreWire] = useState(initialNews.length >= 20);
+const [isLoadingMoreWire, setIsLoadingMoreWire] = useState(false);
+
+const handleLoadMoreWire = async () => {
+    if (isLoadingMoreWire || !hasMoreWire) return;
+    setIsLoadingMoreWire(true);
+    try {
+        const { data } = await apiClient.get<CoinNews[]>(`/market/wire?offset=${wireOffset}&limit=20`);
+        if (Array.isArray(data)) {
+            if (data.length < 20) setHasMoreWire(false);
+            if (data.length > 0) {
+                const existingIds = new Set(wireNews.map(n => n.id));
+                const newItems = data.filter(n => !existingIds.has(n.id));
+                setWireNews(prev => [...prev, ...newItems]);
+                setWireOffset(prev => prev + data.length);
+            }
+        } else {
+            setHasMoreWire(false);
+        }
+    } catch (err) {
+        console.error('Failed to load more wire:', err);
+    } finally {
+        setIsLoadingMoreWire(false);
+    }
+};
+```
+
+Also add offset support to the backend `getLatestWire` (same pattern as `getRadarSignals`):
+
+```diff
+ // market.controller.ts — getLatestWire function
++const offsetParam = req.query.offset as string | undefined;
++const offset = Math.max(parseInt(offsetParam || '0', 10) || 0, 0);
+
+ const news = await query
+     .orderBy(desc(coinNews.publishedAt))
+-    .limit(limit);
++    .limit(limit)
++    .offset(offset);
+```
+
+**Status:** `[ ]`
+
+---
+
+## Task 5.6: Fix Radar Sources Limitation
+**Bug:** "Sources Analyzed" under each radar signal only searches the latest 20 articles. Old radar signals show no sources.
+**Source:** `Issues_And_Improvements_Log.md` — Contextual Mismatches
+**File:** `frontend/src/features/terminal/components/TerminalWire.tsx`
+
+```diff
+ // Line 76 — Search all available news, not just latest page
+-const itemNews = news.filter(n => (n.coin || n.coinSymbol) === item.coin).slice(0, 2);
++const itemNews = news
++    .filter(n => (n.coin || n.coinSymbol) === item.coin)
++    .filter(n => {
++        // Filter by time proximity: sources from around the same time as the signal
++        const signalTime = new Date(item.createdAt).getTime();
++        const newsTime = new Date(n.createdAt).getTime();
++        const hoursDiff = Math.abs(signalTime - newsTime) / (1000 * 60 * 60);
++        return hoursDiff < 48; // Within 48 hours of signal creation
++    })
++    .slice(0, 3);
+```
+
+> **Note:** This is a client-side improvement. For a full fix, the backend should link news IDs to radar signals (partially addressed in Task 0.6) so sources can be fetched by relationship instead of heuristic matching.
+
+**Status:** `[ ]`
+
+---
+
+# Phase 6: Text Embeddings & Semantic Dedup
+**Priority:** 🔵 OPTIONAL (recommended after Phase 2)
+**Duration:** 1 week
+**Goal:** 90%+ duplicate detection accuracy
+
+---
+
+## Task 6.1: Enable pgvector Extension
 ```sql
--- Table 1: Coin Intelligence Cache
--- Prevents re-fetching Binance/Wikipedia data more than once per 4 hours
-CREATE TABLE coin_intelligence_cache (
-  coin_symbol      VARCHAR(20) PRIMARY KEY,
-  ath              DECIMAL,
-  ath_date         DATE,
-  trend_8w         VARCHAR(20),      -- 'uptrend' | 'downtrend' | 'sideways'
-  week_52_high     DECIMAL,
-  week_52_low      DECIMAL,
-  price_change_30d DECIMAL,
-  wiki_background  TEXT,
-  dex_boost_active BOOLEAN DEFAULT FALSE,
-  data_source      VARCHAR(20),      -- 'binance' | 'dexscreener'
-  cached_at        TIMESTAMP DEFAULT NOW()
-);
-
--- Table 2: Temporal Intelligence — Historical news outcomes per coin
--- Grows smarter every day. Rug pulls teach the AI. Good calls teach the AI.
-CREATE TABLE coin_news_history (
-  id              SERIAL PRIMARY KEY,
-  coin_symbol     VARCHAR(20)  NOT NULL,
-  title           TEXT         NOT NULL,
-  source          VARCHAR(100),
-  published_at    TIMESTAMP    NOT NULL,
-  sentiment       VARCHAR(10),            -- bullish | bearish | neutral | SCAM
-  event_type      VARCHAR(50),            -- ETF | Hack | Listing | Upgrade | Partnership | ...
-  event_severity  SMALLINT DEFAULT 1,     -- 1=minor | 2=major | 3=critical
-  price_at_time   DECIMAL,
-  price_7d_after  DECIMAL,
-  price_change_7d DECIMAL,
-  is_rug_pull     BOOLEAN DEFAULT FALSE,
-  fetched_at      TIMESTAMP DEFAULT NOW(),
-  UNIQUE(coin_symbol, title, published_at)
-);
-
-CREATE INDEX idx_coin_history_lookup
-  ON coin_news_history(coin_symbol, event_type, event_severity, published_at DESC);
-
--- Table 3: Circuit Breaker State (optional — can use in-memory instead)
--- Useful if you have multiple workers/dynos
-CREATE TABLE circuit_breaker_state (
-  service_name  VARCHAR(50) PRIMARY KEY,
-  failure_count SMALLINT DEFAULT 0,
-  open_until    TIMESTAMP,            -- NULL = closed (healthy)
-  updated_at    TIMESTAMP DEFAULT NOW()
-);
+CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
----
+## Task 6.2: Add Embedding Column
+**File:** `backend/src/models/market.model.ts`
 
-## 🔌 PHASE 2 — Data Services Layer
-> **Depends on:** Phase 0 + Phase 1.
-> **Goal:** Build all data-fetching services in isolation before wiring them together.
-> **Time:** Day 2.
-
-### P2-A: Price Service with Binance → DexScreener Fallback 🔴
-
-```typescript
-// priceService.ts
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-export async function getPriceWithFallback(symbol: string, tokenAddress?: string) {
-
-  // ── Step 1: Binance (major coins) ─────────────────────────────
-  try {
-    const res = await fetch(
-      `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol.toUpperCase()}USDT`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    if (res.ok) {
-      const d = await res.json();
-      if (d.lastPrice && parseFloat(d.lastPrice) > 0) {
-        return {
-          source:    'binance',
-          price:     parseFloat(d.lastPrice),
-          change24h: parseFloat(d.priceChangePercent),
-          volume24h: parseFloat(d.volume),
-          high24h:   parseFloat(d.highPrice),
-          low24h:    parseFloat(d.lowPrice)
-        };
-      }
-    }
-  } catch { /* fall through to DexScreener */ }
-
-  // ── Step 2: DexScreener (DEX/meme tokens) ─────────────────────
-  await sleep(300); // small pause before retry
-  const dexUrl = tokenAddress
-    ? `https://api.dexscreener.com/tokens/v1/solana/${tokenAddress}`
-    : `https://api.dexscreener.com/latest/dex/search?q=${symbol}`;
-
-  try {
-    const res = await fetch(dexUrl, { signal: AbortSignal.timeout(5000) });
-    if (res.ok) {
-      const data = await res.json();
-      const pairs = data.pairs ?? data;
-      const best = [...pairs].sort(
-        (a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0)
-      )[0];
-      if (best?.priceUsd) {
-        return {
-          source:    'dexscreener',
-          price:     parseFloat(best.priceUsd),
-          change24h: best.priceChange?.h24 ?? null,
-          volume24h: best.volume?.h24 ?? null,
-          liquidity: best.liquidity?.usd ?? null
-        };
-      }
-    }
-  } catch { /* both failed */ }
-
-  return null; // caller should handle null gracefully
-}
-
-export async function getBinancePriceAtDate(pair: string, date: Date): Promise<number | null> {
-  try {
-    const start = date.getTime();
-    const end   = start + 3_600_000; // +1 hour window
-    const res   = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1h&startTime=${start}&endTime=${end}&limit=1`
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data[0] ? parseFloat(data[0][4]) : null; // close price
-  } catch { return null; }
-}
+```diff
+ export const rawNewsBuffer = pgTable('raw_news_buffer', {
+     // ... existing ...
++    embedding: vector('embedding', { dimensions: 1536 }),
+ });
 ```
 
-### P2-B: Binance Historical Intelligence
+> Requires `drizzle-orm/pg-core` pgvector support or raw SQL column.
+
+## Task 6.3: Embedding Generation Service
+**File:** `backend/src/services/embedding.service.ts` (NEW FILE)
+
+Two options:
+- **Option A:** OpenAI `text-embedding-3-small` ($0.02/M tokens)
+- **Option B:** Self-hosted Ollama `nomic-embed-text` (free)
 
 ```typescript
-// binanceHistory.service.ts
-export async function getBinanceHistory(symbol: string) {
-  const pair = symbol.toUpperCase() + 'USDT';
-  try {
-    const res = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1w&limit=200`,
-      { signal: AbortSignal.timeout(8000) }
-    );
-    if (!res.ok) return null;
+import OpenAI from 'openai';
 
-    const data: number[][] = await res.json();
-    if (!data.length) return null;
-
-    const highs  = data.map(k => parseFloat(k[2] as unknown as string));
-    const lows   = data.map(k => parseFloat(k[3] as unknown as string));
-    const closes = data.map(k => parseFloat(k[4] as unknown as string));
-    const athIdx = highs.indexOf(Math.max(...highs));
-
-    return {
-      source:          'binance',
-      ath:             Math.max(...highs),
-      athDate:         new Date(data[athIdx][0]).toISOString().split('T')[0],
-      week52High:      Math.max(...highs.slice(-52)),
-      week52Low:       Math.min(...lows.slice(-52)),
-      trend8w:         calcTrend(closes.slice(-8)),
-      priceChange30d:  pctChange(closes[closes.length - 5], closes[closes.length - 1])
-    };
-  } catch { return null; }
-}
-
-function calcTrend(closes: number[]): 'uptrend' | 'downtrend' | 'sideways' {
-  const change = (closes[closes.length - 1] - closes[0]) / closes[0] * 100;
-  if (change > 5)  return 'uptrend';
-  if (change < -5) return 'downtrend';
-  return 'sideways';
-}
-
-function pctChange(from: number, to: number): string {
-  return ((to - from) / from * 100).toFixed(1);
-}
-```
-
-### P2-C: Wikipedia Background
-
-```typescript
-// wikipedia.service.ts
-export async function getWikipediaBackground(coinName: string): Promise<string | null> {
-  const variants = [
-    `${coinName}_(blockchain)`,
-    `${coinName}_(cryptocurrency)`,
-    coinName
-  ];
-  for (const v of variants) {
-    try {
-      const res = await fetch(
-        `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(v)}`,
-        { signal: AbortSignal.timeout(4000) }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        // First 3 sentences only — enough context, not overwhelming
-        return data.extract?.split('. ').slice(0, 3).join('. ') + '.';
-      }
-    } catch { continue; }
-  }
-  return null; // Minor token — no Wikipedia page, that's fine
-}
-```
-
-### P2-D: Health Check Endpoint
-
-```typescript
-// server.ts — add before all other routes
-app.get('/api/health', async (req, res) => {
-  try {
-    await db.query('SELECT 1');
-    res.json({ status: 'ok', db: 'connected', ts: new Date().toISOString() });
-  } catch {
-    res.status(503).json({ status: 'error', db: 'disconnected' });
-  }
+const embeddingClient = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY,
+    baseURL: process.env.EMBEDDING_BASE_URL || 'https://api.openai.com/v1',
 });
-```
 
----
-
-## 🧠 PHASE 3 — Coin Intelligence Layer
-> **Depends on:** Phase 1 (DB tables exist) + Phase 2 (data services built).
-> **Goal:** Give DeepSeek "who is this coin" context before analysis.
-> **Time:** Day 3.
-
-```typescript
-// coinIntelligence.service.ts
-import { getPriceWithFallback }    from './priceService';
-import { getBinanceHistory }       from './binanceHistory.service';
-import { getWikipediaBackground }  from './wikipedia.service';
-
-export async function getCoinIntelligence(symbol: string, tokenAddress?: string) {
-
-  // ── 1. Check cache (4-hour TTL) ───────────────────────────────
-  const cached = await db.query(`
-    SELECT * FROM coin_intelligence_cache
-    WHERE coin_symbol = $1 AND cached_at > NOW() - INTERVAL '4 hours'
-  `, [symbol]);
-  if (cached.rows[0]) return cached.rows[0];
-
-  // ── 2. Fetch fresh data in parallel ───────────────────────────
-  const [history, wiki, price] = await Promise.allSettled([
-    getBinanceHistory(symbol),
-    getWikipediaBackground(symbol),
-    getPriceWithFallback(symbol, tokenAddress)
-  ]);
-
-  const historyData = history.status === 'fulfilled' ? history.value : null;
-  const wikiData    = wiki.status    === 'fulfilled' ? wiki.value    : null;
-  const priceData   = price.status   === 'fulfilled' ? price.value   : null;
-
-  const intel = {
-    coin_symbol:      symbol,
-    ath:              historyData?.ath              ?? null,
-    ath_date:         historyData?.athDate          ?? null,
-    trend_8w:         historyData?.trend8w          ?? null,
-    week_52_high:     historyData?.week52High       ?? null,
-    week_52_low:      historyData?.week52Low        ?? null,
-    price_change_30d: historyData?.priceChange30d   ?? null,
-    wiki_background:  wikiData                      ?? null,
-    dex_boost_active: priceData?.source === 'dexscreener',
-    data_source:      historyData ? 'binance' : 'dexscreener'
-  };
-
-  // ── 3. Cache the result ───────────────────────────────────────
-  await db.query(`
-    INSERT INTO coin_intelligence_cache
-      (coin_symbol, ath, ath_date, trend_8w, week_52_high, week_52_low,
-       price_change_30d, wiki_background, dex_boost_active, data_source)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-    ON CONFLICT (coin_symbol) DO UPDATE SET
-      ath = EXCLUDED.ath, ath_date = EXCLUDED.ath_date,
-      trend_8w = EXCLUDED.trend_8w, week_52_high = EXCLUDED.week_52_high,
-      week_52_low = EXCLUDED.week_52_low, price_change_30d = EXCLUDED.price_change_30d,
-      wiki_background = EXCLUDED.wiki_background, dex_boost_active = EXCLUDED.dex_boost_active,
-      data_source = EXCLUDED.data_source, cached_at = NOW()
-  `, [intel.coin_symbol, intel.ath, intel.ath_date, intel.trend_8w,
-      intel.week_52_high, intel.week_52_low, intel.price_change_30d,
-      intel.wiki_background, intel.dex_boost_active, intel.data_source]);
-
-  return intel;
-}
-```
-
----
-
-## ⏳ PHASE 4 — Temporal Intelligence Layer
-> **Depends on:** Phase 1 (DB tables) + Phase 2 (price services).
-> **Goal:** Build historical event patterns so DeepSeek can reference past outcomes.
-> **Time:** Day 4.
-
-### P4-A: Google News RSS Fetcher — Rate Limited 🛡️
-
-```typescript
-// temporalIntelligence.service.ts
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-export async function fetchHistoricalNewsForCoins(coins: string[]): Promise<void> {
-  for (const symbol of coins) {
-    // ⏱️ 2-3 second random delay between each coin
-    // Looks like a human browser, not a bot → avoids IP ban
-    const delay = 2000 + Math.random() * 1000;
-    await sleep(delay);
-
-    const eventType = classifyEventType(symbol);
-    await fetchCoinHistoricalNews(symbol, eventType);
-  }
+export async function generateEmbedding(text: string): Promise<number[]> {
+    const response = await embeddingClient.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: text,
+    });
+    return response.data[0].embedding;
 }
 
-async function fetchCoinHistoricalNews(symbol: string, eventType: string): Promise<void> {
-  const query = encodeURIComponent(`${symbol} crypto ${eventType}`);
-  const url   = `https://news.google.com/rss/search?q=${query}&hl=en&gl=US&ceid=US:en`;
-
-  try {
-    const items = await parseRSS(url); // reuse existing rssNews.service.ts parser
-
-    for (let i = 0; i < Math.min(items.length, 30); i++) {
-      if (i > 0 && i % 10 === 0) await sleep(500); // micro-pause every 10 items
-
-      const item        = items[i];
-      const publishedAt = new Date(item.pubDate);
-      const priceAtTime = await getBinancePriceAtDate(symbol + 'USDT', publishedAt);
-
-      await db.query(`
-        INSERT INTO coin_news_history
-          (coin_symbol, title, source, published_at, event_type, price_at_time)
-        VALUES ($1,$2,$3,$4,$5,$6)
-        ON CONFLICT (coin_symbol, title, published_at) DO NOTHING
-      `, [symbol, item.title, item.source, publishedAt, eventType, priceAtTime]);
+export function cosineSimilarity(a: number[], b: number[]): number {
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
     }
-  } catch (err) {
-    // Google blocked us → log and skip. Do NOT crash the pipeline.
-    console.warn(`[Temporal] Google News blocked for ${symbol}:`, (err as Error).message);
-  }
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 ```
 
-### P4-B: Temporal Pattern Builder — Severity-Matched
+## Task 6.4: Replace Keyword Dedup with Semantic Dedup
+**File:** `backend/src/services/similarity.service.ts`
 
 ```typescript
-export async function buildTemporalPattern(
-  symbol:    string,
-  eventType: string,
-  severity:  number    // Only compare same-severity events — avoids false patterns
-) {
-  const { rows } = await db.query(`
-    SELECT title, published_at, sentiment,
-           price_at_time, price_7d_after, price_change_7d, is_rug_pull
-    FROM coin_news_history
-    WHERE coin_symbol    = $1
-      AND event_type     = $2
-      AND event_severity = $3
-      AND price_7d_after IS NOT NULL
-      AND published_at   > NOW() - INTERVAL '180 days'
-    ORDER BY published_at DESC
-    LIMIT 5
-  `, [symbol, eventType, severity]);
+// Add alongside the keyword-based check:
+export async function isDuplicateBySemantic(
+    headline: string,
+    threshold: number = 0.88
+): Promise<boolean> {
+    const embedding = await generateEmbedding(headline);
 
-  if (!rows.length) return null;
+    // SQL: find nearest neighbor using pgvector
+    const [nearest] = await db.execute(sql`
+        SELECT headline, 1 - (embedding <=> ${JSON.stringify(embedding)}::vector) as similarity
+        FROM raw_news_buffer
+        WHERE embedding IS NOT NULL
+        AND retrieved_at > NOW() - INTERVAL '24 hours'
+        ORDER BY embedding <=> ${JSON.stringify(embedding)}::vector
+        LIMIT 1
+    `);
 
-  const outcomes = rows.map(r => ({
-    date:    (r.published_at as Date).toISOString().split('T')[0],
-    headline: r.title,
-    outcome: r.is_rug_pull
-      ? 'RUG PULL — token went to zero'
-      : `${r.price_change_7d > 0 ? '+' : ''}${Number(r.price_change_7d).toFixed(1)}% in 7 days`
-  }));
-
-  const live     = rows.filter(r => !r.is_rug_pull);
-  const avgChange = live.length
-    ? live.reduce((s, r) => s + (Number(r.price_change_7d) || 0), 0) / live.length
-    : null;
-  const bullish  = live.filter(r => Number(r.price_change_7d) > 0).length;
-  const rugCount = rows.filter(r => r.is_rug_pull).length;
-
-  return {
-    eventType, severity, sampleSize: outcomes.length,
-    rugPullRate:  `${Math.round(rugCount / outcomes.length * 100)}%`,
-    bullishRate:  live.length ? `${Math.round(bullish / live.length * 100)}%` : 'N/A',
-    avgOutcome7d: avgChange !== null
-      ? `${avgChange > 0 ? '+' : ''}${avgChange.toFixed(1)}%`
-      : 'N/A',
-    historicalCases: outcomes
-  };
-}
-```
-
-### P4-C: Daily Backfill Job — With Rug Pull Detection 💀
-
-```typescript
-// Cron: daily at 3am
-export async function backfillPriceOutcomes(): Promise<void> {
-  const { rows } = await db.query(`
-    SELECT id, coin_symbol, published_at, price_at_time
-    FROM coin_news_history
-    WHERE price_7d_after IS NULL
-      AND published_at < NOW() - INTERVAL '7 days'
-      AND price_at_time IS NOT NULL
-    LIMIT 100
-  `);
-
-  for (const row of rows) {
-    const target = new Date(row.published_at as Date);
-    target.setDate(target.getDate() + 7);
-
-    let price7d:   number | null = await getBinancePriceAtDate(row.coin_symbol + 'USDT', target);
-    let isRugPull: boolean        = false;
-
-    if (!price7d) {
-      // Not on Binance → check DexScreener
-      const dex = await getPriceWithFallback(row.coin_symbol);
-      if (!dex || dex.price === 0) {
-        // ☠️ No liquidity found → rug pull
-        isRugPull = true;
-        price7d   = 0;
-      } else {
-        price7d = dex.price;
-      }
+    if (nearest && nearest.similarity > threshold) {
+        return true; // 88%+ similarity = duplicate
     }
-
-    const change = isRugPull
-      ? -100
-      : ((price7d! - row.price_at_time) / row.price_at_time * 100);
-
-    await db.query(`
-      UPDATE coin_news_history
-      SET price_7d_after  = $1,
-          price_change_7d = $2,
-          is_rug_pull     = $3,
-          sentiment       = CASE WHEN $3 THEN 'SCAM' ELSE sentiment END
-      WHERE id = $4
-    `, [price7d, change, isRugPull, row.id]);
-
-    await sleep(200); // gentle on the DB
-  }
+    return false;
 }
 ```
+
+## Task 6.5: Generate Embeddings on Insert
+**File:** `backend/src/crons/terminalEngine.cron.ts`
+
+```diff
++import { generateEmbedding } from '../services/embedding.service';
+
+ await db.insert(rawNewsBuffer).values({
+     title: rawText,
+     source: newsItem.source || 'Unknown',
+     sourceHash: hash,
+     ttlExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
++    embedding: await generateEmbedding(rawText).catch(() => null),
+ }).onConflictDoNothing();
+```
+
+**Status:** `[ ]`
 
 ---
 
-## 🤖 PHASE 5 — AI Role Separation & Prompts
-> **Depends on:** Phase 3 + Phase 4 (so prompts can reference the new context fields).
-> **Goal:** DeepSeek = analyst (JSON only). GPT-nano = writer (prose only).
-> **Time:** Day 5.
+# Appendix A: Dead Code Cleanup
+**When:** Execute during Phase 1 (safe to do anytime)
 
-### The Split
+## Files to Delete
+| File | Reason |
+|------|--------|
+| `backend/src/services/ai/deep-analysis-router.ts` | Never called from any workflow/cron |
+| `backend/src/services/ai/data-augmenter.ts` | `gatherCoinContext()` never called |
 
-```
-DeepSeek R1  →  outputs strict JSON  →  no prose, no articles
-GPT-5-nano   →  receives that JSON   →  writes the 800-word article
-```
+## Functions to Delete
+| Function | File | Line | Reason |
+|----------|------|------|--------|
+| `generateMarketVerdict()` | `openai.service.ts` | 119-146 | Never called |
+| `generateDeepIntelligenceReport()` | `openai.service.ts` | 150-189 | Never called |
+| `generateDualNewsOutput()` | `openai.service.ts` | 302-385 | Never called |
+| Related interfaces: `MarketVerdictResult`, `DeepIntelligenceReport`, `DualNewsOutput`, `RawAnalysis` | `openai.service.ts` | 9-46, 292-300 | Unused |
+| `getAlphaStream()` | `terminal/api.ts` | 25-33 | Route doesn't exist |
+| `AnalysisStream` type | `terminal/types.ts` | 24-34 | Unused |
 
-### Prompt 1: Triage (GPT-nano) — Updated with Severity
+## Functions from prompt-factory.ts to Delete
+| Function | Line | Reason |
+|----------|------|--------|
+| `buildMarketVerdictMessages()` | 85-106 | Only called from deleted `generateMarketVerdict` |
+| `buildDeepIntelligenceMessages()` | 108-137 | Only called from deleted `generateDeepIntelligenceReport` |
+| `buildDualNewsStep1Messages()` | 175-197 | Only called from deleted `generateDualNewsOutput` |
+| `buildDualNewsStep2Messages()` | 199-224 | Only called from deleted `generateDualNewsOutput` |
 
-```
-${LANGUAGE_MANDATE}
-
-You are a crypto news triage analyst for OnlyAlpha.
-For EACH headline in the input array, return one JSON object.
-Return an array in the SAME ORDER as input, wrapped in { "results": [...] }.
-
-Per item:
-{
-  "relevanceScore": <0-100>,
-  "sentimentHint":  "bullish|bearish|neutral",
-  "symbolMentions": ["BTC", "ETH"],         // uppercase tickers, max 3, [] if none
-  "eventType":      "<ETF|Hack|Exploit|Listing|Delisting|Upgrade|TokenLaunch|Regulatory|Funding|Partnership|Other>",
-  "eventSeverity":  <1|2|3>
-}
-
-Scoring:
-90-100  Exchange listings, hacks, SEC actions, ETF approvals, exploits, token launches
-70-89   Price milestones, whale moves, mainnet upgrades, major funding (>$50M)
-50-69   Minor updates, small partnerships, opinion pieces
-0-49    Spam, rehashed news, promotional content
-
-Severity:
-3 = CRITICAL: Hack confirmed, SEC action, top-5 exchange listing, ETF approval, $100M+ funding
-2 = MAJOR:    Protocol upgrade, $10M-$100M funding, mid-tier listing, Fortune 500 partnership
-1 = MINOR:    Small partnership, minor update, community news
-
-Severity Examples (Partnership):
-"Solana + Google Cloud"      → severity 3
-"memecoin + local restaurant" → severity 1
-```
-
-### Prompt 2: Deep Analysis (DeepSeek R1) — JSON ONLY, No Prose
-
-```
-${LANGUAGE_MANDATE}
-
-You are a crypto data analyst. Your output feeds a downstream writing engine.
-DO NOT write articles. DO NOT write prose. Output STRICT JSON only.
-
-{
-  "sentiment":       "bullish|bearish|neutral",
-  "impactScore":     <0-100>,
-  "isBreaking":      <true if: Hack|Exploit|SEC|Listing|ETF|TokenLaunch|Mainnet>,
-  "coinSymbol":      "<TICKER>",
-  "eventType":       "<ETF|Hack|Listing|Upgrade|Partnership|Funding|Regulatory|Other>",
-  "eventSeverity":   <1|2|3>,
-  "analysis": {
-    "mainDriver":       "<1 sentence — core reason this matters>",
-    "priceImplication": "<1 sentence — what this means for price>",
-    "temporalContext":  "<1 sentence referencing historical pattern if provided, else null>",
-    "riskNote":         "<1 sentence — biggest risk or red flag>"
-  },
-  "keyFacts": [
-    "<fact with specific number>",
-    "<fact with specific number>",
-    "<fact with specific number>"
-  ],
-  "supportLevels":    [<price>, <price>],
-  "resistanceLevels": [<price>, <price>],
-  "signalText":       "<MAX 40 words. Bloomberg-style. One number required. English only.>",
-  "verdict":          "STRONG_BUY|BUY|NEUTRAL|SELL|STRONG_SELL",
-  "confidenceScore":  <0-100>
-}
-
-Rules:
-- Output ONLY the JSON object. No preamble. No text outside JSON.
-- All string values in English.
-- impactScore 80+: only events that directly move price (hacks, listings, SEC actions).
-- If temporal pattern provided → always reference it in analysis.temporalContext.
-- keyFacts: must contain specific numbers, dates, or verifiable claims.
-```
-
-### Prompt 3: Article Writer (GPT-nano) — With JSON Safety 🛡️
-
-```
-${LANGUAGE_MANDATE}
-
-You are OnlyAlpha's senior market analyst and writer.
-You receive a JSON analysis object. Transform it into a compelling article.
-
-You are a WRITER, not an analyst. Do NOT add new analysis. Do NOT change verdicts. Do NOT invent facts.
-
-Output STRICT JSON:
-{
-  "headline":        "<SEO headline. Action verb first. Coin + event. MAX 15 words.>",
-  "hook":            "<One powerful opening sentence. Must include the most important number.>",
-  "fullArticle":     "<800+ words. Sections:
-    [HOOK] Expand the hook into 2-3 sentences.
-    [WHAT HAPPENED] Factual summary using keyFacts from input.
-    [WHY IT MATTERS] Use analysis.mainDriver and analysis.priceImplication.
-    [HISTORY REPEATS?] If analysis.temporalContext is not null — expand it with numbers.
-    [PRICE PICTURE] Use support/resistance levels. Reference trend and ATH distance.
-    [RISK CHECK] Use analysis.riskNote honestly.
-    [BOTTOM LINE] Verdict + confidenceScore. 'Analysis rates this as X with Y% confidence.'
-    Rules: Bloomberg meets Reddit tone. One number per paragraph minimum.
-    No vague language. No financial advice — use 'data suggests', 'analysis indicates'.>",
-  "metaTitle":       "<MAX 60 chars. Format: 'Coin Event | OnlyAlpha'>",
-  "metaDescription": "<MAX 160 chars. Primary keyword. End: Read the analysis on OnlyAlpha.>",
-  "seoKeywords":     ["<coin+event>", "<market action>", "<long-tail query>", "<coin+price>", "<trend>"]
-}
-```
+**Estimated cleanup: ~400 lines removed**
 
 ---
 
-## 🛡️ PHASE 6 — Resilience Layer
-> **Depends on:** Phase 2 (data services) + Phase 5 (AI prompts).
-> **Goal:** Protect the pipeline from external failures.
-> **Time:** Day 5 (same day as Phase 5).
+# Appendix B: Model Cost Map
 
-### P6-A: Circuit Breaker
+## Current Usage (Before Changes)
 
-```typescript
-// circuitBreaker.service.ts
-export class CircuitBreaker {
-  private failures  = 0;
-  private openUntil: Date | null = null;
-  private readonly maxFailures = 5;
-  private readonly cooldownMs  = 30 * 60 * 1000; // 30 minutes
+| Task | Model | Via | Est. Cost/1000 calls |
+|------|-------|----|---------------------|
+| Triage (50 items batch) | GPT-5-nano | OpenRouter | $$$ |
+| DeepSeek Analysis | DeepSeek-R1 | OpenRouter | $$ |
+| GPT-nano Writer (800 words) | GPT-5-nano | OpenRouter | $$$ |
+| Quality Audit | DeepSeek-R1 | OpenRouter | $$ |
+| Chat (per message) | GPT-5-nano | OpenRouter | $ |
+| **Total per news cycle** | | | **~4 calls** |
 
-  isOpen(): boolean {
-    if (!this.openUntil) return false;
-    if (new Date() > this.openUntil) {
-      // Cooldown passed → reset and try again
-      this.failures  = 0;
-      this.openUntil = null;
-      return false;
-    }
-    return true;
-  }
+## After All Phases
 
-  recordFailure(service: string): void {
-    this.failures++;
-    console.error(`[CircuitBreaker] ${service} failure ${this.failures}/${this.maxFailures}`);
-    if (this.failures >= this.maxFailures) {
-      this.openUntil = new Date(Date.now() + this.cooldownMs);
-      console.error(`[CircuitBreaker] 🛑 ${service} OPEN until ${this.openUntil.toISOString()}`);
-      // TODO: plug in your alert here (email / Slack webhook)
-    }
-  }
+| Task | Model | Via | Est. Cost/1000 calls | Change |
+|------|-------|----|---------------------|--------|
+| Triage | DeepSeek-R1 | **Direct API** | ¢ | -90% |
+| NOISE filter | None (local) | N/A | Free | -100% |
+| MINOR update | GPT-5-nano | OpenRouter | ¢ | -80% (1 paragraph vs article) |
+| MAJOR analysis | DeepSeek-R1 | **Direct API** | ¢ | -50% |
+| MAJOR write | GPT-5-nano | OpenRouter | $$ | Same |
+| MAJOR audit | DeepSeek-R1 | **Direct API** | ¢ | -50% (conditional) |
+| Chat | GPT-5-nano | OpenRouter | $ | Same |
+| Embedding | text-embedding-3-small | OpenAI | ¢¢ | New, cheap |
+| **Total per NOISE** | | | **0 calls** | -100% |
+| **Total per MINOR** | | | **1 call** | -75% |
+| **Total per MAJOR** | | | **2-3 calls** | -25% |
 
-  recordSuccess(): void {
-    this.failures = 0;
-  }
-}
-
-export const binanceBreaker     = new CircuitBreaker();
-export const dexscreenerBreaker = new CircuitBreaker();
-export const deepseekBreaker    = new CircuitBreaker();
-export const gptNanoBreaker     = new CircuitBreaker();
-```
-
-### P6-B: Dynamic Triage Threshold
-
-```typescript
-// dynamicThreshold.service.ts
-export async function getDynamicThreshold(): Promise<number> {
-  const { rows } = await db.query(`
-    SELECT COUNT(*) AS count FROM raw_news_buffer
-    WHERE triage_score >= 60 AND created_at > NOW() - INTERVAL '2 hours'
-  `);
-  const count = parseInt(rows[0].count);
-
-  if (count < 5)  return 65;  // Quiet market → lower the bar
-  if (count < 20) return 70;  // Normal market
-  if (count < 50) return 78;  // Hot market → protect budget
-  return 85;                  // Extreme (crash/bull run) → only the best
-}
-
-export async function countPublishedLastHour(): Promise<number> {
-  const { rows } = await db.query(`
-    SELECT COUNT(*) AS count FROM coin_news
-    WHERE created_at > NOW() - INTERVAL '1 hour'
-  `);
-  return parseInt(rows[0].count);
-}
-```
+**Estimated overall reduction: 70-80%**
 
 ---
 
-## 🔗 PHASE 7 — Wire Everything in aiWorkflow
-> **Depends on:** Phases 3 + 4 + 5 + 6 all complete.
-> **Goal:** Connect all layers into the single orchestration file.
-> **Time:** Day 6.
+# Appendix C: Cron Schedule (After All Phases)
+
+| Cron | Schedule | Purpose |
+|------|----------|---------|
+| `TerminalEngine` | Every 10 min | RSS → `raw_news_buffer` |
+| `TriageEngine` | Every 2 hours | Score + classify MAJOR/MINOR/NOISE |
+| `AiWorkflow` | Every hour | Process classified items → articles/updates |
+| `HistoricalNews` | Daily 04:00 UTC | Fetch historical + backfill outcomes |
+| `DailyAlpha` | Daily 06:00 UTC | Select day's top coin |
+| `MarketMood` | Daily 07:00 UTC | Fear & Greed computation |
+| `BufferCleanup` | Daily 00:00 UTC | Purge expired buffer items |
+| `ConvictionUpdate` | Every 6 hours | Recalculate conviction for active coins |
+
+---
+
+# Appendix D: New Files Summary
+
+| File | Created In | Purpose |
+|------|-----------|---------|
+| `backend/src/crons/historicalNews.cron.ts` | Phase 1 | Daily historical news fetch |
+| `backend/src/services/conviction.service.ts` | Phase 2 | Algorithmic conviction scoring |
+| `backend/src/crons/convictionUpdate.cron.ts` | Phase 2 | Runs conviction calc every 6h |
+| `backend/src/services/similarity.service.ts` | Phase 3 | Local keyword-based dedup |
+| `backend/src/middleware/chat-quota.middleware.ts` | Phase 4 | Redis-based chat rate limits |
+| `backend/src/services/embedding.service.ts` | Phase 6 | Text embedding generation |
+| `frontend/src/features/terminal/components/LivingArticle.tsx` | Phase 5 | Living article display |
+| `frontend/src/features/terminal/components/AlphaSnapshot.tsx` | Phase 5 | Conviction/posture widget |
+
+---
+
+# Appendix E: Database Changes Summary
+
+| Phase | Table | Action |
+|-------|-------|--------|
+| 2 | `coin_master_articles` | CREATE |
+| 2 | `coin_timeline_updates` | CREATE |
+| 2 | `raw_news_buffer` | ALTER — add `classification`, `triggerType` |
+| 6 | `raw_news_buffer` | ALTER — add `embedding vector(1536)` |
+| 6 | Extension | `CREATE EXTENSION vector` |
+
+---
+
+# Appendix F: Safety Notes
+
+## ⚠️ F.1: Drizzle-Kit Push vs Migrate
+
+**NEVER use `drizzle-kit push` on production:**
+- `push` diffs your schema against the live DB and may **DROP columns/tables** to match
+- Safe in development, **dangerous with real user data**
+- Always use: `generate` → **review SQL** → `migrate`
+
+## ⚠️ F.2: Cron Race Conditions (Mutex Lock)
+
+After implementing Living Articles, the `AiWorkflow` cron processes more logic per run. During heavy market activity + API rate limits, a single run could exceed 1 hour → the next cron fires while the previous is still running → duplicate processing.
+
+**Solution: Add a Redis-based mutex lock to AiWorkflow:**
 
 ```typescript
-// aiWorkflow.cron.ts
-import { getCoinIntelligence }                  from './coinIntelligence.service';
-import { fetchCoinHistoricalNews,
-         buildTemporalPattern,
-         backfillPriceOutcomes }               from './temporalIntelligence.service';
-import { getPriceWithFallback }                from './priceService';
-import { getDynamicThreshold,
-         countPublishedLastHour }              from './dynamicThreshold.service';
-import { deepseekBreaker, gptNanoBreaker }     from './circuitBreaker.service';
+// At the top of runAiWorkflow():
+const LOCK_KEY = 'cron:aiworkflow:lock';
+const LOCK_TTL = 3600; // 1 hour max
 
-export async function runAiWorkflow(): Promise<void> {
+if (redis) {
+    const acquired = await redis.set(LOCK_KEY, '1', 'EX', LOCK_TTL, 'NX');
+    if (!acquired) {
+        console.log('[AI Workflow] Previous run still active — skipping this cycle.');
+        return;
+    }
+}
 
-  // 1. Respect the hard cap: max 5 deep articles per hour
-  const hourlyCount = await countPublishedLastHour();
-  if (hourlyCount >= 5) {
-    console.log('[Workflow] Hourly cap reached. Skipping cycle.');
+try {
+    // ... entire workflow logic ...
+} finally {
+    if (redis) await redis.del(LOCK_KEY);
+}
+```
+
+Apply the same pattern to `TriageEngine` and `TerminalEngine` if needed.
+
+## ⚠️ F.3: `optionalAuth` on Context Route
+
+The `/chat/stream` route uses `optionalAuth` — meaning guests CAN send `mode: 'context'` in the body. After Task 0.1.3, context requests go to `/chat/stream/context` which has `authMiddleware` — this is the correct and secure route. But the backend should also guard against body-level `mode: 'context'` on the general route:
+
+```typescript
+// In chat.controller.ts, after resolving mode:
+if (resolvedMode === 'context' && !req.userId) {
+    res.status(401).json({ error: 'Context AI requires authentication.' });
     return;
-  }
-
-  // 2. Dynamic threshold
-  const threshold = await getDynamicThreshold();
-
-  // 3. Get triage items above threshold
-  const items = await db.query(`
-    SELECT * FROM raw_news_buffer
-    WHERE triage_score >= $1
-      AND processed = false
-      AND coin_symbol != 'UNKNOWN'
-    ORDER BY triage_score DESC
-    LIMIT $2
-  `, [threshold, 5 - hourlyCount]);
-
-  for (const item of items.rows) {
-    const symbol = item.coin_symbol;
-
-    // 4. Coin Intelligence (cached)
-    const intelligence = await getCoinIntelligence(symbol, item.token_address);
-
-    // 5. Historical news + temporal pattern
-    await fetchCoinHistoricalNews(symbol, item.event_type);
-    const pattern = await buildTemporalPattern(symbol, item.event_type, item.event_severity);
-
-    // 6. Current price
-    const price = await getPriceWithFallback(symbol, item.token_address);
-
-    // 7. DeepSeek analysis — circuit-breaker protected
-    if (deepseekBreaker.isOpen()) {
-      console.warn('[Workflow] DeepSeek circuit open — skipping item');
-      continue;
-    }
-    let analysis: object | null = null;
-    try {
-      analysis = await callDeepSeek({ intelligence, pattern, price, headline: item.title });
-      deepseekBreaker.recordSuccess();
-    } catch (err) {
-      deepseekBreaker.recordFailure('DeepSeek');
-      continue;
-    }
-
-    // 8. GPT-nano article writing — circuit-breaker protected
-    if (gptNanoBreaker.isOpen()) {
-      console.warn('[Workflow] GPT-nano circuit open — skipping item');
-      continue;
-    }
-    let article: object | null = null;
-    try {
-      article = await callGptNanoWriter(analysis);
-      gptNanoBreaker.recordSuccess();
-    } catch (err) {
-      gptNanoBreaker.recordFailure('GPT-nano');
-      continue;
-    }
-
-    // 9. Publish + targeted cache invalidation
-    await publishArticle(article, symbol, item);
-
-    // 10. Mark buffer item as processed
-    await db.query(
-      'UPDATE raw_news_buffer SET processed = true WHERE id = $1',
-      [item.id]
-    );
-  }
-
-  // Backfill runs separately (Phase 4 cron, not here)
 }
 ```
 
 ---
 
-## 📦 PHASE 8 — Cache & Publishing Layer
-> **Depends on:** Phase 7 (workflow wired).
-> **Goal:** Safe JSON parsing + targeted Redis invalidation.
-> **Time:** Day 6 (same day as Phase 7).
+# Execution Checklist
 
-### P8-A: JSON Safety in GPT-nano Response 🛡️
-
-```typescript
-// Use Zod to validate the GPT-nano JSON output
-// If the model forgets to close a bracket, Zod catches it → retry, not crash
-import { z } from 'zod';
-
-const ArticleSchema = z.object({
-  headline:       z.string().max(120),
-  hook:           z.string(),
-  fullArticle:    z.string().min(800),   // enforce minimum length
-  metaTitle:      z.string().max(60),
-  metaDescription:z.string().max(160),
-  seoKeywords:    z.array(z.string()).length(5)
-});
-
-async function callGptNanoWriter(analysis: object, attempt = 1): Promise<z.infer<typeof ArticleSchema>> {
-  const MAX_ATTEMPTS = 3;
-
-  const raw = await callGptNano(analysis); // raw string from API
-
-  // Always wrap JSON parse in try-catch
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    console.warn(`[GPT-nano] JSON parse failed on attempt ${attempt}. Raw:`, raw.slice(0, 200));
-    if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysis, attempt + 1);
-    throw new Error('GPT-nano returned invalid JSON after 3 attempts');
-  }
-
-  // Validate shape with Zod
-  const result = ArticleSchema.safeParse(parsed);
-  if (!result.success) {
-    console.warn(`[GPT-nano] Schema validation failed on attempt ${attempt}:`, result.error.issues);
-    if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysis, attempt + 1);
-    throw new Error('GPT-nano response failed schema validation after 3 attempts');
-  }
-
-  return result.data;
-}
 ```
-
-### P8-B: Targeted Redis Invalidation (No Full Flush) 🛡️
-
-```typescript
-// publishArticle.service.ts
-
-async function publishArticle(article: object, coinSymbol: string, bufferItem: object): Promise<void> {
-
-  // 1. Save to DB
-  const { rows } = await db.query(`
-    INSERT INTO coin_news (symbol, headline, hook, full_article, meta_title,
-                           meta_description, seo_keywords, created_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
-    RETURNING id
-  `, [coinSymbol, article.headline, article.hook, article.fullArticle,
-      article.metaTitle, article.metaDescription, JSON.stringify(article.seoKeywords)]);
-
-  const articleId = rows[0].id;
-
-  // 2. Targeted Redis invalidation — NEVER flush all keys
-  // Only invalidate keys related to this specific coin and the global feed
-  const keysToInvalidate = [
-    `news:${coinSymbol}`,            // e.g. news:SOL — coin-specific feed
-    `news:${coinSymbol}:latest`,     // latest article for this coin
-    `feed:global:latest`,            // global feed (first page)
-    `article:${articleId}`           // the new article itself (pre-warm optional)
-  ];
-
-  // Use pipeline for atomic multi-delete (not FLUSHALL)
-  const pipeline = redis.pipeline();
-  for (const key of keysToInvalidate) {
-    pipeline.del(key);
-  }
-  await pipeline.exec();
-
-  // ⛔ NEVER do this:
-  // await redis.flushall() ← kills ALL cached data → avalanche of DB hits from all users
-
-  console.log(`[Publish] Article ${articleId} published. Invalidated: ${keysToInvalidate.join(', ')}`);
-}
+Phase 0: [  ] 0.1  [  ] 0.1b [  ] 0.2  [  ] 0.3  [  ] 0.4  [  ] 0.5  [  ] 0.6
+Phase 1: [  ] 1.1  [  ] 1.2  [  ] 1.3  [  ] 1.4  [  ] 1.5
+Phase 2: [  ] 2.1  [  ] 2.2  [  ] 2.3  [  ] 2.4  [  ] 2.5
+Phase 3: [  ] 3.1  [  ] 3.2
+Phase 4: [  ] 4.1  [  ] 4.2
+Phase 5: [  ] 5.1  [  ] 5.2  [  ] 5.3  [  ] 5.4  [  ] 5.5  [  ] 5.6
+Phase 6: [  ] 6.1  [  ] 6.2  [  ] 6.3  [  ] 6.4  [  ] 6.5
+Cleanup: [  ] Dead code removal
 ```
-
----
-
-## 🧪 PHASE 9 — Testing & QA
-> **Depends on:** All phases 0-8 complete.
-> **Goal:** Verify every layer works end-to-end before deploy.
-> **Time:** Day 7.
-
-```bash
-# Phase 0 checks
-npx ts-node -e "import('./rssNews.service').then(m => m.fetchAllRSSNews().then(r => console.log(r.length + ' RSS items')))"
-
-# Phase 2 checks
-npx ts-node -e "import('./priceService').then(m => Promise.all([
-  m.getPriceWithFallback('SOL'),    // should return Binance
-  m.getPriceWithFallback('PEPE')    // should return DexScreener
-]).then(console.log))"
-
-# Phase 3 check
-npx ts-node -e "import('./coinIntelligence.service').then(async m => {
-  console.log('SOL:', await m.getCoinIntelligence('SOL'));
-  console.log('PEPE:', await m.getCoinIntelligence('PEPE'));
-})"
-
-# Phase 4 check — watch for 2-3s gaps in logs (rate limiting working)
-npx ts-node -e "import('./temporalIntelligence.service').then(m =>
-  m.fetchHistoricalNewsForCoins(['BTC', 'ETH', 'SOL'])
-)"
-
-# Phase 4 check — temporal pattern with severity
-npx ts-node -e "import('./temporalIntelligence.service').then(async m => {
-  const p = await m.buildTemporalPattern('SOL', 'ETF', 3);
-  console.log(JSON.stringify(p, null, 2));
-})"
-
-# Phase 5 check — triage extracts eventType + severity (no UNKNOWN)
-npx ts-node -e "import('./triageEngine.cron').then(m => m.runTriageEngine())"
-
-# Phase 6 check — circuit breaker trips at 5 failures
-# Force an invalid API URL temporarily and run 5 calls → confirm 30min pause
-
-# Phase 8 check — JSON safety: pass malformed JSON to callGptNanoWriter
-# It should retry 3 times then throw — not crash the whole workflow
-
-# Phase 8 check — Redis: after publishing, confirm ONLY coin keys deleted
-# Run: redis-cli KEYS '*' before and after publish
-
-# Full pipeline
-npx ts-node -e "import('./aiWorkflow.cron').then(m => m.runAiWorkflow())"
-# Verify: article is 800+ words, English only, references historical pattern
-```
-
----
-
-## 🚀 PHASE 10 — Deployment
-> **Depends on:** Phase 9 all tests passing.
-> **Goal:** Ship to production safely.
-> **Time:** Day 7 (same day, after tests pass).
-
-### Pre-Deploy Checklist
-
-```bash
-# Environment
-- [ ] ANALYSIS_MODEL=deepseek/deepseek-r1
-- [ ] SEO_MODEL=openai/gpt-5-nano
-- [ ] CRYPTOCOMPARE_API_KEY removed from .env
-- [ ] COINCAP_API_KEY removed from .env
-- [ ] TAVILY_API_KEY present (emergency fallback)
-- [ ] REDIS_URL set correctly
-
-# Dependencies
-- [ ] npm install zod                    # JSON validation
-- [ ] rss-parser present in package.json # already used
-
-# Database
-- [ ] npx drizzle-kit push               # creates coin_intelligence_cache + coin_news_history
-- [ ] Verify indexes created: \d coin_news_history
-
-# Endpoints
-- [ ] GET /api/health returns { status: 'ok' }
-- [ ] GET /api/market/wire works without 500
-
-# Crons registered
-- [ ] terminalEngine.cron   → every 10 min (RSS + DexScreener boosts)
-- [ ] triageEngine.cron     → every 2 hours (with dynamic threshold)
-- [ ] aiWorkflow.cron       → every hour (max 5 articles)
-- [ ] backfillPriceOutcomes → daily at 3am
-
-# Prompts
-- [ ] All 8 prompts contain LANGUAGE_MANDATE
-- [ ] Triage prompt extracts eventType + eventSeverity
-- [ ] DeepSeek prompt outputs JSON only (no prose)
-- [ ] GPT-nano prompt writes 800+ word article
-```
-
-### Post-Deploy Monitoring (First 24 Hours)
-
-```bash
-# Watch for these in logs:
-[RSS]          "X items fetched" every 10 min        ← Phase 0 working
-[Triage]       "threshold=70, eligible=3/12"         ← Phase 6 working
-[CircuitBreaker] NO "OPEN" messages                  ← APIs healthy
-[Temporal]     "Google News blocked" = acceptable    ← rate limiting respected
-[Publish]      "Invalidated: news:SOL, feed:global"  ← targeted cache working
-[GPT-nano]     NO "JSON parse failed" after deploy   ← Zod catching issues early
-
-# Check article quality manually after first 3 articles:
-- Length > 800 words? ✓
-- English only? ✓
-- References historical pattern? ✓
-- Has specific numbers in every paragraph? ✓
-```
-
----
-
-## 💰 Final Cost Breakdown
-
-| Service | Monthly Cost |
-|:---|:---|
-| RSS + Google News RSS + Wikipedia | $0.00 |
-| Binance Public + DexScreener | $0.00 |
-| DeepSeek R1 (JSON analysis only — compact output) | ~$1-3 |
-| GPT-5-nano (triage + writing + SEO + chat) | ~$1-2 |
-| Redis + PostgreSQL (self-hosted) | $0.00 |
-| **TOTAL** | **~$2-5/month** |
-
-> Note: DeepSeek cost is lower than v4.0 because it now outputs compact JSON, not 800-word prose.
-
----
-
-## 📊 Quality Delta — v3 vs v4.2
-
-| Dimension | v3 | v4.2 |
-|:---|:---|:---|
-| Article length | 100-200 words | 800+ words (Zod enforces minimum) |
-| Language | EN / Chinese / Arabic mixed | English only (GPT-nano writes, mandate enforced) |
-| Tone | Random / robotic | Consistent (Bloomberg meets Reddit) |
-| Historical context | None | "Last 3x ETF hit SOL → avg +30% in 7d" |
-| Coin background | None | Wikipedia + Binance ATH/trend |
-| Rug pull learning | None | Auto-flagged → AI pattern learns |
-| Market overload | Writes everything | Dynamic threshold 65-85 + 5/hr hard cap |
-| API failure | Silent errors → bad data | Circuit breaker → 30min pause + alert |
-| JSON crashes | App crash | Zod validation + 3-attempt auto-retry |
-| Cache storm | Potential flush risk | Targeted key invalidation only |
-
----
-*Status: ✅ Ready for Execution*
-*10 phases. Zero conflicts. Each phase has exactly one dependency.*

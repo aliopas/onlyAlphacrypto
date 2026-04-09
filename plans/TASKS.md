@@ -35,8 +35,8 @@
 
 **Verify:** Chat response renders as plain text, not raw JSON.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 
@@ -50,8 +50,8 @@
 
 **Verify:** `raw_news_buffer` rows get cleaned up after 48h.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 

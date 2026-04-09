@@ -133,11 +133,12 @@ export async function getAssetCount(req: Request, res: Response, next: NextFunct
         if (cached !== null) { res.json(cached); return; }
 
         const [{ count }] = await db
-            .select({ count: sql<number>`COUNT(DISTINCT ${marketInsights.coinSymbol})` })
-            .from(marketInsights);
+            .select({ count: sql<number>`COUNT(DISTINCT ${coinNews.coinSymbol})` })
+            .from(coinNews);
 
         const result = { count };
-        await setCache(cacheKey, result, 300);
+        const cacheTtl = count === 0 ? 30 : 300;
+        await setCache(cacheKey, result, cacheTtl);
         res.json(result);
     } catch (err) { next(err); }
 }

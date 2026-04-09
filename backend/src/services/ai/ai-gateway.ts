@@ -20,8 +20,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     ]).finally(() => clearTimeout(timer));
 }
 
+function stripThinkingBlocks(content: string): string {
+    const marker = '<' + '/think';
+    const thinkEnd = content.lastIndexOf(marker);
+    if (thinkEnd === -1) return content;
+    return content.slice(thinkEnd + marker.length).trim();
+}
+
 export class AIGateway {
     private _client: OpenAI;
+    private _defaultHeaders: Record<string, string>;
 
     constructor(config: {
         apiKey: string;
@@ -29,11 +37,12 @@ export class AIGateway {
         timeoutMs?: number;
         defaultHeaders?: Record<string, string>;
     }) {
+        this._defaultHeaders = config.defaultHeaders ?? {};
         this._client = new OpenAI({
             apiKey: config.apiKey,
             baseURL: config.baseURL,
             timeout: config.timeoutMs ?? 90000,
-            defaultHeaders: config.defaultHeaders ?? {},
+            defaultHeaders: this._defaultHeaders,
         });
     }
 
@@ -65,7 +74,7 @@ export class AIGateway {
                     temperature: params.temperature,
                     response_format: params.responseFormat,
                 });
-                content = response.choices[0].message.content ?? '';
+                content = stripThinkingBlocks(response.choices[0].message.content ?? '');
             } catch (error) {
                 this._throwIfRateLimited(error);
                 if (attempt === maxRetries) throw error;
@@ -115,7 +124,7 @@ export class AIGateway {
                 response_format: params.responseFormat,
             });
 
-            const content = response.choices[0].message.content;
+            const content = stripThinkingBlocks(response.choices[0].message.content ?? '');
             if (!content) {
                 throw new Error('Empty response from AI gateway');
             }
@@ -156,4 +165,32 @@ export class AIGateway {
             }
         }
     }
+}
+
+export function createOpenRouterGateway(config: {
+    apiKey: string;
+    timeoutMs?: number;
+}): AIGateway {
+    return new AIGateway({
+        apiKey: config.apiKey,
+        baseURL: 'https://openrouter.ai/api/v1',
+        timeoutMs: config.timeoutMs ?? 90000,
+        defaultHeaders: {
+            'HTTP-Referer': 'https://onlyalpha.app',
+            'X-Title': 'OnlyAlpha',
+        }
+    });
+}
+
+export function createGLMGateway(config: {
+    apiKey: string;
+    baseURL?: string;
+    timeoutMs?: number;
+}): AIGateway {
+    return new AIGateway({
+        apiKey: config.apiKey,
+        baseURL: config.baseURL ?? 'https://open.bigmodel.cn/api/paas/v4',
+        timeoutMs: config.timeoutMs ?? 90000,
+        defaultHeaders: {}
+    });
 }

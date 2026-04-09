@@ -1,0 +1,156 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: O
+      - generic [ref=e7]:
+        - text: A
+        - generic [ref=e8]: c
+    - generic [ref=e9]:
+      - link "home" [ref=e10] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e11]: home
+      - link "terminal" [ref=e12] [cursor=pointer]:
+        - /url: /terminal
+        - generic [ref=e13]: terminal
+      - generic "Airdrops" [ref=e14]:
+        - generic [ref=e15]: flight_takeoff
+        - generic [ref=e16]: SOON
+    - generic [ref=e17]:
+      - generic "Settings" [ref=e18]:
+        - generic [ref=e19]: settings
+        - generic [ref=e20]: SOON
+      - generic [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: O
+        - generic [ref=e24]:
+          - text: A
+          - generic [ref=e25]: c
+  - main [ref=e26]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]: LIVE
+        - generic [ref=e32]:
+          - text: CREAM
+          - generic [ref=e33]: $2.10
+          - generic [ref=e34]: +65.35%
+        - generic [ref=e35]:
+          - text: BETA
+          - generic [ref=e36]: $0.0004
+          - generic [ref=e37]: "-64.00%"
+        - generic [ref=e38]:
+          - text: VIB
+          - generic [ref=e39]: $0.0022
+          - generic [ref=e40]: "-63.26%"
+        - generic [ref=e41]:
+          - text: WTC
+          - generic [ref=e42]: $0.0103
+          - generic [ref=e43]: "-56.54%"
+        - generic [ref=e44]:
+          - text: A2Z
+          - generic [ref=e45]: $0.0001
+          - generic [ref=e46]: "-53.33%"
+        - generic [ref=e47]:
+          - text: ACA
+          - generic [ref=e48]: $0.0018
+          - generic [ref=e49]: "-51.35%"
+        - generic [ref=e50]:
+          - text: SXP
+          - generic [ref=e51]: $0.0022
+          - generic [ref=e52]: "-46.34%"
+        - generic [ref=e53]:
+          - text: PNT
+          - generic [ref=e54]: $0.0350
+          - generic [ref=e55]: +45.23%
+        - generic [ref=e56]:
+          - text: HARD
+          - generic [ref=e57]: $0.0095
+          - generic [ref=e58]: "-40.25%"
+        - generic [ref=e59]:
+          - text: FORTH
+          - generic [ref=e60]: $0.2370
+          - generic [ref=e61]: "-33.43%"
+      - generic [ref=e62]:
+        - generic [ref=e63]: LIVE
+        - generic [ref=e65]:
+          - text: CREAM
+          - generic [ref=e66]: $2.10
+          - generic [ref=e67]: +65.35%
+        - generic [ref=e68]:
+          - text: BETA
+          - generic [ref=e69]: $0.0004
+          - generic [ref=e70]: "-64.00%"
+        - generic [ref=e71]:
+          - text: VIB
+          - generic [ref=e72]: $0.0022
+          - generic [ref=e73]: "-63.26%"
+        - generic [ref=e74]:
+          - text: WTC
+          - generic [ref=e75]: $0.0103
+          - generic [ref=e76]: "-56.54%"
+        - generic [ref=e77]:
+          - text: A2Z
+          - generic [ref=e78]: $0.0001
+          - generic [ref=e79]: "-53.33%"
+        - generic [ref=e80]:
+          - text: ACA
+          - generic [ref=e81]: $0.0018
+          - generic [ref=e82]: "-51.35%"
+        - generic [ref=e83]:
+          - text: SXP
+          - generic [ref=e84]: $0.0022
+          - generic [ref=e85]: "-46.34%"
+        - generic [ref=e86]:
+          - text: PNT
+          - generic [ref=e87]: $0.0350
+          - generic [ref=e88]: +45.23%
+        - generic [ref=e89]:
+          - text: HARD
+          - generic [ref=e90]: $0.0095
+          - generic [ref=e91]: "-40.25%"
+        - generic [ref=e92]:
+          - text: FORTH
+          - generic [ref=e93]: $0.2370
+          - generic [ref=e94]: "-33.43%"
+    - generic [ref=e96]:
+      - complementary [ref=e98]:
+        - generic [ref=e101]: AI Radar Stream
+        - generic [ref=e102]: No signals available. Signals will appear automatically when available.
+      - generic [ref=e105]:
+        - img [ref=e107]
+        - heading "Alpha Stream Standby" [level=2] [ref=e109]
+        - paragraph [ref=e110]: Select an event from the timeline to initiate deep analysis.
+      - complementary [ref=e112]:
+        - generic [ref=e113]:
+          - generic [ref=e114]:
+            - generic [ref=e115]: SOL/USDT • BINANCE
+            - generic [ref=e116]: LIVE
+          - generic:
+            - generic: $78.9900
+          - table [ref=e120]:
+            - row [ref=e121]:
+              - cell
+              - cell [ref=e122]
+              - cell [ref=e126]
+            - row [ref=e130]:
+              - cell
+              - cell [ref=e131]
+              - cell [ref=e135]
+        - generic [ref=e138]:
+          - button "GENERAL AI Ask general questions about the market or technical analysis for this coin." [ref=e139]:
+            - text: GENERAL AI
+            - generic: Ask general questions about the market or technical analysis for this coin.
+          - button "CONTEXT AI AI will analyze the currently selected article/insight and search for the newest updates since then." [ref=e141]:
+            - text: CONTEXT AI
+            - generic: AI will analyze the currently selected article/insight and search for the newest updates since then.
+        - generic [ref=e142]:
+          - generic [ref=e144]:
+            - generic [ref=e146]: smart_toy
+            - generic [ref=e148]: Terminal Interface ready. Scanning data streams for $SOL...
+          - generic [ref=e149]:
+            - generic [ref=e150]:
+              - textbox "Ask OnlyAlpha..." [ref=e151]
+              - button "send" [ref=e152]:
+                - generic [ref=e153]: send
+            - generic [ref=e154]:
+              - generic [ref=e155]: "Model: Alpha-Turbo-4 (GUEST: 0/3)"
+              - generic [ref=e156]: SYSTEM READY
+  - alert [ref=e158]

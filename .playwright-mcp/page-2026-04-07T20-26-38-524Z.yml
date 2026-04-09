@@ -1,0 +1,171 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: O
+      - generic [ref=e7]:
+        - text: A
+        - generic [ref=e8]: c
+    - generic [ref=e9]:
+      - link "home" [ref=e10] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e11]: home
+      - link "terminal" [ref=e12] [cursor=pointer]:
+        - /url: /terminal
+        - generic [ref=e13]: terminal
+      - generic "Airdrops" [ref=e14]:
+        - generic [ref=e15]: flight_takeoff
+        - generic [ref=e16]: SOON
+    - generic [ref=e17]:
+      - generic "Settings" [ref=e18]:
+        - generic [ref=e19]: settings
+        - generic [ref=e20]: SOON
+      - generic [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: O
+        - generic [ref=e24]:
+          - text: A
+          - generic [ref=e25]: c
+  - main [ref=e26]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]: LIVE
+        - generic [ref=e32]: SCANNING MARKETS...
+      - generic [ref=e33]:
+        - generic [ref=e34]: LIVE
+        - generic [ref=e36]: SCANNING MARKETS...
+    - generic [ref=e38]:
+      - complementary [ref=e40]:
+        - generic [ref=e43]: AI Radar Stream
+        - generic [ref=e44]:
+          - generic [ref=e45] [cursor=pointer]:
+            - generic [ref=e46]:
+              - generic [ref=e47]: 12:15 PM
+              - generic [ref=e48]: $BTC
+            - heading "Spot Bitcoin ETFs saw $471 million in inflows, the highest in six weeks, signaling strong institutional demand despite recent price weakness." [level=4] [ref=e49]
+            - generic [ref=e50]:
+              - generic [ref=e51]:
+                - generic [ref=e52]: article
+                - text: Sources Analyzed
+                - generic [ref=e53]: STREAM
+              - generic [ref=e54]:
+                - generic [ref=e55]:
+                  - generic [ref=e57]: Surge Bitcoin ETF Inflows Signal Bullish Rebound for BTC
+                  - generic [ref=e58]: open_in_new
+                - generic [ref=e59]:
+                  - generic [ref=e61]: Tighten BTC Real-Time Holdings Verification Mandate
+                  - generic [ref=e62]: open_in_new
+          - generic [ref=e63] [cursor=pointer]:
+            - generic [ref=e64]:
+              - generic [ref=e65]: 12:12 PM
+              - generic [ref=e66]: $AVAX
+            - heading "CME to launch AVAX futures, enabling institutional exposure. Price at $8.66 near 52-week low. Listing catalyst may offset bearish momentum." [level=4] [ref=e67]
+            - generic [ref=e68]:
+              - generic [ref=e69]:
+                - generic [ref=e70]: article
+                - text: Sources Analyzed
+                - generic [ref=e71]: STREAM
+              - generic [ref=e72]:
+                - generic [ref=e73]:
+                  - generic [ref=e75]: "Launch AVAX: CME Listing Unlocks Institutional Access"
+                  - generic [ref=e76]: open_in_new
+                - generic [ref=e77]:
+                  - generic [ref=e79]: Launches AVAX Futures, Expands Institutional Access
+                  - generic [ref=e80]: open_in_new
+          - generic [ref=e81] [cursor=pointer]:
+            - generic [ref=e82]:
+              - generic [ref=e83]: 12:03 PM
+              - generic [ref=e84]: $XRP
+            - heading "XRP leads weekly ETP inflows as institutional buyers accumulate $224M despite 8-week downtrend and -2.9% daily decline." [level=4] [ref=e85]
+            - generic [ref=e86]:
+              - generic [ref=e87]:
+                - generic [ref=e88]: article
+                - text: Sources Analyzed
+                - generic [ref=e89]: STREAM
+              - generic [ref=e90]:
+                - generic [ref=e91]:
+                  - generic [ref=e93]: "Propel XRP Funding: $224M Weekly ETP Inflows Signal Demand"
+                  - generic [ref=e94]: open_in_new
+                - generic [ref=e95]:
+                  - generic [ref=e97]: Boost XRP Funding Inflows as Institutions Accumulate $224M
+                  - generic [ref=e98]: open_in_new
+          - generic [ref=e99] [cursor=pointer]:
+            - generic [ref=e100]:
+              - generic [ref=e101]: 11:11 AM
+              - generic [ref=e102]: $AVAX
+            - heading "CME to launch AVAX futures, expanding institutional access. Price at $8.61, down 7.6% in 24h. Near 52-week low of $7.55." [level=4] [ref=e103]
+            - generic [ref=e104]:
+              - generic [ref=e105]:
+                - generic [ref=e106]: article
+                - text: Sources Analyzed
+                - generic [ref=e107]: STREAM
+              - generic [ref=e108]:
+                - generic [ref=e109]:
+                  - generic [ref=e111]: "Launch AVAX: CME Listing Unlocks Institutional Access"
+                  - generic [ref=e112]: open_in_new
+                - generic [ref=e113]:
+                  - generic [ref=e115]: Launches AVAX Futures, Expands Institutional Access
+                  - generic [ref=e116]: open_in_new
+          - generic [ref=e117] [cursor=pointer]:
+            - generic [ref=e118]:
+              - generic [ref=e119]: 09:51 AM
+              - generic [ref=e120]: $BTC
+            - heading "Bitcoin spikes attention after a $471 million ETF inflow lit the fuse. It's the largest single-day ETF inflow in six weeks, with BTC trading around $68,000 after a 2.56% intraday dip. Analysts say this could mark a turning point after 6 weeks of outflows, signaling renewed institutional demand despite yesterday's volatility." [level=4] [ref=e121]
+            - generic [ref=e122]:
+              - generic [ref=e123]:
+                - generic [ref=e124]: article
+                - text: Sources Analyzed
+                - generic [ref=e125]: STREAM
+              - generic [ref=e126]:
+                - generic [ref=e127]:
+                  - generic [ref=e129]: Surge Bitcoin ETF Inflows Signal Bullish Rebound for BTC
+                  - generic [ref=e130]: open_in_new
+                - generic [ref=e131]:
+                  - generic [ref=e133]: Tighten BTC Real-Time Holdings Verification Mandate
+                  - generic [ref=e134]: open_in_new
+          - generic [ref=e135] [cursor=pointer]:
+            - generic [ref=e136]:
+              - generic [ref=e137]: 09:51 AM
+              - generic [ref=e138]: $XRP
+            - heading "XRP-led funding inflows surged to $224 million this week, the strongest signal of institutional interest yet. Yet the price slipped 3.92% in the last 24 hours, underscoring a stubborn downtrend. Data suggests this divergence could set the stage for a potential reversal as institutions accumulate." [level=4] [ref=e139]
+            - generic [ref=e140]:
+              - generic [ref=e141]:
+                - generic [ref=e142]: article
+                - text: Sources Analyzed
+                - generic [ref=e143]: STREAM
+              - generic [ref=e144]:
+                - generic [ref=e145]:
+                  - generic [ref=e147]: "Propel XRP Funding: $224M Weekly ETP Inflows Signal Demand"
+                  - generic [ref=e148]: open_in_new
+                - generic [ref=e149]:
+                  - generic [ref=e151]: Boost XRP Funding Inflows as Institutions Accumulate $224M
+                  - generic [ref=e152]: open_in_new
+      - generic [ref=e155]:
+        - img [ref=e157]
+        - heading "Alpha Stream Standby" [level=2] [ref=e159]
+        - paragraph [ref=e160]: Select an event from the timeline to initiate deep analysis.
+      - complementary [ref=e162]:
+        - generic [ref=e163]:
+          - generic [ref=e164]:
+            - generic [ref=e165]: SOL/USDT • N/A
+            - generic [ref=e166]: LIVE
+          - generic:
+            - generic: "---"
+        - generic [ref=e169]:
+          - button "GENERAL AI Ask general questions about the market or technical analysis for this coin." [ref=e170]:
+            - text: GENERAL AI
+            - generic: Ask general questions about the market or technical analysis for this coin.
+          - button "CONTEXT AI AI will analyze the currently selected article/insight and search for the newest updates since then." [ref=e172]:
+            - text: CONTEXT AI
+            - generic: AI will analyze the currently selected article/insight and search for the newest updates since then.
+        - generic [ref=e173]:
+          - generic [ref=e175]:
+            - generic [ref=e177]: smart_toy
+            - generic [ref=e179]: Terminal Interface ready. Scanning data streams for $SOL...
+          - generic [ref=e180]:
+            - generic [ref=e181]:
+              - textbox "Ask OnlyAlpha..." [ref=e182]
+              - button "send" [ref=e183]:
+                - generic [ref=e184]: send
+            - generic [ref=e185]:
+              - generic [ref=e186]: "Model: Alpha-Turbo-4 (GUEST: 0/3)"
+              - generic [ref=e187]: SYSTEM READY
+  - alert [ref=e189]

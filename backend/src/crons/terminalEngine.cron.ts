@@ -46,6 +46,7 @@ export async function runTerminalEngine(): Promise<void> {
                 title: rawText,
                 source: newsItem.source || 'Unknown',
                 sourceHash: hash,
+                ttlExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
             }).onConflictDoNothing();
 
             bufferedCount++;
