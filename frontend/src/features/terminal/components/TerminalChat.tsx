@@ -35,7 +35,6 @@ export function TerminalChat({ coin, articleId, articleType }: Props) {
                     className={`flex-1 py-4 text-[10px] font-mono font-medium transition-colors border-b relative group ${mode === 'general' ? 'text-white border-[#135bec] bg-[#1a1a1a]' : 'text-[#888] border-transparent bg-[#0A0A0A] hover:bg-[#111]'}`}
                 >
                     Macro Intelligence
-                    {/* Tooltip */}
                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-black border border-[#333] text-[#888] text-[9px] p-2 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
                         Ask general questions about the market or technical analysis for this coin.
                     </div>
@@ -46,16 +45,15 @@ export function TerminalChat({ coin, articleId, articleType }: Props) {
                     className={`flex-1 py-4 text-[10px] font-mono font-medium transition-colors border-b relative group ${mode === 'context' ? 'text-[#10b981] border-[#10b981] bg-[#1a1a1a]' : 'text-[#888] border-transparent bg-[#0A0A0A] hover:bg-[#111]'}`}
                 >
                     Asset Context
-                    {/* Tooltip */}
                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-black border border-[#10b981]/50 text-[#888] text-[9px] p-2 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
                         AI will analyze the currently selected article/insight and search for the newest updates since then.
                     </div>
                 </button>
             </div>
 
-            {/* Chat Content */}
+            {/* Chat Content — disabled overlay */}
             <div className="flex-1 flex flex-col overflow-hidden relative">
-                <div className="flex-1 p-5 space-y-6 overflow-y-auto">
+                <div className="flex-1 p-5 space-y-6 overflow-y-auto opacity-30 pointer-events-none select-none">
                     {messages.map((msg, i) => (
                         msg.role === 'ai' ? (
                             <div key={i} className="flex gap-4">
@@ -84,42 +82,33 @@ export function TerminalChat({ coin, articleId, articleType }: Props) {
                     <div ref={endRef} />
                 </div>
 
-                {/* Guest Locked Overlay */}
-                {isGuestLocked && (
-                    <div className="absolute inset-x-0 bottom-[80px] z-20 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center border-t border-[#333] h-[200px]">
-                        <span className="material-symbols-outlined text-[40px] text-[#135bec] mb-4">account_balance_wallet</span>
-                        <h3 className="text-white text-[14px] font-bold mb-2">Free Prompts Exhausted</h3>
-                        <p className="text-[#888] text-[12px] mb-6">You've reached the limit of 3 free Ask OnlyAlpha uses. Please connect your wallet to continue.</p>
-                        <a href="/auth" className="px-6 py-2 bg-[#135bec] text-white text-[12px] font-bold uppercase tracking-wider hover:bg-[#0f4ac0] transition-colors rounded-lg shadow-[0_0_15px_rgba(19,91,236,0.3)]">
-                            Connect Wallet
-                        </a>
-                    </div>
-                )}
+                {/* Disabled Overlay */}
+                <div className="absolute inset-0 z-30 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center">
+                    <span className="material-symbols-outlined text-[48px] text-[#888] mb-4">lock</span>
+                    <h3 className="text-white text-[14px] font-bold mb-2">AI Chat Temporarily Offline</h3>
+                    <p className="text-[#888] text-[12px] max-w-[260px] leading-relaxed">Our AI engine is undergoing maintenance. Chat will be back shortly. Thank you for your patience.</p>
+                </div>
+            </div>
 
-                {/* Input */}
-                <div className="p-4 border-t border-[#333] bg-[#0A0A0A]">
-                    <div className="relative">
-                        <input
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            disabled={isGuestLocked}
-                            className="w-full bg-black border border-[#333] px-4 py-3 text-[13px] text-white placeholder-[#555] focus:outline-none focus:border-[#555] disabled:opacity-50 disabled:cursor-not-allowed"
-                            placeholder={isGuestLocked ? "Sign in to continue..." : "Ask OnlyAlpha..."}
-                            type="text"
-                        />
-                        <button onClick={handleSend} disabled={isGuestLocked} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#135bec] hover:text-white transition-colors disabled:opacity-50">
-                            <span className="material-symbols-outlined text-[20px]">send</span>
-                        </button>
-                    </div>
-                    <div className="flex justify-between items-center mt-3">
-                        <span className="text-[9px] font-mono text-[#555] uppercase tracking-tighter">
-                            Model: {mode === 'general' ? 'Alpha-Macro' : 'Alpha-Context'} {(!isLoggedIn && guestCount < 3) ? `(GUEST: ${guestCount}/3)` : ''}
-                        </span>
-                        <span className="text-[9px] font-mono flex items-center gap-1 text-[#10b981]">
-                            <span className="w-1.5 h-1.5 bg-[#10b981] rounded-full inline-block animate-pulse" /> SYSTEM READY
-                        </span>
-                    </div>
+            {/* Input — disabled */}
+            <div className="p-4 border-t border-[#333] bg-[#0A0A0A] opacity-30 pointer-events-none">
+                <div className="relative">
+                    <input
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        className="w-full bg-black border border-[#333] px-4 py-3 text-[13px] text-white placeholder-[#555] focus:outline-none focus:border-[#555] cursor-not-allowed"
+                        placeholder="Chat temporarily disabled..."
+                        type="text"
+                        disabled
+                    />
+                </div>
+                <div className="flex justify-between items-center mt-3">
+                    <span className="text-[9px] font-mono text-[#555] uppercase tracking-tighter">
+                        Model: OFFLINE
+                    </span>
+                    <span className="text-[9px] font-mono flex items-center gap-1 text-[#ef4444]">
+                        <span className="w-1.5 h-1.5 bg-[#ef4444] rounded-full inline-block" /> MAINTENANCE
+                    </span>
                 </div>
             </div>
         </aside>
