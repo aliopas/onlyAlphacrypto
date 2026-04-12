@@ -18,6 +18,9 @@ interface Props {
     hasMore?: boolean;
     isLoadingMore?: boolean;
     hasSignals?: boolean;
+    onLoadMoreWire?: () => void;
+    hasMoreWire?: boolean;
+    isLoadingMoreWire?: boolean;
 }
 
 export function TerminalWire({
@@ -33,7 +36,10 @@ export function TerminalWire({
     onLoadMore,
     hasMore = true,
     isLoadingMore = false,
-    hasSignals = true
+    hasSignals = true,
+    onLoadMoreWire,
+    hasMoreWire,
+    isLoadingMoreWire
 }: Props) {
     const now = useMemo(() => Date.now(), []);
 
@@ -73,7 +79,14 @@ export function TerminalWire({
                     const timeStr = item.formattedTime || `${Math.floor((now - new Date(item.createdAt).getTime()) / 60000)}m ago`;
 
                     // Find context news for this signal
-                    const itemNews = news.filter(n => (n.coin || n.coinSymbol) === item.coin).slice(0, 2);
+                    const RADAR_NEWS_TIME_WINDOW_MS = 4 * 60 * 60 * 1000;
+                    const radarTime = new Date(item.createdAt).getTime();
+                    const itemNews = news.filter(n => {
+                        const matchCoin = (n.coin || n.coinSymbol) === item.coin;
+                        if (!matchCoin) return false;
+                        const newsTime = new Date(n.createdAt).getTime();
+                        return Math.abs(newsTime - radarTime) < RADAR_NEWS_TIME_WINDOW_MS;
+                    }).slice(0, 2);
 
                     return (
                         <div key={`radar-${item.id || i}`}
@@ -125,12 +138,25 @@ export function TerminalWire({
                 {/* Load More Button */}
                 {radarSignals.length > 0 && hasMore && (
                     <div className="pt-2 pb-4">
-                        <button 
+                        <button
                             onClick={(e) => { e.stopPropagation(); onLoadMore?.(); }}
                             disabled={isLoadingMore}
                             className="w-full py-2 bg-[#111] hover:bg-[#181818] border border-[#222] text-[#888] text-[10px] font-mono uppercase tracking-widest transition-all disabled:opacity-50"
                         >
                             {isLoadingMore ? 'Fetching...' : 'Show More +'}
+                        </button>
+                    </div>
+                )}
+
+                {/* Wire Load More Button */}
+                {activeTab === 'WIRE' && hasMoreWire && (
+                    <div className="pt-2 pb-4">
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onLoadMoreWire?.(); }}
+                            disabled={isLoadingMoreWire}
+                            className="w-full py-2 bg-[#111] hover:bg-[#181818] border border-[#222] text-[#888] text-[10px] font-mono uppercase tracking-widest transition-all disabled:opacity-50"
+                        >
+                            {isLoadingMoreWire ? 'Fetching...' : 'Show More +'}
                         </button>
                     </div>
                 )}

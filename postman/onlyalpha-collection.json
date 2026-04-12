@@ -1,0 +1,677 @@
+{
+  "info": {
+    "name": "OnlyAlpha API",
+    "description": "Complete API collection for the OnlyAlpha crypto intelligence platform. All endpoints documented with correct HTTP methods, headers, and parameters.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "health"]
+            }
+          },
+          "description": "Comprehensive system health check. Returns status of Database, pgvector, Redis, and OpenRouter API connectivity with latency measurements."
+        }
+      ]
+    },
+    {
+      "name": "Market",
+      "item": [
+        {
+          "name": "Wire Feed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/market/wire?coin=&limit=&offset=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "wire"],
+              "query": [
+                { "key": "coin", "value": "", "description": "Filter by coin symbol (e.g. BTC)" },
+                { "key": "limit", "value": "", "description": "Number of items per page" },
+                { "key": "offset", "value": "", "description": "Pagination offset" }
+              ]
+            }
+          },
+          "description": "Paginated news wire feed with optional coin filter and cursor-based pagination."
+        },
+        {
+          "name": "Wire Article by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/market/wire/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "wire", ":id"],
+              "variable": [
+                { "key": "id", "value": "1", "description": "Article ID" }
+              ]
+            }
+          },
+          "description": "Fetch a single wire article by its unique ID."
+        },
+        {
+          "name": "Radar Signals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/market/radar?limit=&offset=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "radar"],
+              "query": [
+                { "key": "limit", "value": "", "description": "Number of items per page" },
+                { "key": "offset", "value": "", "description": "Pagination offset" }
+              ]
+            }
+          },
+          "description": "Paginated radar signals showing coins with high conviction scores and recent activity."
+        },
+        {
+          "name": "Coin Insight",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/market/insight/:symbol",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "insight", ":symbol"],
+              "variable": [
+                { "key": "symbol", "value": "BTC", "description": "Coin symbol (e.g. BTC, ETH)" }
+              ]
+            }
+          },
+          "description": "Deep AI-generated insight for a specific coin symbol including sentiment, price targets, and key facts."
+        },
+        {
+          "name": "Master Article",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "description": "Optional — include for personalized content" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/market/master/:symbol",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "master", ":symbol"],
+              "variable": [
+                { "key": "symbol", "value": "BTC", "description": "Coin symbol" }
+              ]
+            }
+          },
+          "description": "Living master article for a coin — continuously updated with latest analysis, timeline, and conviction score."
+        },
+        {
+          "name": "Timeline Updates",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "description": "Optional — include for personalized content" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/market/timeline/:symbol?offset=&limit=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "timeline", ":symbol"],
+              "query": [
+                { "key": "offset", "value": "", "description": "Pagination offset" },
+                { "key": "limit", "value": "", "description": "Number of items per page" }
+              ],
+              "variable": [
+                { "key": "symbol", "value": "BTC", "description": "Coin symbol" }
+              ]
+            }
+          },
+          "description": "Paginated timeline of events and updates for a specific coin's master article."
+        },
+        {
+          "name": "Top Movers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/market/movers",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "movers"]
+            }
+          },
+          "description": "Returns the top gaining and losing coins based on recent price movement."
+        },
+        {
+          "name": "Market Mood",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/market/mood",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "mood"]
+            }
+          },
+          "description": "Aggregated market sentiment and mood indicator derived from Fear & Greed index and recent news analysis."
+        },
+        {
+          "name": "Alpha Focus",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/market/alpha-focus",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "alpha-focus"]
+            }
+          },
+          "description": "Curated list of high-conviction coins currently in the alpha focus zone."
+        },
+        {
+          "name": "Asset Count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/market/asset-count",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "asset-count"]
+            }
+          },
+          "description": "Returns the total number of tracked assets in the system."
+        },
+        {
+          "name": "Force Seed",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/market/force-seed",
+              "host": ["{{base_url}}"],
+              "path": ["api", "market", "force-seed"]
+            }
+          },
+          "description": "Admin-only endpoint to force-trigger the master article seeding cron job. Requires authentication."
+        }
+      ]
+    },
+    {
+      "name": "Airdrop",
+      "item": [
+        {
+          "name": "Projects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/airdrop/projects",
+              "host": ["{{base_url}}"],
+              "path": ["api", "airdrop", "projects"]
+            }
+          },
+          "description": "List all tracked airdrop projects with their status, estimated value, and task details."
+        },
+        {
+          "name": "Project by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/airdrop/projects/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "airdrop", "projects", ":id"],
+              "variable": [
+                { "key": "id", "value": "1", "description": "Project ID" }
+              ]
+            }
+          },
+          "description": "Fetch a single airdrop project by its ID with full details."
+        },
+        {
+          "name": "Project Progress",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "description": "Optional — include for user-specific progress" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/airdrop/projects/:id/progress",
+              "host": ["{{base_url}}"],
+              "path": ["api", "airdrop", "projects", ":id", "progress"],
+              "variable": [
+                { "key": "id", "value": "1", "description": "Project ID" }
+              ]
+            }
+          },
+          "description": "Get the current user's task completion progress for a specific airdrop project."
+        },
+        {
+          "name": "Deadlines",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/airdrop/deadlines",
+              "host": ["{{base_url}}"],
+              "path": ["api", "airdrop", "deadlines"]
+            }
+          },
+          "description": "List upcoming airdrop deadlines sorted by nearest date."
+        },
+        {
+          "name": "Sidebar Deadlines",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/airdrop/sidebar-deadlines",
+              "host": ["{{base_url}}"],
+              "path": ["api", "airdrop", "sidebar-deadlines"]
+            }
+          },
+          "description": "Compact deadline list optimized for sidebar widget display."
+        },
+        {
+          "name": "Verify Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"proof\": \"tx_hash_or_screenshot_url\",\n  \"walletAddress\": \"0x...\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/airdrop/verify/:taskId",
+              "host": ["{{base_url}}"],
+              "path": ["api", "airdrop", "verify", ":taskId"],
+              "variable": [
+                { "key": "taskId", "value": "1", "description": "Task ID to verify" }
+              ]
+            }
+          },
+          "description": "Submit proof of task completion for manual or auto-verification. Requires authentication."
+        },
+        {
+          "name": "Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "description": "Optional — include for user-specific stats" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/airdrop/stats",
+              "host": ["{{base_url}}"],
+              "path": ["api", "airdrop", "stats"]
+            }
+          },
+          "description": "Aggregated airdrop statistics including total projects, completed tasks, and estimated earnings."
+        },
+        {
+          "name": "Activity",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "description": "Optional — include for user-specific activity" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/airdrop/activity",
+              "host": ["{{base_url}}"],
+              "path": ["api", "airdrop", "activity"]
+            }
+          },
+          "description": "Recent airdrop activity feed including new projects, deadline updates, and verification results."
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Stream (General)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"coin\": \"BTC\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What is the current price of Bitcoin?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat/stream",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "stream"]
+            }
+          },
+          "description": "General AI chat stream. Authentication is optional — unauthenticated users get guest limits."
+        },
+        {
+          "name": "Stream (Context Mode)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"coin\": \"BTC\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Explain the recent news about Bitcoin\"\n    }\n  ],\n  \"mode\": \"context\",\n  \"articleId\": 123,\n  \"articleType\": \"WIRE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat/stream/context",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "stream", "context"]
+            }
+          },
+          "description": "Context-aware AI chat stream. Requires authentication. Grounds responses in a specific article."
+        },
+        {
+          "name": "Accept Disclaimer",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat/disclaimer-accept",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "disclaimer-accept"]
+            }
+          },
+          "description": "Accept the AI disclaimer. Must be accepted before using chat features. Requires authentication."
+        },
+        {
+          "name": "Disclaimer Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "description": "Optional — returns false if unauthenticated" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chat/disclaimer-status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "disclaimer-status"]
+            }
+          },
+          "description": "Check if the current user has accepted the AI disclaimer."
+        },
+        {
+          "name": "Article Context",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}", "description": "Optional — include for personalized context" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/chat/context/:articleId/:articleType",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat", "context", ":articleId", ":articleType"],
+              "variable": [
+                { "key": "articleId", "value": "123", "description": "Article ID" },
+                { "key": "articleType", "value": "WIRE", "description": "Article type: WIRE or MASTER" }
+              ]
+            }
+          },
+          "description": "Fetch the context payload for grounding an AI chat conversation in a specific article."
+        }
+      ]
+    },
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"securepassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "auth", "register"]
+            }
+          },
+          "description": "Register a new user account. Returns JWT token on success."
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"securepassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "auth", "login"]
+            }
+          },
+          "description": "Authenticate with email and password. Returns JWT token."
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/user/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "me"]
+            }
+          },
+          "description": "Get the authenticated user's profile, plan, and preferences."
+        },
+        {
+          "name": "Update Preferences",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"preferredCoins\": [\"BTC\", \"ETH\", \"SOL\"],\n  \"theme\": \"dark\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "me"]
+            }
+          },
+          "description": "Update the authenticated user's preferences including theme and watched coins."
+        },
+        {
+          "name": "Upgrade Plan",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan\": \"pro\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user/plan",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "plan"]
+            }
+          },
+          "description": "Upgrade or change the user's subscription plan (free, pro, institutional)."
+        },
+        {
+          "name": "List Wallets",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/user/wallets",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "wallets"]
+            }
+          },
+          "description": "List all wallets linked to the authenticated user."
+        },
+        {
+          "name": "Add Wallet",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"0x742d35Cc6634C0532925a3b844Bc9e7595f2bD38\",\n  \"label\": \"Main Wallet\",\n  \"chain\": \"ethereum\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user/wallets",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "wallets"]
+            }
+          },
+          "description": "Link a new wallet address to the authenticated user's account."
+        },
+        {
+          "name": "Delete Wallet",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/user/wallets/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "wallets", ":id"],
+              "variable": [
+                { "key": "id", "value": "1", "description": "Wallet ID to remove" }
+              ]
+            }
+          },
+          "description": "Unlink a wallet from the authenticated user's account."
+        },
+        {
+          "name": "List API Keys",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/user/api-keys",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "api-keys"]
+            }
+          },
+          "description": "List all API keys belonging to the authenticated user (Pro/Institutional only)."
+        },
+        {
+          "name": "Create API Key",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My Trading Bot\",\n  \"permissions\": [\"read:market\", \"read:chat\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/user/api-keys",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "api-keys"]
+            }
+          },
+          "description": "Create a new API key for programmatic access. Returns the key once — store it securely."
+        },
+        {
+          "name": "Revoke API Key",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/user/api-keys/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "user", "api-keys", ":id"],
+              "variable": [
+                { "key": "id", "value": "1", "description": "API Key ID to revoke" }
+              ]
+            }
+          },
+          "description": "Permanently revoke an API key by its ID."
+        }
+      ]
+    },
+    {
+      "name": "Chart",
+      "item": [
+        {
+          "name": "Klines (DEX Candles)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/chart/klines/:symbol",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chart", "klines", ":symbol"],
+              "variable": [
+                { "key": "symbol", "value": "SOL-USDC", "description": "Trading pair symbol (e.g. SOL-USDC)" }
+              ]
+            }
+          },
+          "description": "Fetch DEX candlestick/kline data from Birdeye for a given trading pair."
+        }
+      ]
+    }
+  ]
+}

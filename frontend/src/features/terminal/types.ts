@@ -21,4 +21,58 @@ export type CoinNews = {
     formattedTime?: string;
 };
 
+export type MasterArticle = {
+    id: number;
+    coinSymbol: string;
+    headline: string;
+    hook: string | null;
+    coreCatalyst: string | null;
+    marketContext: string | null;
+    strategicImpact: string | null;
+    historicalContext: string | null;
+    technicalLevels: string | null;
+    riskAssessment: string | null;
+    bottomLine: string | null;
+    sentiment: string | null;
+    verdict: string | null;
+    confidenceScore: number | null;
+    convictionScore: number | null;
+    posture: string | null;
+    riskTags: string[] | null;
+    triggerType: string | null;
+    majorUpdateCount: number;
+    minorUpdateCount: number;
+    lastMajorUpdate: string | null;
+    lastMinorUpdate: string | null;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export type TimelineUpdate = {
+    id: number;
+    coinSymbol: string;
+    masterArticleId: number;
+    updateText: string;
+    triggerType: string | null;
+    severity: string;
+    sourceTitle: string | null;
+    sourceHash: string | null;
+    sentiment: string | null;
+    impactScore: number | null;
+    convictionDelta: number | null;
+    createdAt: string;
+};
+
+export type MasterArticleResponse = {
+    masterArticle: MasterArticle | null;
+    timelineUpdates: TimelineUpdate[];
+    convictionScore: number | null;
+    posture: string | null;
+};
+
+export type TimelineResponse = {
+    updates: TimelineUpdate[];
+    total: number;
+};
+
 

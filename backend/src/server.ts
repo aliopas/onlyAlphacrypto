@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { env } from './config/env';
-import { testConnection, pool } from './config/db';
+import { testConnection, pool, initDb } from './config/db';
 import { redis } from './config/redis';
 import routes from './routes/index';
 import { errorHandler } from './middleware/errorHandler';
@@ -40,15 +40,6 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(timeMiddleware);
 
-app.get('/api/health', async (_req, res) => {
-    try {
-        await testConnection();
-        res.json({ status: 'ok', db: 'connected', ts: new Date().toISOString() });
-    } catch {
-        res.status(503).json({ status: 'error', db: 'disconnected' });
-    }
-});
-
 app.use('/api', routes);
 
 app.use((_req, res) => {
@@ -66,6 +57,7 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
 async function bootstrap(): Promise<void> {
     try {
+        await initDb();
         await testConnection();
 
         const PORT = parseInt(env.PORT, 10);

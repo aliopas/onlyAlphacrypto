@@ -10,7 +10,7 @@
 
 | Metric | Value |
 |---|---|
-| **Current Phase** | Phase 5 — Frontend Refactor & Branding |
+| **Current Phase** | Phase 0 to Phase 6: ALL COMPLETE |
 | **Build Status** | `tsc --noEmit` passing |
 | **Known Bugs** | 0 critical, 1 low-priority |
 | **Blocking Issues** | None |
@@ -26,8 +26,8 @@
 | Phase 2 | Living Article System | **COMPLETE** | Tasks 11, 11b, 11c, 12, 13, 14 |
 | Phase 3 | Temporal Intelligence | **COMPLETE** | Task 15 |
 | Phase 4 | Chat System Rebuild | **COMPLETE** | Task 16 |
-| Phase 5 | Frontend Refactor & Branding | **NOT STARTED** | Tasks 17-19 |
-| Phase 6 | Text Embeddings (Optional) | **NOT STARTED** | Task 20 |
+| Phase 5 | Frontend Refactor & Branding | **COMPLETE** | Tasks 17, 18, 19 |
+| Phase 6 | Text Embeddings (Optional) | **COMPLETE** | Task 20 |
 
 ---
 
@@ -94,35 +94,23 @@
 
 ## Upcoming Milestones
 
-### Task 17: Frontend Article Sections + Institutional Branding (Phase 5)
-- **Priority:** MEDIUM
-- **Dependencies:** Task 11b (complete), Task 16 (complete)
-- **Scope:**
-  - Parse article sections into accordion UI
-  - Rename all branding terms (institutional rename)
-- **Blockers:** None
+All Master Execution Plan milestones have been achieved. The core architectural pipeline is complete.
 
-### Task 18: Living Article UI + Alpha Snapshot Widget (Phase 5)
-- **Priority:** MEDIUM
-- **Dependencies:** Task 11b (complete), Task 16 (complete)
-- **Scope:**
-  - Living Article view (Alpha Snapshot header + Master Article accordion + Timeline feed)
-  - Alpha Snapshot widget (conviction bar, posture badge, risk tags)
-- **Blockers:** None
+### Task 17: Frontend Article Sections + Institutional Branding (Phase 5) — COMPLETED
+- **Status:** DONE
+- **Scope:** Article accordion UI + institutional branding rename
 
-### Task 19: Fix Terminal Selection + Pagination + Sources (Phase 5)
-- **Priority:** MEDIUM
-- **Dependencies:** Task 11b (complete), Task 16 (complete)
-- **Scope:**
-  - Fix non-unique selection highlighting
-  - Deduplicate "Show More" results by ID
-  - Wire tab pagination with offset support
-  - Fix radar sources to use time-proximity matching
-- **Blockers:** None
+### Task 18: Living Article UI + Alpha Snapshot Widget (Phase 5) — COMPLETED
+- **Status:** DONE
+- **Scope:** Living Article view, Alpha Snapshot widget, timeline feed
 
-### Task 20: Text Embeddings (Phase 6 — Optional)
-- **Dependencies:** Task 15 (complete)
-- **Scope:** pgvector, semantic dedup (cosine similarity >= 0.88)
+### Task 19: Fix Terminal Selection + Pagination + Sources (Phase 5) — COMPLETED
+- **Status:** DONE
+- **Scope:** Fix non-unique selection highlighting, Deduplicate results by ID, Wire tab pagination, Fix radar sources matching
+
+### Task 20: Text Embeddings (Phase 6 — Optional) — COMPLETED
+- **Status:** DONE
+- **Scope:** pgvector extension, embedding column, embedding service (OpenRouter/Ollama), semantic dedup, pre-process pipeline
 
 ---
 

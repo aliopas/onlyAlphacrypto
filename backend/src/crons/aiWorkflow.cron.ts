@@ -13,7 +13,8 @@ import { AIRateLimitError } from '../services/ai/ai-gateway';
 import { validateFactualGrounding } from '../services/ai/factual-grounding';
 import { auditArticleQuality } from '../services/ai/quality-auditor';
 import { saveMemory } from '../services/coin-memory.service';
-import { isDuplicateByKeywords } from '../services/similarity.service';
+import { isDuplicateByEmbedding } from '../services/similarity.service';
+import { storeEmbedding } from '../services/embedding.service';
 import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates } from '../models/market.model';
 import { eq, gte, and, desc, sql, isNotNull, ne } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
@@ -114,7 +115,7 @@ export async function runAiWorkflow(): Promise<void> {
 
             console.log(`[AI Workflow] Processing: ${symbol} (${classification}) — "${item.title.slice(0, 60)}..."`);
 
-            if (await isDuplicateByKeywords(item.title, symbol)) {
+            if (await isDuplicateByEmbedding(item.title, symbol)) {
                 console.log(`[AI Workflow] Skipping duplicate: ${symbol}`);
                 continue;
             }
@@ -165,6 +166,8 @@ export async function runAiWorkflow(): Promise<void> {
                     sourceHash,
                     aiProcessed: 1,
                 }).onConflictDoNothing();
+
+                await storeEmbedding(item.id, item.title);
 
                 console.log(`[AI Workflow] MINOR update for ${symbol}`);
                 continue;
@@ -343,6 +346,8 @@ export async function runAiWorkflow(): Promise<void> {
                     sourceHash,
                     aiProcessed: 1,
                 }).onConflictDoNothing().returning({ id: coinNews.id });
+
+                await storeEmbedding(item.id, item.title);
 
                 const newsId = insertedNews.length > 0 ? insertedNews[0].id : null;
 

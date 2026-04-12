@@ -54,6 +54,12 @@ const envSchema = z.object({
     // Next.js revalidation
     NEXTJS_REVALIDATE_SECRET: z.string().optional(),
     NEXTJS_BASE_URL: z.string().url().optional(),
+
+    // Embeddings (pgvector semantic dedup)
+    EMBEDDING_PROVIDER: z.enum(['openrouter', 'ollama']).default('openrouter'),
+    EMBEDDING_MODEL: z.string().default('openai/text-embedding-3-small'),
+    OLLAMA_BASE_URL: z.string().default('http://localhost:11434'),
+    OLLAMA_EMBEDDING_MODEL: z.string().default('nomic-embed-text'),
 });
 
 const parsed = envSchema.safeParse(process.env);

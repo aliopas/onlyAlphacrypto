@@ -1,9 +1,10 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import marketRoutes from './market.routes';
 import airdropRoutes from './airdrop.routes';
 import chatRoutes from './chat.routes';
 import userRoutes from './user.routes';
 import chartRoutes from './chart.routes';
+import { systemHealthCheck } from '../controllers/health.controller';
 
 const router = Router();
 
@@ -14,8 +15,6 @@ router.use('/user', userRoutes);
 router.use('/chart', chartRoutes);
 
 // Health check
-router.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+router.get('/health', systemHealthCheck);
 
 export default router;

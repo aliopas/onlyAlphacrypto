@@ -42,6 +42,12 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const [hasMoreRadar, setHasMoreRadar] = useState(validSignals.length >= 20);
     const [isLoadingMoreRadar, setIsLoadingMoreRadar] = useState(false);
 
+    // Pagination state for Wire
+    const [wireNews, setWireNews] = useState<CoinNews[]>(initialNews);
+    const [wireOffset, setWireOffset] = useState(initialNews.length);
+    const [hasMoreWire, setHasMoreWire] = useState(initialNews.length >= 20);
+    const [isLoadingMoreWire, setIsLoadingMoreWire] = useState(false);
+
     const handleLoadMoreRadar = async () => {
         if (isLoadingMoreRadar || !hasMoreRadar) return;
         setIsLoadingMoreRadar(true);
@@ -63,7 +69,32 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
         }
     };
 
-    const activeArticle = initialNews.find(n => n.id === selectedNewsId);
+    const handleLoadMoreWire = async () => {
+        if (isLoadingMoreWire || !hasMoreWire) return;
+        setIsLoadingMoreWire(true);
+        try {
+            const coinFilter = selectedCoin !== 'SOL' ? selectedCoin : undefined;
+            const url = coinFilter ? `/market/wire?coin=${coinFilter}&offset=${wireOffset}&limit=20` : `/market/wire?offset=${wireOffset}&limit=20`;
+            const { data } = await apiClient.get<CoinNews[]>(url);
+            if (Array.isArray(data)) {
+                if (data.length < 20) setHasMoreWire(false);
+                if (data.length > 0) {
+                    const existingIds = new Set(wireNews.map(n => n.id));
+                    const fresh = data.filter((n: CoinNews) => !existingIds.has(n.id));
+                    setWireNews(prev => [...prev, ...fresh]);
+                    setWireOffset(prev => prev + fresh.length);
+                }
+            } else {
+                setHasMoreWire(false);
+            }
+        } catch (err) {
+            console.error('Failed to load more wire:', err);
+        } finally {
+            setIsLoadingMoreWire(false);
+        }
+    };
+
+    const activeArticle = wireNews.find(n => n.id === selectedNewsId);
     const activeRadar = signals.find(r => r.id === selectedRadarId);
 
     const activeItemCoin = activeTab === 'WIRE' ? activeArticle?.coin : activeRadar?.coin;
@@ -76,7 +107,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
             {/* Left — AI Radar Stream Sidebar */}
             <div className={`flex flex-col h-full min-h-0 flex-1 lg:flex-none ${activeMobileTab === 'wire' ? 'w-full lg:w-[22%] lg:min-w-[280px]' : 'hidden lg:flex lg:w-[22%] lg:min-w-[280px]'}`}>
                 <TerminalWire
-                    news={initialNews}
+                    news={wireNews}
                     radarSignals={signals}
                     targetedCoin={selectedCoin}
                     onSelectNews={(id) => { setSelectedNewsId(id); setActiveTab('WIRE'); setActiveMobileTab('stream'); }}
@@ -89,6 +120,9 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
                     hasMore={hasMoreRadar}
                     isLoadingMore={isLoadingMoreRadar}
                     hasSignals={hasSignals}
+                    onLoadMoreWire={handleLoadMoreWire}
+                    hasMoreWire={hasMoreWire}
+                    isLoadingMoreWire={isLoadingMoreWire}
                 />
             </div>
 

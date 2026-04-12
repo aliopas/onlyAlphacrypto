@@ -42,3 +42,19 @@ export async function isDuplicateByKeywords(headline: string, symbol: string): P
     }
     return false;
 }
+
+import { findSemanticDuplicate } from './embedding.service';
+
+export async function isDuplicateByEmbedding(headline: string, symbol: string): Promise<boolean> {
+    try {
+        const result = await findSemanticDuplicate(headline, symbol);
+        if (result.isDuplicate) {
+            console.log(`[Similarity] Semantic duplicate found: id=${result.duplicateId}, similarity=${result.similarity.toFixed(3)}`);
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.warn('[Similarity] Embedding check failed, falling back to keywords:', error);
+        return isDuplicateByKeywords(headline, symbol);
+    }
+}

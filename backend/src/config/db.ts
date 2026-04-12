@@ -16,7 +16,19 @@ pool.on('error', (err) => {
 
 export const db = drizzle(pool, { schema });
 
+async function registerPgvector(): Promise<void> {
+    try {
+        const { registerTypes } = await import('pgvector/pg');
+        await registerTypes(pool);
+        console.log('✅ pgvector types registered');
+    } catch (err) {
+        console.warn('⚠️ pgvector not available — vector features disabled:', err instanceof Error ? err.message : String(err));
+    }
+}
+
 export async function testConnection(): Promise<void> {
+    await registerPgvector();
+
     const client = await pool.connect();
     try {
         await client.query('SELECT 1');
@@ -24,6 +36,10 @@ export async function testConnection(): Promise<void> {
     } finally {
         client.release();
     }
+}
+
+export async function initDb(): Promise<void> {
+    await registerPgvector();
 }
 
 export { pool };
