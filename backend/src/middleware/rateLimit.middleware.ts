@@ -106,5 +106,5 @@ export function tieredLimiter(windowSeconds = 3600) {
 }
 
 export const apiLimiter = rateLimiter({ windowSeconds: 60, maxRequests: 60 });
-export const chatLimiter = rateLimiter({ windowSeconds: 60, maxRequests: 5 });
+export const chatLimiter = rateLimiter({ windowSeconds: 60, maxRequests: 20 });
 export const authLimiter = rateLimiter({ windowSeconds: 900, maxRequests: 10 });

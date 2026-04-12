@@ -68,14 +68,13 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
                 const [newsItem] = await db.select().from(coinNews).where(eq(coinNews.id, articleId)).limit(1);
                 if (newsItem) {
                     baseArticleTime = newsItem.publishedAt;
-                    contextText = `[PRIMARY FOCUS - RECENT NEWS]: ${newsItem.headline}\nSummary: ${newsItem.summary}\n`;
+                    contextText += `[PRIMARY FOCUS - RECENT NEWS]: ${newsItem.headline}\nSummary: ${newsItem.summary}\n`;
                 }
             } else if (articleType === 'RADAR') {
                 const [radarItem] = await db.select().from(radarSignals).where(eq(radarSignals.id, articleId)).limit(1);
                 if (radarItem) {
                     baseArticleTime = radarItem.createdAt;
-                    contextText = `[PRIMARY FOCUS - AI SIGNAL]: ${radarItem.signalText}\nSentiment: ${radarItem.sentiment}\n`;
-                    // Fetch source news if it exists
+                    contextText += `[PRIMARY FOCUS - AI SIGNAL]: ${radarItem.signalText}\nSentiment: ${radarItem.sentiment}\n`;
                     if (radarItem.newsId) {
                         const [sourceNews] = await db.select().from(coinNews).where(eq(coinNews.id, radarItem.newsId)).limit(1);
                         if (sourceNews) {
@@ -131,6 +130,17 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
             contextText = `[MASTER ARTICLE]: ${master ? master.headline : 'No master article available'}\n[TIMELINE UPDATES]: ${timelineStr}\n[HISTORICAL MEMORY]: ${memoryStr}\n[RECENT NEWS]: ${newsStr}\n[INSIGHT VERDICT]: ${insight?.verdict || 'None'}`;
 
             if (!currentPrice) currentPrice = insight?.priceAtAnalysis || 0;
+
+            if (articleId && articleType) {
+                try {
+                    const table = articleType === 'WIRE' ? coinNews : radarSignals;
+                    const [item] = await db.select().from(table).where(eq(table.id, articleId)).limit(1);
+                    if (item) {
+                        const headline = 'headline' in item ? item.headline : ('signalText' in item ? item.signalText : '');
+                        contextText += `\n[ARTICLE CONTEXT]: The user is currently viewing: "${headline}". Reference this if relevant to their question.`;
+                    }
+                } catch { /* non-blocking */ }
+            }
         }
 
         // Set SSE headers
