@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { Pool } from 'pg';
-import { execSync } from 'child_process';
+import path from 'path';
 import * as schema from '../models/index';
 import { env } from './env';
 
@@ -39,23 +40,16 @@ async function ensurePgvectorExtension(): Promise<void> {
     }
 }
 
-async function pushSchema(): Promise<void> {
+async function runMigrations(): Promise<void> {
     try {
-        console.log('📦 Syncing database schema...');
-        const output = execSync('npx drizzle-kit push --force', {
-            cwd: process.cwd(),
-            timeout: 60000,
-            stdio: 'pipe',
-            env: { ...process.env, DATABASE_URL: env.DATABASE_URL },
-        });
-        if (output.toString().trim()) {
-            console.log(output.toString().trim());
-        }
-        console.log('✅ Database schema synced');
+        console.log('📦 Applying database migrations...');
+        const migrationsPath = path.resolve(process.cwd(), 'drizzle/migrations');
+        await migrate(db, { migrationsFolder: migrationsPath });
+        console.log('✅ Database migrations applied');
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error('❌ Schema sync failed:', msg);
-        throw new Error(`Schema push failed: ${msg}`);
+        console.error('❌ Migration failed:', msg);
+        throw new Error(`Migration failed: ${msg}`);
     }
 }
 
@@ -73,7 +67,7 @@ export async function testConnection(): Promise<void> {
 
 export async function initDb(): Promise<void> {
     await ensurePgvectorExtension();
-    await pushSchema();
+    await runMigrations();
     await registerPgvector();
 }
 
