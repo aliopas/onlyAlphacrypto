@@ -72,8 +72,8 @@ export async function testConnection(): Promise<void> {
 }
 
 export async function initDb(): Promise<void> {
-    await pushSchema();
     await ensurePgvectorExtension();
+    await pushSchema();
     await registerPgvector();
 }
 
