@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { execSync } from 'child_process';
+import path from 'path';
 import * as schema from '../models/index';
 import { env } from './env';
 
@@ -42,7 +43,8 @@ async function ensurePgvectorExtension(): Promise<void> {
 async function pushSchema(): Promise<void> {
     try {
         console.log('📦 Syncing database schema...');
-        const output = execSync('npx drizzle-kit push --force', {
+        const drizzleBin = path.join(process.cwd(), 'node_modules', '.bin', 'drizzle-kit');
+        const output = execSync(`"${drizzleBin}" push --force`, {
             cwd: process.cwd(),
             timeout: 60000,
             stdio: 'pipe',
