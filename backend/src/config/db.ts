@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { execSync } from 'child_process';
 import * as schema from '../models/index';
 import { env } from './env';
 
@@ -26,6 +27,38 @@ async function registerPgvector(): Promise<void> {
     }
 }
 
+async function ensurePgvectorExtension(): Promise<void> {
+    const client = await pool.connect();
+    try {
+        await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+        console.log('✅ pgvector extension ensured');
+    } catch (err) {
+        console.warn('⚠️ Could not create pgvector extension:', err instanceof Error ? err.message : String(err));
+    } finally {
+        client.release();
+    }
+}
+
+async function pushSchema(): Promise<void> {
+    try {
+        console.log('📦 Syncing database schema...');
+        const output = execSync('npx drizzle-kit push --force', {
+            cwd: process.cwd(),
+            timeout: 60000,
+            stdio: 'pipe',
+            env: { ...process.env, DATABASE_URL: env.DATABASE_URL },
+        });
+        if (output.toString().trim()) {
+            console.log(output.toString().trim());
+        }
+        console.log('✅ Database schema synced');
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('❌ Schema sync failed:', msg);
+        throw new Error(`Schema push failed: ${msg}`);
+    }
+}
+
 export async function testConnection(): Promise<void> {
     await registerPgvector();
 
@@ -39,6 +72,8 @@ export async function testConnection(): Promise<void> {
 }
 
 export async function initDb(): Promise<void> {
+    await pushSchema();
+    await ensurePgvectorExtension();
     await registerPgvector();
 }
 
