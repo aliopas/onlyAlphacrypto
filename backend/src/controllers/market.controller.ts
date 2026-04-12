@@ -145,7 +145,7 @@ export async function getAssetCount(req: Request, res: Response, next: NextFunct
             ) sub
         `);
 
-        const count: number = result.rows[0]?.count ?? 0;
+        const count = Number((result.rows[0] as Record<string, unknown>)?.count ?? 0);
         const output = { count };
         const cacheTtl = count === 0 ? 30 : 300;
         await setCache(cacheKey, output, cacheTtl);
