@@ -133,23 +133,23 @@ export async function getAssetCount(req: Request, res: Response, next: NextFunct
         const cached = await getCache(cacheKey);
         if (cached !== null) { res.json(cached); return; }
 
-        const [{ count }] = await db
-            .select({ count: sql<number>`(
-                SELECT COUNT(DISTINCT sym) FROM (
-                    SELECT DISTINCT coin_symbol AS sym FROM coin_news WHERE coin_symbol IS NOT NULL
-                    UNION
-                    SELECT DISTINCT coin_symbol AS sym FROM coin_master_articles WHERE coin_symbol IS NOT NULL
-                    UNION
-                    SELECT DISTINCT coin_symbol AS sym FROM coin_intelligence_cache WHERE coin_symbol IS NOT NULL
-                    UNION
-                    SELECT DISTINCT coin_symbol AS sym FROM price_snapshots WHERE coin_symbol IS NOT NULL
-                ) sub
-            )` });
+        const result = await db.execute(sql`
+            SELECT COUNT(DISTINCT sym)::int AS count FROM (
+                SELECT DISTINCT coin_symbol AS sym FROM coin_news WHERE coin_symbol IS NOT NULL
+                UNION
+                SELECT DISTINCT coin_symbol AS sym FROM coin_master_articles WHERE coin_symbol IS NOT NULL
+                UNION
+                SELECT DISTINCT coin_symbol AS sym FROM coin_intelligence_cache WHERE coin_symbol IS NOT NULL
+                UNION
+                SELECT DISTINCT coin_symbol AS sym FROM price_snapshots WHERE coin_symbol IS NOT NULL
+            ) sub
+        `);
 
-        const result = { count };
+        const count: number = result.rows[0]?.count ?? 0;
+        const output = { count };
         const cacheTtl = count === 0 ? 30 : 300;
-        await setCache(cacheKey, result, cacheTtl);
-        res.json(result);
+        await setCache(cacheKey, output, cacheTtl);
+        res.json(output);
     } catch (err) { next(err); }
 }
 
