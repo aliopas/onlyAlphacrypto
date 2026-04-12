@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { getCoinInsight, getAlphaFocus, getRadarSignals, getMarketMood, getLatestWire, getWireById, getTopMoversController, getAssetCount, forceSeed } from '../controllers/market.controller';
+import { getCoinInsight, getAlphaFocus, getRadarSignals, getMarketMood, getLatestWire, getWireById, getTopMoversController, getAssetCount, forceSeed, getMasterArticle, getTimeline } from '../controllers/market.controller';
 import { apiLimiter } from '../middleware/rateLimit.middleware';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { optionalAuth } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -13,6 +14,8 @@ router.get('/wire', apiLimiter, getLatestWire);
 router.get('/wire/:id', apiLimiter, getWireById);
 router.get('/movers', apiLimiter, getTopMoversController);
 router.get('/asset-count', apiLimiter, getAssetCount);
+router.get('/master/:symbol', apiLimiter, optionalAuth, getMasterArticle);
+router.get('/timeline/:symbol', apiLimiter, optionalAuth, getTimeline);
 
 // Dev/Admin tool to force-seed the database
 router.post('/force-seed', authMiddleware, forceSeed);

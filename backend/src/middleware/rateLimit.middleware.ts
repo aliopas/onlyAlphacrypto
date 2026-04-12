@@ -4,12 +4,14 @@ import { AuthRequest } from './auth.middleware';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
 
+type PlanTier = 'free' | 'pro' | 'institutional';
+
 interface RateLimitOptions {
     windowSeconds: number;
     maxRequests: number;
 }
 
-export const PLAN_LIMITS: Record<string, number> = {
+export const PLAN_LIMITS: Record<PlanTier, number> = {
     free: 60,
     pro: 500,
     institutional: 5000,
@@ -74,8 +76,8 @@ export function tieredLimiter(windowSeconds = 3600) {
             return;
         }
 
-        const plan = req.userPlan || 'free';
-        const maxRequests = PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
+        const plan = (req.userPlan as PlanTier) || 'free';
+        const maxRequests = PLAN_LIMITS[plan];
         const key = `rl:tier:${req.userId}`;
 
         try {

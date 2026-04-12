@@ -368,7 +368,20 @@ export async function callGptNanoMasterUpdate(analysisResult: DeepAnalysisResult
 
     if (typeof parsed !== 'object' || parsed === null) return {};
 
-    return parsed as Record<string, unknown>;
+    const ALLOWED_SECTIONS = [
+        'coreCatalyst', 'marketContext', 'strategicImpact',
+        'historicalContext', 'technicalLevels', 'riskAssessment', 'bottomLine',
+        'headline', 'hook', 'metaTitle', 'metaDescription', 'seoKeywords',
+        'sentiment', 'verdict', 'confidenceScore', 'riskTags',
+    ];
+    const filtered: Record<string, unknown> = {};
+    const parsedObj = parsed as Record<string, unknown>;
+    for (const key of Object.keys(parsedObj)) {
+        if (ALLOWED_SECTIONS.includes(key)) {
+            filtered[key] = parsedObj[key];
+        }
+    }
+    return filtered;
 }
 
 export function extractSection(fullArticle: string, sectionTag: string): string | null {

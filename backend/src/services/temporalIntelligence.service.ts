@@ -61,17 +61,18 @@ async function fetchCoinHistoricalNews(symbol: string, eventType: string): Promi
 }
 
 export async function buildTemporalPattern(symbol: string, eventType: string, severity: number): Promise<TemporalPattern | null> {
+    // Fuzzy matching: allow severity within 1, ignore exact eventType match for broader patterns
     const rows = await db.select()
         .from(coinNewsHistory)
         .where(and(
             eq(coinNewsHistory.coinSymbol, symbol),
-            eq(coinNewsHistory.eventType, eventType),
-            eq(coinNewsHistory.eventSeverity, severity),
+            gte(coinNewsHistory.eventSeverity, Math.max(1, severity - 1)),
+            lte(coinNewsHistory.eventSeverity, severity + 1),
             isNotNull(coinNewsHistory.price7dAfter),
             gte(coinNewsHistory.publishedAt, sql`NOW() - INTERVAL '180 days'`)
         ))
         .orderBy(desc(coinNewsHistory.publishedAt))
-        .limit(5);
+        .limit(10); // Increased limit for broader matching
 
     if (rows.length === 0) return null;
 

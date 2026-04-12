@@ -15,6 +15,7 @@ import { startMarketMoodCron } from './crons/marketMood.cron';
 import { startTerminalEngineCron } from './crons/terminalEngine.cron';
 import { startTriageEngineCron } from './crons/triageEngine.cron';
 import { startBufferCleanupCron } from './crons/bufferCleanup.cron';
+import { startConvictionUpdateCron } from './crons/convictionUpdate.cron';
 import { logger } from './utils/logger';
 
 const app = express();
@@ -85,6 +86,7 @@ async function bootstrap(): Promise<void> {
             { name: 'TerminalEngine', fn: startTerminalEngineCron },
             { name: 'TriageEngine', fn: startTriageEngineCron },
             { name: 'BufferCleanup', fn: startBufferCleanupCron },
+            { name: 'ConvictionUpdate', fn: startConvictionUpdateCron },
         ];
 
         crons.forEach((cron, index) => {

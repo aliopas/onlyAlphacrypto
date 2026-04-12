@@ -13,6 +13,7 @@ import { AIRateLimitError } from '../services/ai/ai-gateway';
 import { validateFactualGrounding } from '../services/ai/factual-grounding';
 import { auditArticleQuality } from '../services/ai/quality-auditor';
 import { saveMemory } from '../services/coin-memory.service';
+import { isDuplicateByKeywords } from '../services/similarity.service';
 import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates } from '../models/market.model';
 import { eq, gte, and, desc, sql, isNotNull, ne } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
@@ -56,6 +57,12 @@ function selectTone(eventType: string): string {
         default:
             return 'professional';
     }
+}
+
+function deriveRiskLevel(impactScore: number, verdict: string): 'LOW' | 'MEDIUM' | 'HIGH' | 'SCAM' {
+    if (verdict === 'STRONG_SELL' || impactScore >= 85) return 'HIGH';
+    if (verdict === 'SELL' || impactScore >= 65) return 'MEDIUM';
+    return 'LOW';
 }
 
 export async function runAiWorkflow(): Promise<void> {
@@ -106,6 +113,11 @@ export async function runAiWorkflow(): Promise<void> {
             const classification = (typeof item.classification === 'string' && ['MAJOR', 'MINOR', 'NOISE'].includes(item.classification)) ? item.classification : 'MINOR';
 
             console.log(`[AI Workflow] Processing: ${symbol} (${classification}) — "${item.title.slice(0, 60)}..."`);
+
+            if (await isDuplicateByKeywords(item.title, symbol)) {
+                console.log(`[AI Workflow] Skipping duplicate: ${symbol}`);
+                continue;
+            }
 
             const triggerType = TRIGGER_TYPE_MAP[eventType] ?? 'news';
 
@@ -355,9 +367,9 @@ export async function runAiWorkflow(): Promise<void> {
                         priceAtEvent: price?.price,
                         verdict: analysisResult.verdict,
                         confidenceScore: analysisResult.confidenceScore,
-                        riskVerdict: analysisResult.analysis.riskNote,
+                        riskVerdict: deriveRiskLevel(analysisResult.impactScore, analysisResult.verdict),
                         keyDrivers: [analysisResult.analysis.mainDriver],
-                        redFlags: analysisResult.keyFacts,
+                        redFlags: analysisResult.analysis.riskNote ? [analysisResult.analysis.riskNote] : [],
                         sourceNewsHashes: [sourceHash],
                     });
                 } catch (memErr) {

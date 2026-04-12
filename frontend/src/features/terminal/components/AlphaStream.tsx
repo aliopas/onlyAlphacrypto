@@ -5,6 +5,70 @@ import { CoinNews } from '@/features/terminal/types';
 import { RadarSignal } from '@/features/home/types';
 import { terminalApi } from '@/features/terminal/api';
 
+type SectionName = 'HOOK' | 'WHAT HAPPENED' | 'WHY IT MATTERS' | 'HISTORY REPEATS' | 'PRICE PICTURE' | 'RISK CHECK' | 'BOTTOM LINE';
+
+const SECTION_ORDER: SectionName[] = [
+    'HOOK', 'WHAT HAPPENED', 'WHY IT MATTERS',
+    'HISTORY REPEATS', 'PRICE PICTURE', 'RISK CHECK', 'BOTTOM LINE',
+];
+
+const SECTION_LABELS: Record<SectionName, string> = {
+    'HOOK': 'Core Catalyst',
+    'WHAT HAPPENED': 'Market Context',
+    'WHY IT MATTERS': 'Strategic Impact',
+    'HISTORY REPEATS': 'Historical Precedent',
+    'PRICE PICTURE': 'Technical Levels',
+    'RISK CHECK': 'Risk Assessment',
+    'BOTTOM LINE': 'Executive Summary',
+};
+
+function parseArticleSections(summary: string): Array<{ key: SectionName; label: string; content: string }> {
+    const sections: Array<{ key: SectionName; label: string; content: string }> = [];
+
+    for (let i = 0; i < SECTION_ORDER.length; i++) {
+        const sectionName = SECTION_ORDER[i];
+        const tagPlain = `[${sectionName}]`;
+        const tagQuestion = `[${sectionName}?]`;
+        const startIndex = summary.indexOf(tagPlain) !== -1 ? summary.indexOf(tagPlain) : summary.indexOf(tagQuestion);
+        if (startIndex === -1) continue;
+
+        const matchedTag = summary.indexOf(tagPlain) !== -1 ? tagPlain : tagQuestion;
+        const contentStart = startIndex + matchedTag.length;
+        let endIndex = summary.length;
+        for (let j = i + 1; j < SECTION_ORDER.length; j++) {
+            const nextSection = SECTION_ORDER[j];
+            const nextPlain = `[${nextSection}]`;
+            const nextQuestion = `[${nextSection}?]`;
+            const nextIdx = summary.indexOf(nextPlain, contentStart) !== -1
+                ? summary.indexOf(nextPlain, contentStart)
+                : summary.indexOf(nextQuestion, contentStart);
+            if (nextIdx !== -1 && nextIdx < endIndex) {
+                endIndex = nextIdx;
+                break;
+            }
+        }
+
+        const content = summary.slice(contentStart, endIndex).trim();
+        if (content) {
+            sections.push({
+                key: sectionName,
+                label: SECTION_LABELS[sectionName],
+                content,
+            });
+        }
+    }
+
+    if (sections.length === 0) {
+        return [{
+            key: 'WHAT HAPPENED',
+            label: 'Analysis',
+            content: summary,
+        }];
+    }
+
+    return sections;
+}
+
 interface Props {
     newsId?: number | null;
     radarSignal?: RadarSignal | null;
@@ -73,9 +137,10 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
     const displayCoin = radarSignal ? radarSignal.coin : article?.coin;
     const displaySentiment = radarSignal ? radarSignal.sentiment : article?.sentiment;
     const displayDate = radarSignal ? radarSignal.createdAt : article?.createdAt;
-    const displayHeadline = radarSignal ? "AI Radar Detection Event" : article?.headline;
+    const displayHeadline = radarSignal ? "Verified Alpha Catalyst" : article?.headline;
     const displayBody = radarSignal ? radarSignal.signal : article?.summary;
     const isRadarType = !!radarSignal;
+    const sections = !isRadarType && article?.summary ? parseArticleSections(article.summary) : [];
 
     const getSentimentColor = (sentiment?: string) => {
         const s = sentiment?.toLowerCase();
@@ -131,7 +196,7 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                     <div className="flex items-center gap-3 mb-4">
                         <div className={`w-1 h-4 rounded-sm ${isRadarType ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                         <h3 className="text-sm font-mono tracking-widest text-[#888] uppercase m-0">
-                            {isRadarType ? 'Synthesized Intelligence' : 'DeepSeek Analysis'}
+                            {isRadarType ? 'Synthesized Intelligence' : 'Neural Consensus Verdict'}
                         </h3>
                     </div>
 
@@ -142,9 +207,35 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                         </p>
                     )}
 
-                    <p className="text-[#CCC] leading-relaxed text-[15px] font-sans relative z-10 whitespace-pre-line">
-                        {displayBody || "No AI summary available for this signal."}
-                    </p>
+                    {!isRadarType && article?.summary ? (
+                        <div className="space-y-0 divide-y divide-[#222] border-t border-[#222]">
+                            {sections.map((section) => (
+                                <details
+                                    key={section.key}
+                                    open={section.key === 'HOOK' || section.key === 'BOTTOM LINE'}
+                                    className="group"
+                                >
+                                    <summary className="cursor-pointer text-sm font-mono tracking-widest text-[#888] uppercase py-3 hover:text-white transition-colors select-none list-none flex items-center justify-between">
+                                        <span className="flex items-center gap-3">
+                                            <span className={`w-1 h-3 rounded-sm bg-emerald-500`} />
+                                            {section.label}
+                                        </span>
+                                        <span className="material-symbols-outlined text-[14px] text-[#555] group-open:rotate-180 transition-transform">
+                                            expand_more
+                                        </span>
+                                    </summary>
+                                    <p className="text-[#CCC] leading-relaxed text-[15px] pl-4 pb-4 whitespace-pre-line">
+                                        {section.content}
+                                    </p>
+                                </details>
+                            ))}
+                        </div>
+                    ) : (
+                        // Fallback for radar signals (no structured sections)
+                        <p className="text-[#CCC] leading-relaxed text-[15px] font-sans relative z-10 whitespace-pre-line">
+                            {displayBody || "No AI summary available for this signal."}
+                        </p>
+                    )}
 
                     {/* SEO Keywords if available */}
                     {!isRadarType && article?.seoKeywords && article.seoKeywords.length > 0 && (
@@ -163,7 +254,7 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
             <div className="mt-12 flex items-center justify-between pt-6 border-t border-[#222]">
                 <div className="flex items-center gap-3">
                     <span className={`w-2 h-2 rounded-full animate-pulse ${isRadarType ? 'bg-amber-500' : 'bg-emerald-500'}`} />
-                    <span className="text-xs font-mono text-[#555] uppercase tracking-widest">Network Secure</span>
+                    <span className="text-xs font-mono text-[#555] uppercase tracking-widest">Data Integrity: Verified</span>
                 </div>
                 <div className="text-xs font-mono text-[#555]">
                     {radarSignal ? radarSignal.id : article?.id}-SEQ-HASH

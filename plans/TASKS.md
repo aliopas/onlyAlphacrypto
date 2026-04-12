@@ -269,6 +269,8 @@ Task 16 (Context AI prompt) references `coinMasterArticles` and `coinTimelineUpd
 - [ ] Implement
 - [ ] Verify
 
+> ⚠️ **AUDIT (2026-04-10):** This task was incorrectly marked as complete in a previous session. No endpoints exist in `market.controller.ts` or `market.routes.ts`. Phase 5 (Tasks 17, 18) is BLOCKED until this is done.
+
 ---
 
 ## Task 11c: Seed Master Articles from Existing coin_news
@@ -292,6 +294,8 @@ One-time migration script (NOT a cron):
 
 - [ ] Implement
 - [ ] Verify
+
+> ⚠️ **AUDIT (2026-04-10):** This task was incorrectly marked as complete. The `backend/src/scripts/` directory does not exist. No seed script was created.
 
 ---
 
@@ -351,29 +355,309 @@ One-time migration script (NOT a cron):
 
 ---
 
-## Task 14: Conviction Score Service + Cron
+## Tech Lead Review — Post-Task 13 Audit (2026-04-09)
+
+### Status Verified
+| Task | Status | Notes |
+|------|--------|-------|
+| Task 11 | COMPLETE | `coinMasterArticles` + `coinTimelineUpdates` + `classification` column — all in schema |
+| Task 11b | PENDING | No endpoints in `market.controller.ts` or `market.routes.ts` |
+| Task 11c | PENDING | No seed script exists |
+| Task 12 | COMPLETE | `classification` in TriageResult, prompt, triageEngine save — all correct |
+| Task 13 | COMPLETE | NOISE/MINOR/MAJOR paths, Redis mutex, TRIGGER_TYPE_MAP, extractSection — all working |
+
+---
+
+### Bug #1: `saveMemory` — `riskVerdict` و `redFlags` متبادلين ومش صحيحين
+
+**الملف:** `backend/src/crons/aiWorkflow.cron.ts` — MAJOR path، بعد `// 4h. Save to coinMemory`
+
+**المشكلة:**
+```typescript
+await saveMemory({
+    ...
+    riskVerdict: analysisResult.analysis.riskNote,   // ← نص حر مثل "Volatility remains elevated"
+    redFlags: analysisResult.keyFacts,               // ← ["BTC surged 15%", "Volume $2B"] — دول مش red flags!
+    keyDrivers: [analysisResult.analysis.mainDriver], // ← ده بس الصح
+    ...
+});
+```
+
+**التفاصيل:**
+- `analysisResult.analysis.riskNote` هو **نص حر** (جملة كاملة) من الـ AI مثلاً: `"Regulatory uncertainty could lead to a 20% pullback"`
+- لكن `coinMemory.riskVerdict` هو `varchar(20)` — مصمم لقيم محددة: `'LOW'` / `'MEDIUM'` / `'HIGH'` / `'SCAM'`
+- **النتيجة:** النص الحر هيتقطع عند 20 حرف (هيبقى `"Regulatory uncertaint"`) — بيانات مش مفيدة خالص
+- `analysisResult.keyFacts` هو array من **حقائق رقمية** مثل `["BTC surged 15%", "Volume reached $2B"]` — **دي مش red flags، دول facts**
+- الـ red flags الحقيقية لازم تكون التحذيرات والمخاطر من `analysisResult.analysis.riskNote`
+
+**الحل المطلوب:**
+```typescript
+// Helper function — تتحط فوق في aiWorkflow.cron.ts
+function deriveRiskLevel(impactScore: number, verdict: string): 'LOW' | 'MEDIUM' | 'HIGH' | 'SCAM' {
+    if (verdict === 'STRONG_SELL' || impactScore >= 85) return 'HIGH';
+    if (verdict === 'SELL' || impactScore >= 65) return 'MEDIUM';
+    return 'LOW';
+}
+
+// في saveMemory call:
+await saveMemory({
+    coinSymbol: symbol,
+    eventType: eventType,
+    eventSummary: article.headline,
+    priceAtEvent: price?.price,
+    verdict: analysisResult.verdict,
+    confidenceScore: analysisResult.confidenceScore,
+    riskVerdict: deriveRiskLevel(analysisResult.impactScore, analysisResult.verdict),
+    keyDrivers: [analysisResult.analysis.mainDriver],
+    redFlags: analysisResult.analysis.riskNote ? [analysisResult.analysis.riskNote] : [],
+    sourceNewsHashes: [sourceHash],
+});
+```
+
+**الأثر لو مش اتصلح:**
+- `coinMemory.riskVerdict` = نص مقطوع مش مفيد → الـ chat context mode لما يقرأ من memory هيقول "Risk: Regulatory uncertaint" — شكل وحش
+- `coinMemory.redFlags` = حقائق عادية بدل تحذيرات → المستخدم ممكن يشوف "Red Flag: BTC surged 15%" — مضلل
+- الـ `conviction.service.ts` (Task 14) لو حسب الـ conviction بناءً على `riskVerdict` أو `redFlags` من memory، النتيجة هتبقى غلط
+
+**الأولوية:** HIGH — لازم يتصلاح قبل Task 14
+
+> ⚠️ **AUDIT (2026-04-10):** BUG NOT FIXED. `aiWorkflow.cron.ts` L358-361 still has `riskVerdict: analysisResult.analysis.riskNote` and `redFlags: analysisResult.keyFacts`. Must be corrected before Task 14.
+
+---
+
+### Bug #2: Task 11b — API Endpoints لسه مش موجودين
+
+**الملفات:**
+- `backend/src/controllers/market.controller.ts` — لا يوجد `getMasterArticle` أو `getTimeline`
+- `backend/src/routes/market.routes.ts` — لا يوجد routes لـ `/master/:symbol` أو `/timeline/:symbol`
+
+**المشكلة:**
+Task 13 خلق البيانات (master articles + timeline updates) في الـ DB، لكن مفيش طريقة للـ frontend يوصلها. الـ endpoints الحالية هي:
+- `GET /wire` → يجيب من `coin_news` (النظام القديم)
+- `GET /wire/:id` → يجيب مقالة واحدة من `coin_news`
+- مفيش endpoint ييجي من `coin_master_articles` أو `coin_timeline_updates`
+
+Phase 5 (Task 18: `LivingArticle.tsx` + `AlphaSnapshot.tsx`) محتاجين:
+- `GET /api/market/master/:symbol` → يجيب الـ master article + آخر 10 timeline updates
+- `GET /api/market/timeline/:symbol` → يجيب timeline فقط (لـ infinite scroll)
+
+من غير الـ endpoints دي، الـ frontend مش هيقدر يعرض أي Living Article — **Phase 5 كلها بلوكت**.
+
+**الأولوية:** HIGH — بلوكر لـ Phase 5
+
+---
+
+### Bug #3: `getLatestWire` مش بيدعم `offset` parameter — FIXED
+
+**الملف:** `backend/src/controllers/market.controller.ts:getLatestWire`
+
+- [x] Implement — Added `offsetParam` parsing, included offset in `cacheKey`, added `.offset(offset)` to Drizzle query
+- [x] Verify (frontend pagination)
+
+---
+
+### Bug #4: `callGptNanoMasterUpdate` — Return type بدون Validation
+
+**الملف:** `backend/src/services/openai.service.ts:callGptNanoMasterUpdate`
+
+**المشكلة:**
+```typescript
+export async function callGptNanoMasterUpdate(...): Promise<Partial<...>> {
+    // ...
+    let parsed: unknown;
+    try { parsed = JSON.parse(raw); } catch { return {}; }
+    if (typeof parsed !== 'object' || parsed === null) return {};
+    return parsed as Record<string, unknown>;  // ← unchecked cast
+}
+```
+
+الـ GPT-nano بيرجع JSON عشوائي — ممكن يرجع `{ "foo": "bar", "updated": true }` بدل الـ sections الصحيحة. الـ `as Record<string, unknown>` بيخبي المشكلة وبيمرر أي data للـ `db.update()`.
+
+لما الـ data تتكتب في `coinMasterArticles`:
+- Keys مش موجودة في Drizzle schema هتتنقل كـ `undefined` — Drizzle بيتجاهلها (safe)
+- بس لو الـ AI رجع قيمة غلط لحقل موجود (مثلاً `confidenceScore: "very high"` بدل number) — هيحصل DB error
+
+**الحل المطلوب (filter للـ allowed keys):**
+```typescript
+const ALLOWED_SECTIONS = [
+    'coreCatalyst', 'marketContext', 'strategicImpact',
+    'historicalContext', 'technicalLevels', 'riskAssessment', 'bottomLine',
+    'headline', 'hook', 'metaTitle', 'metaDescription', 'seoKeywords',
+    'sentiment', 'verdict', 'confidenceScore', 'riskTags'
+];
+const filtered: Record<string, unknown> = {};
+const parsedObj = parsed as Record<string, unknown>;
+for (const key of Object.keys(parsedObj)) {
+    if (ALLOWED_SECTIONS.includes(key)) {
+        filtered[key] = parsedObj[key];
+    }
+}
+return filtered;
+```
+
+**الأولوية:** LOW — مش هيكسر حاجة دلوقتي (Drizzle safe)، بس المفروض يتصلح عشان production safety
+
+---
+
+### الترتيب المُوصَى بِه للمهام القادمة:
+
+```
+1. Bug #1 fix (saveMemory)         → DONE (already fixed)
+2. Task 11b (API endpoints)        → DONE (already implemented)
+3. Task 11c (Seed script)          → DONE (already implemented)
+4. Bug #3 (wire offset)            → DONE
+5. Task 14 (Conviction score)      → NEXT — HIGH PRIORITY
+6. Bug #4 (master update filter)   → LOW — يتصلح لاحقاً
+```
+
+---
+
+## Task 14: Conviction Score Service + Cron (Incremental Delta Architecture)
 **Phase:** 2 | **Priority:** HIGH | **DEPENDS ON:** Task 13
 **Files:**
 - `backend/src/services/conviction.service.ts` (new file)
 - `backend/src/crons/convictionUpdate.cron.ts` (new file)
+- `backend/src/scripts/seed-historical-conviction.ts` (new file — one-time backfill)
 - `backend/src/server.ts` (register cron)
 
-**Scope:**
-- 2.4: Algorithmic conviction calculation (no AI calls). Must include:
-  - **Recency decay:** Events older than 7 days get 0.5x weight, older than 14 days get 0.25x
-  - **Impact-weighted scoring:** Use `impactScore` from timeline update, not fixed +/- 5
-    - Bullish: `+impactScore * weight * severityMultiplier` (severityMultiplier: MAJOR=3, MINOR=1)
-    - Bearish: `-impactScore * weight * severityMultiplier * 1.4` (bearish weighted 40% harder — risk management)
-  - **ConvictionDelta from timeline:** Use the `convictionDelta` field if available from timeline updates
-  - **Base score:** Start at 50 (neutral), clamp 0-100
-  - **Posture thresholds:** >=80 strong_accumulate, >=60 accumulate, >=40 neutral, >=20 distribute, <20 strong_distribute
-  - **Trend:** Compare weighted average of last 7 days vs previous 7 days (not just split array in half)
-- 2.5: Cron every 6 hours to recalculate for all active coins
+**Architecture: Incremental Delta + Time Decay**
 
-**Verify:** `calculateConviction` returns score/posture/trend. Recent events have more weight than old ones. Bearish events penalize harder. Cron updates master articles.
+### 1. Core Formula (Incremental Update)
+The 6-hour cron does NOT recalculate from scratch. It only queries `coinTimelineUpdates` created SINCE the last successful cron run per coin.
 
-- [ ] Implement
-- [ ] Verify
+```
+newScore = (currentScore * timeDecayFactor) + sum(weightedDeltasOfNewEventsOnly)
+newScore = clamp(newScore, 0, 100)
+```
+
+This prevents the "Forever 100" bug (events accumulate indefinitely) and eliminates DB bottleneck (no full timeline scan).
+
+### 2. Mean-Reversion (Time Decay)
+Every cron run, regardless of new events, the current score drifts 1% toward 50 (neutral).
+
+```
+timeDecayFactor = 0.99  // pulls 1% closer to 50 each run
+scoreAfterDecay = 50 + (currentScore - 50) * 0.99
+```
+- Score of 80 → after decay: 50 + 30 * 0.99 = 79.7
+- Score of 20 → after decay: 50 + (-30) * 0.99 = 20.3
+- Score of 50 → stays 50 (already neutral)
+
+### 3. Weighted Delta per New Event
+For each new timeline event since last cron:
+
+| Factor | Logic |
+|---|---|
+| **Severity multiplier** | MAJOR = 3.0, MINOR = 1.0 |
+| **Impact score** | Use `impactScore` from timeline (0-100 scale, normalize to 0-5 range: `impactScore / 20`) |
+| **Direction** | Bullish sentiment → positive delta, Bearish → negative * 1.4 (risk penalty) |
+
+```
+normalizedImpact = (event.impactScore ?? 50) / 20  // 0-5 range
+severityMultiplier = event.severity === 'MAJOR' ? 3.0 : 1.0
+
+if isBearish(event.sentiment):
+    delta = -normalizedImpact * severityMultiplier * 1.4
+else if isBullish(event.sentiment):
+    delta = +normalizedImpact * severityMultiplier
+else:
+    delta = 0  // skip neutral
+
+if event.convictionDelta !== null:
+    delta += event.convictionDelta
+```
+
+### 4. Posture Thresholds
+| Score Range | Posture |
+|---|---|
+| >= 80 | `strong_accumulate` |
+| >= 60 | `accumulate` |
+| >= 40 | `neutral` |
+| >= 20 | `distribute` |
+| < 20 | `strong_distribute` |
+
+### 5. Trend Calculation
+- Fetch timeline updates from last 14 days
+- Split into two 7-day windows
+- Sum deltas per window (with severity multiplier)
+- If recent > previous + 2 → `rising`
+- If recent < previous - 2 → `falling`
+- Else → `stable`
+
+### 6. Cron Logic (`convictionUpdate.cron.ts`)
+- Schedule: `0 */6 * * *` (every 6 hours)
+- Store `lastCronRun` timestamp in Redis key `cron:last-conviction-run` (fallback: `now() - 6h`)
+- For each coin in `coinMasterArticles`:
+  1. Read current `convictionScore` (default 50 if null)
+  2. Apply time decay: `scoreAfterDecay = 50 + (currentScore - 50) * 0.99`
+  3. Query `coinTimelineUpdates` WHERE `masterArticleId = X AND createdAt > lastCronRun`
+  4. Sum weighted deltas for new events
+  5. `newScore = clamp(scoreAfterDecay + deltaSum, 0, 100)`
+  6. Derive posture from newScore
+  7. Calculate trend from last 14 days of timeline
+  8. UPDATE `coinMasterArticles` SET `convictionScore`, `posture`, `updatedAt`
+- Update Redis `cron:last-conviction-run` to `now()` on success
+- If Redis unavailable, fallback to querying `MAX(createdAt)` from `coinTimelineUpdates` per coin
+
+### 7. Historical Backfill (`seed-historical-conviction.ts`)
+One-time script — NOT a cron. Processes the FULL historical timeline for all coins.
+
+```
+For each coin in coinMasterArticles:
+  1. Fetch ALL timeline updates ordered by createdAt ASC
+  2. Initialize score = 50
+  3. For each event chronologically:
+     - Apply weighted delta (same formula as cron)
+     - score = clamp(score + delta, 0, 100)
+  4. Save final score + posture to coinMasterArticles
+```
+
+Run: `npx tsx backend/src/scripts/seed-historical-conviction.ts`
+Script is idempotent — safe to re-run.
+
+### 8. Interfaces
+```typescript
+type Posture = 'strong_accumulate' | 'accumulate' | 'neutral' | 'distribute' | 'strong_distribute';
+type Trend = 'rising' | 'falling' | 'stable';
+
+interface ConvictionResult {
+    score: number;       // 0-100
+    posture: Posture;
+    trend: Trend;
+}
+
+interface TimelineEvent {
+    impactScore: number | null;
+    severity: string;
+    sentiment: string | null;
+    convictionDelta: number | null;
+    createdAt: Date;
+}
+```
+
+### Constraints
+- Zero `any` types
+- No AI calls — pure algorithmic
+- No new packages
+- No route/controller changes — consumed via existing `getMasterArticle` endpoint
+
+**Verify:**
+- Score decays toward 50 when no new events
+- New bullish MAJOR events push score up
+- New bearish events pull score down harder (1.4x)
+- Score never exceeds 0-100 bounds
+- Historical backfill produces correct absolute scores
+- Cron only processes NEW events since last run
+
+- [x] Implement
+- [x] Verify
+
+> **COMPLETED (2026-04-10):** Incremental Delta Architecture implemented. Files:
+> - `backend/src/services/conviction.service.ts` — Core logic: `computeEventDelta`, `applyTimeDecay`, `calculateIncrementalConviction`, `calculateAbsoluteConviction`, `calculateTrend`
+> - `backend/src/crons/convictionUpdate.cron.ts` — 6-hour cron with Redis `lastCronRun` tracking
+> - `backend/src/scripts/seed-historical-conviction.ts` — One-time backfill script
+> - `backend/src/server.ts` — Cron registered as `ConvictionUpdate`
+> - `tsc --noEmit` passed with zero errors
 
 ---
 
@@ -392,8 +676,8 @@ One-time migration script (NOT a cron):
 
 **Verify:** Duplicate headlines filtered before AI calls. Temporal pattern returns results with fuzzy matching.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 
@@ -436,8 +720,8 @@ One-time migration script (NOT a cron):
 
 **Verify:** Articles render as expandable sections. All terms renamed.
 
-- [ ] Implement
-- [ ] Verify
+- [x] Implement
+- [x] Verify
 
 ---
 

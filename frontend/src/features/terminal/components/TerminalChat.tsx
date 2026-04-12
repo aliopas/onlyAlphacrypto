@@ -34,7 +34,7 @@ export function TerminalChat({ coin, articleId, articleType }: Props) {
                     onClick={() => setMode('general')}
                     className={`flex-1 py-4 text-[10px] font-mono font-medium transition-colors border-b relative group ${mode === 'general' ? 'text-white border-[#135bec] bg-[#1a1a1a]' : 'text-[#888] border-transparent bg-[#0A0A0A] hover:bg-[#111]'}`}
                 >
-                    GENERAL AI
+                    Macro Intelligence
                     {/* Tooltip */}
                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-black border border-[#333] text-[#888] text-[9px] p-2 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
                         Ask general questions about the market or technical analysis for this coin.
@@ -45,7 +45,7 @@ export function TerminalChat({ coin, articleId, articleType }: Props) {
                     onClick={() => setMode('context')}
                     className={`flex-1 py-4 text-[10px] font-mono font-medium transition-colors border-b relative group ${mode === 'context' ? 'text-[#10b981] border-[#10b981] bg-[#1a1a1a]' : 'text-[#888] border-transparent bg-[#0A0A0A] hover:bg-[#111]'}`}
                 >
-                    CONTEXT AI
+                    Asset Context
                     {/* Tooltip */}
                     <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-black border border-[#10b981]/50 text-[#888] text-[9px] p-2 leading-relaxed opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none">
                         AI will analyze the currently selected article/insight and search for the newest updates since then.
@@ -114,7 +114,7 @@ export function TerminalChat({ coin, articleId, articleType }: Props) {
                     </div>
                     <div className="flex justify-between items-center mt-3">
                         <span className="text-[9px] font-mono text-[#555] uppercase tracking-tighter">
-                            Model: {mode === 'general' ? 'Alpha-Turbo-4' : 'Alpha-Context-5'} {(!isLoggedIn && guestCount < 3) ? `(GUEST: ${guestCount}/3)` : ''}
+                            Model: {mode === 'general' ? 'Alpha-Macro' : 'Alpha-Context'} {(!isLoggedIn && guestCount < 3) ? `(GUEST: ${guestCount}/3)` : ''}
                         </span>
                         <span className="text-[9px] font-mono flex items-center gap-1 text-[#10b981]">
                             <span className="w-1.5 h-1.5 bg-[#10b981] rounded-full inline-block animate-pulse" /> SYSTEM READY

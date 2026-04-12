@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { db } from '../config/db';
 import { redis } from '../config/redis';
-import { coinNews, marketInsights, radarSignals, coinMemory } from '../models/index';
+import { coinNews, marketInsights, radarSignals, coinMemory, coinMasterArticles, coinTimelineUpdates } from '../models/index';
 import { eq, desc, and, gt } from 'drizzle-orm';
 import { streamChatResponse } from '../services/openai.service';
 import { getLivePrice } from '../services/binance.service';
@@ -40,7 +40,30 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
         if (resolvedMode === 'private' && articleId && articleType) {
             // Context Aware / Private Mode
             let baseArticleTime = new Date();
-            
+
+            // Fetch master article
+            const [master] = await db.select().from(coinMasterArticles).where(eq(coinMasterArticles.coinSymbol, symbol)).limit(1);
+            // FIX 1: Removed 'let' to avoid variable shadowing bug, assigning to outer contextText
+            contextText = `[MASTER ARTICLE]: ${master ? master.headline : 'No master article available'}\n`;
+            // FIX 2: Context Enrichment - Adding additional fields from master article for Pro version
+            if (master?.convictionScore !== undefined) contextText += `Conviction Score: ${master.convictionScore}\n`;
+            if (master?.posture) contextText += `Posture: ${master.posture}\n`;
+            if (master?.coreCatalyst) contextText += `Core Catalyst: ${master.coreCatalyst}\n`;
+            if (master?.technicalLevels) contextText += `Technical Levels: ${master.technicalLevels}\n`;
+            if (master?.riskAssessment) contextText += `Risk Assessment: ${master.riskAssessment}\n`;
+            if (master?.bottomLine) contextText += `Bottom Line: ${master.bottomLine}\n`;
+            if (master?.riskTags && Array.isArray(master.riskTags)) contextText += `Risk Tags: ${master.riskTags.join(', ')}\n`;
+            if (master) {
+                // FIX 2: Include severity field in timeline selection
+                const timeline = await db.select({ updateText: coinTimelineUpdates.updateText, severity: coinTimelineUpdates.severity })
+                    .from(coinTimelineUpdates)
+                    .where(eq(coinTimelineUpdates.masterArticleId, master.id))
+                    .orderBy(desc(coinTimelineUpdates.createdAt))
+                    .limit(5);
+                // FIX 2: Include severity in timeline context
+                contextText += `[TIMELINE UPDATES]: ${timeline.length > 0 ? timeline.map(t => `[${t.severity}] ${t.updateText}`).join(' | ') : 'No recent updates'}\n`;
+            }
+
             if (articleType === 'WIRE') {
                 const [newsItem] = await db.select().from(coinNews).where(eq(coinNews.id, articleId)).limit(1);
                 if (newsItem) {
@@ -90,16 +113,23 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
         } else {
             const [insight] = await db.select().from(marketInsights).where(eq(marketInsights.coinSymbol, symbol)).orderBy(desc(marketInsights.analyzedAt)).limit(1);
             const news = await db.select({ headline: coinNews.headline }).from(coinNews).where(eq(coinNews.coinSymbol, symbol)).orderBy(desc(coinNews.publishedAt)).limit(3);
+            const [master] = await db.select().from(coinMasterArticles).where(eq(coinMasterArticles.coinSymbol, symbol)).limit(1);
+            const timeline = master ? await db.select({ updateText: coinTimelineUpdates.updateText })
+                .from(coinTimelineUpdates)
+                .where(eq(coinTimelineUpdates.masterArticleId, master.id))
+                .orderBy(desc(coinTimelineUpdates.createdAt))
+                .limit(3) : [];
             const memory = await db.select({ eventSummary: coinMemory.eventSummary, eventType: coinMemory.eventType })
                 .from(coinMemory)
                 .where(eq(coinMemory.coinSymbol, symbol))
                 .orderBy(desc(coinMemory.createdAt))
                 .limit(3);
-            
+
             const newsStr = news.map((n) => n.headline).join(' | ') || 'No recent news';
+            const timelineStr = timeline.length > 0 ? timeline.map(t => t.updateText).join(' | ') : 'No recent updates';
             const memoryStr = memory.length > 0 ? memory.map(m => `[${m.eventType}] ${m.eventSummary}`).join(' | ') : 'No recent memory';
-            contextText = `[GENERAL MARKET CONTEXT] Latest Insight Verdict: ${insight?.verdict || 'None'}\nRecent News: ${newsStr}\nHistorical Memory: ${memoryStr}`;
-            
+            contextText = `[MASTER ARTICLE]: ${master ? master.headline : 'No master article available'}\n[TIMELINE UPDATES]: ${timelineStr}\n[HISTORICAL MEMORY]: ${memoryStr}\n[RECENT NEWS]: ${newsStr}\n[INSIGHT VERDICT]: ${insight?.verdict || 'None'}`;
+
             if (!currentPrice) currentPrice = insight?.priceAtAnalysis || 0;
         }
 

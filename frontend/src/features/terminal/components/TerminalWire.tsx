@@ -42,7 +42,7 @@ export function TerminalWire({
             <aside className="w-full h-full flex flex-col border border-[#333] bg-[#0A0A0A] overflow-hidden">
                 <div className="h-11 flex items-center px-4 border-b border-[#333] bg-[#111]">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
-                    <span className="text-[10px] font-mono uppercase tracking-widest text-white">AI Radar Stream</span>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-white">Alpha Detection Stream</span>
                 </div>
                 <div className="flex-1 flex items-center justify-center text-[#555] font-mono text-sm p-4 text-center">
                     No signals available. Signals will appear automatically when available.
@@ -56,7 +56,7 @@ export function TerminalWire({
             {/* Header */}
             <div className="h-11 flex items-center px-4 border-b border-[#333] bg-[#111]">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-2 shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
-                <span className="text-[10px] font-mono uppercase tracking-widest text-white">AI Radar Stream</span>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-white">Alpha Detection Stream</span>
             </div>
 
             {/* Content List */}

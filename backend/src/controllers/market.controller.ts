@@ -3,7 +3,8 @@ import { db } from '../config/db';
 import { getCache, setCache } from '../config/redis';
 import {
     marketInsights, dailyAlphaFocus, dailyMarketMood,
-    coinNews, radarSignals, airdropProjects, priceSnapshots
+    coinNews, radarSignals, airdropProjects, priceSnapshots,
+    coinMasterArticles, coinTimelineUpdates
 } from '../models/index';
 import { desc, eq, gte, and, asc, sql } from 'drizzle-orm';
 import { getLivePrices, getTopMovers } from '../services/binance.service';
@@ -147,12 +148,15 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
     try {
         const coinParam = req.query.coin as string | undefined;
         const limitParam = req.query.limit as string | undefined;
+        const offsetParam = req.query.offset as string | undefined;
 
         const coin = Array.isArray(coinParam) ? coinParam[0] : coinParam;
         const limitStr = Array.isArray(limitParam) ? limitParam[0] : limitParam || '20';
+        const offsetStr = Array.isArray(offsetParam) ? offsetParam[0] : offsetParam || '0';
         const limit = Math.min(parseInt(limitStr, 10) || 20, 100);
+        const offset = Math.max(parseInt(offsetStr, 10) || 0, 0);
 
-        const cacheKey = `wire:${coin || 'all'}:${limit}:${(req as unknown as { userTimezone?: string }).userTimezone || 'UTC'}`;
+        const cacheKey = `wire:${coin || 'all'}:${limit}:${offset}:${(req as unknown as { userTimezone?: string }).userTimezone || 'UTC'}`;
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
 
@@ -163,7 +167,8 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
 
         const news = await query
             .orderBy(desc(coinNews.publishedAt))
-            .limit(limit);
+            .limit(limit)
+            .offset(offset);
 
         const formatTime = (req as unknown as { formatTime?: (date: Date | string | number) => string }).formatTime;
         const mappedNews = news.map(n => ({
@@ -186,6 +191,89 @@ export async function getWireById(req: Request, res: Response, next: NextFunctio
         const [article] = await db.select().from(coinNews).where(eq(coinNews.id, id)).limit(1);
         if (!article) throw new AppError('Article not found', 404);
         res.json(article);
+    } catch (err) { next(err); }
+}
+
+export async function getMasterArticle(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const symbol = String(req.params['symbol'] || '').toUpperCase();
+        if (!symbol) throw new AppError('Symbol is required', 400);
+
+        const cacheKey = `master:${symbol}`;
+        const cached = await getCache(cacheKey);
+        if (cached) { res.json(cached); return; }
+
+        const [master] = await db
+            .select()
+            .from(coinMasterArticles)
+            .where(eq(coinMasterArticles.coinSymbol, symbol))
+            .limit(1);
+
+        if (!master) {
+            res.json(null);
+            return;
+        }
+
+        const timeline = await db
+            .select()
+            .from(coinTimelineUpdates)
+            .where(eq(coinTimelineUpdates.masterArticleId, master.id))
+            .orderBy(desc(coinTimelineUpdates.createdAt))
+            .limit(10);
+
+        const result = {
+            masterArticle: master,
+            timelineUpdates: timeline,
+            convictionScore: master.convictionScore,
+            posture: master.posture,
+        };
+
+        await setCache(cacheKey, result, 60);
+        res.json(result);
+    } catch (err) { next(err); }
+}
+
+export async function getTimeline(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const symbol = String(req.params['symbol'] || '').toUpperCase();
+        if (!symbol) throw new AppError('Symbol is required', 400);
+
+        const offsetParam = req.query.offset as string | undefined;
+        const limitParam = req.query.limit as string | undefined;
+        const offset = Math.max(parseInt(offsetParam || '0', 10) || 0, 0);
+        const limit = Math.min(Math.max(parseInt(limitParam || '20', 10) || 20, 1), 50);
+
+        const cacheKey = `timeline:${symbol}:${offset}:${limit}`;
+        const cached = await getCache(cacheKey);
+        if (cached) { res.json(cached); return; }
+
+        const [master] = await db
+            .select({ id: coinMasterArticles.id })
+            .from(coinMasterArticles)
+            .where(eq(coinMasterArticles.coinSymbol, symbol))
+            .limit(1);
+
+        if (!master) {
+            res.json({ updates: [], total: 0 });
+            return;
+        }
+
+        const [{ count }] = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(coinTimelineUpdates)
+            .where(eq(coinTimelineUpdates.masterArticleId, master.id));
+
+        const updates = await db
+            .select()
+            .from(coinTimelineUpdates)
+            .where(eq(coinTimelineUpdates.masterArticleId, master.id))
+            .orderBy(desc(coinTimelineUpdates.createdAt))
+            .limit(limit)
+            .offset(offset);
+
+        const result = { updates, total: count };
+        await setCache(cacheKey, result, 30);
+        res.json(result);
     } catch (err) { next(err); }
 }
 
