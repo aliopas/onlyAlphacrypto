@@ -75,7 +75,7 @@ export function TerminalWire({
 
                 {radarSignals.map((item, i) => {
                     const isSelectedRadar = activeTab === 'RADAR' && selectedRadarId === item.id;
-                    const isTargeted = targetedCoin && item.coin?.toLowerCase() === targetedCoin.toLowerCase();
+                    const isTargeted = !selectedRadarId && targetedCoin && item.coin?.toLowerCase() === targetedCoin.toLowerCase();
                     const timeStr = item.formattedTime || `${Math.floor((now - new Date(item.createdAt).getTime()) / 60000)}m ago`;
 
                     // Find context news for this signal

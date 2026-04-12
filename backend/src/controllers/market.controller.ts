@@ -4,7 +4,7 @@ import { getCache, setCache } from '../config/redis';
 import {
     marketInsights, dailyAlphaFocus, dailyMarketMood,
     coinNews, radarSignals, airdropProjects, priceSnapshots,
-    coinMasterArticles, coinTimelineUpdates
+    coinMasterArticles, coinTimelineUpdates, coinIntelligenceCache
 } from '../models/index';
 import { desc, eq, gte, and, asc, sql } from 'drizzle-orm';
 import { getLivePrices, getTopMovers } from '../services/binance.service';
@@ -134,8 +134,17 @@ export async function getAssetCount(req: Request, res: Response, next: NextFunct
         if (cached !== null) { res.json(cached); return; }
 
         const [{ count }] = await db
-            .select({ count: sql<number>`COUNT(DISTINCT ${coinNews.coinSymbol})` })
-            .from(coinNews);
+            .select({ count: sql<number>`(
+                SELECT COUNT(DISTINCT sym) FROM (
+                    SELECT DISTINCT coin_symbol AS sym FROM coin_news WHERE coin_symbol IS NOT NULL
+                    UNION
+                    SELECT DISTINCT coin_symbol AS sym FROM coin_master_articles WHERE coin_symbol IS NOT NULL
+                    UNION
+                    SELECT DISTINCT coin_symbol AS sym FROM coin_intelligence_cache WHERE coin_symbol IS NOT NULL
+                    UNION
+                    SELECT DISTINCT coin_symbol AS sym FROM price_snapshots WHERE coin_symbol IS NOT NULL
+                ) sub
+            )` });
 
         const result = { count };
         const cacheTtl = count === 0 ? 30 : 300;
