@@ -20,9 +20,12 @@ const envSchema = z.object({
 
     // OpenRouter (OpenAI-compatible API)
     // Pipeline:
-    //   SEO_MODEL = GPT-5-nano → final SEO formatting, hooks, meta tags (dual news step 2, chat)
+    //   SEO_MODEL = GPT-5-nano → final SEO formatting, hooks, meta tags (dual news step 2, article writing)
     OPENROUTER_API_KEY: z.string().min(10, 'OPENROUTER_API_KEY is required'),
     SEO_MODEL: z.string().default('openai/gpt-5-nano'),
+
+    // Chat model — separate from SEO model for cost/speed optimization
+    CHAT_MODEL: z.string().default('openai/gpt-4.1-mini'),
 
     // DeepSeek (via OpenRouter — thinking model for analysis)
     DEEPSEEK_MODEL: z.string().default('deepseek/deepseek-r1'),

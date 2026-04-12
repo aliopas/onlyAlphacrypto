@@ -300,7 +300,7 @@ export async function streamChatResponse(
 ): Promise<AsyncIterable<OpenAI.ChatCompletionChunk>> {
     const chatMessages = prompts.buildChatMessages(messages, coinContext, mode);
     return gateway.chatStream({
-        model: env.SEO_MODEL,
+        model: env.CHAT_MODEL,
         temperature: 0.6,
         messages: chatMessages
     });
