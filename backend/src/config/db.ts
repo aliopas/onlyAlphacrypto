@@ -42,7 +42,7 @@ async function ensurePgvectorExtension(): Promise<void> {
 async function pushSchema(): Promise<void> {
     try {
         console.log('📦 Syncing database schema...');
-        const output = execSync('npx drizzle-kit push', {
+        const output = execSync('npx drizzle-kit push --force', {
             cwd: process.cwd(),
             timeout: 60000,
             stdio: 'pipe',
