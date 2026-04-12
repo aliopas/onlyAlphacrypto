@@ -43,10 +43,9 @@ async function ensurePgvectorExtension(): Promise<void> {
 async function pushSchema(): Promise<void> {
     try {
         console.log('📦 Syncing database schema...');
-        const drizzleBin = require.resolve('drizzle-kit/bin.cjs');
-        const output = execSync(`node "${drizzleBin}" push --force`, {
+        const output = execSync('node ./node_modules/drizzle-kit/bin.cjs push --force', {
             cwd: process.cwd(),
-            timeout: 60000,
+            timeout: 120000,
             stdio: 'pipe',
             env: { ...process.env, DATABASE_URL: env.DATABASE_URL },
         });
