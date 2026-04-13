@@ -61,13 +61,13 @@ export async function findSemanticDuplicate(
         const query = `
             SELECT id, 1 - (embedding <=> $1::vector) AS similarity
             FROM raw_news_buffer
-            WHERE coin_symbol = $2
+            WHERE symbol_mentions @> $2::jsonb
               AND embedding IS NOT NULL
             ORDER BY embedding <=> $1::vector
             LIMIT 1
         `;
 
-        const result = await pool.query(query, [embeddingStr, symbol]);
+        const result = await pool.query(query, [embeddingStr, JSON.stringify([symbol])]);
 
         if (result.rows.length === 0) {
             return defaultResult;
