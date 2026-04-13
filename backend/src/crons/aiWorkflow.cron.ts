@@ -80,6 +80,7 @@ export async function runAiWorkflow(): Promise<void> {
         const lockAcquired = await redis.set(lockKey, '1', 'EX', 3600, 'NX');
         if (!lockAcquired) {
             console.log('⏳ [AI Workflow] Mutex locked. Skipping.');
+            isAiWorkflowRunning = false;
             return;
         }
     }
