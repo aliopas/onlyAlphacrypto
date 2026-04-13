@@ -55,6 +55,26 @@ export interface ArticleWriterResult {
     seoKeywords: string[];
 }
 
+const REQUIRED_SECTION_TAGS = [
+    '[HOOK]',
+    '[WHAT HAPPENED]',
+    '[WHY IT MATTERS]',
+    '[HISTORY REPEATS?]',
+    '[PRICE PICTURE]',
+    '[RISK CHECK]',
+    '[BOTTOM LINE]',
+] as const;
+
+function validateSectionTags(fullArticle: string): { valid: boolean; missing: string[] } {
+    const missing: string[] = [];
+    for (const tag of REQUIRED_SECTION_TAGS) {
+        if (!fullArticle.includes(tag)) {
+            missing.push(tag);
+        }
+    }
+    return { valid: missing.length === 0, missing };
+}
+
 const ArticleSchema = z.object({
     headline: z.string().max(120),
     hook: z.string(),
@@ -286,6 +306,13 @@ export async function callGptNanoWriter(analysisJson: string, tone?: string, att
         console.warn(`[GPT-nano] Schema validation failed (attempt ${attempt}):`, result.error.issues);
         if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysisJson, tone, attempt + 1);
         throw new Error('GPT-nano response failed schema validation after 3 attempts');
+    }
+
+    const tagCheck = validateSectionTags(result.data.fullArticle);
+    if (!tagCheck.valid) {
+        console.warn(`[GPT-nano] Missing section tags (attempt ${attempt}): ${tagCheck.missing.join(', ')}`);
+        if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysisJson, tone, attempt + 1);
+        console.error(`[GPT-nano] Publishing article with missing tags: ${tagCheck.missing.join(', ')}`);
     }
 
     return result.data;

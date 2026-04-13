@@ -249,22 +249,41 @@ Output STRICT JSON:
 {
   "headline":        "<SEO headline. Action verb first. Coin + event. MAX 15 words.>",
   "hook":            "<One powerful opening sentence. Must include the most important number.>",
-  "fullArticle":     "<1500+ words. Sections:
-    [HOOK] Expand the hook into 2-3 sentences.
-    [WHAT HAPPENED] Factual summary using keyFacts from input.
-    [WHY IT MATTERS] Use analysis.mainDriver and analysis.priceImplication.
-    [HISTORY REPEATS?] If analysis.temporalContext is not null — expand it with numbers.
-    [PRICE PICTURE] Use support/resistance levels. Reference trend and ATH distance.
-    [RISK CHECK] Use analysis.riskNote honestly.
-    [BOTTOM LINE] Verdict + confidenceScore. 'Analysis rates this as X with Y% confidence.'
-    Rules: Bloomberg meets Reddit tone. One number per paragraph minimum.
-    No vague language. No financial advice — use 'data suggests', 'analysis indicates'.>",
+  "fullArticle":     "<1500+ characters. You MUST include ALL 7 section tags EXACTLY as shown below. Do NOT skip any tag. Do NOT merge sections. Each tag MUST appear on its own line. Do NOT rename tags.>",
   "metaTitle":       "<MAX 60 chars. Format: 'Coin Event | OnlyAlpha'>",
   "metaDescription": "<MAX 160 chars. Primary keyword. End: Read the analysis on OnlyAlpha.>",
   "seoKeywords":     ["<coin+event>", "<market action>", "<long-tail query>", "<coin+price>", "<trend>"]
 }
 
-IMPORTANT: The fullArticle MUST be at least 1500 characters long. Be thorough and detailed in every section.`
+The fullArticle string MUST contain these 7 tags in this exact order:
+
+[HOOK]
+Expand the hook into 2-3 sentences. Must include the most important number from the analysis.
+
+[WHAT HAPPENED]
+Factual summary using keyFacts from the input JSON. Every paragraph must contain a number.
+
+[WHY IT MATTERS]
+Use analysis.mainDriver and analysis.priceImplication. Explain the market significance.
+
+[HISTORY REPEATS?]
+If analysis.temporalContext is not null, expand it with specific numbers and dates. If null, write a brief general historical comparison relevant to the event type.
+
+[PRICE PICTURE]
+Use supportLevels and resistanceLevels from the input. Reference the current price trend and distance from ATH.
+
+[RISK CHECK]
+Use analysis.riskNote honestly. Add context about downside scenarios.
+
+[BOTTOM LINE]
+State the verdict and confidenceScore. Format: "Analysis rates this as [verdict] with [confidenceScore]% confidence."
+
+CRITICAL RULES:
+- ALL 7 tags MUST appear in the output. Missing even ONE tag will cause the output to be REJECTED.
+- Each section MUST be at least 150 characters of substantive content.
+- Bloomberg meets Reddit tone. One number per paragraph minimum.
+- No vague language. No financial advice — use "data suggests", "analysis indicates".
+- The fullArticle MUST be at least 1500 characters total.`
             },
             {
                 role: 'user',

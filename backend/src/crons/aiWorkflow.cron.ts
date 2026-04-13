@@ -327,10 +327,25 @@ export async function runAiWorkflow(): Promise<void> {
                 }
 
                 // Master article logic
+                const fullArticle = article.fullArticle;
+                const extractedSections = {
+                    coreCatalyst: extractSection(fullArticle, 'HOOK') || article.hook,
+                    marketContext: extractSection(fullArticle, 'WHAT HAPPENED'),
+                    strategicImpact: extractSection(fullArticle, 'WHY IT MATTERS'),
+                    historicalContext: extractSection(fullArticle, 'HISTORY REPEATS?'),
+                    technicalLevels: extractSection(fullArticle, 'PRICE PICTURE'),
+                    riskAssessment: extractSection(fullArticle, 'RISK CHECK'),
+                    bottomLine: extractSection(fullArticle, 'BOTTOM LINE'),
+                };
+                const missingSections = Object.entries(extractedSections)
+                    .filter(([, v]) => !v)
+                    .map(([k]) => k);
+                if (missingSections.length > 0) {
+                    console.warn(`[AI Workflow] Master article for ${symbol} has ${missingSections.length} missing sections: ${missingSections.join(', ')}`);
+                }
+
                 const master = await db.select().from(coinMasterArticles).where(eq(coinMasterArticles.coinSymbol, symbol)).limit(1);
                 if (master.length === 0) {
-                    // Create new master article
-                    const fullArticle = article.fullArticle;
                     const newMaster = {
                         coinSymbol: symbol,
                         headline: article.headline,
@@ -345,13 +360,7 @@ export async function runAiWorkflow(): Promise<void> {
                         posture: 'neutral',
                         riskTags: [],
                         triggerType,
-                        coreCatalyst: extractSection(fullArticle, 'HOOK') || article.hook,
-                        marketContext: extractSection(fullArticle, 'WHAT HAPPENED'),
-                        strategicImpact: extractSection(fullArticle, 'WHY IT MATTERS'),
-                        historicalContext: extractSection(fullArticle, 'HISTORY REPEATS?'),
-                        technicalLevels: extractSection(fullArticle, 'PRICE PICTURE'),
-                        riskAssessment: extractSection(fullArticle, 'RISK CHECK'),
-                        bottomLine: extractSection(fullArticle, 'BOTTOM LINE'),
+                        ...extractedSections,
                         majorUpdateCount: 1,
                         lastMajorUpdate: sql`NOW()`,
                     };
