@@ -58,10 +58,10 @@ export interface ArticleWriterResult {
 const ArticleSchema = z.object({
     headline: z.string().max(120),
     hook: z.string(),
-    fullArticle: z.string().min(4000),
+    fullArticle: z.string().min(1500),
     metaTitle: z.string().max(60),
     metaDescription: z.string().max(160),
-    seoKeywords: z.array(z.string()).length(5),
+    seoKeywords: z.array(z.string()).min(3).max(7),
 });
 
 // Instantiate the modular components

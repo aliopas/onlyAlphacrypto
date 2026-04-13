@@ -249,7 +249,7 @@ Output STRICT JSON:
 {
   "headline":        "<SEO headline. Action verb first. Coin + event. MAX 15 words.>",
   "hook":            "<One powerful opening sentence. Must include the most important number.>",
-  "fullArticle":     "<800+ words. Sections:
+  "fullArticle":     "<1500+ words. Sections:
     [HOOK] Expand the hook into 2-3 sentences.
     [WHAT HAPPENED] Factual summary using keyFacts from input.
     [WHY IT MATTERS] Use analysis.mainDriver and analysis.priceImplication.
@@ -262,7 +262,9 @@ Output STRICT JSON:
   "metaTitle":       "<MAX 60 chars. Format: 'Coin Event | OnlyAlpha'>",
   "metaDescription": "<MAX 160 chars. Primary keyword. End: Read the analysis on OnlyAlpha.>",
   "seoKeywords":     ["<coin+event>", "<market action>", "<long-tail query>", "<coin+price>", "<trend>"]
-}`
+}
+
+IMPORTANT: The fullArticle MUST be at least 1500 characters long. Be thorough and detailed in every section.`
             },
             {
                 role: 'user',

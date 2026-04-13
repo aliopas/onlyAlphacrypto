@@ -16,7 +16,7 @@ import { saveMemory } from '../services/coin-memory.service';
 import { isDuplicateByEmbedding } from '../services/similarity.service';
 import { storeEmbedding } from '../services/embedding.service';
 import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates } from '../models/market.model';
-import { eq, gte, and, desc, sql, isNotNull, ne } from 'drizzle-orm';
+import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 
 let isAiWorkflowRunning = false;
@@ -66,6 +66,39 @@ function deriveRiskLevel(impactScore: number, verdict: string): 'LOW' | 'MEDIUM'
     return 'LOW';
 }
 
+const SYMBOL_PATTERNS: Record<string, RegExp> = {
+    BTC: /\b(bitcoin|btc)\b/i,
+    ETH: /\b(ethereum|eth\b)/i,
+    SOL: /\b(solana|sol\b)/i,
+    BNB: /\b(binance coin|bnb)\b/i,
+    XRP: /\b(ripple|xrp)\b/i,
+    ADA: /\b(cardano|ada)\b/i,
+    DOGE: /\b(dogecoin|doge)\b/i,
+    DOT: /\b(polkadot|dot)\b/i,
+    AVAX: /\b(avalanche|avax)\b/i,
+    MATIC: /\b(polygon|matic)\b/i,
+    LINK: /\b(chainlink|link)\b/i,
+    UNI: /\b(uniswap|uni)\b/i,
+    ATOM: /\b(cosmos|atom)\b/i,
+    FIL: /\b(filecoin|fil)\b/i,
+    APT: /\b(aptos|apt)\b/i,
+    SUI: /\b(sui)\b/i,
+    NEAR: /\b(near\b)/i,
+    OP: /\b(optimism|op\b)/i,
+    ARB: /\b(arbitrum|arb)\b/i,
+    WLD: /\b(worldcoin|wld)\b/i,
+    PEPE: /\b(pepe)\b/i,
+};
+
+function inferSymbolFromTitle(title: string): string | null {
+    for (const [symbol, pattern] of Object.entries(SYMBOL_PATTERNS)) {
+        if (pattern.test(title)) return symbol;
+    }
+    return null;
+}
+
+const WORKFLOW_TIMEOUT_MS = 10 * 60 * 1000;
+
 export async function runAiWorkflow(): Promise<void> {
     if (isAiWorkflowRunning) {
         console.log('⏳ [AI Workflow] Already running. Skipping this cycle.');
@@ -74,13 +107,21 @@ export async function runAiWorkflow(): Promise<void> {
     isAiWorkflowRunning = true;
     console.log('🤖 [AI Workflow] Started.');
 
-    // Redis mutex
+    const workflowTimer = setTimeout(() => {
+        console.error('[AI Workflow] TIMEOUT — forced release after 10 minutes');
+        isAiWorkflowRunning = false;
+        if (redis) {
+            redis.del('cron:aiworkflow:lock').catch(() => {});
+        }
+    }, WORKFLOW_TIMEOUT_MS);
+
     const lockKey = 'cron:aiworkflow:lock';
     if (redis) {
-        const lockAcquired = await redis.set(lockKey, '1', 'EX', 3600, 'NX');
+        const lockAcquired = await redis.set(lockKey, '1', 'EX', 900, 'NX');
         if (!lockAcquired) {
             console.log('⏳ [AI Workflow] Mutex locked. Skipping.');
             isAiWorkflowRunning = false;
+            clearTimeout(workflowTimer);
             return;
         }
     }
@@ -95,7 +136,7 @@ export async function runAiWorkflow(): Promise<void> {
         const threshold = await getDynamicThreshold();
         console.log(`[AI Workflow] Dynamic threshold: ${threshold}`);
 
-        const items = await db.select()
+        const itemsWithSymbols = await db.select()
             .from(rawNewsBuffer)
             .where(and(
                 gte(rawNewsBuffer.relevanceScore, threshold),
@@ -106,13 +147,54 @@ export async function runAiWorkflow(): Promise<void> {
             .orderBy(desc(rawNewsBuffer.relevanceScore))
             .limit(5 - hourlyCount);
 
-        for (const item of items) {
+        const itemsWithoutSymbols = await db.select()
+            .from(rawNewsBuffer)
+            .where(and(
+                gte(rawNewsBuffer.relevanceScore, Math.max(threshold, 75)),
+                eq(rawNewsBuffer.processed, true),
+                or(
+                    isNull(rawNewsBuffer.symbolMentions),
+                    eq(rawNewsBuffer.symbolMentions, sql`'[]'::jsonb`)
+                )
+            ))
+            .orderBy(desc(rawNewsBuffer.relevanceScore))
+            .limit(2);
+
+        const allItems = [...itemsWithSymbols, ...itemsWithoutSymbols];
+
+        if (allItems.length === 0) {
+            console.log('[AI Workflow] No qualifying items found.');
+            return;
+        }
+
+        console.log(`[AI Workflow] Found ${itemsWithSymbols.length} items with symbols, ${itemsWithoutSymbols.length} items to infer.`);
+
+        for (const item of allItems) {
             const mentions = (item.symbolMentions as string[]) || [];
-            if (mentions.length === 0) continue;
-            const symbol = mentions[0];
+            let symbol = mentions.length > 0 ? mentions[0] : null;
+
+            if (!symbol) {
+                symbol = inferSymbolFromTitle(item.title);
+            }
+
+            if (!symbol) {
+                console.log(`[AI Workflow] No symbol found for: "${item.title.slice(0, 60)}..." — skipping`);
+                continue;
+            }
+
             const eventType = typeof item.eventType === 'string' ? item.eventType : 'Other';
             const eventSeverity = typeof item.eventSeverity === 'number' ? item.eventSeverity : 1;
-            const classification = (typeof item.classification === 'string' && ['MAJOR', 'MINOR', 'NOISE'].includes(item.classification)) ? item.classification : 'MINOR';
+            let classification = (typeof item.classification === 'string' && ['MAJOR', 'MINOR', 'NOISE'].includes(item.classification)) ? item.classification : 'MINOR';
+
+            const existingMaster = await db.select({ id: coinMasterArticles.id })
+                .from(coinMasterArticles)
+                .where(eq(coinMasterArticles.coinSymbol, symbol))
+                .limit(1);
+
+            if (classification === 'MINOR' && existingMaster.length === 0) {
+                console.log(`[AI Workflow] Upgrading MINOR → MAJOR for ${symbol} (no master article — bootstrap)`);
+                classification = 'MAJOR';
+            }
 
             console.log(`[AI Workflow] Processing: ${symbol} (${classification}) — "${item.title.slice(0, 60)}..."`);
 
@@ -399,6 +481,7 @@ export async function runAiWorkflow(): Promise<void> {
     } catch (err) {
         console.error('❌ [AI Workflow] Failed:', err);
     } finally {
+        clearTimeout(workflowTimer);
         isAiWorkflowRunning = false;
         if (redis) {
             await redis.del(lockKey);
