@@ -20,8 +20,15 @@ export const db = drizzle(pool, { schema });
 
 async function registerPgvector(): Promise<void> {
     try {
-        const { registerTypes } = await import('pgvector/pg');
-        await registerTypes(pool);
+        const pg = await import('pg');
+        const result = await pool.query(
+            "SELECT typname, oid FROM pg_type WHERE typname IN ('vector', 'halfvec', 'sparsevec')"
+        );
+
+        for (const row of result.rows as { typname: string; oid: number }[]) {
+            pg.types.setTypeParser(row.oid, 'text', (value: string) => value);
+        }
+
         console.log('✅ pgvector types registered');
     } catch (err) {
         console.warn('⚠️ pgvector not available — vector features disabled:', err instanceof Error ? err.message : String(err));

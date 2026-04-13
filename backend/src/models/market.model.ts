@@ -1,7 +1,21 @@
 import {
     pgTable, serial, varchar, text, timestamp,
-    integer, real, json, jsonb, boolean, pgEnum, unique
+    integer, real, json, jsonb, boolean, pgEnum, unique,
+    customType
 } from 'drizzle-orm/pg-core';
+
+const vector = customType<{ data: number[]; driverData: string }>({
+    dataType() {
+        return 'vector(1536)';
+    },
+    toDriver(value: number[]): string {
+        return `[${value.join(',')}]`;
+    },
+    fromDriver(value: string | Buffer): number[] {
+        const str = typeof value === 'string' ? value : value.toString('utf-8');
+        return str.slice(1, -1).split(',').map(Number);
+    },
+});
 
 // ─── MARKET INSIGHTS (AI Verdicts per Coin) ───────────────────────────────────
 export const marketInsights = pgTable('market_insights', {
@@ -62,6 +76,7 @@ export const rawNewsBuffer = pgTable('raw_news_buffer', {
     eventType: varchar('event_type', { length: 50 }),
     eventSeverity: integer('event_severity'),
     classification: varchar('classification', { length: 10 }),
+    embedding: vector('embedding'),
 });
 
 // ─── RADAR SIGNALS (Home Live AI Radar) ──────────────────────────────────────
