@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { CoinNews } from '@/features/terminal/types';
 import { RadarSignal } from '@/features/home/types';
 import { terminalApi } from '@/features/terminal/api';
@@ -183,9 +184,20 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
             </div>
 
             {/* Headline */}
-            <h1 className="text-3xl xl:text-4xl font-semibold text-white leading-tight mb-8">
-                {displayHeadline}
-            </h1>
+            <div className="flex items-start justify-between gap-4 mb-8">
+                <h1 className="text-3xl xl:text-4xl font-semibold text-white leading-tight">
+                    {displayHeadline}
+                </h1>
+                {displayCoin && (
+                    <Link
+                        href={`/terminal/${displayCoin.toLowerCase()}/alpha`}
+                        className="shrink-0 flex items-center gap-2 px-4 py-2 text-[10px] font-mono uppercase tracking-widest border border-emerald-500/30 text-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors"
+                    >
+                        <span className="material-symbols-outlined text-[14px]">north_east</span>
+                        Full Analysis
+                    </Link>
+                )}
+            </div>
 
             {/* Content Body */}
             <div className="prose prose-invert prose-lg max-w-none">
@@ -256,8 +268,19 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                     <span className={`w-2 h-2 rounded-full animate-pulse ${isRadarType ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                     <span className="text-xs font-mono text-[#555] uppercase tracking-widest">Data Integrity: Verified</span>
                 </div>
-                <div className="text-xs font-mono text-[#555]">
-                    {radarSignal ? radarSignal.id : article?.id}-SEQ-HASH
+                <div className="flex items-center gap-4">
+                    {displayCoin && (
+                        <Link
+                            href={`/terminal/${displayCoin.toLowerCase()}/alpha`}
+                            className="text-[10px] font-mono uppercase tracking-widest text-emerald-500/70 hover:text-emerald-500 transition-colors flex items-center gap-1"
+                        >
+                            <span className="material-symbols-outlined text-[12px]">timeline</span>
+                            Living Article
+                        </Link>
+                    )}
+                    <div className="text-xs font-mono text-[#555]">
+                        {radarSignal ? radarSignal.id : article?.id}-SEQ-HASH
+                    </div>
                 </div>
             </div>
         </div>

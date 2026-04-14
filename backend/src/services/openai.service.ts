@@ -77,8 +77,8 @@ function validateSectionTags(fullArticle: string): { valid: boolean; missing: st
 
 const ArticleSchema = z.object({
     headline: z.string().max(120),
-    hook: z.string(),
-    fullArticle: z.string().min(1500),
+    hook: z.string().min(20),
+    fullArticle: z.string().min(2500),
     metaTitle: z.string().max(60),
     metaDescription: z.string().max(160),
     seoKeywords: z.array(z.string()).min(3).max(7),
@@ -285,8 +285,11 @@ export async function callGptNanoWriter(analysisJson: string, tone?: string, att
     const MAX_ATTEMPTS = 3;
 
     const messages = prompts.buildArticleWriterMessages(analysisJson, tone);
-    const raw = await gateway.chatRaw({
-        model: env.SEO_MODEL,
+    const writerGateway = deepseekGateway ?? gateway;
+    const writerModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.SEO_MODEL;
+
+    const raw = await writerGateway.chatRaw({
+        model: writerModel,
         temperature: 0.5,
         responseFormat: { type: 'json_object' },
         messages,

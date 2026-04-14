@@ -4,6 +4,7 @@ const logLevel = process.env.NODE_ENV === 'production' ? 'info' : process.env.NO
 
 const logFormat = winston.format.combine(
     winston.format.timestamp(),
+    winston.format.splat(),
     winston.format.colorize(),
     winston.format.printf((info: winston.Logform.TransformableInfo) => {
         return `${info.timestamp} [${info.level}]: ${info.message}`;
