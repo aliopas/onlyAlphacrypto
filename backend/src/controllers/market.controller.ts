@@ -41,14 +41,24 @@ export async function getAlphaFocus(req: Request, res: Response, next: NextFunct
         if (cached) { res.json(cached); return; }
 
         const today = new Date().toISOString().split('T')[0];
-        const [focus] = await db
-            .select()
-            .from(dailyAlphaFocus)
-            .where(eq(dailyAlphaFocus.validForDate, today))
-            .orderBy(desc(dailyAlphaFocus.selectedAt))
-            .limit(1);
 
-        if (!focus) {
+        let focus;
+        try {
+            const rows = await db
+                .select()
+                .from(dailyAlphaFocus)
+                .where(eq(dailyAlphaFocus.validForDate, today))
+                .orderBy(desc(dailyAlphaFocus.selectedAt))
+                .limit(1);
+            focus = rows[0] ?? null;
+        } catch (dbErr) {
+            console.error('[AlphaFocus] Query failed — stale schema or orphaned rows:', dbErr);
+            await db.delete(dailyAlphaFocus).catch(() => {});
+            res.json(null);
+            return;
+        }
+
+        if (!focus || !focus.masterArticleId) {
             res.json(null);
             return;
         }
