@@ -1,0 +1,249 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: O
+      - generic [ref=e7]:
+        - text: A
+        - generic [ref=e8]: c
+    - generic [ref=e9]:
+      - link "home" [ref=e10] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e11]: home
+      - link "terminal" [ref=e12] [cursor=pointer]:
+        - /url: /terminal
+        - generic [ref=e13]: terminal
+      - generic "Airdrops" [ref=e14]:
+        - generic [ref=e15]: flight_takeoff
+        - generic [ref=e16]: SOON
+    - generic [ref=e17]:
+      - generic "Settings" [ref=e18]:
+        - generic [ref=e19]: settings
+        - generic [ref=e20]: SOON
+      - generic [ref=e22] [cursor=pointer]:
+        - generic [ref=e23]: O
+        - generic [ref=e24]:
+          - text: A
+          - generic [ref=e25]: c
+  - main [ref=e26]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]: LIVE
+        - generic [ref=e32]:
+          - text: CREAM
+          - generic [ref=e33]: $2.10
+          - generic [ref=e34]: +65.35%
+        - generic [ref=e35]:
+          - text: BETA
+          - generic [ref=e36]: $0.0004
+          - generic [ref=e37]: "-64.00%"
+        - generic [ref=e38]:
+          - text: VIB
+          - generic [ref=e39]: $0.0022
+          - generic [ref=e40]: "-63.26%"
+        - generic [ref=e41]:
+          - text: WTC
+          - generic [ref=e42]: $0.0103
+          - generic [ref=e43]: "-56.54%"
+        - generic [ref=e44]:
+          - text: A2Z
+          - generic [ref=e45]: $0.0001
+          - generic [ref=e46]: "-53.33%"
+        - generic [ref=e47]:
+          - text: ACA
+          - generic [ref=e48]: $0.0018
+          - generic [ref=e49]: "-51.35%"
+        - generic [ref=e50]:
+          - text: SXP
+          - generic [ref=e51]: $0.0022
+          - generic [ref=e52]: "-46.34%"
+        - generic [ref=e53]:
+          - text: PNT
+          - generic [ref=e54]: $0.0350
+          - generic [ref=e55]: +45.23%
+        - generic [ref=e357]:
+          - text: ENJ
+          - generic [ref=e358]: $0.0644
+          - generic [ref=e359]: +44.76%
+        - generic [ref=e230]:
+          - text: 币安人生
+          - generic [ref=e231]: $0.3151
+          - generic [ref=e232]: +44.01%
+      - generic [ref=e62]:
+        - generic [ref=e63]: LIVE
+        - generic [ref=e65]:
+          - text: CREAM
+          - generic [ref=e66]: $2.10
+          - generic [ref=e67]: +65.35%
+        - generic [ref=e68]:
+          - text: BETA
+          - generic [ref=e69]: $0.0004
+          - generic [ref=e70]: "-64.00%"
+        - generic [ref=e71]:
+          - text: VIB
+          - generic [ref=e72]: $0.0022
+          - generic [ref=e73]: "-63.26%"
+        - generic [ref=e74]:
+          - text: WTC
+          - generic [ref=e75]: $0.0103
+          - generic [ref=e76]: "-56.54%"
+        - generic [ref=e77]:
+          - text: A2Z
+          - generic [ref=e78]: $0.0001
+          - generic [ref=e79]: "-53.33%"
+        - generic [ref=e80]:
+          - text: ACA
+          - generic [ref=e81]: $0.0018
+          - generic [ref=e82]: "-51.35%"
+        - generic [ref=e83]:
+          - text: SXP
+          - generic [ref=e84]: $0.0022
+          - generic [ref=e85]: "-46.34%"
+        - generic [ref=e86]:
+          - text: PNT
+          - generic [ref=e87]: $0.0350
+          - generic [ref=e88]: +45.23%
+        - generic [ref=e360]:
+          - text: ENJ
+          - generic [ref=e361]: $0.0644
+          - generic [ref=e362]: +44.76%
+        - generic [ref=e233]:
+          - text: 币安人生
+          - generic [ref=e234]: $0.3151
+          - generic [ref=e235]: +44.01%
+    - generic [ref=e96]:
+      - complementary [ref=e98]:
+        - generic [ref=e101]: Alpha Detection Stream
+        - generic [ref=e102]:
+          - generic [ref=e103] [cursor=pointer]:
+            - generic [ref=e104]:
+              - generic [ref=e105]: 03:02 PM
+              - generic [ref=e106]: $ETH
+            - heading "Polkadot faces bearish pressure after hacker mints $1.1B via bridge exploit, with only $237K currently cashable. Price down 1.4% in 24h to $2,231.55." [level=4] [ref=e107]
+            - generic [ref=e108]:
+              - generic [ref=e109]:
+                - generic [ref=e110]: article
+                - text: Sources Analyzed
+                - generic [ref=e111]: STREAM
+              - generic [ref=e113]:
+                - generic [ref=e115]: Polkadot Hack Triggers Bearish Selloff After $1.1B Bridge Mint
+                - generic [ref=e116]: open_in_new
+          - generic [ref=e117] [cursor=pointer]:
+            - generic [ref=e118]:
+              - generic [ref=e119]: 11:06 AM
+              - generic [ref=e120]: $BTC
+            - heading "Bank of Korea calls for circuit breakers on BTC exchanges, signaling regulatory tightening that could pressure prices despite current uptrend of 6.6% over 30 days." [level=4] [ref=e121]
+            - generic [ref=e122]:
+              - generic [ref=e123]:
+                - generic [ref=e124]: article
+                - text: Sources Analyzed
+                - generic [ref=e125]: STREAM
+              - generic [ref=e126]:
+                - generic [ref=e127]:
+                  - generic [ref=e129]: "Regulate Bitcoin: Circuit Breakers Loom on BTC Exchanges"
+                  - generic [ref=e130]: open_in_new
+                - generic [ref=e131]:
+                  - generic [ref=e133]: "Bitcoin Buy: MicroStrategy Buys 13,927 BTC for $1B, Reaches 780,897 BTC"
+                  - generic [ref=e134]: open_in_new
+          - generic [ref=e135] [cursor=pointer]:
+            - generic [ref=e136]:
+              - generic [ref=e137]: 11:04 AM
+              - generic [ref=e138]: $BTC
+            - heading "MicroStrategy adds 13,927 BTC for $1 billion, boosting holdings to 780,897 BTC as Bitcoin trades at $72,206.99, up 2.0% in 24 hours." [level=4] [ref=e139]
+            - generic [ref=e140]:
+              - generic [ref=e141]:
+                - generic [ref=e142]: article
+                - text: Sources Analyzed
+                - generic [ref=e143]: STREAM
+              - generic [ref=e144]:
+                - generic [ref=e145]:
+                  - generic [ref=e147]: "Regulate Bitcoin: Circuit Breakers Loom on BTC Exchanges"
+                  - generic [ref=e148]: open_in_new
+                - generic [ref=e149]:
+                  - generic [ref=e151]: "Bitcoin Buy: MicroStrategy Buys 13,927 BTC for $1B, Reaches 780,897 BTC"
+                  - generic [ref=e152]: open_in_new
+          - generic [ref=e153] [cursor=pointer]:
+            - generic [ref=e154]:
+              - generic [ref=e155]: 11:03 AM
+              - generic [ref=e156]: $BTC
+            - heading "Institutional strategy acquires 13,927 BTC for $1 billion via STRC, boosting demand as price rises 2.1% to $72,310." [level=4] [ref=e157]
+            - generic [ref=e158]:
+              - generic [ref=e159]:
+                - generic [ref=e160]: article
+                - text: Sources Analyzed
+                - generic [ref=e161]: STREAM
+              - generic [ref=e162]:
+                - generic [ref=e163]:
+                  - generic [ref=e165]: "Regulate Bitcoin: Circuit Breakers Loom on BTC Exchanges"
+                  - generic [ref=e166]: open_in_new
+                - generic [ref=e167]:
+                  - generic [ref=e169]: "Bitcoin Buy: MicroStrategy Buys 13,927 BTC for $1B, Reaches 780,897 BTC"
+                  - generic [ref=e170]: open_in_new
+          - generic [ref=e171] [cursor=pointer]:
+            - generic [ref=e172]:
+              - generic [ref=e173]: 11:01 AM
+              - generic [ref=e174]: $DOT
+            - heading "Polkadot faces a $237K exploit with 1B tokens minted, driving a 3.4% price drop to $1.183 amid security concerns." [level=4] [ref=e175]
+            - generic [ref=e176]:
+              - generic [ref=e177]:
+                - generic [ref=e178]: article
+                - text: Sources Analyzed
+                - generic [ref=e179]: STREAM
+              - generic [ref=e181]:
+                - generic [ref=e183]: "Hack Unleashed: Polkadot Mint 1B Tokens Triggers Sell-Off"
+                - generic [ref=e184]: open_in_new
+      - generic [ref=e186]:
+        - generic [ref=e187]:
+          - generic [ref=e363]:
+            - generic [ref=e364]: B
+            - generic [ref=e365]: $BTC
+          - generic [ref=e366]: RADAR TARGET
+          - generic [ref=e279]: bearish
+          - generic [ref=e280]: Signal acquired at 5:06:48 م
+        - heading "Verified Alpha Catalyst" [level=1] [ref=e367]
+        - generic [ref=e283]:
+          - heading "Synthesized Intelligence" [level=3] [ref=e368]
+          - paragraph [ref=e369]: Bank of Korea calls for circuit breakers on BTC exchanges, signaling regulatory tightening that could pressure prices despite current uptrend of 6.6% over 30 days.
+        - generic [ref=e333]:
+          - generic [ref=e336]: "Data Integrity: Verified"
+          - generic [ref=e337]: 35-SEQ-HASH
+      - complementary [ref=e194]:
+        - generic [ref=e195]:
+          - generic [ref=e196]:
+            - generic [ref=e197]: BTC/USDT • BINANCE
+            - generic [ref=e198]: LIVE
+          - generic:
+            - generic: $75350.64
+          - table [ref=e371]:
+            - row [ref=e372]:
+              - cell
+              - cell [ref=e373]
+              - cell [ref=e377]
+            - row [ref=e381]:
+              - cell
+              - cell [ref=e382]
+              - cell [ref=e386]
+        - generic [ref=e201]:
+          - button "Macro Intelligence Ask general questions about the market or technical analysis for this coin." [ref=e202]:
+            - text: Macro Intelligence
+            - generic: Ask general questions about the market or technical analysis for this coin.
+          - button "Asset Context AI will analyze the currently selected article/insight and search for the newest updates since then." [ref=e204]:
+            - text: Asset Context
+            - generic: AI will analyze the currently selected article/insight and search for the newest updates since then.
+        - generic [ref=e205]:
+          - generic:
+            - generic:
+              - generic:
+                - generic: smart_toy
+              - generic:
+                - generic: Terminal Interface ready. Scanning data streams for $BTC...
+          - generic [ref=e206]:
+            - generic [ref=e207]: lock
+            - heading "AI Chat Temporarily Offline" [level=3] [ref=e208]
+            - paragraph [ref=e209]: Our AI engine is undergoing maintenance. Chat will be back shortly. Thank you for your patience.
+        - generic:
+          - generic:
+            - textbox "Chat temporarily disabled..." [disabled]
+          - generic:
+            - generic: "Model: OFFLINE"
+            - generic: MAINTENANCE
+  - alert [ref=e210]

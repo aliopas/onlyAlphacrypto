@@ -1,6 +1,7 @@
 import { db } from '../config/db';
 import { coinMasterArticles, coinTimelineUpdates, coinNews, rawNewsBuffer } from '../models/market.model';
 import { eq, desc, sql } from 'drizzle-orm';
+import { migrationFlags } from '../models/market.model';
 import { getCoinIntelligence } from '../services/coinIntelligence.service';
 import { buildTemporalPattern } from '../services/temporalIntelligence.service';
 import { getPriceWithFallback } from '../services/priceService';
@@ -182,7 +183,22 @@ async function repairCoin(coin: typeof coinMasterArticles.$inferSelect): Promise
     }
 }
 
-async function main(): Promise<void> {
+export async function runArticleRepair(): Promise<{ repaired: number; failed: number }> {
+    const FLAG_NAME = 'repair_incomplete_articles_v1';
+    
+    try {
+        const [existing] = await db.select({ id: migrationFlags.id })
+            .from(migrationFlags)
+            .where(eq(migrationFlags.flagName, FLAG_NAME))
+            .limit(1);
+
+        if (existing) {
+            return { repaired: 0, failed: 0 };
+        }
+    } catch {
+        // Table might not exist yet during first boot
+    }
+
     console.log('═══════════════════════════════════════════════════════');
     console.log('  REPAIR INCOMPLETE MASTER ARTICLES');
     console.log('═══════════════════════════════════════════════════════');
@@ -192,7 +208,7 @@ async function main(): Promise<void> {
 
     if (incompleteArticles.length === 0) {
         console.log('\n✓ All master articles are complete. No repairs needed.');
-        return;
+        return { repaired: 0, failed: 0 };
     }
 
     console.log(`\nFound ${incompleteArticles.length} incomplete article(s).`);
@@ -219,11 +235,24 @@ async function main(): Promise<void> {
     console.log(`  SUMMARY: ${repaired} repaired, ${failed} failed, ${incompleteArticles.length} total`);
     console.log(`  Finished at: ${new Date().toISOString()}`);
     console.log('═══════════════════════════════════════════════════════');
+    
+    try {
+        await db.insert(migrationFlags).values({ flagName: FLAG_NAME }).onConflictDoNothing();
+    } catch {}
+
+    return { repaired, failed };
 }
 
-main()
-    .then(() => process.exit(0))
-    .catch((err) => {
-        console.error('Fatal error:', err);
-        process.exit(1);
+if (require.main === module) {
+    import('../config/db').then(({ pool }) => {
+        runArticleRepair()
+            .then(() => {
+                pool.end();
+                process.exit(0);
+            })
+            .catch((err) => {
+                console.error('Fatal error:', err);
+                process.exit(1);
+            });
     });
+}

@@ -17,6 +17,7 @@ import { startTriageEngineCron } from './crons/triageEngine.cron';
 import { startBufferCleanupCron } from './crons/bufferCleanup.cron';
 import { startConvictionUpdateCron } from './crons/convictionUpdate.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
+import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { logger } from './utils/logger';
 
 const app = express();
@@ -62,6 +63,9 @@ async function bootstrap(): Promise<void> {
         await testConnection();
 
         await runRadarCleanup();
+        
+        // Auto-repair any incomplete master articles on boot (only runs once via DB flag)
+        await runArticleRepair();
 
         const PORT = parseInt(env.PORT, 10);
         app.listen(PORT, () => {

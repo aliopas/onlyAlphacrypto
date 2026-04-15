@@ -2,7 +2,7 @@ import { db } from '../config/db';
 import { migrationFlags } from '../models/market.model';
 import { eq, sql } from 'drizzle-orm';
 
-const FLAG_NAME = 'radar_duplicate_cleanup_v1';
+const FLAG_NAME = 'radar_duplicate_cleanup_v3';
 
 export async function runRadarCleanup(): Promise<{ cleaned: boolean; deleted: number }> {
     const [existing] = await db.select({ id: migrationFlags.id })
@@ -27,7 +27,7 @@ export async function runRadarCleanup(): Promise<{ cleaned: boolean; deleted: nu
             WHERE id NOT IN (
                 SELECT MAX(id)
                 FROM radar_signals
-                GROUP BY coin_symbol, signal_text, DATE(created_at)
+                GROUP BY coin_symbol, DATE(created_at)
             )
         `
     );
