@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { db } from '../config/db';
 import { coinNews, rawNewsBuffer } from '../models/market.model';
 import { fetchAllRSSNews } from '../services/rssNews.service';
-import { eq, isNotNull, desc } from 'drizzle-orm';
+import { eq, isNotNull, desc, and } from 'drizzle-orm';
 
 function hashTitle(title: string): string {
     return crypto.createHash('sha256').update(title.trim().toLowerCase()).digest('hex');
@@ -29,8 +29,8 @@ export async function runTerminalEngine(): Promise<void> {
             const rawText = newsItem.title;
             const hash = hashTitle(rawText);
 
-            // 1. Check if already processed (Deduplication at application level)
-            const [existing] = await db.select({ id: coinNews.id }) // Check coinNews for already processed items
+            // 1. Check if already processed in coinNews
+            const [existing] = await db.select({ id: coinNews.id })
                 .from(coinNews)
                 .where(eq(coinNews.sourceHash, hash))
                 .limit(1);
@@ -41,13 +41,24 @@ export async function runTerminalEngine(): Promise<void> {
                 continue;
             }
 
+            // 1b. Check if already in raw_news_buffer (dedup at buffer level)
+            const [existingBuffer] = await db.select({ id: rawNewsBuffer.id })
+                .from(rawNewsBuffer)
+                .where(eq(rawNewsBuffer.sourceHash, hash))
+                .limit(1);
+
+            if (existingBuffer) {
+                duplicateCount++;
+                continue;
+            }
+
             // 2. Insert into raw_news_buffer for later triage (Phase 1B)
             await db.insert(rawNewsBuffer).values({
                 title: rawText,
                 source: newsItem.source || 'Unknown',
                 sourceHash: hash,
                 ttlExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
-            }).onConflictDoNothing();
+            }).onConflictDoNothing({ target: rawNewsBuffer.sourceHash });
 
             bufferedCount++;
         } catch (err) {

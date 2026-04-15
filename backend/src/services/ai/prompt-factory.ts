@@ -204,7 +204,8 @@ Rules:
 - All string values in English.
 - impactScore 80+: only events that directly move price (hacks, listings, SEC actions).
 - If temporal pattern provided → always reference it in analysis.temporalContext.
-- keyFacts: must contain specific numbers, dates, or verifiable claims.`
+- keyFacts: must contain specific numbers, dates, or verifiable claims.
+- CONSISTENCY RULE: The textual summary in signalText MUST strictly match the JSON verdict. Do NOT write bullish text if verdict is SELL. Do NOT write bearish text if verdict is BUY. The sentiment, signalText, and verdict must all be perfectly aligned.`
             },
             {
                 role: 'user',
@@ -280,11 +281,13 @@ State the verdict and confidenceScore. Provide a clear summary of the overall as
 
 CRITICAL RULES:
 - ALL 7 tags MUST appear in the output. Missing even ONE tag will cause the output to be REJECTED.
-- Each section MUST be at least 250 characters of substantive content.
+- MINIMUM 3500 characters total for fullArticle. You MUST write at least 5-6 sentences for EACH of the 7 sections. Missing a tag or writing short sections will trigger a system failure.
+- Each section MUST be at least 300 characters of substantive content.
 - Bloomberg meets Reddit tone. One number per paragraph minimum.
 - No vague language. No financial advice — use "data suggests", "analysis indicates".
-- The fullArticle MUST be at least 2500 characters total.
-- Write REAL content, not filler. Every sentence must add value or information.`
+- The fullArticle MUST be at least 3500 characters total.
+- Write REAL content, not filler. Every sentence must add value or information.
+- CONSISTENCY RULE: The textual summary in [BOTTOM LINE] MUST strictly match the JSON verdict field. Do NOT write "BUY" in text if the verdict is "SELL" or vice versa. The verdict and the narrative must be perfectly aligned.`
             },
             {
                 role: 'user',

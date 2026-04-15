@@ -67,8 +67,14 @@ export async function getTopMovers(limit = 10): Promise<BinanceMover[]> {
 
         // Filter USDT pairs only, then sort by absolute change %
         return data
-            .filter((t) => t.symbol.endsWith('USDT') && !t.symbol.includes('BEAR') && !t.symbol.includes('BULL'))
-            .sort((a, b) => Math.abs(parseFloat(b.priceChangePercent)) - Math.abs(parseFloat(a.priceChangePercent)))
+            .filter((t) => t.symbol.endsWith('USDT')
+                && !t.symbol.includes('BEAR')
+                && !t.symbol.includes('BULL')
+                && !t.symbol.includes('DOWN')
+                && !t.symbol.includes('UP'))
+            .filter((t) => parseFloat(t.quoteVolume) > 10_000_000)
+            .filter((t) => parseFloat(t.priceChangePercent) > 0)
+            .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
             .slice(0, limit);
     } catch (error) {
         logger.error('[Binance] getTopMovers failed: %s', error instanceof Error ? error.message : String(error));

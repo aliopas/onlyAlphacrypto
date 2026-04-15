@@ -30,6 +30,12 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const [activeMobileTab, setActiveMobileTab] = useState<'wire' | 'stream' | 'chat'>('wire');
     const hasSignals = validSignals.length > 0;
 
+    // Derive selectedCoin early so handlers can reference it
+    const activeArticleEarly = initialNews.find(n => n.id === null);
+    const activeRadarEarly = validSignals.find(r => r.id === finalDefaultRadarId);
+    const activeItemCoinEarly = activeRadarEarly?.coin;
+    const baseCoin = coin || activeItemCoinEarly || 'SOL';
+
     useEffect(() => {
         if (selectedRadarId === null && hasSignals && !finalDefaultRadarId) {
             setSelectedRadarId(validSignals[0]?.id ?? null);
@@ -73,7 +79,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
         if (isLoadingMoreWire || !hasMoreWire) return;
         setIsLoadingMoreWire(true);
         try {
-            const coinFilter = selectedCoin !== 'SOL' ? selectedCoin : undefined;
+            const coinFilter = baseCoin !== 'SOL' ? baseCoin : undefined;
             const url = coinFilter ? `/market/wire?coin=${coinFilter}&offset=${wireOffset}&limit=20` : `/market/wire?offset=${wireOffset}&limit=20`;
             const { data } = await apiClient.get<CoinNews[]>(url);
             if (Array.isArray(data)) {

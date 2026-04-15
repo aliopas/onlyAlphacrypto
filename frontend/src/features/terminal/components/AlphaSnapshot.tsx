@@ -32,6 +32,14 @@ export const AlphaSnapshot: React.FC<AlphaSnapshotProps> = ({ article }) => {
         return 'text-[#888]';
     };
 
+    const getVerdictColor = (verdict: string | null | undefined) => {
+        const v = verdict?.toUpperCase() ?? '';
+        if (v.includes('SELL')) return 'text-rose-500';
+        if (v.includes('BUY')) return 'text-emerald-500';
+        if (v.includes('NEUTRAL') || v.includes('HOLD')) return 'text-amber-500';
+        return 'text-[#888]';
+    };
+
     return (
         <div className="bg-[#0A0A0A] border border-[#333] rounded-lg p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
@@ -56,7 +64,7 @@ export const AlphaSnapshot: React.FC<AlphaSnapshotProps> = ({ article }) => {
 
             <div className="mb-4">
                 <h3 className="text-lg font-medium text-white mb-2">Verdict</h3>
-                <p className={`text-lg ${getSentimentColor(article.sentiment)}`}>
+                <p className={`text-lg font-bold ${getVerdictColor(article.verdict)}`}>
                     {article.verdict}
                 </p>
             </div>

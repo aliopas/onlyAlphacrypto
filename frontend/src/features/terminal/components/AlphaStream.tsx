@@ -221,7 +221,7 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
 
                     {!isRadarType && article?.summary ? (
                         <div className="space-y-0 divide-y divide-[#222] border-t border-[#222]">
-                            {sections.map((section) => (
+                            {sections.length > 0 ? sections.map((section) => (
                                 <details
                                     key={section.key}
                                     open={section.key === 'HOOK' || section.key === 'BOTTOM LINE'}
@@ -240,13 +240,29 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                                         {section.content}
                                     </p>
                                 </details>
-                            ))}
+                            )) : (
+                                <p className="text-[#CCC] leading-relaxed text-[15px] py-4 whitespace-pre-line">
+                                    {article.summary}
+                                </p>
+                            )}
                         </div>
                     ) : (
-                        // Fallback for radar signals (no structured sections)
-                        <p className="text-[#CCC] leading-relaxed text-[15px] font-sans relative z-10 whitespace-pre-line">
-                            {displayBody || "No AI summary available for this signal."}
-                        </p>
+                        <div className="relative z-10">
+                            {isRadarType && radarSignal?.signal && (
+                                <div className="mb-4">
+                                    <div className="flex items-center gap-3 mb-3">
+                                        <span className="material-symbols-outlined text-amber-500 text-[18px]">radar</span>
+                                        <span className="text-xs font-mono tracking-widest text-amber-500 uppercase">Signal Intelligence</span>
+                                    </div>
+                                    <p className="text-white leading-relaxed text-[15px] font-medium">
+                                        {radarSignal.signal}
+                                    </p>
+                                </div>
+                            )}
+                            <p className="text-[#888] leading-relaxed text-[14px] italic">
+                                {displayBody && displayBody !== radarSignal?.signal ? displayBody : "Full deep analysis pending. Click 'Full Analysis' to view the living article for this coin."}
+                            </p>
+                        </div>
                     )}
 
                     {/* SEO Keywords if available */}

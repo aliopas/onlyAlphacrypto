@@ -135,28 +135,28 @@ export function TerminalWire({
                     );
                 })}
 
-                {/* Load More Button */}
-                {radarSignals.length > 0 && hasMore && (
+                {/* Load More Button - Radar */}
+                {activeTab === 'RADAR' && radarSignals.length > 0 && hasMore && (
                     <div className="pt-2 pb-4">
                         <button
-                            onClick={(e) => { e.stopPropagation(); onLoadMore?.(); }}
+                            onClick={(e) => { e.stopPropagation(); e.preventDefault(); onLoadMore?.(); }}
                             disabled={isLoadingMore}
-                            className="w-full py-2 bg-[#111] hover:bg-[#181818] border border-[#222] text-[#888] text-[10px] font-mono uppercase tracking-widest transition-all disabled:opacity-50"
+                            className="w-full py-3 bg-[#111] hover:bg-[#181818] border border-[#222] hover:border-[#333] text-[#888] hover:text-white text-[10px] font-mono uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-[0.98]"
                         >
                             {isLoadingMore ? 'Fetching...' : 'Show More +'}
                         </button>
                     </div>
                 )}
 
-                {/* Wire Load More Button */}
+                {/* Load More Button - Wire */}
                 {activeTab === 'WIRE' && hasMoreWire && (
                     <div className="pt-2 pb-4">
                         <button
-                            onClick={(e) => { e.stopPropagation(); onLoadMoreWire?.(); }}
+                            onClick={(e) => { e.stopPropagation(); e.preventDefault(); onLoadMoreWire?.(); }}
                             disabled={isLoadingMoreWire}
-                            className="w-full py-2 bg-[#111] hover:bg-[#181818] border border-[#222] text-[#888] text-[10px] font-mono uppercase tracking-widest transition-all disabled:opacity-50"
+                            className="w-full py-3 bg-[#111] hover:bg-[#181818] border border-[#222] hover:border-[#333] text-[#888] hover:text-white text-[10px] font-mono uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-[0.98]"
                         >
-                            {isLoadingMoreWire ? 'Fetching...' : 'Show More +'}
+                            {isLoadingMoreWire ? 'Fetching...' : 'Load Wire News +'}
                         </button>
                     </div>
                 )}
