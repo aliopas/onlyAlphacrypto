@@ -110,8 +110,8 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
         <div className="flex-1 flex flex-col lg:flex-row gap-4 h-full lg:overflow-hidden pb-0">
             <TerminalMobileNav activeTab={activeMobileTab} onTabChange={setActiveMobileTab} hasStreamContent={!!(selectedNewsId || selectedRadarId)} />
 
-            {/* Left — AI Radar Stream Sidebar */}
-            <div className={`flex flex-col h-full min-h-0 flex-1 lg:flex-none ${activeMobileTab === 'wire' ? 'w-full lg:w-[22%] lg:min-w-[280px]' : 'hidden lg:flex lg:w-[22%] lg:min-w-[280px]'}`}>
+            {/* Left — AI Radar Stream Sidebar (sticky) */}
+            <div className={`flex flex-col h-full min-h-0 flex-1 lg:flex-none lg:sticky lg:top-0 lg:self-start ${activeMobileTab === 'wire' ? 'w-full lg:w-[22%] lg:min-w-[280px]' : 'hidden lg:flex lg:w-[22%] lg:min-w-[280px]'}`}>
                 <TerminalWire
                     news={wireNews}
                     radarSignals={signals}
@@ -132,16 +132,16 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
                 />
             </div>
 
-            {/* Center — Alpha Stream / Analysis */}
-            <section className={`flex-1 flex flex-col min-h-0 h-full border border-[#333] bg-[#0A0A0A] overflow-hidden transition-all duration-200 ${activeMobileTab === 'stream' ? 'w-full lg:w-auto' : 'hidden lg:flex'}`}>
+            {/* Center — Alpha Stream / Analysis (independently scrollable) */}
+            <section className={`flex-1 flex flex-col min-h-0 h-full border border-[#333] bg-[#0A0A0A] lg:overflow-y-auto scrollbar-hidden transition-all duration-200 ${activeMobileTab === 'stream' ? 'w-full lg:w-auto' : 'hidden lg:flex'}`}>
                 <AlphaStream
                     newsId={activeTab === 'WIRE' ? selectedNewsId : null}
                     radarSignal={activeTab === 'RADAR' ? activeRadar : undefined}
                 />
             </section>
 
-            {/* Right — Chat + Price */}
-            <div className={`flex flex-col h-full min-h-0 flex-1 lg:flex-none ${activeMobileTab === 'chat' ? 'w-full lg:w-[28%] lg:min-w-[320px]' : 'hidden lg:flex lg:w-[28%] lg:min-w-[320px]'}`}>
+            {/* Right — Chat + Price (sticky) */}
+            <div className={`flex flex-col h-full min-h-0 flex-1 lg:flex-none lg:sticky lg:top-0 lg:self-start ${activeMobileTab === 'chat' ? 'w-full lg:w-[28%] lg:min-w-[320px]' : 'hidden lg:flex lg:w-[28%] lg:min-w-[320px]'}`}>
                 <TerminalChat coin={selectedCoin} articleId={activeTab === 'WIRE' ? selectedNewsId : selectedRadarId} articleType={activeTab} />
             </div>
 

@@ -77,6 +77,15 @@ body {
     linear-gradient(to bottom, #111 1px, transparent 1px);
 }
 
+/* ── Scrollbar Hidden ─────────────────────── */
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hidden {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* ── Market Mood Gauge ─────────────────────── */
 .gauge-container {
   position: relative;

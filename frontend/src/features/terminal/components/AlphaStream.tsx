@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { CoinNews } from '@/features/terminal/types';
 import { RadarSignal } from '@/features/home/types';
 import { terminalApi } from '@/features/terminal/api';
+import { DeepDiveSkeleton } from './DeepDiveSkeleton';
+
+const DeepDiveSection = lazy(() => import('./DeepDiveSection'));
 
 type SectionName = 'HOOK' | 'WHAT HAPPENED' | 'WHY IT MATTERS' | 'HISTORY REPEATS' | 'PRICE PICTURE' | 'RISK CHECK' | 'BOTTOM LINE';
 
@@ -78,6 +80,8 @@ interface Props {
 export function AlphaStream({ newsId, radarSignal }: Props) {
     const [article, setArticle] = useState<CoinNews | null>(null);
     const [loading, setLoading] = useState(false);
+    const [showDeepDive, setShowDeepDive] = useState(false);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         // If we are given a radar signal directly, we don't need to fetch news.
@@ -152,7 +156,7 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
     };
 
     return (
-        <div className="flex-1 flex flex-col p-8 xl:p-12 overflow-y-auto relative animate-fade-in">
+        <div className="flex-1 flex flex-col p-8 xl:p-12 overflow-y-auto scrollbar-hidden relative animate-fade-in" ref={scrollContainerRef}>
             {/* Header / Meta */}
             <div className="flex items-center gap-4 mb-6 flex-wrap">
                 {displayCoin && (
@@ -189,13 +193,25 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                     {displayHeadline}
                 </h1>
                 {displayCoin && (
-                    <Link
-                        href={`/terminal/${displayCoin.toLowerCase()}/alpha`}
+                    <button
+                        onClick={() => {
+                            if (!showDeepDive) {
+                                setShowDeepDive(true);
+                                setTimeout(() => {
+                                    scrollContainerRef.current?.scrollTo({
+                                        top: scrollContainerRef.current.scrollHeight,
+                                        behavior: 'smooth',
+                                    });
+                                }, 100);
+                            } else {
+                                document.getElementById('deep-dive-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                        }}
                         className="shrink-0 flex items-center gap-2 px-4 py-2 text-[10px] font-mono uppercase tracking-widest border border-emerald-500/30 text-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors"
                     >
-                        <span className="material-symbols-outlined text-[14px]">north_east</span>
-                        Full Analysis
-                    </Link>
+                        <span className="material-symbols-outlined text-[14px]">expand_more</span>
+                        Read Deep Dive
+                    </button>
                 )}
             </div>
 
@@ -278,6 +294,12 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                 </div>
             </div>
 
+            {displayCoin && showDeepDive && (
+                <Suspense fallback={<DeepDiveSkeleton />}>
+                    <DeepDiveSection symbol={displayCoin} />
+                </Suspense>
+            )}
+
             {/* System Status Footer */}
             <div className="mt-12 flex items-center justify-between pt-6 border-t border-[#222]">
                 <div className="flex items-center gap-3">
@@ -286,13 +308,25 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                 </div>
                 <div className="flex items-center gap-4">
                     {displayCoin && (
-                        <Link
-                            href={`/terminal/${displayCoin.toLowerCase()}/alpha`}
+                        <button
+                            onClick={() => {
+                                if (!showDeepDive) {
+                                    setShowDeepDive(true);
+                                    setTimeout(() => {
+                                        scrollContainerRef.current?.scrollTo({
+                                            top: scrollContainerRef.current.scrollHeight,
+                                            behavior: 'smooth',
+                                        });
+                                    }, 100);
+                                } else {
+                                    document.getElementById('deep-dive-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }
+                            }}
                             className="text-[10px] font-mono uppercase tracking-widest text-emerald-500/70 hover:text-emerald-500 transition-colors flex items-center gap-1"
                         >
                             <span className="material-symbols-outlined text-[12px]">timeline</span>
-                            Living Article
-                        </Link>
+                            Deep Dive
+                        </button>
                     )}
                     <div className="text-xs font-mono text-[#555]">
                         {radarSignal ? radarSignal.id : article?.id}-SEQ-HASH
