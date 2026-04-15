@@ -32,7 +32,7 @@ async function purge(): Promise<void> {
 
     for (const table of TABLES) {
         try {
-            await db.execute(sql`TRUNCATE TABLE ${sql.identifier(table)} CASCADE`);
+            await db.execute(sql`TRUNCATE TABLE ${sql.identifier(table)} RESTART IDENTITY CASCADE`);
             console.log(`  ✅ ${table}`);
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
