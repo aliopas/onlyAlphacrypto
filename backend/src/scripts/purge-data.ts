@@ -16,6 +16,15 @@ const TABLES = [
     'coin_master_articles',
     'coin_timeline_updates',
     'coin_conviction_scores',
+    'migration_flags',
+    'airdrop_projects',
+    'airdrop_tasks',
+    'user_progress',
+    'users',
+    'user_wallets',
+    'api_keys',
+    'sessions',
+    'user_preferences',
 ];
 
 async function purge(): Promise<void> {
