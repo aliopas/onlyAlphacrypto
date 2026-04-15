@@ -29,8 +29,14 @@ async function wipeDatabase() {
             market_insights, 
             daily_alpha_focus, 
             daily_market_mood, 
-            coin_memory 
-        CASCADE;`);
+            coin_memory,
+            coin_master_articles,
+            coin_timeline_updates,
+            coin_news_history,
+            price_snapshots,
+            coin_intelligence_cache,
+            migration_flags
+        RESTART IDENTITY CASCADE;`);
 
         console.log("✅ All experimental data wiped from Production successfully!");
     } catch (err: any) {
