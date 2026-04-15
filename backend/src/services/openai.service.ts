@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+type ChatCompletionMessageParam = OpenAI.ChatCompletionMessageParam;
 import { z } from 'zod';
 import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
@@ -332,6 +333,7 @@ export async function callDeepSeekAnalysis(input: DeepAnalysisInput, attempt: nu
     }
 }
 
+/** @deprecated Use callWriterStage2A + callWriterStage2B + mergeArticleStages instead */
 export async function callGptNanoWriter(analysisJson: string, tone?: string, attempt: number = 1): Promise<ArticleWriterResult> {
     const MAX_ATTEMPTS = 3;
 
@@ -408,6 +410,157 @@ export async function callGptNanoWriter(analysisJson: string, tone?: string, att
     }
 
     return result.data;
+}
+
+export async function callWriterStage2A(analysisJson: string, tone: string, attempt: number = 1): Promise<ArticleStage2AResult | null> {
+    const MAX_ATTEMPTS = 3;
+
+    const messages = prompts.buildArticleStage2AMessages(analysisJson, tone);
+    const messageArray: ChatCompletionMessageParam[] = [
+        { role: 'system', content: messages.system },
+        { role: 'user', content: messages.user }
+    ];
+    const writerGateway = deepseekGateway ?? gateway;
+    const writerModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.SEO_MODEL;
+
+    let raw: string;
+    try {
+        raw = await writerGateway.chatRaw({
+            model: writerModel,
+            temperature: 0.5,
+            responseFormat: { type: 'json_object' },
+            messages: messageArray,
+            maxTokens: LONG_RESPONSE_MAX_TOKENS,
+        });
+    } catch (error) {
+        if (error instanceof AITruncationError) {
+            console.warn(`[Stage2A] Response truncated (attempt ${attempt}/${MAX_ATTEMPTS}) for model "${error.model}" — retrying with fallback.`);
+            if (attempt < MAX_ATTEMPTS) return callWriterStage2A(analysisJson, tone, attempt + 1);
+            console.warn('[Stage2A] All retries exhausted due to truncation — returning null.');
+            return null;
+        }
+        if (attempt < MAX_ATTEMPTS) {
+            console.warn(`[Stage2A] Gateway error (attempt ${attempt}/${MAX_ATTEMPTS}), retrying...`, error);
+            return callWriterStage2A(analysisJson, tone, attempt + 1);
+        }
+        console.warn('[Stage2A] All retries exhausted — returning null.');
+        return null;
+    }
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        console.warn(`[Stage2A] JSON parse failed (attempt ${attempt}). Raw: ${raw.slice(0, 200)}`);
+        if (attempt < MAX_ATTEMPTS) return callWriterStage2A(analysisJson, tone, attempt + 1);
+        console.warn('[Stage2A] All retries exhausted — returning null.');
+        return null;
+    }
+
+    const result = Stage2ASchema.safeParse(parsed);
+    if (!result.success) {
+        console.warn(`[Stage2A] Schema validation failed (attempt ${attempt}):`, result.error.issues);
+        if (attempt < MAX_ATTEMPTS) return callWriterStage2A(analysisJson, tone, attempt + 1);
+        console.warn('[Stage2A] All retries exhausted — returning null.');
+        return null;
+    }
+
+    return result.data;
+}
+
+export async function callWriterStage2B(analysisJson: string, stage2AContext: Stage2AContext, tone: string, attempt: number = 1): Promise<ArticleStage2BResult | null> {
+    const MAX_ATTEMPTS = 3;
+
+    const messages = prompts.buildArticleStage2BMessages(analysisJson, stage2AContext, tone);
+    const messageArray: ChatCompletionMessageParam[] = [
+        { role: 'system', content: messages.system },
+        { role: 'user', content: messages.user }
+    ];
+    const writerGateway = deepseekGateway ?? gateway;
+    const writerModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.SEO_MODEL;
+
+    let raw: string;
+    try {
+        raw = await writerGateway.chatRaw({
+            model: writerModel,
+            temperature: 0.5,
+            responseFormat: { type: 'json_object' },
+            messages: messageArray,
+            maxTokens: LONG_RESPONSE_MAX_TOKENS,
+        });
+    } catch (error) {
+        if (error instanceof AITruncationError) {
+            console.warn(`[Stage2B] Response truncated (attempt ${attempt}/${MAX_ATTEMPTS}) for model "${error.model}" — retrying with fallback.`);
+            if (attempt < MAX_ATTEMPTS) return callWriterStage2B(analysisJson, stage2AContext, tone, attempt + 1);
+            console.warn('[Stage2B] All retries exhausted due to truncation — returning null.');
+            return null;
+        }
+        if (attempt < MAX_ATTEMPTS) {
+            console.warn(`[Stage2B] Gateway error (attempt ${attempt}/${MAX_ATTEMPTS}), retrying...`, error);
+            return callWriterStage2B(analysisJson, stage2AContext, tone, attempt + 1);
+        }
+        console.warn('[Stage2B] All retries exhausted — returning null.');
+        return null;
+    }
+
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        console.warn(`[Stage2B] JSON parse failed (attempt ${attempt}). Raw: ${raw.slice(0, 200)}`);
+        if (attempt < MAX_ATTEMPTS) return callWriterStage2B(analysisJson, stage2AContext, tone, attempt + 1);
+        console.warn('[Stage2B] All retries exhausted — returning null.');
+        return null;
+    }
+
+    const result = Stage2BSchema.safeParse(parsed);
+    if (!result.success) {
+        console.warn(`[Stage2B] Schema validation failed (attempt ${attempt}):`, result.error.issues);
+        if (attempt < MAX_ATTEMPTS) return callWriterStage2B(analysisJson, stage2AContext, tone, attempt + 1);
+        console.warn('[Stage2B] All retries exhausted — returning null.');
+        return null;
+    }
+
+    return result.data;
+}
+
+export function mergeArticleStages(stage2A: ArticleStage2AResult, stage2B: ArticleStage2BResult | null): ArticleWriterResult {
+    const fallbackSections = {
+        'PRICE PICTURE': 'Additional price analysis pending. See the full breakdown in the living article for this coin.',
+        'RISK CHECK': 'Risk assessment pending. Standard risk management practices are advised in volatile market conditions.',
+        'BOTTOM LINE': 'Analysis pending. Monitor the situation for updates.',
+    };
+
+    const sections = {
+        ...stage2A.sections,
+        ...(stage2B ? stage2B.sections : fallbackSections),
+    };
+
+    const fullArticle = [
+        '[HOOK]',
+        sections.HOOK,
+        '[WHAT HAPPENED]',
+        sections['WHAT HAPPENED'],
+        '[WHY IT MATTERS]',
+        sections['WHY IT MATTERS'],
+        '[HISTORY REPEATS?]',
+        sections['HISTORY REPEATS?'],
+        '[PRICE PICTURE]',
+        sections['PRICE PICTURE'],
+        '[RISK CHECK]',
+        sections['RISK CHECK'],
+        '[BOTTOM LINE]',
+        sections['BOTTOM LINE'],
+    ].join('\n\n');
+
+    return {
+        headline: stage2A.headline,
+        hook: stage2A.hook,
+        fullArticle,
+        metaTitle: stage2A.metaTitle,
+        metaDescription: stage2A.metaDescription,
+        seoKeywords: stage2A.seoKeywords,
+    };
 }
 
 // ─── AI Chat Stream (GPT-5-nano — SEO optimized, user-facing) ────────────────

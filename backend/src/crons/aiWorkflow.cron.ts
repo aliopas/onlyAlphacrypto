@@ -6,7 +6,7 @@ import { buildTemporalPattern } from '../services/temporalIntelligence.service';
 import { getPriceWithFallback } from '../services/priceService';
 import { getDynamicThreshold, countPublishedLastHour } from '../services/dynamicThreshold.service';
 import { deepseekBreaker, gptNanoBreaker } from '../services/circuitBreaker.service';
-import { callDeepSeekAnalysis, callGptNanoWriter, callGptNanoMinorUpdate, callGptNanoMasterUpdate, extractSection, gateway, deepseekGateway } from '../services/openai.service';
+import { callDeepSeekAnalysis, callGptNanoWriter, callGptNanoMinorUpdate, callGptNanoMasterUpdate, extractSection, gateway, deepseekGateway, callWriterStage2A, callWriterStage2B, mergeArticleStages } from '../services/openai.service';
 import type { DeepAnalysisResult } from '../services/openai.service';
 import type { ArticleWriterResult } from '../services/openai.service';
 import { AIRateLimitError } from '../services/ai/ai-gateway';
@@ -315,7 +315,24 @@ export async function runAiWorkflow(): Promise<void> {
 
                 let article: ArticleWriterResult;
                 try {
-                    article = await callGptNanoWriter(JSON.stringify(analysisResult), tone);
+                    const analysisJson = JSON.stringify(analysisResult);
+
+                    const stage2A = await callWriterStage2A(analysisJson, tone);
+                    if (!stage2A) {
+                        article = await callGptNanoWriter(analysisJson, tone);
+                    } else {
+                        const stage2B = await callWriterStage2B(
+                            analysisJson,
+                            {
+                                headline: stage2A.headline,
+                                hook: stage2A.hook,
+                                sentiment: analysisResult.sentiment,
+                                verdict: analysisResult.verdict,
+                            },
+                            tone
+                        );
+                        article = mergeArticleStages(stage2A, stage2B);
+                    }
                     gptNanoBreaker.recordSuccess();
                 } catch (err) {
                     if (err instanceof AIRateLimitError) {
