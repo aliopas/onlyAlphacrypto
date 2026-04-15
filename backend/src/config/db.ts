@@ -79,8 +79,37 @@ export async function testConnection(): Promise<void> {
     }
 }
 
+async function runMigrations(): Promise<void> {
+    const client = await pool.connect();
+    try {
+        const check = await client.query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'daily_alpha_focus' AND column_name = 'master_article_id'"
+        );
+
+        if (check.rows.length === 0) {
+            console.log('📦 Running alpha_focus migration (insight_id → master_article_id)...');
+
+            await client.query('ALTER TABLE "daily_alpha_focus" DROP CONSTRAINT IF EXISTS "daily_alpha_focus_insight_id_market_insights_id_fk"');
+            await client.query('ALTER TABLE "daily_alpha_focus" DROP COLUMN IF EXISTS "insight_id"');
+            await client.query('ALTER TABLE "daily_alpha_focus" ADD COLUMN "master_article_id" integer');
+            await client.query(
+                'ALTER TABLE "daily_alpha_focus" ADD CONSTRAINT "daily_alpha_focus_master_article_id_coin_master_articles_id_fk" FOREIGN KEY ("master_article_id") REFERENCES "public"."coin_master_articles"("id") ON DELETE no action ON UPDATE no action'
+            );
+            await client.query('DELETE FROM "daily_alpha_focus" WHERE "master_article_id" IS NULL');
+            await client.query('ALTER TABLE "daily_alpha_focus" ALTER COLUMN "master_article_id" SET NOT NULL');
+
+            console.log('✅ Alpha focus migration complete');
+        }
+    } catch (err) {
+        console.error('⚠️ Alpha focus migration warning:', err instanceof Error ? err.message : String(err));
+    } finally {
+        client.release();
+    }
+}
+
 export async function initDb(): Promise<void> {
     await ensurePgvectorExtension();
+    await runMigrations();
     await pushSchema();
     await registerPgvector();
 }
