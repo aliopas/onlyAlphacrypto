@@ -1,14 +1,25 @@
-import { db, pool } from '../config/db';
-import { sql } from 'drizzle-orm';
+import { db } from '../config/db';
+import { migrationFlags } from '../models/market.model';
+import { eq, sql } from 'drizzle-orm';
 
-async function cleanDuplicateRadars(): Promise<void> {
-    console.log('🧹 Cleaning duplicate radar signals...\n');
+const FLAG_NAME = 'radar_duplicate_cleanup_v1';
+
+export async function runRadarCleanup(): Promise<{ cleaned: boolean; deleted: number }> {
+    const [existing] = await db.select({ id: migrationFlags.id })
+        .from(migrationFlags)
+        .where(eq(migrationFlags.flagName, FLAG_NAME))
+        .limit(1);
+
+    if (existing) {
+        return { cleaned: false, deleted: 0 };
+    }
+
+    console.log('[Migration] 🧹 Cleaning duplicate radar signals...');
 
     const countResult = await db.execute(
         sql`SELECT COUNT(*) AS total FROM radar_signals`
     );
     const totalBefore = Number(countResult.rows[0].total);
-    console.log(`  📊 Total radar signals before cleanup: ${totalBefore}`);
 
     const deleteResult = await db.execute(
         sql`
@@ -21,21 +32,31 @@ async function cleanDuplicateRadars(): Promise<void> {
         `
     );
     const deleted = Number(deleteResult.rowCount);
-    console.log(`  🗑️  Removed ${deleted} duplicate(s)`);
 
     const afterResult = await db.execute(
         sql`SELECT COUNT(*) AS total FROM radar_signals`
     );
     const totalAfter = Number(afterResult.rows[0].total);
-    console.log(`  ✅ Remaining radar signals: ${totalAfter}\n`);
 
-    console.log('✅ Cleanup complete.\n');
+    await db.insert(migrationFlags).values({ flagName: FLAG_NAME });
 
-    await pool.end();
-    process.exit(0);
+    console.log(`[Migration] ✅ Radar cleanup done: ${totalBefore} → ${totalAfter} (${deleted} duplicates removed)`);
+    return { cleaned: true, deleted };
 }
 
-cleanDuplicateRadars().catch((err) => {
-    console.error('❌ Cleanup failed:', err);
-    process.exit(1);
-});
+if (require.main === module) {
+    import('../config/db').then(({ pool }) => {
+        runRadarCleanup()
+            .then((result) => {
+                if (!result.cleaned) {
+                    console.log('⏭️  Radar cleanup already executed — skipping.');
+                }
+                pool.end();
+                process.exit(0);
+            })
+            .catch((err) => {
+                console.error('❌ Cleanup failed:', err);
+                process.exit(1);
+            });
+    });
+}

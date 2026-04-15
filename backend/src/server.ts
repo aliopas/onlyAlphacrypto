@@ -16,6 +16,7 @@ import { startTerminalEngineCron } from './crons/terminalEngine.cron';
 import { startTriageEngineCron } from './crons/triageEngine.cron';
 import { startBufferCleanupCron } from './crons/bufferCleanup.cron';
 import { startConvictionUpdateCron } from './crons/convictionUpdate.cron';
+import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { logger } from './utils/logger';
 
 const app = express();
@@ -59,6 +60,8 @@ async function bootstrap(): Promise<void> {
     try {
         await initDb();
         await testConnection();
+
+        await runRadarCleanup();
 
         const PORT = parseInt(env.PORT, 10);
         app.listen(PORT, () => {

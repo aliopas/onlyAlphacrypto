@@ -208,6 +208,13 @@ export const coinMasterArticles = pgTable('coin_master_articles', {
 });
 
 // ─── COIN TIMELINE UPDATES (Living Article Events) ───────────────────────────
+// ─── MIGRATION FLAGS (One-time tasks tracker) ────────────────────────────────
+export const migrationFlags = pgTable('migration_flags', {
+    id: serial('id').primaryKey(),
+    flagName: varchar('flag_name', { length: 100 }).notNull().unique(),
+    executedAt: timestamp('executed_at').defaultNow().notNull(),
+});
+
 export const coinTimelineUpdates = pgTable('coin_timeline_updates', {
     id: serial('id').primaryKey(),
     coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
