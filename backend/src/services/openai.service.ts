@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { z } from 'zod';
 import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
-import { AIGateway } from './ai/ai-gateway';
+import { AIGateway, AITruncationError, LONG_RESPONSE_MAX_TOKENS } from './ai/ai-gateway';
 import { PromptFactory, DeepAnalysisInput } from './ai/prompt-factory';
 import { coinMasterArticles } from '../models/market.model';
 
@@ -55,6 +55,35 @@ export interface ArticleWriterResult {
     seoKeywords: string[];
 }
 
+export interface ArticleStage2AResult {
+    headline: string;
+    hook: string;
+    metaTitle: string;
+    metaDescription: string;
+    seoKeywords: string[];
+    sections: {
+        HOOK: string;
+        'WHAT HAPPENED': string;
+        'WHY IT MATTERS': string;
+        'HISTORY REPEATS?': string;
+    };
+}
+
+export interface ArticleStage2BResult {
+    sections: {
+        'PRICE PICTURE': string;
+        'RISK CHECK': string;
+        'BOTTOM LINE': string;
+    };
+}
+
+export interface Stage2AContext {
+    headline: string;
+    hook: string;
+    sentiment: 'bullish' | 'bearish' | 'neutral';
+    verdict: 'STRONG_BUY' | 'BUY' | 'NEUTRAL' | 'SELL' | 'STRONG_SELL';
+}
+
 const REQUIRED_SECTION_TAGS = [
     '[HOOK]',
     '[WHAT HAPPENED]',
@@ -78,10 +107,32 @@ function validateSectionTags(fullArticle: string): { valid: boolean; missing: st
 const ArticleSchema = z.object({
     headline: z.string().max(120),
     hook: z.string().min(20),
-    fullArticle: z.string().min(2500),
+    fullArticle: z.string().min(3500),
     metaTitle: z.string().max(60),
     metaDescription: z.string().max(160),
     seoKeywords: z.array(z.string()).min(3).max(7),
+});
+
+const Stage2ASchema = z.object({
+    headline: z.string().max(120),
+    hook: z.string().min(20),
+    metaTitle: z.string().max(60),
+    metaDescription: z.string().max(160),
+    seoKeywords: z.array(z.string()).min(3).max(7),
+    sections: z.object({
+        HOOK: z.string().min(200),
+        'WHAT HAPPENED': z.string().min(200),
+        'WHY IT MATTERS': z.string().min(200),
+        'HISTORY REPEATS?': z.string().min(200),
+    }),
+});
+
+const Stage2BSchema = z.object({
+    sections: z.object({
+        'PRICE PICTURE': z.string().min(200),
+        'RISK CHECK': z.string().min(200),
+        'BOTTOM LINE': z.string().min(150),
+    }),
 });
 
 // Instantiate the modular components
@@ -288,12 +339,24 @@ export async function callGptNanoWriter(analysisJson: string, tone?: string, att
     const writerGateway = deepseekGateway ?? gateway;
     const writerModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.SEO_MODEL;
 
-    const raw = await writerGateway.chatRaw({
-        model: writerModel,
-        temperature: 0.5,
-        responseFormat: { type: 'json_object' },
-        messages,
-    });
+    let raw: string;
+    try {
+        raw = await writerGateway.chatRaw({
+            model: writerModel,
+            temperature: 0.5,
+            responseFormat: { type: 'json_object' },
+            messages,
+            maxTokens: LONG_RESPONSE_MAX_TOKENS,
+        });
+    } catch (error) {
+        if (error instanceof AITruncationError) {
+            console.warn(`[GPT-nano] Response truncated (attempt ${attempt}/${MAX_ATTEMPTS}) for model "${error.model}" — retrying with fallback.`);
+            if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysisJson, tone, attempt + 1);
+            console.warn('[GPT-nano] All retries exhausted due to truncation — generating fallback article.');
+            return buildFallbackArticle(analysisJson);
+        }
+        throw error;
+    }
 
     let parsed: unknown;
     try {
@@ -338,9 +401,10 @@ export async function callGptNanoWriter(analysisJson: string, tone?: string, att
 
     const tagCheck = validateSectionTags(result.data.fullArticle);
     if (!tagCheck.valid) {
-        console.warn(`[GPT-nano] Missing section tags (attempt ${attempt}): ${tagCheck.missing.join(', ')}`);
+        console.warn(`[GPT-nano] Missing section tags (attempt ${attempt}/${MAX_ATTEMPTS}): ${tagCheck.missing.join(', ')}`);
         if (attempt < MAX_ATTEMPTS) return callGptNanoWriter(analysisJson, tone, attempt + 1);
-        console.error(`[GPT-nano] Publishing article with missing tags: ${tagCheck.missing.join(', ')}`);
+        console.warn(`[GPT-nano] All retries exhausted — generating fallback article (missing: ${tagCheck.missing.join(', ')})`);
+        return buildFallbackArticle(analysisJson);
     }
 
     return result.data;

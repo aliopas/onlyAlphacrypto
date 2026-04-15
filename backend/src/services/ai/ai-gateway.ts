@@ -10,6 +10,18 @@ export class AIRateLimitError extends Error {
     }
 }
 
+export class AITruncationError extends Error {
+    readonly model: string;
+    constructor(model: string) {
+        super(`AI response truncated (finish_reason=length) for model "${model}" — increase max_tokens`);
+        this.name = 'AITruncationError';
+        this.model = model;
+    }
+}
+
+export const DEFAULT_MAX_TOKENS = 4096;
+export const LONG_RESPONSE_MAX_TOKENS = 8192;
+
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     let timer: ReturnType<typeof setTimeout>;
     return Promise.race([
@@ -60,6 +72,7 @@ export class AIGateway {
         temperature?: number;
         responseFormat?: { type: 'json_object' };
         maxRetries?: number;
+        maxTokens?: number;
     }): Promise<T> {
         const maxRetries = params.maxRetries ?? 0;
         let messages = [...params.messages];
@@ -73,9 +86,17 @@ export class AIGateway {
                     messages,
                     temperature: params.temperature,
                     response_format: params.responseFormat,
+                    max_tokens: params.maxTokens ?? DEFAULT_MAX_TOKENS,
                 });
+
+                const finishReason = response.choices[0]?.finish_reason;
+                if (finishReason === 'length') {
+                    throw new AITruncationError(params.model);
+                }
+
                 content = stripThinkingBlocks(response.choices[0].message.content ?? '');
             } catch (error) {
+                if (error instanceof AITruncationError) throw error;
                 this._throwIfRateLimited(error);
                 if (attempt === maxRetries) throw error;
                 continue;
@@ -115,6 +136,7 @@ export class AIGateway {
         messages: OpenAI.ChatCompletionMessageParam[];
         temperature?: number;
         responseFormat?: { type: 'json_object' };
+        maxTokens?: number;
     }): Promise<string> {
         try {
             const response = await this._client.chat.completions.create({
@@ -122,7 +144,13 @@ export class AIGateway {
                 messages: params.messages,
                 temperature: params.temperature,
                 response_format: params.responseFormat,
+                max_tokens: params.maxTokens ?? DEFAULT_MAX_TOKENS,
             });
+
+            const finishReason = response.choices[0]?.finish_reason;
+            if (finishReason === 'length') {
+                throw new AITruncationError(params.model);
+            }
 
             const content = stripThinkingBlocks(response.choices[0].message.content ?? '');
             if (!content) {
@@ -131,6 +159,7 @@ export class AIGateway {
 
             return content;
         } catch (error) {
+            if (error instanceof AITruncationError) throw error;
             this._throwIfRateLimited(error);
             throw error;
         }

@@ -296,5 +296,81 @@ CRITICAL RULES:
         ];
     }
 
+    buildArticleStage2AMessages(analysisJson: string, tone: string): { system: string, user: string } {
+        const toneDirective = tone
+            ? `\nTONE: Write in a ${tone} tone. Adjust your language, urgency, and emotional register accordingly.`
+            : '';
+
+        const system = `You are OnlyAlpha's senior market analyst and writer for Stage 2A.
+You receive a JSON analysis object. Transform it into a compelling front-half article structure.
+
+You are a WRITER, not an analyst. Do NOT add new analysis. Do NOT change verdicts. Do NOT invent facts.${toneDirective}
+
+Output STRICT JSON:
+{
+  "headline": "<SEO headline. Action verb first. Coin + event. MAX 15 words.>",
+  "hook": "<One powerful opening sentence. Must include the most important number.>",
+  "metaTitle": "<MAX 60 chars. Format: 'Coin Event | OnlyAlpha'>",
+  "metaDescription": "<MAX 160 chars. Primary keyword. End: Read the analysis on OnlyAlpha.>",
+  "seoKeywords": ["<coin+event>", "<market action>", "<long-tail query>", "<coin+price>", "<trend>"],
+  "sections": {
+    "HOOK": "<Expand the hook into 3-4 sentences. Must include the most important number from the analysis. Set the scene for why this matters RIGHT NOW.>",
+    "WHAT HAPPENED": "<Factual summary using keyFacts from the input JSON. Every paragraph must contain a number. Provide context about the event — who, what, when, where, how much. Write 4-5 substantive sentences.>",
+    "WHY IT MATTERS": "<Use analysis.mainDriver and analysis.priceImplication. Explain the market significance and broader implications for the sector. How does this compare to similar events? Write 3-4 substantive sentences.>",
+    "HISTORY REPEATS?": "<If analysis.temporalContext is not null, expand it with specific numbers and dates. If null, write a brief but specific historical comparison relevant to the event type. Include at least one concrete past example with numbers. Write 3-4 substantive sentences.>"
+  }
+}
+
+CRITICAL RULES:
+- Each section MUST be at least 300 characters of substantive content.
+- Bloomberg meets Reddit tone. One number per paragraph minimum.
+- No vague language. No financial advice — use "data suggests", "analysis indicates".
+- Narrative direction must match verdict/sentiment from input.
+- Output ONLY the JSON object. No preamble. No text outside JSON.
+`;
+        const user = analysisJson;
+        return { system, user };
+    }
+
+    buildArticleStage2BMessages(analysisJson: string, stage2AContext: { headline: string, hook: string, sentiment: string, verdict: string }, tone: string): { system: string, user: string } {
+        const toneDirective = tone
+            ? `\nTONE: Write in a ${tone} tone. Adjust your language, urgency, and emotional register accordingly.`
+            : '';
+
+        const system = `You are OnlyAlpha's senior market analyst and writer for Stage 2B.
+You receive the original JSON analysis and context from Stage 2A.
+Continue the article with the back-half sections.
+
+Do NOT add new analysis. Do NOT change verdicts.${toneDirective}
+
+Output STRICT JSON:
+{
+  "sections": {
+    "PRICE PICTURE": "<Use supportLevels and resistanceLevels from the input. Reference the current price trend and distance from ATH. Discuss volume, momentum, and key technical levels with specific numbers. Write 3-4 substantive sentences.>",
+    "RISK CHECK": "<Use analysis.riskNote honestly. Add context about downside scenarios, liquidation risks, or regulatory overhang. Be specific about what could go wrong. Write 3-4 substantive sentences.>",
+    "BOTTOM LINE": "<State the verdict and confidenceScore. Provide a clear summary of the overall assessment. Verdict in BOTTOM LINE must exactly match '${stage2AContext.verdict}'. Format: 'Analysis rates this as [verdict] with [confidenceScore]% confidence.' Write 2-3 substantive sentences.>"
+  }
+}
+
+CRITICAL RULES:
+- Each section MUST be at least 300 characters of substantive content (BOTTOM LINE at least 150).
+- Tone consistent with provided headline + hook context.
+- Bloomberg meets Reddit tone.
+- No vague language, no financial advice.
+- Verdict in BOTTOM LINE must exactly match input JSON verdict.
+- Output ONLY the JSON object. No preamble. No text outside JSON.
+`;
+        const user = `Original Analysis JSON:
+${analysisJson}
+
+Stage 2A Context:
+Headline: ${stage2AContext.headline}
+Hook: ${stage2AContext.hook}
+Sentiment: ${stage2AContext.sentiment}
+Verdict: ${stage2AContext.verdict}
+`;
+        return { system, user };
+    }
+
 
 }
