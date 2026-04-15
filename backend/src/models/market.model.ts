@@ -93,7 +93,7 @@ export const radarSignals = pgTable('radar_signals', {
 // ─── DAILY ALPHA FOCUS ───────────────────────────────────────────────────────
 export const dailyAlphaFocus = pgTable('daily_alpha_focus', {
     id: serial('id').primaryKey(),
-    insightId: integer('insight_id').references(() => marketInsights.id).notNull(),
+    masterArticleId: integer('master_article_id').references(() => coinMasterArticles.id).notNull(),
     coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
     coinName: varchar('coin_name', { length: 100 }).notNull(),
     coinSlug: varchar('coin_slug', { length: 100 }).notNull(),
