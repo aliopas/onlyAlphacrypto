@@ -3,11 +3,12 @@ import { db } from '../config/db';
 import { getCache, setCache } from '../config/redis';
 import {
     marketInsights, dailyAlphaFocus, dailyMarketMood,
-    coinNews, radarSignals, airdropProjects, priceSnapshots,
+    radarSignals, airdropProjects, priceSnapshots,
     coinMasterArticles, coinTimelineUpdates, coinIntelligenceCache
 } from '../models/index';
 import { desc, eq, gte, and, asc, sql } from 'drizzle-orm';
 import { getLivePrices, getTopMovers } from '../services/binance.service';
+import { getPriceWithFallback } from '../services/priceService';
 import { AppError } from '../middleware/errorHandler';
 
 export async function getCoinInsight(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -72,8 +73,10 @@ export async function getAlphaFocus(req: Request, res: Response, next: NextFunct
 
         const latestPrice = latestPriceRows[0];
 
-        let priceChange24h = 0;
-        if (latestPrice) {
+        let finalPrice = latestPrice?.price || 0;
+        let finalChange24h = 0;
+
+        if (latestPrice && latestPrice.price > 0) {
             const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
             const oldPriceRows = await db
                 .select()
@@ -89,7 +92,14 @@ export async function getAlphaFocus(req: Request, res: Response, next: NextFunct
 
             const oldPrice = oldPriceRows[0];
             if (oldPrice && oldPrice.price > 0) {
-                priceChange24h = ((latestPrice.price - oldPrice.price) / oldPrice.price) * 100;
+                finalChange24h = ((latestPrice.price - oldPrice.price) / oldPrice.price) * 100;
+            }
+        } else {
+            // Fallback to live price
+            const livePrice = await getPriceWithFallback(focus.coinSymbol);
+            if (livePrice) {
+                finalPrice = livePrice.price;
+                finalChange24h = livePrice.change24h || 0;
             }
         }
 
@@ -98,8 +108,8 @@ export async function getAlphaFocus(req: Request, res: Response, next: NextFunct
             coin: focus.coinSymbol,
             confidence: focus.confidenceScore,
             summary: focus.executiveSummary,
-            price: latestPrice ? latestPrice.price : 0,
-            priceChange24h: priceChange24h
+            price: finalPrice,
+            priceChange24h: finalChange24h
         };
 
         await setCache(cacheKey, mappedFocus, 600);
@@ -145,11 +155,9 @@ export async function getAssetCount(req: Request, res: Response, next: NextFunct
 
         const result = await db.execute(sql`
             SELECT COUNT(DISTINCT sym)::int AS count FROM (
-                SELECT DISTINCT coin_symbol AS sym FROM coin_news WHERE coin_symbol IS NOT NULL
-                UNION
                 SELECT DISTINCT coin_symbol AS sym FROM coin_master_articles WHERE coin_symbol IS NOT NULL
                 UNION
-                SELECT DISTINCT coin_symbol AS sym FROM coin_intelligence_cache WHERE coin_symbol IS NOT NULL
+                SELECT DISTINCT coin_symbol AS sym FROM coin_timeline_updates WHERE coin_symbol IS NOT NULL
                 UNION
                 SELECT DISTINCT coin_symbol AS sym FROM price_snapshots WHERE coin_symbol IS NOT NULL
             ) sub
@@ -196,16 +204,16 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
             createdAt: Date;
         };
 
-        let newsQuery = db.select({
+        const timelineQuery = db.select({
             id: coinTimelineUpdates.id,
             coinSymbol: coinTimelineUpdates.coinSymbol,
-            headline: coinTimelineUpdates.updateText,
-            summary: sql`null`,
+            headline: sql`'Update'`,
+            summary: coinTimelineUpdates.updateText,
             hook: sql`null`,
             metaTitle: sql`null`,
             metaDescription: sql`null`,
             seoKeywords: sql`null`,
-            sourceUrl: coinTimelineUpdates.sourceTitle,
+            sourceUrl: sql`null`,
             sentiment: coinTimelineUpdates.sentiment,
             impactScore: coinTimelineUpdates.impactScore,
             isBreaking: sql`0`,
@@ -213,9 +221,32 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
             createdAt: coinTimelineUpdates.createdAt
         }).from(coinTimelineUpdates);
 
-        if (coin && coin.toUpperCase() !== 'ALL') {
-            newsQuery = newsQuery.where(eq(coinTimelineUpdates.coinSymbol, coin.toUpperCase()));
-        }
+        const masterQuery = db.select({
+            id: coinMasterArticles.id,
+            coinSymbol: coinMasterArticles.coinSymbol,
+            headline: coinMasterArticles.headline,
+            summary: coinMasterArticles.coreCatalyst,
+            hook: coinMasterArticles.hook,
+            metaTitle: coinMasterArticles.metaTitle,
+            metaDescription: coinMasterArticles.metaDescription,
+            seoKeywords: coinMasterArticles.seoKeywords,
+            sourceUrl: sql`null`,
+            sentiment: coinMasterArticles.sentiment,
+            impactScore: coinMasterArticles.confidenceScore,
+            isBreaking: sql`1`,
+            publishedAt: coinMasterArticles.createdAt,
+            createdAt: coinMasterArticles.createdAt
+        }).from(coinMasterArticles);
+
+        const filteredTimeline = coin && coin.toUpperCase() !== 'ALL'
+            ? timelineQuery.where(eq(coinTimelineUpdates.coinSymbol, coin.toUpperCase()))
+            : timelineQuery;
+
+        const filteredMaster = coin && coin.toUpperCase() !== 'ALL'
+            ? masterQuery.where(eq(coinMasterArticles.coinSymbol, coin.toUpperCase()))
+            : masterQuery;
+
+        const newsQuery = (filteredTimeline as any).union(filteredMaster as any);
 
         const news = await newsQuery
             .orderBy(desc(coinTimelineUpdates.createdAt))
@@ -223,7 +254,7 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
             .offset(offset);
 
         const formatTime = (req as unknown as { formatTime?: (date: Date | string | number) => string }).formatTime;
-        const mappedNews = news.map(n => ({
+        const mappedNews = news.map((n: any) => ({
             ...n,
             formattedTime: formatTime?.(n.publishedAt) ?? null
         }));
@@ -240,24 +271,60 @@ export async function getWireById(req: Request, res: Response, next: NextFunctio
         const id = parseInt(idString as string, 10);
         if (isNaN(id)) throw new AppError('Invalid article ID', 400);
 
-        const [update] = await db.select().from(coinTimelineUpdates).where(eq(coinTimelineUpdates.id, id)).limit(1);
-        if (!update) throw new AppError('Article not found', 404);
+        // Try timeline first
+        const [itemTimeline] = await db.select().from(coinTimelineUpdates).where(eq(coinTimelineUpdates.id, id)).limit(1);
+        if (itemTimeline) {
+            const mapped = {
+                id: itemTimeline.id,
+                coinSymbol: itemTimeline.coinSymbol,
+                headline: 'Update',
+                summary: itemTimeline.updateText,
+                hook: null,
+                metaTitle: null,
+                metaDescription: null,
+                seoKeywords: null,
+                sourceUrl: null,
+                sentiment: itemTimeline.sentiment,
+                impactScore: itemTimeline.impactScore,
+                isBreaking: 0,
+                publishedAt: itemTimeline.createdAt,
+                createdAt: itemTimeline.createdAt,
+            };
+            res.json(mapped);
+            return;
+        }
+
+        // Try master
+        const [itemMaster] = await db.select({
+            id: coinMasterArticles.id,
+            coinSymbol: coinMasterArticles.coinSymbol,
+            headline: coinMasterArticles.headline,
+            coreCatalyst: coinMasterArticles.coreCatalyst,
+            hook: coinMasterArticles.hook,
+            metaTitle: coinMasterArticles.metaTitle,
+            metaDescription: coinMasterArticles.metaDescription,
+            seoKeywords: coinMasterArticles.seoKeywords,
+            sentiment: coinMasterArticles.sentiment,
+            confidenceScore: coinMasterArticles.confidenceScore,
+            createdAt: coinMasterArticles.createdAt
+        }).from(coinMasterArticles).where(eq(coinMasterArticles.id, id)).limit(1);
+        if (!itemMaster) throw new AppError('Article not found', 404);
 
         const mapped = {
-            id: update.id,
-            coinSymbol: update.coinSymbol,
-            headline: update.updateText,
-            summary: null,
-            hook: null,
-            metaTitle: null,
-            metaDescription: null,
-            seoKeywords: null,
-            sourceUrl: update.sourceTitle,
-            sentiment: update.sentiment,
-            impactScore: update.impactScore,
-            isBreaking: 0,
-            publishedAt: update.createdAt,
-            createdAt: update.createdAt,
+            id: itemMaster.id,
+            coinSymbol: itemMaster.coinSymbol,
+            headline: itemMaster.headline,
+            summary: itemMaster.coreCatalyst,
+            hook: itemMaster.hook,
+            metaTitle: itemMaster.metaTitle,
+            metaDescription: itemMaster.metaDescription,
+            seoKeywords: itemMaster.seoKeywords,
+            sourceUrl: null,
+            sentiment: itemMaster.sentiment,
+            impactScore: itemMaster.confidenceScore,
+            isBreaking: 1,
+            publishedAt: itemMaster.createdAt,
+            createdAt: itemMaster.createdAt,
         };
         res.json(mapped);
     } catch (err) { next(err); }

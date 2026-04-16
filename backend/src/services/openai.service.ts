@@ -105,6 +105,10 @@ function validateSectionTags(fullArticle: string): { valid: boolean; missing: st
     return { valid: missing.length === 0, missing };
 }
 
+function stripSectionTags(text: string): string {
+    return text.replace(/\[\w+(?:\s+\w+)*\??\]/g, '').trim();
+}
+
 const ArticleSchema = z.object({
     headline: z.string().max(120),
     hook: z.string().min(20),
@@ -596,7 +600,7 @@ export async function callGptNanoMinorUpdate(newsTitle: string, existingHeadline
         messages,
     });
 
-    return raw.trim();
+    return stripSectionTags(raw.trim());
 }
 
 export async function callGptNanoMasterUpdate(analysisResult: DeepAnalysisResult, existingArticle: Record<string, unknown>): Promise<Partial<typeof coinMasterArticles.$inferInsert>> {

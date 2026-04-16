@@ -238,17 +238,7 @@ export async function runAiWorkflow(): Promise<void> {
                     updatedAt: sql`NOW()`,
                 }).where(eq(coinMasterArticles.id, master[0].id));
 
-                // Write to coinNews for backward compatibility
-                const sourceHash = crypto.createHash('sha256').update(item.title).digest('hex');
-                await db.insert(coinNews).values({
-                    coinSymbol: symbol,
-                    headline: `Update: ${item.title.slice(0, 50)}...`,
-                    summary: updateText,
-                    sentiment: item.sentimentHint || null,
-                    impactScore: item.relevanceScore || null,
-                    sourceHash,
-                    aiProcessed: 1,
-                }).onConflictDoNothing();
+
 
                 await storeEmbedding(item.id, item.title);
 
@@ -439,26 +429,11 @@ export async function runAiWorkflow(): Promise<void> {
                     console.log(`[AI Workflow] Skipping quality audit for ${symbol} (impact: ${analysisResult.impactScore}, breaking: ${analysisResult.isBreaking})`);
                 }
 
-                // 4f. Save to coinNews
                 const sourceHash = crypto.createHash('sha256').update(article.headline).digest('hex');
-                const insertedNews = await db.insert(coinNews).values({
-                    coinSymbol: symbol,
-                    headline: article.headline,
-                    summary: article.fullArticle,
-                    hook: article.hook,
-                    metaTitle: article.metaTitle,
-                    metaDescription: article.metaDescription,
-                    seoKeywords: article.seoKeywords,
-                    sentiment: analysisResult.sentiment,
-                    impactScore: analysisResult.impactScore,
-                    isBreaking: analysisResult.isBreaking ? 1 : 0,
-                    sourceHash,
-                    aiProcessed: 1,
-                }).onConflictDoNothing().returning({ id: coinNews.id });
 
                 await storeEmbedding(item.id, item.title);
 
-                const newsId = insertedNews.length > 0 ? insertedNews[0].id : null;
+                const newsId = null;
 
                 // 4g. Radar signal for actionable verdicts
                 const actionableVerdicts = ['STRONG_BUY', 'STRONG_SELL', 'BUY', 'SELL'];

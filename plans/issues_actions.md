@@ -22,7 +22,17 @@ This document tracks all current issues, applied fixes, and planned developments
 ---
 
 ## 🟢 Applied Fixes (Completed Remediations)
-*(Empty for now - to be filled as problems are solved)*
+
+### Phase 1 — Backend Data Flow (April 16, 2026)
+
+- **FIXED: Living Article Duplication** — `getLatestWire` now reads from `coinTimelineUpdates` + `coinMasterArticles` instead of `coinNews`. The `coinNews` backward-compat inserts were removed from `aiWorkflow.cron.ts` (both MINOR and MAJOR paths). The terminal feed now shows deduplicated living article events per coin.
+  - Files: `market.controller.ts`, `aiWorkflow.cron.ts`
+
+- **FIXED: Alpha Focus Price = $0** — `getAlphaFocus` now falls back to `getPriceWithFallback()` (Binance/DexScreener live API) when `priceSnapshots` table has no data for the coin.
+  - Files: `market.controller.ts`
+
+- **FIXED: `[HOOK]` Text Leak (Backend)** — Added `stripSectionTags()` sanitizer to `callGptNanoMinorUpdate` in `openai.service.ts`. All section tags (`[HOOK]`, `[WHAT HAPPENED]`, etc.) are stripped before storage into `coinTimelineUpdates`.
+  - Files: `openai.service.ts`
 
 ---
 

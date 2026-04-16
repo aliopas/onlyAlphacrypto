@@ -155,6 +155,27 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
         return 'text-[#135bec] bg-[#135bec]/10 border-[#135bec]/20';
     };
 
+    const scrollToDeepDive = () => {
+        if (!showDeepDive) {
+            setShowDeepDive(true);
+            // Poll for the deep dive element to mount due to lazy loading
+            let attempts = 0;
+            const maxAttempts = 100; // ~1.67 seconds at 60fps
+            const pollForElement = () => {
+                const element = document.getElementById('deep-dive-section');
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else if (attempts < maxAttempts) {
+                    attempts++;
+                    requestAnimationFrame(pollForElement);
+                }
+            };
+            requestAnimationFrame(pollForElement);
+        } else {
+            document.getElementById('deep-dive-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    };
+
     return (
         <div className="flex-1 flex flex-col p-8 xl:p-12 overflow-y-auto scrollbar-hidden relative animate-fade-in" ref={scrollContainerRef}>
             {/* Header / Meta */}
@@ -194,19 +215,7 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                 </h1>
                 {displayCoin && (
                     <button
-                        onClick={() => {
-                            if (!showDeepDive) {
-                                setShowDeepDive(true);
-                                setTimeout(() => {
-                                    scrollContainerRef.current?.scrollTo({
-                                        top: scrollContainerRef.current.scrollHeight,
-                                        behavior: 'smooth',
-                                    });
-                                }, 100);
-                            } else {
-                                document.getElementById('deep-dive-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
-                        }}
+                        onClick={scrollToDeepDive}
                         className="shrink-0 flex items-center gap-2 px-4 py-2 text-[10px] font-mono uppercase tracking-widest border border-emerald-500/30 text-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10 transition-colors"
                     >
                         <span className="material-symbols-outlined text-[14px]">expand_more</span>
@@ -309,19 +318,7 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                 <div className="flex items-center gap-4">
                     {displayCoin && (
                         <button
-                            onClick={() => {
-                                if (!showDeepDive) {
-                                    setShowDeepDive(true);
-                                    setTimeout(() => {
-                                        scrollContainerRef.current?.scrollTo({
-                                            top: scrollContainerRef.current.scrollHeight,
-                                            behavior: 'smooth',
-                                        });
-                                    }, 100);
-                                } else {
-                                    document.getElementById('deep-dive-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                }
-                            }}
+                            onClick={scrollToDeepDive}
                             className="text-[10px] font-mono uppercase tracking-widest text-emerald-500/70 hover:text-emerald-500 transition-colors flex items-center gap-1"
                         >
                             <span className="material-symbols-outlined text-[12px]">timeline</span>

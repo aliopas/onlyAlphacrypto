@@ -4,6 +4,10 @@ import React, { useState } from 'react';
 import { TimelineUpdate } from '../types';
 import { terminalApi } from '../api';
 
+const stripPromptTags = (text: string) => {
+    return text.replace(/\[[^\]]+\]/g, '').trim();
+};
+
 interface TimelineFeedProps {
     symbol: string;
     initialUpdates: TimelineUpdate[];
@@ -84,7 +88,7 @@ export const TimelineFeed: React.FC<TimelineFeedProps> = ({
                             </span>
                         </div>
 
-                        <p className="text-[#CCC] line-clamp-3">{update.updateText}</p>
+                        <p className="text-[#CCC] line-clamp-3">{stripPromptTags(update.updateText)}</p>
 
                         {update.sourceTitle && (
                             <p className="text-sm text-[#555] mt-1">

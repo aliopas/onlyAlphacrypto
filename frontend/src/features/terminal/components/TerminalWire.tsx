@@ -78,15 +78,7 @@ export function TerminalWire({
                     const isTargeted = !selectedRadarId && targetedCoin && item.coin?.toLowerCase() === targetedCoin.toLowerCase();
                     const timeStr = item.formattedTime || `${Math.floor((now - new Date(item.createdAt).getTime()) / 60000)}m ago`;
 
-                    // Find context news for this signal
-                    const RADAR_NEWS_TIME_WINDOW_MS = 4 * 60 * 60 * 1000;
-                    const radarTime = new Date(item.createdAt).getTime();
-                    const itemNews = news.filter(n => {
-                        const matchCoin = (n.coin || n.coinSymbol) === item.coin;
-                        if (!matchCoin) return false;
-                        const newsTime = new Date(n.createdAt).getTime();
-                        return Math.abs(newsTime - radarTime) < RADAR_NEWS_TIME_WINDOW_MS;
-                    }).slice(0, 2);
+
 
                     return (
                         <div key={`radar-${item.id || i}`}
@@ -104,33 +96,7 @@ export function TerminalWire({
                                 {item.signal || item.signalText}
                             </h4>
 
-                            {/* News Sources Section integrated into Radar */}
-                            {itemNews.length > 0 && (
-                                <div className="mt-4 pt-3 border-t border-[#222]">
-                                    <div className="text-[9px] font-mono text-[#666] mb-2 uppercase tracking-wider flex items-center gap-1">
-                                        <span className="material-symbols-outlined text-[12px]">article</span> Sources Analyzed
-                                        <span className="text-[8px] font-mono text-emerald-500/60 bg-emerald-500/10 border border-emerald-500/20 px-1 rounded-sm ml-auto">STREAM</span>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        {itemNews.map(n => {
-                                            const isSelectedNews = activeTab === 'WIRE' && selectedNewsId === n.id;
-                                            return (
-                                                <div 
-                                                    key={n.id} 
-                                                    onClick={(e) => { e.stopPropagation(); onSelectNews?.(n.id); setActiveTab('WIRE'); }}
-                                                    className={`text-[11px] truncate cursor-pointer transition-colors flex items-center gap-1.5 ${isSelectedNews ? 'text-[#135bec] font-medium' : 'text-[#888] hover:text-white'}`}
-                                                >
-                                                    <span className={`w-1 h-1 rounded-full shrink-0 ${isSelectedNews ? 'bg-[#135bec]' : 'bg-[#135bec]/30'}`} />
-                                                    <span className="truncate flex-1">{n.headline}</span>
-                                                    <span className={`material-symbols-outlined shrink-0 text-[11px] ${isSelectedNews ? 'text-[#135bec]' : 'text-[#333]'}`}>
-                                                        open_in_new
-                                                    </span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
+
                         </div>
                     );
                 })}
