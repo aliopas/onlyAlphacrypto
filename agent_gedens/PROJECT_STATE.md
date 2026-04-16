@@ -1,7 +1,7 @@
 # OnlyAlpha — Project State
 
-**Last Updated:** April 2026
-**Current Focus:** Bug Fixes, UI/UX Corrections, and Data Flow Architecture Remediation.
+**Last Updated:** April 16, 2026
+**Current Focus:** Bug Fixes & Dead Code Cleanup — Phase 1 & Phase 2 COMPLETE. Awaiting Phase 3 plan from Architect.
 
 ---
 
@@ -9,18 +9,31 @@
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL. Base architecture relies on crons and OpenRouter (GPT/DeepSeek) for data processing.
 2. **Frontend:** Next.js (App Router), Tailwind CSS.
 3. **Data Sources:** Binance, Moralis, RSS feeds.
-4. **Important Note:** *Neon Serverless and Reddit API are NO longer used. The `@neondatabase/serverless` and `reddit.service.ts` are considered dead code/unused.*
+4. **Important Note:** *Neon Serverless and Reddit API are NO longer used. Both `@neondatabase/serverless` dependency and all `reddit.service.ts` / `redditExtractor` files have been fully deleted (Phase 2, Micro-Tasks 3.1-3.3).*
+
+---
+
+## 🟢 Completed Phases
+
+### Phase 1 — Backend Data Flow Remediation ✅
+- `getLatestWire` reads from `coinTimelineUpdates` (Living Article architecture).
+- Backward-compat `coinNews` inserts removed from `aiWorkflow.cron.ts`.
+- `stripSectionTags()` added to `openai.service.ts` to prevent `[HOOK]` leak.
+- Live price fallback via `getPriceWithFallback()` in `getAlphaFocus`.
+
+### Phase 2 — Frontend UI Fixes & Dead Code Cleanup ✅
+- "Sources Analyzed" removed from `TerminalWire.tsx`.
+- Scroll-to-deep-dive fixed with `requestAnimationFrame` in `AlphaStream.tsx`.
+- `stripPromptTags()` defense-in-depth added to `TimelineFeed.tsx`.
+- All Reddit-related files deleted (`reddit.service.ts`, `redditExtractor.ts`, spec).
+- `@neondatabase/serverless` dependency removed from `package.json`.
 
 ---
 
 ## 🔴 Current Mission (Active Phase)
-The project is currently under a strict bug-fixing and refactoring phase. Past AI agents successfully built the foundations (Phases 0-6), but left several architectural flaws and UI bugs that must be fixed. 
+Phases 1 & 2 are complete. Awaiting Phase 3 plan from THE ARCHITECT.
 
-**No new features should be built until the active issues are resolved.**
-
-### The "Living Article" Conflict
-- **Expected Behavior:** There should only be ONE "Master Article" per coin (`coin_master_articles`), which gets updated via `coinTimelineUpdates`. 
-- **Current Bug:** The backend cron `aiWorkflow.cron.ts` is still pushing complete new articles into the legacy `coin_news` table for every minor/major update. The frontend (`getLatestWire` in `market.controller.ts`) is blindly fetching from `coin_news`, leading to a highly repetitive terminal feed filled with duplicate analysis instead of updating a single article.
+**No new features should be built until the Architect provides the next phase plan.**
 
 ---
 
