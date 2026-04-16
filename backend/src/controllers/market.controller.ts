@@ -179,13 +179,46 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
 
-        let query = db.select().from(coinNews).$dynamic();
+        type TimelineWireRow = {
+            id: number;
+            coinSymbol: string | null;
+            headline: string | null;
+            summary: unknown;
+            hook: unknown;
+            metaTitle: unknown;
+            metaDescription: unknown;
+            seoKeywords: unknown;
+            sourceUrl: string | null;
+            sentiment: string | null;
+            impactScore: number | null;
+            isBreaking: unknown;
+            publishedAt: Date;
+            createdAt: Date;
+        };
+
+        let newsQuery = db.select({
+            id: coinTimelineUpdates.id,
+            coinSymbol: coinTimelineUpdates.coinSymbol,
+            headline: coinTimelineUpdates.updateText,
+            summary: sql`null`,
+            hook: sql`null`,
+            metaTitle: sql`null`,
+            metaDescription: sql`null`,
+            seoKeywords: sql`null`,
+            sourceUrl: coinTimelineUpdates.sourceTitle,
+            sentiment: coinTimelineUpdates.sentiment,
+            impactScore: coinTimelineUpdates.impactScore,
+            isBreaking: sql`0`,
+            publishedAt: coinTimelineUpdates.createdAt,
+            createdAt: coinTimelineUpdates.createdAt
+        }).from(coinTimelineUpdates);
+
         if (coin && coin.toUpperCase() !== 'ALL') {
-            query = query.where(eq(coinNews.coinSymbol, coin.toUpperCase()));
+            newsQuery = newsQuery.where(eq(coinTimelineUpdates.coinSymbol, coin.toUpperCase()));
         }
 
-        const news = await query
-            .orderBy(desc(coinNews.publishedAt))
+        const news = await newsQuery
+            .orderBy(desc(coinTimelineUpdates.createdAt))
             .limit(limit)
             .offset(offset);
 
@@ -207,9 +240,26 @@ export async function getWireById(req: Request, res: Response, next: NextFunctio
         const id = parseInt(idString as string, 10);
         if (isNaN(id)) throw new AppError('Invalid article ID', 400);
 
-        const [article] = await db.select().from(coinNews).where(eq(coinNews.id, id)).limit(1);
-        if (!article) throw new AppError('Article not found', 404);
-        res.json(article);
+        const [update] = await db.select().from(coinTimelineUpdates).where(eq(coinTimelineUpdates.id, id)).limit(1);
+        if (!update) throw new AppError('Article not found', 404);
+
+        const mapped = {
+            id: update.id,
+            coinSymbol: update.coinSymbol,
+            headline: update.updateText,
+            summary: null,
+            hook: null,
+            metaTitle: null,
+            metaDescription: null,
+            seoKeywords: null,
+            sourceUrl: update.sourceTitle,
+            sentiment: update.sentiment,
+            impactScore: update.impactScore,
+            isBreaking: 0,
+            publishedAt: update.createdAt,
+            createdAt: update.createdAt,
+        };
+        res.json(mapped);
     } catch (err) { next(err); }
 }
 
