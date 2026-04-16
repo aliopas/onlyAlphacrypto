@@ -20,6 +20,11 @@
 - **Rules:** Performs a deep, granular review of the executed code. Once the implementation passes and is approved, this model is exclusively responsible for committing and pushing the changes to GitHub.
 - **Workspace:** Operates after the Supreme Reviewer's final audit.
 
+## 5. THE DEBUGGER
+- **Role:** Specialized Debugger & Hotfixer.
+- **Rules:** Exclusively handles bug fixes, error isolation, and resolving regressions. Does not build new features or write architectural plans. Only brought in to troubleshoot and patch broken systems.
+- **Workspace:** Operates on an ad-hoc basis when issues arise during or after execution.
+
 ## 🔄 THE WORKFLOW LOOP
 1. **Plan:** Architect writes a plan.
 2. **Audit 1:** Supreme Reviewer Approves/Rejects the plan.
@@ -28,3 +33,5 @@
 5. **Verify:** Architect checks Junior's code against the plan.
 6. **Audit 2:** Supreme Reviewer performs final code review.
 7. **Deep Review & Push:** The Deep Reviewer performs the final deep technical review. Upon its approval, it commits and pushes the code to GitHub.
+
+*(Note: **The Debugger** is deployed dynamically at any step if a system crash, environmental error, or active bug is detected to clear the blockers).*
