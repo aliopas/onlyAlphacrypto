@@ -190,7 +190,7 @@ DO NOT write articles. DO NOT write prose. Output STRICT JSON only.
   "analysis": {
     "mainDriver":       "<1 sentence — core reason this matters>",
     "priceImplication": "<1 sentence — what this means for price>",
-    "temporalContext":  "<1 sentence referencing historical pattern if provided, else null>",
+    "temporalContext":  "<If historical pattern provided: summarize the statistical outcome. Format: 'Based on [N] similar [eventType] events for [symbol], bullish rate was [X]%, avg 7d return was [Y]%. Most recent case: [headline, date, outcome].' If no pattern: use domain knowledge to reference 1 specific comparable historical event with numbers. MAX 2 sentences.>",
     "riskNote":         "<1 sentence — biggest risk or red flag>"
   },
   "keyFacts": [
@@ -274,7 +274,7 @@ Factual summary using keyFacts from the input JSON. Every paragraph must contain
 Use analysis.mainDriver and analysis.priceImplication. Explain the market significance and broader implications for the sector. How does this compare to similar events? Write 3-4 substantive sentences.
 
 [HISTORY REPEATS?]
-If analysis.temporalContext is not null, expand it with specific numbers and dates. If null, write a brief but specific historical comparison relevant to the event type. Include at least one concrete past example with numbers. Write 3-4 substantive sentences.
+Use _historicalCases from input if available. Cite SPECIFIC past events with dates and percentage outcomes from _historicalCases array. Format: 'In [Month Year], when [coin] faced similar [eventType], the price moved [X]% over 7 days.' If _historicalCases is empty, use analysis.temporalContext. Write 3-4 substantive sentences with at least one concrete number.
 
 [PRICE PICTURE]
 Use supportLevels and resistanceLevels from the input. Reference the current price trend and distance from ATH. Discuss volume, momentum, and key technical levels with specific numbers. Write 3-4 substantive sentences.
@@ -323,7 +323,7 @@ Output STRICT JSON:
     "HOOK": "<Expand the hook into 3-4 sentences. Must include the most important number from the analysis. Set the scene for why this matters RIGHT NOW.>",
     "WHAT HAPPENED": "<Factual summary using keyFacts from the input JSON. Every paragraph must contain a number. Provide context about the event — who, what, when, where, how much. Write 4-5 substantive sentences.>",
     "WHY IT MATTERS": "<Use analysis.mainDriver and analysis.priceImplication. Explain the market significance and broader implications for the sector. How does this compare to similar events? Write 3-4 substantive sentences.>",
-    "HISTORY REPEATS?": "<If analysis.temporalContext is not null, expand it with specific numbers and dates. If null, write a brief but specific historical comparison relevant to the event type. Include at least one concrete past example with numbers. Write 3-4 substantive sentences.>"
+    "HISTORY REPEATS?": "<Use _historicalCases from input if available. Cite SPECIFIC past events with dates and percentage outcomes from _historicalCases array. Format: 'In [Month Year], when [coin] faced similar [eventType], the price moved [X]% over 7 days.' If _historicalCases is empty, use analysis.temporalContext. Write 3-4 substantive sentences with at least one concrete number.>"
   }
 }
 
