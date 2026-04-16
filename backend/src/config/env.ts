@@ -23,6 +23,7 @@ const envSchema = z.object({
     //   SEO_MODEL = GPT-5-nano → final SEO formatting, hooks, meta tags (dual news step 2, article writing)
     OPENROUTER_API_KEY: z.string().min(10, 'OPENROUTER_API_KEY is required'),
     SEO_MODEL: z.string().default('openai/gpt-5-nano'),
+    WRITER_MODEL: z.string().default('google/gemini-2.5-flash'),
 
     // Chat model — separate from SEO model for cost/speed optimization
     CHAT_MODEL: z.string().default('openai/gpt-4.1-mini'),

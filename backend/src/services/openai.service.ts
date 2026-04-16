@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
 import { AIGateway, AITruncationError, LONG_RESPONSE_MAX_TOKENS } from './ai/ai-gateway';
-import { PromptFactory, DeepAnalysisInput } from './ai/prompt-factory';
+import { PromptFactory, DeepAnalysisInput, MasterUpdateInput } from './ai/prompt-factory';
 import { coinMasterArticles } from '../models/market.model';
 
 // Define interfaces locally to avoid circular imports
@@ -125,18 +125,18 @@ const Stage2ASchema = z.object({
     metaDescription: z.string().max(160),
     seoKeywords: z.array(z.string()).min(3).max(7),
     sections: z.object({
-        HOOK: z.string().min(200),
-        'WHAT HAPPENED': z.string().min(200),
-        'WHY IT MATTERS': z.string().min(200),
-        'HISTORY REPEATS?': z.string().min(200),
+        HOOK: z.string().min(100),
+        'WHAT HAPPENED': z.string().min(100),
+        'WHY IT MATTERS': z.string().min(100),
+        'HISTORY REPEATS?': z.string().min(100),
     }),
 });
 
 const Stage2BSchema = z.object({
     sections: z.object({
-        'PRICE PICTURE': z.string().min(200),
-        'RISK CHECK': z.string().min(200),
-        'BOTTOM LINE': z.string().min(150),
+        'PRICE PICTURE': z.string().min(100),
+        'RISK CHECK': z.string().min(100),
+        'BOTTOM LINE': z.string().min(80),
     }),
 });
 
@@ -164,6 +164,14 @@ const deepseekGateway = env.DEEPSEEK_API_KEY ? new AIGateway({
         'X-Title': 'OnlyAlpha',
     }
 }) : null;
+
+// Writer gateway — always OpenRouter (Gemini 2.5 Flash or any writer model)
+const writerGateway = new AIGateway({
+    apiKey: env.OPENROUTER_API_KEY,
+    baseURL: 'https://openrouter.ai/api/v1',
+    timeoutMs: 120000,
+    defaultHeaders: { 'HTTP-Referer': 'https://onlyalpha.app', 'X-Title': 'OnlyAlpha' }
+});
 
 const prompts = new PromptFactory();
 
@@ -342,13 +350,11 @@ export async function callGptNanoWriter(analysisJson: string, tone?: string, att
     const MAX_ATTEMPTS = 3;
 
     const messages = prompts.buildArticleWriterMessages(analysisJson, tone);
-    const writerGateway = deepseekGateway ?? gateway;
-    const writerModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.SEO_MODEL;
 
     let raw: string;
     try {
         raw = await writerGateway.chatRaw({
-            model: writerModel,
+            model: env.WRITER_MODEL,
             temperature: 0.5,
             responseFormat: { type: 'json_object' },
             messages,
@@ -424,13 +430,11 @@ export async function callWriterStage2A(analysisJson: string, tone: string, atte
         { role: 'system', content: messages.system },
         { role: 'user', content: messages.user }
     ];
-    const writerGateway = deepseekGateway ?? gateway;
-    const writerModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.SEO_MODEL;
 
     let raw: string;
     try {
         raw = await writerGateway.chatRaw({
-            model: writerModel,
+            model: env.WRITER_MODEL,
             temperature: 0.5,
             responseFormat: { type: 'json_object' },
             messages: messageArray,
@@ -480,13 +484,11 @@ export async function callWriterStage2B(analysisJson: string, stage2AContext: St
         { role: 'system', content: messages.system },
         { role: 'user', content: messages.user }
     ];
-    const writerGateway = deepseekGateway ?? gateway;
-    const writerModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.SEO_MODEL;
 
     let raw: string;
     try {
         raw = await writerGateway.chatRaw({
-            model: writerModel,
+            model: env.WRITER_MODEL,
             temperature: 0.5,
             responseFormat: { type: 'json_object' },
             messages: messageArray,
@@ -529,15 +531,13 @@ export async function callWriterStage2B(analysisJson: string, stage2AContext: St
 }
 
 export function mergeArticleStages(stage2A: ArticleStage2AResult, stage2B: ArticleStage2BResult | null): ArticleWriterResult {
-    const fallbackSections = {
-        'PRICE PICTURE': 'Additional price analysis pending. See the full breakdown in the living article for this coin.',
-        'RISK CHECK': 'Risk assessment pending. Standard risk management practices are advised in volatile market conditions.',
-        'BOTTOM LINE': 'Analysis pending. Monitor the situation for updates.',
-    };
-
     const sections = {
         ...stage2A.sections,
-        ...(stage2B ? stage2B.sections : fallbackSections),
+        ...(stage2B ? stage2B.sections : {
+            'PRICE PICTURE': null,
+            'RISK CHECK': null,
+            'BOTTOM LINE': null,
+        }),
     };
 
     const fullArticle = [
@@ -614,18 +614,17 @@ export async function callGptNanoMasterUpdate(analysisResult: DeepAnalysisResult
         'bottomLine'
     ];
 
+    const nullSections = sections.filter(s => !existingArticle[s] || String(existingArticle[s]).length < 50);
     const existingSections = sections.map(section => `${section}: ${existingArticle[section] || 'N/A'}`).join('\n\n');
+    const sectionDirective = nullSections.length > 0
+        ? `\n\nIMPORTANT: The following sections are currently empty and MUST be generated: ${nullSections.join(', ')}. Do NOT skip them.`
+        : '';
 
-    const messages = [
-        {
-            role: 'system' as const,
-            content: 'You are a crypto article updater. Output ONLY JSON with updated sections.'
-        },
-        {
-            role: 'user' as const,
-            content: `Update the following living article sections based on this new analysis: ${JSON.stringify(analysisResult)}\n\nExisting sections:\n${existingSections}\n\nOutput ONLY the sections that need updating as JSON.`
-        }
-    ];
+    const messages = prompts.buildMasterUpdateMessages({
+        analysisResult,
+        existingSections,
+        sectionDirective
+    });
 
     const raw = await gateway.chatRaw({
         model: env.SEO_MODEL,

@@ -35,6 +35,12 @@ export interface DeepAnalysisInput {
     price: PriceResult | null;
 }
 
+export interface MasterUpdateInput {
+    analysisResult: unknown;
+    existingSections: string;
+    sectionDirective: string;
+}
+
 // Define additional interfaces used in the prompts
 
 export interface ChatMessage {
@@ -372,5 +378,17 @@ Verdict: ${stage2AContext.verdict}
         return { system, user };
     }
 
+    buildMasterUpdateMessages(input: MasterUpdateInput): ChatCompletionMessageParam[] {
+        return [
+            {
+                role: 'system',
+                content: 'You are a crypto article updater. Output ONLY JSON with updated sections.'
+            },
+            {
+                role: 'user',
+                content: `Update the following living article sections based on this new analysis: ${JSON.stringify(input.analysisResult)}\n\nExisting sections:\n${input.existingSections}\n\nOutput ONLY the sections that need updating as JSON.${input.sectionDirective}`
+            }
+        ];
+    }
 
 }
