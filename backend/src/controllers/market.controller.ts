@@ -187,48 +187,62 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
 
-        const coinFilter = coin && coin.toUpperCase() !== 'ALL'
-            ? sql`AND coin_symbol = ${coin.toUpperCase()}`
-            : sql``;
+        const fetchLimit = limit + offset;
 
-        const result = await db.execute(sql`
-            (SELECT
-                id, coin_symbol, 'Update' AS headline, update_text AS summary,
-                NULL::text AS hook, NULL::text AS meta_title, NULL::text AS meta_description,
-                NULL::json AS seo_keywords, NULL::text AS source_url,
-                sentiment, impact_score, 0 AS is_breaking,
-                created_at AS published_at, created_at
-            FROM coin_timeline_updates WHERE 1=1 ${coinFilter})
-            UNION
-            (SELECT
-                id, coin_symbol, headline, core_catalyst AS summary,
-                hook, meta_title, meta_description,
-                seo_keywords, NULL::text AS source_url,
-                sentiment, confidence_score AS impact_score, 1 AS is_breaking,
-                created_at AS published_at, created_at
-            FROM coin_master_articles WHERE 1=1 ${coinFilter})
-            ORDER BY published_at DESC
-            LIMIT ${limit} OFFSET ${offset}
-        `);
+        const buildTimeline = () => {
+            const q = db.select({
+                id: coinTimelineUpdates.id,
+                coinSymbol: coinTimelineUpdates.coinSymbol,
+                headline: sql<string>`'Update'`,
+                summary: coinTimelineUpdates.updateText,
+                hook: sql<null>`null`,
+                metaTitle: sql<null>`null`,
+                metaDescription: sql<null>`null`,
+                seoKeywords: sql<null>`null`,
+                sourceUrl: sql<null>`null`,
+                sentiment: coinTimelineUpdates.sentiment,
+                impactScore: coinTimelineUpdates.impactScore,
+                isBreaking: sql<number>`0`,
+                publishedAt: coinTimelineUpdates.createdAt,
+                createdAt: coinTimelineUpdates.createdAt
+            }).from(coinTimelineUpdates);
+            return coin && coin.toUpperCase() !== 'ALL'
+                ? q.where(eq(coinTimelineUpdates.coinSymbol, coin.toUpperCase())).orderBy(desc(coinTimelineUpdates.createdAt)).limit(fetchLimit)
+                : q.orderBy(desc(coinTimelineUpdates.createdAt)).limit(fetchLimit);
+        };
+
+        const buildMaster = () => {
+            const q = db.select({
+                id: coinMasterArticles.id,
+                coinSymbol: coinMasterArticles.coinSymbol,
+                headline: coinMasterArticles.headline,
+                summary: coinMasterArticles.coreCatalyst,
+                hook: coinMasterArticles.hook,
+                metaTitle: coinMasterArticles.metaTitle,
+                metaDescription: coinMasterArticles.metaDescription,
+                seoKeywords: coinMasterArticles.seoKeywords,
+                sourceUrl: sql<null>`null`,
+                sentiment: coinMasterArticles.sentiment,
+                impactScore: coinMasterArticles.confidenceScore,
+                isBreaking: sql<number>`1`,
+                publishedAt: coinMasterArticles.createdAt,
+                createdAt: coinMasterArticles.createdAt
+            }).from(coinMasterArticles);
+            return coin && coin.toUpperCase() !== 'ALL'
+                ? q.where(eq(coinMasterArticles.coinSymbol, coin.toUpperCase())).orderBy(desc(coinMasterArticles.createdAt)).limit(fetchLimit)
+                : q.orderBy(desc(coinMasterArticles.createdAt)).limit(fetchLimit);
+        };
+
+        const [timelineRows, masterRows] = await Promise.all([buildTimeline(), buildMaster()]);
+
+        const combined = [...timelineRows, ...masterRows].sort((a, b) =>
+            new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+        ).slice(offset, offset + limit);
 
         const formatTime = (req as unknown as { formatTime?: (date: Date | string | number) => string }).formatTime;
-
-        const mappedNews = result.rows.map((row: Record<string, unknown>) => ({
-            id: row.id,
-            coinSymbol: row.coin_symbol,
-            headline: row.headline,
-            summary: row.summary,
-            hook: row.hook,
-            metaTitle: row.meta_title,
-            metaDescription: row.meta_description,
-            seoKeywords: row.seo_keywords,
-            sourceUrl: row.source_url,
-            sentiment: row.sentiment,
-            impactScore: row.impact_score,
-            isBreaking: row.is_breaking,
-            publishedAt: row.published_at,
-            createdAt: row.created_at,
-            formattedTime: formatTime?.(row.published_at as Date | string | number) ?? null
+        const mappedNews = combined.map((n) => ({
+            ...n,
+            formattedTime: formatTime?.(n.publishedAt) ?? null
         }));
 
         await setCache(cacheKey, mappedNews, 120);

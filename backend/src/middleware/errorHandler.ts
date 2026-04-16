@@ -24,12 +24,13 @@ export function errorHandler(
     const message = appErr?.isOperational ? err.message : 'Internal server error';
 
     if (process.env.NODE_ENV === 'production') {
+        const cause = (err as Error & { cause?: Error }).cause;
         logger.error(
             '[ErrorHandler] %s %s → %d: %s',
             req.method,
             req.path,
             statusCode,
-            err.message
+            cause ? `${err.message} — cause: ${cause.message}` : err.message
         );
     } else {
         console.error(`[${req.method}] ${req.path} → ${statusCode}: ${err.message}`);
