@@ -40,6 +40,9 @@ export type MasterArticle = {
     posture: string | null;
     riskTags: string[] | null;
     triggerType: string | null;
+    metaTitle: string | null;
+    metaDescription: string | null;
+    seoKeywords: string[] | null;
     majorUpdateCount: number;
     minorUpdateCount: number;
     lastMajorUpdate: string | null;
