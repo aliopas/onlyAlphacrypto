@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
 import { AIGateway, AITruncationError, LONG_RESPONSE_MAX_TOKENS } from './ai/ai-gateway';
-import { PromptFactory, DeepAnalysisInput, MasterUpdateInput } from './ai/prompt-factory';
+import { PromptFactory, DeepAnalysisInput, MasterUpdateInput, MinorUpdateInput } from './ai/prompt-factory';
 import { coinMasterArticles } from '../models/market.model';
 
 // Define interfaces locally to avoid circular imports
@@ -276,9 +276,7 @@ export async function generateLightweightTriage(
 
         // Cache fallback results briefly (5 minutes) to prevent repeated failures on same batch
         const fallbackCacheKey = cache.generateKey('lightweightTriage_fallback', newsBatch);
-        cache.set(fallbackCacheKey, fallbackResults);
-        // Note: We're not setting a shorter TTL here as the CacheManager doesn't support per-entry TTL
-        // In a production app, we might want to enhance CacheManager to support this
+        cache.set(fallbackCacheKey, fallbackResults, 300000); // 5 minutes TTL
 
         return fallbackResults;
     }
@@ -583,16 +581,7 @@ export async function streamChatResponse(
 }
 
 export async function callGptNanoMinorUpdate(newsTitle: string, existingHeadline: string): Promise<string> {
-    const messages = [
-        {
-            role: 'system' as const,
-            content: 'You are a crypto news update writer. Write factual, concise updates.'
-        },
-        {
-            role: 'user' as const,
-            content: `Given this new development: ${newsTitle}, in context of the existing story: ${existingHeadline}, write a concise 1-2 paragraph timeline update. Factual, no filler.`
-        }
-    ];
+    const messages = prompts.buildMinorUpdateMessages({ newsTitle, existingHeadline });
 
     const raw = await gateway.chatRaw({
         model: env.SEO_MODEL,

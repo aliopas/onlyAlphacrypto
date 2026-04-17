@@ -41,6 +41,11 @@ export interface MasterUpdateInput {
     sectionDirective: string;
 }
 
+export interface MinorUpdateInput {
+    newsTitle: string;
+    existingHeadline: string;
+}
+
 // Define additional interfaces used in the prompts
 
 export interface ChatMessage {
@@ -387,6 +392,19 @@ Verdict: ${stage2AContext.verdict}
             {
                 role: 'user',
                 content: `Update the following living article sections based on this new analysis: ${JSON.stringify(input.analysisResult)}\n\nExisting sections:\n${input.existingSections}\n\nOutput ONLY the sections that need updating as JSON.${input.sectionDirective}`
+            }
+        ];
+    }
+
+    buildMinorUpdateMessages(input: MinorUpdateInput): ChatCompletionMessageParam[] {
+        return [
+            {
+                role: 'system',
+                content: 'You are a crypto news update writer. Write factual, concise updates.'
+            },
+            {
+                role: 'user',
+                content: `Given this new development: ${input.newsTitle}, in context of the existing story: ${input.existingHeadline}, write a concise 1-2 paragraph timeline update. Factual, no filler.`
             }
         ];
     }

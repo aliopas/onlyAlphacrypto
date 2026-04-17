@@ -249,7 +249,7 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                             {sections.length > 0 ? sections.map((section) => (
                                 <details
                                     key={section.key}
-                                    open={section.key === 'HOOK' || section.key === 'BOTTOM LINE'}
+                                    open={true}
                                     className="group"
                                 >
                                     <summary className="cursor-pointer text-sm font-mono tracking-widest text-[#888] uppercase py-3 hover:text-white transition-colors select-none list-none flex items-center justify-between">

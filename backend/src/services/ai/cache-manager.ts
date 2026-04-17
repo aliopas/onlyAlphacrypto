@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 export interface CacheEntry<T> {
     result: T;
     timestamp: number;
+    ttlMs?: number;
 }
 
 export class CacheManager {
@@ -30,7 +31,8 @@ export class CacheManager {
     cleanup(): void {
         const now = Date.now();
         for (const [key, value] of this.cache.entries()) {
-            if (now - value.timestamp > this.ttlMs) {
+            const effectiveTtl = value.ttlMs ?? this.ttlMs;
+            if (now - value.timestamp > effectiveTtl) {
                 this.cache.delete(key);
             }
         }
@@ -43,7 +45,8 @@ export class CacheManager {
         }
 
         const now = Date.now();
-        if (now - entry.timestamp > this.ttlMs) {
+        const effectiveTtl = entry.ttlMs ?? this.ttlMs;
+        if (now - entry.timestamp > effectiveTtl) {
             this.cache.delete(key);
             return null;
         }
@@ -51,21 +54,13 @@ export class CacheManager {
         return entry.result as T;
     }
 
-    set<T>(key: string, result: T): void {
-        this.cache.set(key, { result, timestamp: Date.now() } as CacheEntry<unknown>);
+    set<T>(key: string, result: T, ttlMs?: number): void {
+        this.cache.set(key, { result, timestamp: Date.now(), ttlMs } as CacheEntry<unknown>);
         this._cleanup();
     }
 
     private _cleanup(): void {
-        const now = Date.now();
-        // Remove expired entries
-        for (const [key, value] of this.cache.entries()) {
-            if (now - value.timestamp > this.ttlMs) {
-                this.cache.delete(key);
-            }
-        }
-
-        // If still over maxSize, remove oldest 20%
+        // Only handle maxSize eviction; TTL is checked in periodic cleanup()
         if (this.cache.size > this.maxSize) {
             const sortedEntries = Array.from(this.cache.entries())
                 .sort((a, b) => a[1].timestamp - b[1].timestamp);
