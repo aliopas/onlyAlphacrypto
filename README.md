@@ -81,14 +81,6 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 │                                   │  openai.service.ts       │   │
 │  ┌──────────────────────────┐     │  ├─ generateLightweight  │   │
 │  │     CRON JOBS (8 active) │────▶│  │    Triage()           │   │
-│  │                          │     │  ├─ callDeepSeekAnalysis │   │
-│  │  AiWorkflow      hourly  │     │  ├─ callGptNanoWriter()  │   │
-│  │  TerminalEngine  10min   │     │  ├─ streamChatResponse() │   │
-│  │  TriageEngine    2hrs    │     │  └─ ...                  │   │
-│  │  ConvictionUpd   6hrs    │     │                          │   │
-│  │  MarketMood      07:00   │     │  ai/ (infrastructure)    │   │
-│  │  DailyAlpha      06:00   │     │  ├─ AIGateway            │   │
-│  │  HistoricalNews  04:00   │     │  ├─ CacheManager (LRU)   │   │
 │  │  BufferCleanup   00:00   │     │  ├─ PromptFactory        │   │
 │  └──────────────────────────┘     │  ├─ QualityAuditor       │   │
 │                                   │  └─ FactualGrounding     │   │
@@ -99,7 +91,7 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
            │                   │                  │
     ┌──────▼──────┐   ┌───────▼───────┐  ┌───────▼───────┐
     │ PostgreSQL  │   │    Redis      │  │ External APIs │
-    │  (Neon)     │   │              │  │               │
+    │ (Native pg) │   │              │  │               │
     │  pgvector   │   │  Cache Layer │  │  OpenRouter   │
     │  21 tables  │   │  Mutex Locks │  │  DeepSeek Dir │
     │  Drizzle    │   │  Rate Limits │  │  Binance      │
@@ -180,7 +172,7 @@ raw_news_buffer (processed=true, relevanceScore >= threshold)
     │      │      │
    SKIP   DeepSeek  DeepSeek Deep Analysis
           Direct    Direct → Factual Grounding (±50% price sanity)
-          or        → Article Writer (same gateway)
+          or        → Writer Gateway (Gemini 2.5 Flash)
           OpenRouter → Quality Audit (if impact >= 75)
           Minor     → Save to coin_news
           Update    → Radar Signal (if actionable verdict)
@@ -194,7 +186,7 @@ raw_news_buffer (processed=true, relevanceScore >= threshold)
 
 **Bootstrap logic:** If a MINOR event arrives for a coin that has no Master Article yet, the system auto-promotes it to MAJOR to create the first Living Article.
 
-**Fallback article generation:** If all 3 AI writer attempts fail schema validation, the system generates a **template-based fallback article** from the raw analysis JSON — no article is ever lost.
+**Fallback schema validation & UI:** If AI writer attempts fail strict schema constraints, the system dynamically relaxes validation (e.g., length-only degradation) to salvage partial articles rather than cluttering the UI with placeholders. If all fallback attempts fail, it safely degrades to a raw template-based rendering from the analysis JSON — no article is ever lost.
 
 ---
 
@@ -207,7 +199,7 @@ raw_news_buffer (processed=true, relevanceScore >= threshold)
 | Node.js + TypeScript | v20+ / Strict Mode | Zero `any` types — catch errors at compile time |
 | Express 5 | v5.2+ | Automatic async error propagation — no try/catch in every route |
 | Drizzle ORM | v0.45+ | Type-safe SQL, faster than Prisma, lower overhead |
-| PostgreSQL (Neon) | v16+ | Serverless-friendly, native pgvector support |
+| PostgreSQL | v16+ | Native `pg` pool + native pgvector (Dropped Neon serverless for lower latency) |
 | pgvector | 0.2+ | Cosine similarity search inside the database |
 | Redis (ioredis) | v5.10+ | Caching + Mutex locks + Rate limiting via Lua scripts |
 | node-cron | v4.2+ | Cron jobs in-process — no Celery, no external queues |
@@ -266,7 +258,7 @@ const gateway = new AIGateway({
     baseURL: 'https://openrouter.ai/api/v1',
 });
 
-// DeepSeek Direct — primary for analysis, triage, and article writing
+// DeepSeek Direct — primary for analysis and triage
 const deepseekGateway = env.DEEPSEEK_API_KEY
     ? new AIGateway({
         apiKey: env.DEEPSEEK_API_KEY,
@@ -274,8 +266,11 @@ const deepseekGateway = env.DEEPSEEK_API_KEY
       })
     : null; // Falls back to OpenRouter if no direct key
 
-// GLM (ZhipuAI) — available extension point (not actively wired)
-createGLMGateway({ apiKey: '...' })
+// Writer Gateway — dedicated to long-form article writing
+const writerGateway = new AIGateway({
+    apiKey: env.OPENROUTER_API_KEY,
+    baseURL: 'https://openrouter.ai/api/v1',
+});
 ```
 
 **Three invocation modes:**
@@ -298,7 +293,7 @@ createGLMGateway({ apiKey: '...' })
 |---|---|---|
 | Triage | DeepSeek Direct → OpenRouter fallback | `deepseek-chat` → `gpt-5-nano` |
 | Deep Analysis | DeepSeek Direct → OpenRouter fallback | `deepseek-chat` → `deepseek/deepseek-r1` |
-| Article Writing | DeepSeek Direct → OpenRouter fallback | `deepseek-chat` → `gpt-5-nano` |
+| Article Writing | Writer Gateway (OpenRouter) | `gemini-2.5-flash` (`WRITER_MODEL`) |
 | Minor Updates | OpenRouter | `gpt-5-nano` |
 | Chat | OpenRouter | `gpt-4.1-mini` |
 | Quality Audit | DeepSeek Direct | `deepseek-chat` |
@@ -547,6 +542,8 @@ Graceful degradation: if Redis is down, development mode allows all requests thr
 
 Instead of publishing 50 articles about BTC in a month, OnlyAlpha maintains **one Master Article per coin** that evolves with the market.
 
+**Deep Dive UI:** The core analysis section is permanently visible directly in the article view. Navigation buttons function as smooth scroll-to anchors down the page, providing a seamless "Deep Dive" experience without hiding vital content behind toggles.
+
 ### Lifecycle
 
 ```
@@ -751,7 +748,8 @@ All variables are validated at startup via Zod (`config/env.ts`). The server **r
 | `REDIS_URL` | — | Redis connection (omit = caching disabled, rate limiting degraded) |
 | `JWT_EXPIRES_IN` | `7d` | Token expiration |
 | `CHAT_MODEL` | `openai/gpt-4.1-mini` | Chat model (separate from SEO for cost/speed) |
-| `SEO_MODEL` | `openai/gpt-5-nano` | Article writing model (OpenRouter fallback) |
+| `SEO_MODEL` | `openai/gpt-5-nano` | Short-form text model (OpenRouter fallback for tasks) |
+| `WRITER_MODEL` | `google/gemini-2.5-flash` | Primary writer model for robust generation |
 | `DEEPSEEK_MODEL` | `deepseek/deepseek-r1` | DeepSeek model via OpenRouter (analysis fallback) |
 | `DEEPSEEK_API_KEY` | — | Direct DeepSeek API key (bypasses OpenRouter — cheaper) |
 | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com/v1` | Direct DeepSeek endpoint |
@@ -885,7 +883,6 @@ OnlyAlpha/
 │   │   │   ├── binanceHistory.service.ts← Historical price data
 │   │   │   ├── dexscreener.service.ts   ← DEX trending + liquidity
 │   │   │   ├── cryptopanic.service.ts   ← News aggregation (available, not wired)
-│   │   │   ├── reddit.service.ts        ← Reddit sentiment (available, not wired)
 │   │   │   ├── rssNews.service.ts       ← RSS feed aggregator (4 sources, primary)
 │   │   │   ├── tavily.service.ts        ← Emergency web search (available, not wired)
 │   │   │   ├── moralis.service.ts       ← On-chain data
@@ -932,10 +929,9 @@ OnlyAlpha/
 │   │   │   ├── seed-master-articles.ts      ← Master article seeding
 │   │   │   └── purge-data.ts                ← Clear all data
 │   │   │
-│   │   ├── utils/                 ← Utility modules (3 files)
+│   │   ├── utils/                 ← Utility modules (2 files)
 │   │   │   ├── logger.ts           ← Winston structured logging
-│   │   │   ├── crypto.ts           ← Crypto helpers
-│   │   │   └── redditExtractor.ts  ← Reddit content extraction
+│   │   │   └── crypto.ts           ← Crypto helpers
 │   │   │
 │   │   └── server.ts              ← Entry point + bootstrap + graceful shutdown
 │   │
