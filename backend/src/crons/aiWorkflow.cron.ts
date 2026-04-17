@@ -305,7 +305,15 @@ export async function runAiWorkflow(): Promise<void> {
 
                 let article: ArticleWriterResult;
                 try {
-                    const analysisJson = JSON.stringify(analysisResult);
+                    const analysisJson = JSON.stringify({
+                        ...analysisResult,
+                        _historicalCases: pattern?.historicalCases?.slice(0, 3) ?? [],
+                        _historicalStats: pattern ? {
+                            sampleSize: pattern.sampleSize,
+                            bullishRate: pattern.bullishRate,
+                            avgOutcome7d: pattern.avgOutcome7d,
+                        } : null,
+                    });
 
                     const stage2A = await callWriterStage2A(analysisJson, tone);
                     if (!stage2A) {

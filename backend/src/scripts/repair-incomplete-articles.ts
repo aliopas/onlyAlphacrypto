@@ -37,8 +37,16 @@ function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const PLACEHOLDER_PATTERNS = [
+    'Additional analysis pending',
+    'Risk assessment pending',
+    'Analysis pending',
+    'Additional price analysis pending',
+];
+
 function isSectionIncomplete(value: string | null): boolean {
-    return value === null || value.trim().length < 10;
+    if (value === null || value.trim().length < 50) return true;
+    return PLACEHOLDER_PATTERNS.some(p => value.includes(p));
 }
 
 async function fetchLatestHeadline(symbol: string): Promise<string | null> {

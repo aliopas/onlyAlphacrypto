@@ -17,11 +17,15 @@ export interface TemporalPattern {
     historicalCases: Array<{ date: string; headline: string; outcome: string }>;
 }
 
+const EVENT_TYPES = ['ETF', 'Hack', 'Listing', 'Upgrade', 'Regulatory', 'Funding'];
+
 export async function fetchHistoricalNewsForCoins(coins: string[]): Promise<void> {
     for (const symbol of coins) {
-        await sleep(2000 + Math.random() * 1000);
-        await fetchCoinHistoricalNews(symbol, 'Other');
-        console.log(`[Temporal] Fetched historical news for ${symbol}`);
+        for (const eventType of EVENT_TYPES) {
+            await sleep(3000 + Math.random() * 1000);
+            await fetchCoinHistoricalNews(symbol, eventType);
+        }
+        console.log(`[Temporal] Fetched all event types for ${symbol}`);
     }
 }
 
@@ -51,6 +55,7 @@ async function fetchCoinHistoricalNews(symbol: string, eventType: string): Promi
                 source: sourceName,
                 publishedAt: publishedAt,
                 eventType: eventType,
+                eventSeverity: 1,
                 priceAtTime: priceAtTime,
             }).onConflictDoNothing({ target: [coinNewsHistory.coinSymbol, coinNewsHistory.title, coinNewsHistory.publishedAt] });
         }
@@ -60,19 +65,35 @@ async function fetchCoinHistoricalNews(symbol: string, eventType: string): Promi
     }
 }
 
-export async function buildTemporalPattern(symbol: string, eventType: string, severity: number): Promise<TemporalPattern | null> {
-    // Fuzzy matching: allow severity within 1, ignore exact eventType match for broader patterns
-    const rows = await db.select()
+export async function buildTemporalPattern(
+    symbol: string,
+    eventType: string,
+    severity: number
+): Promise<TemporalPattern | null> {
+    const exactRows = await db.select()
+        .from(coinNewsHistory)
+        .where(and(
+            eq(coinNewsHistory.coinSymbol, symbol),
+            eq(coinNewsHistory.eventType, eventType),
+            gte(coinNewsHistory.eventSeverity, Math.max(1, severity - 1)),
+            lte(coinNewsHistory.eventSeverity, severity + 1),
+            isNotNull(coinNewsHistory.price7dAfter),
+            gte(coinNewsHistory.publishedAt, sql`NOW() - INTERVAL '365 days'`)
+        ))
+        .orderBy(desc(coinNewsHistory.publishedAt))
+        .limit(15);
+
+    const rows = exactRows.length >= 3 ? exactRows : await db.select()
         .from(coinNewsHistory)
         .where(and(
             eq(coinNewsHistory.coinSymbol, symbol),
             gte(coinNewsHistory.eventSeverity, Math.max(1, severity - 1)),
             lte(coinNewsHistory.eventSeverity, severity + 1),
             isNotNull(coinNewsHistory.price7dAfter),
-            gte(coinNewsHistory.publishedAt, sql`NOW() - INTERVAL '180 days'`)
+            gte(coinNewsHistory.publishedAt, sql`NOW() - INTERVAL '365 days'`)
         ))
         .orderBy(desc(coinNewsHistory.publishedAt))
-        .limit(10); // Increased limit for broader matching
+        .limit(15);
 
     if (rows.length === 0) return null;
 
