@@ -79,7 +79,7 @@ async function repairCoinMeta(coin: typeof coinMasterArticles.$inferSelect): Pro
 }
 
 export async function runMetaTagRepair(): Promise<{ repaired: number; failed: number }> {
-    const FLAG_NAME = 'repair_meta_tags_v1';
+    const FLAG_NAME = 'repair_meta_tags_v2';
 
     const existingFlag = await db.select().from(migrationFlags).where(eq(migrationFlags.flagName, FLAG_NAME)).limit(1);
     if (existingFlag.length > 0) {
