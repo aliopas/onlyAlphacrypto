@@ -96,4 +96,35 @@ All agents must document their start time, objective, and completion status here
 **DEEP REVIEWER NOTE (Final):** All 6 sub-tasks verified. Zero `any` types. Zero tsc errors. All exports backward-compatible. One discrepancy found in initial review (4.4 summary claimed all `open={true}` but code only opened HOOK + BOTTOM LINE) — corrected and re-verified.
 
 ---
-*(Phase 4 Complete — Awaiting next phase assignment)*
+
+### [PHASE 5] Favicon Fix + SEO Meta Tags Enhancement
+**Date:** April 18, 2026
+**Architect:** THE ARCHITECT (GLM-5-Turbo)
+**Executor:** THE Senior Developer
+**Reviewer:** SUPREME REVIEWER (Gemini 3.1 Pro) — Plan audit v1 (REJECTED) → v2 (APPROVED)
+**Plan:** `plans/architect_plan_phase5.md`
+**Tasks:** `plans/phase5_tasks/micro_task_*.md`
+**Status:** ✅ ALL TASKS COMPLETE (8/8) + TypeScript PASSED (zero errors)
+**TypeScript Check:** PASSED (`npx tsc --noEmit` — zero errors)
+**Deep Reviewer:** ⏳ Pending final audit & commit/push
+
+**Track E — Favicon Fix (5/5 ✅ COMPLETE):**
+- **E.1:** ✅ Deleted `icon.svg` from `src/app/` — removed conflicting static SVG that took priority over dynamic `icon.tsx`.
+- **E.2:** ✅ Modified `icon.tsx` — changed size from 144×144 to 32×32 (browser tab favicon). Scaled down all inner font sizes and border-radius proportionally. Created `apple-icon.tsx` — new file at 180×180 for Apple Touch Icon. Both use exact Next.js reserved filenames (`icon.tsx`, `apple-icon.tsx`) with `contentType = 'image/png'` export.
+- **E.3:** ✅ Updated `layout.tsx` — changed `icons` metadata from `{ apple: '/apple-icon.svg' }` to `{ icon: [{ url: '/icon', sizes: '32x32', type: 'image/png' }], apple: '/apple-icon' }`. Updated JSON-LD Organization logo from `${SITE_URL}/icon.svg` to `${SITE_URL}/icon`.
+- **E.4:** ✅ Updated `manifest.json` — replaced single SVG icon entry with two PNG entries (`/icon` at 32×32, `/apple-icon` at 180×180 with maskable purpose).
+- **E.5:** ✅ Created `src/app/favicon.ico/route.ts` — proper Next.js route handler (not `favicon.ico.tsx`) that redirects `/favicon.ico` → `/icon` using `NextResponse.redirect()`.
+
+**Track F — SEO Meta Tags Enhancement (3/3 ✅ COMPLETE):**
+- **F.1:** ✅ Added dynamic `generateMetadata` to `[coin]/alpha/page.tsx` — imports `terminalApi`, fetches `masterArticle` for `metaTitle`/`metaDescription`/`seoKeywords`, uses `title: { absolute }` pattern, strips `| OnlyAlpha` suffix before appending `— Alpha Report`.
+- **F.2:** ✅ Added JSON-LD `Article` structured data to `[coin]/page.tsx` — `buildArticleJsonLd()` helper with `Record<string, unknown>` return type, `WebPage` fallback when no article, injected via `<script type="application/ld+json">` in page component alongside `TerminalPageClient`. `generateMetadata` kept unchanged.
+- **F.3:** ✅ Added JSON-LD `Article` structured data to `[coin]/alpha/page.tsx` — same `buildArticleJsonLd()` pattern, alpha-specific `WebPage` fallback, injected alongside `LivingArticle` component.
+
+**Supreme Reviewer Audit Notes (v1 → v2):**
+- Finding #1: Invalid `icon.png.tsx` / `apple-icon.png.tsx` filenames → FIXED (using exact Next.js reserved names)
+- Finding #2: Invalid `favicon.ico.tsx` route handler → FIXED (using `favicon.ico/route.ts`)
+- Finding #3: Incorrect `/icon.png` references → FIXED (all references use `/icon` and `/apple-icon`)
+- Track F approved unchanged.
+
+---
+*(Phase 5 Complete — 8/8 tasks done, tsc zero errors. Awaiting Deep Reviewer final audit & commit/push)*

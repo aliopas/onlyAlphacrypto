@@ -43,7 +43,10 @@ export const metadata: Metadata = {
     },
   },
   icons: {
-    apple: '/apple-icon.svg',
+    icon: [
+      { url: '/icon', sizes: '32x32', type: 'image/png' },
+    ],
+    apple: '/apple-icon',
   },
   manifest: '/manifest.json',
   openGraph: {
@@ -95,7 +98,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               '@type': 'Organization',
               name: 'OnlyAlpha',
               url: SITE_URL,
-              logo: `${SITE_URL}/icon.svg`,
+              logo: `${SITE_URL}/icon`,
               description: 'AI-Powered Crypto Intelligence — Real-time AI market analysis, airdrop tracking and on-chain intelligence for serious traders.',
             }),
           }}

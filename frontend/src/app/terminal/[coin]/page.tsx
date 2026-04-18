@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { TerminalPageClient } from '@/features/terminal/components/TerminalPageClient';
 import { terminalApi } from '@/features/terminal/api';
 import { homeApi } from '@/features/home/api';
+import { MasterArticle } from '@/features/terminal/types';
 
 export const revalidate = 60;
 
@@ -19,6 +20,34 @@ export function generateStaticParams() {
 const SITE_URL = 'https://onlyalphacrypto.com';
 
 type Params = Promise<{ coin: string }>;
+
+function buildArticleJsonLd(symbol: string, masterArticle: MasterArticle | null): Record<string, unknown> {
+    if (!masterArticle) {
+        return {
+            '@context': 'https://schema.org',
+            '@type': 'WebPage',
+            name: `${symbol} Terminal — OnlyAlpha`,
+            url: `${SITE_URL}/terminal/${symbol.toLowerCase()}`,
+        };
+    }
+
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        headline: masterArticle.metaTitle || `${symbol} Terminal — Live Analysis`,
+        description: masterArticle.metaDescription || `AI-powered analysis for ${symbol}`,
+        author: { '@type': 'Organization', name: 'OnlyAlpha' },
+        publisher: {
+            '@type': 'Organization',
+            name: 'OnlyAlpha',
+            logo: { '@type': 'ImageObject', url: `${SITE_URL}/icon` },
+        },
+        url: `${SITE_URL}/terminal/${symbol.toLowerCase()}`,
+        datePublished: masterArticle.createdAt,
+        dateModified: masterArticle.updatedAt,
+        mainEntityOfPage: `${SITE_URL}/terminal/${symbol.toLowerCase()}`,
+    };
+}
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
     const { coin } = await params;
@@ -86,12 +115,28 @@ export default async function CoinTerminalPage({
     const radarId = resolvedSearchParams.radarId ? Number(resolvedSearchParams.radarId) : undefined;
     const isAlphaFocus = resolvedSearchParams.alpha === 'true';
 
+    let masterArticle: MasterArticle | null = null;
+    try {
+        const resp = await terminalApi.getMasterArticle(coinSymbol);
+        masterArticle = resp.masterArticle;
+    } catch { /* silently fail, JSON-LD fallback handles it */ }
+
+    const jsonLd = buildArticleJsonLd(coinSymbol, masterArticle);
+
     // The component below natively handles merging and filtering now
-    return <TerminalPageClient
-        initialNews={news}
-        coin={coinSymbol}
-        radarSignals={radarSignals}
-        initialRadarId={radarId}
-        isAlphaFocus={isAlphaFocus}
-    />;
+    return (
+        <>
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+            />
+            <TerminalPageClient
+                initialNews={news}
+                coin={coinSymbol}
+                radarSignals={radarSignals}
+                initialRadarId={radarId}
+                isAlphaFocus={isAlphaFocus}
+            />
+        </>
+    );
 }
