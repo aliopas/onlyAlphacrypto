@@ -619,7 +619,9 @@ export async function callGptNanoMasterUpdate(analysisResult: DeepAnalysisResult
         'historicalContext',
         'technicalLevels',
         'riskAssessment',
-        'bottomLine'
+        'bottomLine',
+        'metaTitle',
+        'metaDescription'
     ];
 
     const nullSections = sections.filter(s => !existingArticle[s] || String(existingArticle[s]).length < 50);
@@ -639,6 +641,7 @@ export async function callGptNanoMasterUpdate(analysisResult: DeepAnalysisResult
         temperature: 0.3,
         responseFormat: { type: 'json_object' },
         messages,
+        maxTokens: LONG_RESPONSE_MAX_TOKENS,
     });
 
     let parsed: unknown;
