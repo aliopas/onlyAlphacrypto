@@ -109,6 +109,13 @@ function stripSectionTags(text: string): string {
     return text.replace(/\[\w+(?:\s+\w+)*\??\]/g, '').trim();
 }
 
+function truncateMetaField(value: unknown, maxLength: number): unknown {
+    if (typeof value === 'string') {
+        return value.length > maxLength ? value.slice(0, maxLength).trim() : value;
+    }
+    return value;
+}
+
 const ArticleSchema = z.object({
     headline: z.string().max(120),
     hook: z.string().min(20),
@@ -377,6 +384,12 @@ export async function callGptNanoWriter(analysisJson: string, tone?: string, att
         throw new Error('GPT-nano returned invalid JSON after 3 attempts');
     }
 
+    if (parsed && typeof parsed === 'object') {
+        const obj = parsed as Record<string, unknown>;
+        obj.metaTitle = truncateMetaField(obj.metaTitle, 60);
+        obj.metaDescription = truncateMetaField(obj.metaDescription, 160);
+    }
+
     const result = ArticleSchema.safeParse(parsed);
     if (!result.success) {
         console.warn(`[GPT-nano] Schema validation failed (attempt ${attempt}):`, result.error.issues);
@@ -461,6 +474,12 @@ export async function callWriterStage2A(analysisJson: string, tone: string, atte
         if (attempt < MAX_ATTEMPTS) return callWriterStage2A(analysisJson, tone, attempt + 1);
         console.warn('[Stage2A] All retries exhausted — returning null.');
         return null;
+    }
+
+    if (parsed && typeof parsed === 'object') {
+        const obj = parsed as Record<string, unknown>;
+        obj.metaTitle = truncateMetaField(obj.metaTitle, 60);
+        obj.metaDescription = truncateMetaField(obj.metaDescription, 160);
     }
 
     const result = Stage2ASchema.safeParse(parsed);
@@ -645,6 +664,8 @@ export async function callGptNanoMasterUpdate(analysisResult: DeepAnalysisResult
             filtered[key] = parsedObj[key];
         }
     }
+    filtered.metaTitle = truncateMetaField(filtered.metaTitle, 60);
+    filtered.metaDescription = truncateMetaField(filtered.metaDescription, 160);
     return filtered;
 }
 

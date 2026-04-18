@@ -1,7 +1,7 @@
 # OnlyAlpha — Project State
 
 **Last Updated:** April 18, 2026
-**Current Focus:** Phase 5 Complete — Awaiting Deep Reviewer final audit & push
+**Current Focus:** Phase 6 Complete — Awaiting Commit/Push
 
 ---
 
@@ -71,51 +71,51 @@ backend/src/services/ai/
 **Git:** Pending push to `main`
 
 #### Track C — Backend (3/3 ✅)
-| Sub-Task | Status | Details |
-|----------|--------|---------|
-| 4.1 | ✅ DONE | Migrated `callGptNanoMinorUpdate` inline prompts to `PromptFactory.buildMinorUpdateMessages()`. |
-| 4.2 | ✅ DONE | Added per-entry TTL to `CacheManager.set()`. Fallback cache in `generateLightweightTriage` uses 5-min TTL with separate key prefix. |
-| 4.3 | ✅ DONE | Consolidated cleanup — TTL in periodic `cleanup()`, maxSize in `_cleanup()`. |
+- 4.1: Migrated `callGptNanoMinorUpdate` inline prompts to `PromptFactory.buildMinorUpdateMessages()`.
+- 4.2: Added per-entry TTL to `CacheManager.set()`. Fallback cache uses 5-min TTL with separate key prefix.
+- 4.3: Consolidated cleanup — TTL in periodic `cleanup()`, maxSize in `_cleanup()`.
 
 #### Track D — Frontend (3/3 ✅)
-| Sub-Task | Status | Details |
-|----------|--------|---------|
-| 4.4 | ✅ DONE | All `<details>` accordions default to `open={true}` in `AlphaStream.tsx`. |
-| 4.5 | ✅ DONE | No changes needed — native `<details>` handles state reliably. |
-| 4.6 | ✅ DONE | Verified "Read Deep Dive" buttons use `scrollToDeepDive` only — no accordion toggle. |
+- 4.4: All `<details>` accordions default to `open={true}` in `AlphaStream.tsx`.
+- 4.5: No changes needed — native `<details>` handles state reliably.
+- 4.6: Verified "Read Deep Dive" buttons use `scrollToDeepDive` only.
+
+### Phase 5 — Favicon Fix + SEO Meta Tags Enhancement ✅
+
+**Plan:** `plans/architect_plan_phase5.md` (APPROVED by Supreme Reviewer v2)
+**Tasks:** `plans/phase5_tasks/` (8 micro-tasks + 1 final verification)
+**TypeScript Check:** PASSED (`npx tsc --noEmit` — zero errors)
+**Git:** Pending commit/push by Deep Reviewer
+
+#### Track E — Favicon Fix (5/5 ✅)
+- E.1–E.5: All favicon files created/fixed, `layout.tsx` and `manifest.json` updated.
+
+#### Track F — SEO Meta Tags Enhancement (3/3 ✅)
+- F.1–F.3: Dynamic `generateMetadata` + JSON-LD structured data on terminal and alpha pages.
+
+### Phase 6 — Bug Fixes (Re-Processing, Meta Truncation, SEO Repair) ✅
+
+**Plan:** `plans/architect_plan_phase6.md` (v2)
+**TypeScript Check:** PASSED (zero errors — both backend & frontend)
+**Git:** Pending commit/push by Deep Reviewer
+
+#### Track G — Stop Re-Processing Consumed Items (2/2 ✅)
+- 6.1: Added `eq(consumed, false)` to both DB queries in `aiWorkflow.cron.ts`.
+- 6.2: Added `markBufferItemConsumed()` helper + inserted at all 6 exit points.
+
+#### Track H — Truncate Meta Tags Before Validation (4/4 ✅)
+- 6.4: Added `truncateMetaField()` helper (returns `unknown`, preserves Zod type validation).
+- 6.5: Type-guard + truncate before `ArticleSchema.safeParse` in `callGptNanoWriter`.
+- 6.6: Type-guard + truncate before `Stage2ASchema.safeParse` in `callWriterStage2A`.
+- 6.8: Truncate in `callGptNanoMasterUpdate` filtered result.
+
+#### Track I — Repair Existing Meta Tags (1/1 ✅)
+- 6.9: Created `backend/src/scripts/repair-meta-tags.ts` — migration flag, concurrency limit, generic pattern detection.
 
 ---
 
-## 🔴 Current Mission (Active Phase)
-**Phase 5 — Favicon Fix + SEO Meta Tags Enhancement**
-
-**Plan:** `plans/architect_plan_phase5.md` (APPROVED by Supreme Reviewer v2)
-**Task Collection:** `plans/phase5_tasks/` (8 micro-tasks + 1 final verification)
-**Status:** ✅ ALL TASKS COMPLETE (8/8) + TypeScript PASSED (zero errors)
-**Deep Reviewer:** ⏳ Pending final audit & commit/push
-
-**Zero backend changes. Zero new dependencies. 4 edits, 3 new files, 1 delete.**
-
-#### Track E — Favicon Fix (5/5 tasks) ✅ COMPLETE
-| Micro-Task | Status | Details |
-|-----------|--------|---------|
-| E.1 | ✅ DONE | Deleted `icon.svg` from `src/app/` |
-| E.2 | ✅ DONE | Modified `icon.tsx` (144→32 size) + created `apple-icon.tsx` (180×180) |
-| E.3 | ✅ DONE | Updated `layout.tsx` `icons` metadata (`/icon`, `/apple-icon`) + JSON-LD logo (`/icon.svg` → `/icon`) |
-| E.4 | ✅ DONE | Updated `manifest.json` icon references (`/icon.svg` → `/icon`, `/apple-icon`) |
-| E.5 | ✅ DONE | Created `src/app/favicon.ico/route.ts` (redirect `/favicon.ico` → `/icon`) |
-
-#### Track F — SEO Meta Tags Enhancement (3/3 tasks)
-| Micro-Task | Status | Details |
-|-----------|--------|---------|
-| F.1 | ✅ DONE | Add dynamic `generateMetadata` to alpha page (`[coin]/alpha/page.tsx`) |
-| F.2 | ✅ DONE | Add JSON-LD structured data to coin terminal page (`[coin]/page.tsx`) |
-| F.3 | ✅ DONE | Add JSON-LD structured data to alpha page (`[coin]/alpha/page.tsx`) |
-
-#### Final Verification
-| Micro-Task | Status | Details |
-|-----------|--------|---------|
-| FINAL | ✅ DONE | TypeScript check passed (`npx tsc --noEmit` — zero errors) |
+## 🔴 Current Mission
+**No active phase. Awaiting commit/push of Phases 4-6, then new instructions.**
 
 ---
 

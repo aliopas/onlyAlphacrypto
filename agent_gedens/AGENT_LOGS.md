@@ -127,4 +127,30 @@ All agents must document their start time, objective, and completion status here
 - Track F approved unchanged.
 
 ---
-*(Phase 5 Complete — 8/8 tasks done, tsc zero errors. Awaiting Deep Reviewer final audit & commit/push)*
+
+### [PHASE 6] Bug Fixes (Re-Processing, Meta Truncation, SEO Repair)
+**Date:** April 18, 2026
+**Architect:** THE ARCHITECT (GLM-5-Turbo)
+**Executor:** THE Senior Developer
+**Reviewer:** THE DEEP REVIEWER (GLM-5-Turbo)
+**Plan:** `plans/architect_plan_phase6.md` (v2)
+**Status:** ✅ COMPLETE — Track G: 2/2, Track H: 4/4, Track I: 1/1
+**TypeScript Check:** PASSED (zero errors — both backend & frontend, after Deep Reviewer fix)
+
+**Track G — Stop Re-Processing Consumed Items (2/2 ✅):**
+- **6.1:** ✅ Added `eq(rawNewsBuffer.consumed, false)` to both DB queries in `aiWorkflow.cron.ts` (lines 150, 162).
+- **6.2:** ✅ Added `markBufferItemConsumed()` helper (lines 22-26). Inserted at all 6 exit points: no-symbol (190), NOISE (220), MINOR-no-master (228), duplicate (212), MINOR-done (258), MAJOR-done (495). Circuit-breaker/rate-limit `continue` paths correctly NOT marked (intentional retry).
+
+**Track H — Truncate Meta Tags Before Validation (4/4 ✅):**
+- **6.4:** ✅ Added `truncateMetaField()` helper in `openai.service.ts` (lines 112-117). Returns `unknown` to preserve Zod type validation.
+- **6.5:** ✅ Type-guard + truncate before `ArticleSchema.safeParse` in `callGptNanoWriter` (lines 387-391).
+- **6.6:** ✅ Type-guard + truncate before `Stage2ASchema.safeParse` in `callWriterStage2A` (lines 479-483).
+- **6.8:** ✅ Truncate in `callGptNanoMasterUpdate` filtered result (lines 667-668). `filtered` already `Record<string, unknown>` — no guard needed.
+
+**Track I — Repair Existing Meta Tags (1/1 ✅):**
+- **6.9:** ✅ Created `backend/src/scripts/repair-meta-tags.ts` — follows `repair-incomplete-articles.ts` pattern. Migration flag `repair_meta_tags_v1`, `CONCURRENCY_LIMIT=2`, 5s delay. `isMetaTagPoor()` detects generic/null/short meta tags. `repairCoinMeta()` builds `DeepAnalysisResult` stub and calls `callGptNanoMasterUpdate`.
+
+**DEEP REVIEWER FIX:** Found 2 TypeScript errors in `repair-meta-tags.ts:29,45` — `coin.sentiment` and `coin.verdict` from DB are `string` but `DeepAnalysisResult` requires union literals. Fixed with `as const` type guard arrays (`VALID_SENTIMENTS`, `VALID_VERDICTS`) that validate before casting. Zero `any` types across all modified files. All exports backward-compatible. No route/controller/cron files modified outside plan scope.
+
+---
+*(Phase 6 Complete — 7/7 tasks done, tsc zero errors after Deep Reviewer fix. Ready for commit/push)*

@@ -19,6 +19,12 @@ import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimeline
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 
+async function markBufferItemConsumed(bufferId: number): Promise<void> {
+    await db.update(rawNewsBuffer)
+        .set({ consumed: true })
+        .where(eq(rawNewsBuffer.id, bufferId));
+}
+
 let isAiWorkflowRunning = false;
 
 const TRIGGER_TYPE_MAP: Record<string, string> = {
@@ -141,6 +147,7 @@ export async function runAiWorkflow(): Promise<void> {
             .where(and(
                 gte(rawNewsBuffer.relevanceScore, threshold),
                 eq(rawNewsBuffer.processed, true),
+                eq(rawNewsBuffer.consumed, false),
                 isNotNull(rawNewsBuffer.symbolMentions),
                 ne(rawNewsBuffer.symbolMentions, sql`'[]'::jsonb`)
             ))
@@ -152,6 +159,7 @@ export async function runAiWorkflow(): Promise<void> {
             .where(and(
                 gte(rawNewsBuffer.relevanceScore, Math.max(threshold, 75)),
                 eq(rawNewsBuffer.processed, true),
+                eq(rawNewsBuffer.consumed, false),
                 or(
                     isNull(rawNewsBuffer.symbolMentions),
                     eq(rawNewsBuffer.symbolMentions, sql`'[]'::jsonb`)
@@ -179,6 +187,7 @@ export async function runAiWorkflow(): Promise<void> {
 
             if (!symbol) {
                 console.log(`[AI Workflow] No symbol found for: "${item.title.slice(0, 60)}..." — skipping`);
+                await markBufferItemConsumed(item.id);
                 continue;
             }
 
@@ -200,6 +209,7 @@ export async function runAiWorkflow(): Promise<void> {
 
             if (await isDuplicateByEmbedding(item.title, symbol)) {
                 console.log(`[AI Workflow] Skipping duplicate: ${symbol}`);
+                await markBufferItemConsumed(item.id);
                 continue;
             }
 
@@ -207,6 +217,7 @@ export async function runAiWorkflow(): Promise<void> {
 
             if (classification === 'NOISE') {
                 console.log(`[AI Workflow] Skipping NOISE: ${symbol}`);
+                await markBufferItemConsumed(item.id);
                 continue;
             }
 
@@ -214,6 +225,7 @@ export async function runAiWorkflow(): Promise<void> {
                 const master = await db.select().from(coinMasterArticles).where(eq(coinMasterArticles.coinSymbol, symbol)).limit(1);
                 if (master.length === 0) {
                     console.log(`[AI Workflow] No master article for MINOR ${symbol}, skipping`);
+                    await markBufferItemConsumed(item.id);
                     continue;
                 }
                 const existingHeadline = master[0].headline;
@@ -243,6 +255,7 @@ export async function runAiWorkflow(): Promise<void> {
                 await storeEmbedding(item.id, item.title);
 
                 console.log(`[AI Workflow] MINOR update for ${symbol}`);
+                await markBufferItemConsumed(item.id);
                 continue;
             }
 
@@ -478,6 +491,8 @@ export async function runAiWorkflow(): Promise<void> {
                 await deleteCache('insight:all');
 
                 console.log(`[AI Workflow] Published: ${symbol} — "${article.headline.slice(0, 50)}..."`);
+
+                await markBufferItemConsumed(item.id);
 
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
