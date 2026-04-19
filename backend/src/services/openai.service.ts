@@ -688,22 +688,26 @@ function buildFallbackArticle(analysisJson: string): ArticleWriterResult {
     const supports = Array.isArray(analysis.supportLevels) ? analysis.supportLevels as number[] : [];
     const resists = Array.isArray(analysis.resistanceLevels) ? analysis.resistanceLevels as number[] : [];
 
+    const sentimentDirection = verdict.toUpperCase().includes('BUY') ? 'Bullish'
+        : verdict.toUpperCase().includes('SELL') ? 'Bearish'
+        : 'Neutral';
+
     const fullArticle = [
-        `[HOOK] ${String(a?.mainDriver || 'Market analysis update')} for ${coin}. Data indicates a ${sentiment} outlook with ${confidence}% confidence.`,
+        `[HOOK] ${String(a?.mainDriver || 'Market analysis update')} for ${coin}. Data indicates a ${sentiment} outlook with ${confidence}% trend strength.`,
         `[WHAT HAPPENED] ${keyFacts.length > 0 ? keyFacts.join('. ') : 'Multiple market factors are currently influencing ' + coin + ' price action.'} The current analysis reflects the latest available data.`,
-        `[WHY IT MATTERS] ${String(a?.priceImplication || 'This development has significant implications for ' + coin + ' traders and investors.')} Market participants should monitor the situation closely for further developments.`,
+        `[WHY IT MATTERS] ${String(a?.priceImplication || 'This development has significant implications for ' + coin + ' market participants.')} Monitoring the situation closely for further developments is recommended.`,
         `[HISTORY REPEATS?] ${String(a?.temporalContext || 'Historical patterns for ' + coin + ' suggest monitoring similar past events for potential price trajectories.')}`,
         `[PRICE PICTURE] ${supports.length > 0 ? 'Key support levels at ' + supports.join(', ') + '.' : ''} ${resists.length > 0 ? 'Resistance levels at ' + resists.join(', ') + '.' : ''} Current sentiment reads ${sentiment}.`,
         `[RISK CHECK] ${String(a?.riskNote || 'Standard risk management practices are advised.')} Always consider position sizing and stop-loss strategies in volatile market conditions.`,
-        `[BOTTOM LINE] Analysis rates this as ${verdict} with ${confidence}% confidence. ${String(a?.mainDriver || 'Monitor the situation for updates.')}`,
+        `[BOTTOM LINE] Current on-chain metrics and social sentiment indicate a ${sentimentDirection} trend, supported by a ${confidence}% trend strength index. ${String(a?.mainDriver || 'Market data should be monitored for evolving conditions.')}`,
     ].join('\n\n');
 
     return {
         headline: `${coin} Market Analysis — ${sentiment.toUpperCase()} Signal Detected`,
-        hook: `${coin} is showing ${sentiment} signals with a ${verdict} rating at ${confidence}% confidence.`,
+        hook: `${coin} is showing ${sentiment} signals with a ${sentimentDirection} sentiment reading at ${confidence}% trend strength.`,
         fullArticle,
         metaTitle: `${coin} Analysis | OnlyAlpha`,
-        metaDescription: `${coin} market analysis: ${verdict} at ${confidence}% confidence. Read the analysis on OnlyAlpha.`,
+        metaDescription: `${coin} market analysis: ${sentimentDirection} sentiment at ${confidence}% trend strength. Read the analysis on OnlyAlpha.`,
         seoKeywords: [coin.toLowerCase(), coin.toLowerCase() + '-price', 'market-analysis', sentiment, 'crypto'],
     };
 }

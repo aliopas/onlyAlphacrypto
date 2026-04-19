@@ -288,7 +288,7 @@ Use supportLevels and resistanceLevels from the input. Reference the current pri
 Use analysis.riskNote honestly. Add context about downside scenarios, liquidation risks, or regulatory overhang. Be specific about what could go wrong. Write 3-4 substantive sentences.
 
 [BOTTOM LINE]
-State the verdict and confidenceScore. Provide a clear summary of the overall assessment. Format: "Analysis rates this as [verdict] with [confidenceScore]% confidence." Write 2-3 substantive sentences.
+Provide a data-driven synthesis of the overall market assessment. Summarize the key data points and trend indicators. Format: "Current on-chain metrics and social sentiment indicate a [sentiment direction] trend, supported by a [confidenceScore]% trend strength index." Write 2-3 substantive sentences using phrases like "data suggests", "analysis indicates", "metrics point to". NEVER use BUY, SELL, HOLD, or any imperative action words. Describe the state of the market, not a decision to make.
 
 CRITICAL RULES:
 - ALL 7 tags MUST appear in the output. Missing even ONE tag will cause the output to be REJECTED.
@@ -298,7 +298,7 @@ CRITICAL RULES:
 - No vague language. No financial advice — use "data suggests", "analysis indicates".
 - The fullArticle MUST be at least 3500 characters total.
 - Write REAL content, not filler. Every sentence must add value or information.
-- CONSISTENCY RULE: The textual summary in [BOTTOM LINE] MUST strictly match the JSON verdict field. Do NOT write "BUY" in text if the verdict is "SELL" or vice versa. The verdict and the narrative must be perfectly aligned.`
+- CONSISTENCY RULE: The textual summary in [BOTTOM LINE] MUST reflect the sentiment direction from the JSON verdict field. Map BUY→Bullish, SELL→Bearish, HOLD/NEUTRAL→Neutral. The narrative must describe market conditions, not prescribe actions.`
             },
             {
                 role: 'user',
@@ -359,7 +359,7 @@ Output STRICT JSON:
   "sections": {
     "PRICE PICTURE": "<Use supportLevels and resistanceLevels from the input. Reference the current price trend and distance from ATH. Discuss volume, momentum, and key technical levels with specific numbers. Write 3-4 substantive sentences.>",
     "RISK CHECK": "<Use analysis.riskNote honestly. Add context about downside scenarios, liquidation risks, or regulatory overhang. Be specific about what could go wrong. Write 3-4 substantive sentences.>",
-    "BOTTOM LINE": "<State the verdict and confidenceScore. Provide a clear summary of the overall assessment. Verdict in BOTTOM LINE must exactly match '${stage2AContext.verdict}'. Format: 'Analysis rates this as [verdict] with [confidenceScore]% confidence.' Write 2-3 substantive sentences.>"
+    "BOTTOM LINE": "<Provide a data-driven synthesis of the overall market assessment. Map '${stage2AContext.verdict}' to sentiment direction (BUY→Bullish, SELL→Bearish, HOLD/NEUTRAL→Neutral). Format: 'Current on-chain metrics and social sentiment indicate a [sentiment direction] trend, supported by a [confidenceScore]% trend strength index.' Use phrases like 'data suggests', 'analysis indicates', 'metrics point to'. NEVER use BUY, SELL, HOLD, or any imperative action words. Write 2-3 substantive sentences describing market conditions, not prescribing actions.>"
   }
 }
 
@@ -367,8 +367,8 @@ CRITICAL RULES:
 - Each section MUST be at least 300 characters of substantive content (BOTTOM LINE at least 150).
 - Tone consistent with provided headline + hook context.
 - Bloomberg meets Reddit tone.
-- No vague language, no financial advice.
-- Verdict in BOTTOM LINE must exactly match input JSON verdict.
+- No vague language, no financial advice. NEVER use BUY, SELL, HOLD in any section text.
+- Sentiment in BOTTOM LINE must map from input JSON verdict (BUY→Bullish, SELL→Bearish, NEUTRAL→Neutral).
 - Output ONLY the JSON object. No preamble. No text outside JSON.
 `;
         const user = `Original Analysis JSON:

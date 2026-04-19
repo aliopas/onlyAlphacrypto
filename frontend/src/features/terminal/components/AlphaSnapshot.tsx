@@ -32,12 +32,18 @@ export const AlphaSnapshot: React.FC<AlphaSnapshotProps> = ({ article }) => {
         return 'text-[#888]';
     };
 
-    const getVerdictColor = (verdict: string | null | undefined) => {
+    const mapVerdictToSentiment = (verdict: string | null | undefined): string => {
         const v = verdict?.toUpperCase() ?? '';
-        if (v.includes('SELL')) return 'text-rose-500';
-        if (v.includes('BUY')) return 'text-emerald-500';
-        if (v.includes('NEUTRAL') || v.includes('HOLD')) return 'text-amber-500';
-        return 'text-[#888]';
+        if (v.includes('SELL') || v.includes('BEARISH') || v.includes('NEGATIVE')) return 'Bearish';
+        if (v.includes('BUY') || v.includes('BULLISH') || v.includes('POSITIVE')) return 'Bullish';
+        return 'Neutral';
+    };
+
+    const getSentimentLabelColor = (verdict: string | null | undefined) => {
+        const v = verdict?.toUpperCase() ?? '';
+        if (v.includes('SELL') || v.includes('BEARISH')) return 'text-rose-500';
+        if (v.includes('BUY') || v.includes('BULLISH')) return 'text-emerald-500';
+        return 'text-amber-500';
     };
 
     return (
@@ -51,7 +57,7 @@ export const AlphaSnapshot: React.FC<AlphaSnapshotProps> = ({ article }) => {
 
             <div className="mb-4">
                 <div className="flex justify-between text-sm text-[#888] mb-1">
-                    <span>Conviction Score</span>
+                    <span>Trend Strength</span>
                     <span>{article.convictionScore || 0}/100</span>
                 </div>
                 <div className="w-full bg-[#111] rounded-full h-2">
@@ -63,15 +69,15 @@ export const AlphaSnapshot: React.FC<AlphaSnapshotProps> = ({ article }) => {
             </div>
 
             <div className="mb-4">
-                <h3 className="text-lg font-medium text-white mb-2">Verdict</h3>
-                <p className={`text-lg font-bold ${getVerdictColor(article.verdict)}`}>
-                    {article.verdict}
+                <h3 className="text-lg font-medium text-white mb-2">Market Sentiment</h3>
+                <p className={`text-lg font-bold ${getSentimentLabelColor(article.verdict)}`}>
+                    {mapVerdictToSentiment(article.verdict)}
                 </p>
             </div>
 
             {article.riskTags && article.riskTags.length > 0 && (
                 <div className="mb-4">
-                    <h3 className="text-sm font-medium text-[#888] mb-2">Risk Tags</h3>
+                    <h3 className="text-sm font-medium text-[#888] mb-2">Risk Profile</h3>
                     <div className="flex flex-wrap gap-2">
                         {article.riskTags.map((tag, index) => (
                             <span

@@ -22,7 +22,7 @@ const SECTION_LABELS: Record<SectionName, string> = {
     'HISTORY REPEATS': 'Historical Precedent',
     'PRICE PICTURE': 'Technical Levels',
     'RISK CHECK': 'Risk Assessment',
-    'BOTTOM LINE': 'Executive Summary',
+    'BOTTOM LINE': 'Data Synthesis',
 };
 
 function parseArticleSections(summary: string): Array<{ key: SectionName; label: string; content: string }> {

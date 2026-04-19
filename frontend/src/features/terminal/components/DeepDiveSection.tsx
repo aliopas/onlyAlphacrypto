@@ -17,7 +17,7 @@ const SECTIONS = [
     { label: 'Historical Precedent', key: 'historicalContext' as const },
     { label: 'Technical Levels', key: 'technicalLevels' as const },
     { label: 'Risk Assessment', key: 'riskAssessment' as const },
-    { label: 'Executive Summary', key: 'bottomLine' as const },
+    { label: 'Data Synthesis', key: 'bottomLine' as const },
 ];
 
 export default function DeepDiveSection({ symbol }: DeepDiveSectionProps) {
