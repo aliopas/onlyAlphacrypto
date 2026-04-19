@@ -80,7 +80,7 @@ interface Props {
 export function AlphaStream({ newsId, radarSignal }: Props) {
     const [article, setArticle] = useState<CoinNews | null>(null);
     const [loading, setLoading] = useState(false);
-    const [showDeepDive, setShowDeepDive] = useState(false);
+    const [showDeepDive, setShowDeepDive] = useState(true);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
