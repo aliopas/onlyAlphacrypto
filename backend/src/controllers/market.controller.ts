@@ -128,19 +128,37 @@ export async function getRadarSignals(req: Request, res: Response, next: NextFun
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
 
-        const signals = await db
-            .select()
-            .from(radarSignals)
-            .orderBy(desc(radarSignals.createdAt))
-            .limit(limit)
-            .offset(offset);
+        // Use DISTINCT ON to get only the LATEST signal per coin_symbol.
+        // This prevents duplicate coin cards in the radar feed when a coin
+        // has had multiple signals generated over time.
+        const rawSignals = await db.execute(sql`
+            SELECT DISTINCT ON (coin_symbol)
+                id, coin_symbol, signal_text, sentiment, impact_score, news_id, created_at
+            FROM radar_signals
+            WHERE coin_symbol IS NOT NULL
+            ORDER BY coin_symbol, created_at DESC
+        `);
 
-        const mappedSignals = signals.map(s => ({
-            ...s,
-            coin: s.coinSymbol,
-            signal: s.signalText,
-            formattedTime: (req as unknown as { formatTime?: (date: Date | string | number) => string }).formatTime?.(s.createdAt) ?? null
+        const formatTime = (req as unknown as { formatTime?: (date: Date | string | number) => string }).formatTime;
+
+        let mappedSignals = (rawSignals.rows as Array<Record<string, unknown>>).map(s => ({
+            id: s.id as number,
+            coinSymbol: s.coin_symbol as string,
+            coin: s.coin_symbol as string,
+            signalText: s.signal_text as string,
+            signal: s.signal_text as string,
+            sentiment: s.sentiment as string | null,
+            impactScore: s.impact_score as number | null,
+            newsId: s.news_id as number | null,
+            createdAt: s.created_at as Date,
+            formattedTime: formatTime?.(s.created_at as Date | string | number) ?? null
         }));
+
+        // Sort by recency after per-coin deduplication, then apply pagination
+        mappedSignals.sort((a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        mappedSignals = mappedSignals.slice(offset, offset + limit);
 
         await setCache(cacheKey, mappedSignals, 60);
         res.json(mappedSignals);

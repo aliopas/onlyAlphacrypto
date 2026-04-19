@@ -18,6 +18,7 @@ import { startBufferCleanupCron } from './crons/bufferCleanup.cron';
 import { startConvictionUpdateCron } from './crons/convictionUpdate.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
+import { runMetaTagRepair } from './scripts/repair-meta-tags';
 import { logger } from './utils/logger';
 
 const app = express();
@@ -66,6 +67,11 @@ async function bootstrap(): Promise<void> {
         
         // Auto-repair any incomplete master articles on boot (only runs once via DB flag)
         await runArticleRepair();
+
+        // Auto-repair poor/missing meta tags on boot (only runs once via DB flag v3)
+        runMetaTagRepair().catch(err =>
+            logger.error('[Server] runMetaTagRepair failed (non-blocking): %s', err instanceof Error ? err.message : String(err))
+        );
 
         const PORT = parseInt(env.PORT, 10);
         app.listen(PORT, () => {
