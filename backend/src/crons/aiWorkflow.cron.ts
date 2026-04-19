@@ -497,6 +497,9 @@ export async function runAiWorkflow(): Promise<void> {
             } catch (err) {
                 const message = err instanceof Error ? err.message : String(err);
                 console.error(`[AI Workflow] Failed for ${symbol}:`, message);
+                // Always consume the item even on failure to prevent infinite re-processing loops.
+                // If the error is transient (rate limit, timeout), the next news cycle will provide fresh input.
+                await markBufferItemConsumed(item.id);
             }
         }
 

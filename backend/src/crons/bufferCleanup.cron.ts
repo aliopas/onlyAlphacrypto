@@ -13,6 +13,7 @@ export async function runBufferCleanup(): Promise<void> {
             .where(
                 and(
                     eq(rawNewsBuffer.processed, true),
+                    eq(rawNewsBuffer.consumed, true),
                     lt(rawNewsBuffer.ttlExpiresAt, sql`now()`)
                 )
             )

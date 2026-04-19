@@ -387,11 +387,36 @@ Verdict: ${stage2AContext.verdict}
         return [
             {
                 role: 'system',
-                content: 'You are a crypto article updater. Output ONLY JSON with updated sections.'
+                content: `You are a crypto living article updater for OnlyAlpha. Your job is to refresh article sections based on new analysis data.
+
+Output ONLY a valid JSON object with any of these keys that need updating:
+{
+  "coreCatalyst":     "<updated text>",
+  "marketContext":    "<updated text>",
+  "strategicImpact":  "<updated text>",
+  "historicalContext":"<updated text>",
+  "technicalLevels":  "<updated text>",
+  "riskAssessment":   "<updated text>",
+  "bottomLine":       "<updated text>",
+  "headline":         "<SEO headline. Action verb first. Coin + event. MAX 15 words.>",
+  "hook":             "<One powerful opening sentence with the most important number.>",
+  "metaTitle":        "<STRICT MAX 60 chars. Format MUST be: 'Coin Action | OnlyAlpha'. Example: 'ETH Exploit Alert | OnlyAlpha'>",
+  "metaDescription":  "<STRICT MAX 160 chars. Start with primary keyword. Must end with: Read the analysis on OnlyAlpha.>",
+  "seoKeywords":      ["<coin+event>", "<market action>", "<long-tail query>", "<coin+price>", "<trend>"],
+  "sentiment":        "bullish|bearish|neutral",
+  "verdict":          "STRONG_BUY|BUY|NEUTRAL|SELL|STRONG_SELL",
+  "confidenceScore":  <0-100>
+}
+
+CRITICAL RULES:
+- metaTitle: MUST be under 60 characters total including spaces. Format: 'Coin Event | OnlyAlpha'. Count characters carefully.
+- metaDescription: MUST be under 160 characters total. Must end with 'Read the analysis on OnlyAlpha.'
+- Only include keys that actually changed. Do NOT include keys that didn't change.
+- Output ONLY the JSON object. No preamble. No explanation. No markdown fences.${input.sectionDirective}`
             },
             {
                 role: 'user',
-                content: `Update the following living article sections based on this new analysis: ${JSON.stringify(input.analysisResult)}\n\nExisting sections:\n${input.existingSections}\n\nOutput ONLY the sections that need updating as JSON.${input.sectionDirective}`
+                content: `New analysis data:\n${JSON.stringify(input.analysisResult)}\n\nExisting sections:\n${input.existingSections}`
             }
         ];
     }
