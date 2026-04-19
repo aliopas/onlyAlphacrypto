@@ -103,22 +103,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             }),
           }}
         />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'WebSite',
-              name: 'OnlyAlpha',
-              url: SITE_URL,
-              potentialAction: {
-                '@type': 'SearchAction',
-                target: `${SITE_URL}/search?q={search_term_string}`,
-                'query-input': 'required name=search_term_string',
-              },
-            }),
-          }}
-        />
       </head>
       <body className={`${inter.variable} font-sans bg-black text-white h-screen flex flex-col md:flex-row overflow-hidden`}>
         {/* Left sidebar nav (Desktop) / Bottom nav (Mobile) */}

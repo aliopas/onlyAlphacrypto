@@ -59,6 +59,15 @@ const envSchema = z.object({
     NEXTJS_REVALIDATE_SECRET: z.string().optional(),
     NEXTJS_BASE_URL: z.string().url().optional(),
 
+    // GLM / Zhipu AI (Planner + QA agents)
+    GLM_API_KEY: z.string().min(1, 'GLM_API_KEY is required'),
+    GLM_BASE_URL: z.string().default('https://open.bigmodel.cn/api/paas/v4'),
+    GLM_PLANNER_MODEL: z.string().default('glm-4-plus'),
+    GLM_QA_MODEL: z.string().default('glm-4-plus'),
+
+    // Agent Workflow — Coder model via OpenRouter
+    OPENROUTER_CODER_MODEL: z.string().default('meta-llama/llama-3-8b-instruct:free'),
+
     // Embeddings (pgvector semantic dedup)
     EMBEDDING_PROVIDER: z.enum(['openrouter', 'ollama']).default('openrouter'),
     EMBEDDING_MODEL: z.string().default('openai/text-embedding-3-small'),

@@ -21,7 +21,7 @@ import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 
 async function markBufferItemConsumed(bufferId: number): Promise<void> {
     await db.update(rawNewsBuffer)
-        .set({ consumed: true })
+        .set({ consumedAt: sql`NOW()` })
         .where(eq(rawNewsBuffer.id, bufferId));
 }
 
@@ -147,7 +147,7 @@ export async function runAiWorkflow(): Promise<void> {
             .where(and(
                 gte(rawNewsBuffer.relevanceScore, threshold),
                 eq(rawNewsBuffer.processed, true),
-                eq(rawNewsBuffer.consumed, false),
+                isNull(rawNewsBuffer.consumedAt),
                 isNotNull(rawNewsBuffer.symbolMentions),
                 ne(rawNewsBuffer.symbolMentions, sql`'[]'::jsonb`)
             ))
@@ -159,7 +159,7 @@ export async function runAiWorkflow(): Promise<void> {
             .where(and(
                 gte(rawNewsBuffer.relevanceScore, Math.max(threshold, 75)),
                 eq(rawNewsBuffer.processed, true),
-                eq(rawNewsBuffer.consumed, false),
+                isNull(rawNewsBuffer.consumedAt),
                 or(
                     isNull(rawNewsBuffer.symbolMentions),
                     eq(rawNewsBuffer.symbolMentions, sql`'[]'::jsonb`)

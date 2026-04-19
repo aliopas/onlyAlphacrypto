@@ -53,7 +53,7 @@ export const LivingArticle: React.FC<LivingArticleProps> = ({ symbol }) => {
             <div className="flex-1 flex flex-col p-8 xl:p-12 relative items-center justify-center">
                 <div className="text-center opacity-40">
                     <h2 className="text-xl font-medium text-white mb-2">No Living Article Found</h2>
-                    <p className="text-[#555] font-mono text-sm">No living article found for ${symbol}</p>
+                    <p className="text-[#555] font-mono text-sm">{`No living article found for ${symbol}`}</p>
                 </div>
             </div>
         );

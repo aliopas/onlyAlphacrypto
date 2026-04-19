@@ -77,6 +77,7 @@ export const rawNewsBuffer = pgTable('raw_news_buffer', {
     eventSeverity: integer('event_severity'),
     classification: varchar('classification', { length: 10 }),
     consumed: boolean('consumed').default(false).notNull(),
+    consumedAt: timestamp('consumed_at'),
     embedding: vector('embedding'),
 });
 
