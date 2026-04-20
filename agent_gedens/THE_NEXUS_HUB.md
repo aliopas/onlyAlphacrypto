@@ -4,23 +4,38 @@
 
 ---
 
-## 📋 Active Phase: Phase 9 — Terminal Deep-Link & SEO Integrity Fix
+## 📋 Active Phase: Phase 10 — Top Movers Widget: Full Implementation
 
 **Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
-**Total Tasks:** 7
-**Priority Order:** T-01 → T-07 (T-01 & T-02 are backend prerequisite, then T-03→T-07 are frontend)
+**Total Tasks:** 1 (Single-file rewrite, broken into 7 granular sub-tasks for the Senior Developer)
+**Priority Order:** T-01 → T-07 (sequential, each builds on the previous)
+**Executor:** Senior Developer
+**Scope:** Frontend-only. Single file: `frontend/src/features/home/components/TopMovers.tsx`
 
 ---
 
 ### 1. Planning Stage (Planner)
 
-**Target:** Fix 3 critical bugs: (1) Deep-link article loading failure, (2) Ghost page indexing, (3) SEO indexing errors. The root causes are: API calls silently catch errors returning `null` fallbacks without triggering `notFound()`, `generateStaticParams()` creates pages for all 30 COINS regardless of DB article existence, and `sitemap.ts` blindly lists all coin URLs without verifying article existence.
+**Target:** Replace the current placeholder `TopMovers.tsx` (shows "Coming Soon" lock icon) with a fully functional, live-updating Top Movers widget. The backend endpoint `GET /market/movers` already returns `TopMover[]` — the frontend API method `homeApi.getTopMovers()` in `frontend/src/features/home/api.ts:35` already calls it. This is purely a UI rewrite.
 
-**Architecture Notes:**
-- **Bug 1 (Deep-Link):** `frontend/src/app/terminal/[coin]/page.tsx` and `frontend/src/app/terminal/[coin]/alpha/page.tsx` both fetch `getMasterArticle()` but silently swallow errors (lines 127-130 in `[coin]/page.tsx`, lines 112-115 in `alpha/page.tsx`). No `notFound()` guard exists anywhere. The `terminal/[coin]/page.tsx` page renders `TerminalPageClient` even when `masterArticle` is null — the terminal page SHOULD still render (it has chart + wire), but the `alpha/page.tsx` page should absolutely `notFound()` if no master article exists, because its entire purpose IS the article.
-- **Bug 2 (Ghost Pages):** `frontend/src/app/sitemap.ts` → `buildCoinPages()` (line 33) iterates ALL 30 COINS and generates both `/terminal/{coin}` and `/terminal/{coin}/alpha` URLs unconditionally. Need a backend endpoint to query which coins actually have master articles, and filter sitemap entries accordingly.
-- **Bug 3 (SEO Errors):** `generateStaticParams()` in both `page.tsx` files (lines 10-12) returns all 30 COINS. Next.js pre-renders 60 pages (30 terminal + 30 alpha), most with empty/no content. The `meta robots` tag should be `noindex, nofollow` for pages without articles to prevent thin content indexing.
-- **Backend Need:** A new lightweight endpoint `GET /market/master/coins` that returns an array of coin symbols that have master articles. This is needed by both `sitemap.ts` and `generateStaticParams()` to filter.
+**Existing Infrastructure (DO NOT MODIFY):**
+- **API Method:** `homeApi.getTopMovers()` → returns `Promise<TopMover[]>` (see `api.ts:35`)
+- **Type:** `TopMover { symbol, priceChangePercent, lastPrice, volume, quoteVolume }` (see `types.ts:46`)
+- **Polling Reference:** `TickerBar.tsx` uses `useEffect` + `setInterval(fetchMovers, 15000)` — use the EXACT same pattern but with 30000ms interval
+- **Loading State Reference:** `MarketMoodGauge.tsx` uses `animate-ping` dot + "Syncing..." text for loading
+- **Container Style Reference:** All widgets use `bg-[#0A0A0A] border border-[#333] p-6`
+
+**Key UX Behaviors (from Blueprint):**
+1. Display only first 5 movers (not 10) — sidebar space is limited
+2. Poll every 30 seconds (not 15s like TickerBar)
+3. NEW badge: coins not in previous fetch get a badge that fades after 60 seconds
+4. Flat market detection: if all 5 movers have change < 3%, swap header to "Market Pulse (24h)" with subtitle "Low volatility regime"
+5. Extreme move detection: if any mover has change >= 40%, show "⚡ EXTREME" badge and dim row to `opacity-80`
+6. Error with cached data: show "⚠ LIVE DELAYED" in yellow, keep showing last known data
+7. Error with no cached data: show "RECONNECTING..." with pulsing dot
+8. Each row is clickable → links to `/terminal/[symbol_without_USDT]`
+9. Volume bar proportional to max `quoteVolume` in the list
+10. Price formatting: `$X,XXX.XX` if >= $1, `$0.XXXX` if < $1
 
 **Status:** ✅ Ready for Execution
 
@@ -28,52 +43,31 @@
 
 ### 2. Execution Stage (Senior Developer)
 
-#### Phase A — Backend Prerequisite (T-01, T-02)
+> **IMPORTANT:** This is a SINGLE FILE rewrite. All sub-tasks below are cumulative sections of `frontend/src/features/home/components/TopMovers.tsx`. The Senior Developer must write the COMPLETE file implementing ALL sub-tasks together in one pass. The breakdown below is for mental organization — DO NOT submit partial files.
 
-| Task ID | Priority | File(s) | Task Description | Status |
+**File:** `frontend/src/features/home/components/TopMovers.tsx`
+
+#### Sub-Task Breakdown:
+
+| Task ID | Priority | Section | Task Description | Status |
 |---|---|---|---|---|
-| **T-01** | P0 | `backend/src/controllers/market.controller.ts` | **Add `getMasterArticleCoins` controller.** Create a new exported async function `getMasterArticleCoins(req, res, next)` that queries `SELECT DISTINCT coin_symbol FROM coin_master_articles WHERE coin_symbol IS NOT NULL`, caches the result for 300s under key `master:coins:list`, and returns `{ coins: string[] }` (uppercase symbols). Follow the exact same caching pattern as `getAssetCount` (line 168). Do NOT modify any existing function. | ✅ Done |
-| **T-02** | P0 | `backend/src/routes/market.routes.ts` | **Register the new route.** Add `router.get('/master/coins', apiLimiter, getMasterArticleCoins);` ABOVE the existing `router.get('/master/:symbol', ...)` line (line 18) so the static `/coins` path matches before the dynamic `/:symbol` path. Import `getMasterArticleCoins` in the destructured import on line 2. | ✅ Done |
-
-#### Phase B — Frontend API Layer (T-03)
-
-| Task ID | Priority | File(s) | Task Description | Status |
-|---|---|---|---|---|
-| **T-03** | P0 | `frontend/src/features/terminal/api.ts` | **Add `getMasterArticleCoins` API method.** Add a new method to `terminalApi` object: `getMasterArticleCoins: async (): Promise<string[]>` that calls `apiClient.get<{ coins: string[] }>('/market/master/coins')` and returns `data.coins`. On error, return `[]` (empty array — safe fallback means "we don't know which coins have articles" → sitemap will skip all coin pages to avoid ghost pages). Do NOT modify any existing method. | ✅ Done |
-
-#### Phase C — Frontend Pages Fix (T-04, T-05, T-06)
-
-| Task ID | Priority | File(s) | Task Description | Status |
-|---|---|---|---|---|
-| **T-04** | P0 | `frontend/src/app/terminal/[coin]/alpha/page.tsx` | **Add `notFound()` guard for missing articles.** (1) Add `import { notFound } from 'next/navigation';` at top. (2) In the page component (line 103), after `masterArticle` is resolved (line 114), add: `if (!masterArticle) { notFound(); }` — this MUST be before the `jsonLd` build. (3) In `generateMetadata()` (line 59): if the catch block fires OR if `masterArticle` is null after the try, set `robots: { index: false, follow: false }` in the returned Metadata object to prevent indexing empty alpha pages. | ✅ Done |
-| **T-05** | P1 | `frontend/src/app/terminal/[coin]/page.tsx` | **Add conditional `robots` meta for article-less terminal pages + guard invalid coins.** (1) In `generateMetadata()` (line 60): after the try/catch fetching `masterArticle`, if `masterArticle` is null, add `robots: { index: false, follow: false }` to the returned Metadata. This prevents ghost terminal pages from being indexed while still allowing the page to render (user sees chart + wire). (2) In the page component (line 106): add a guard at the top after resolving `params` — if `coin` is not in the COINS array (validate against the const), call `notFound()`. This prevents random slug pages like `/terminal/xyz` from generating. (3) Update `generateStaticParams()` to remain as-is (all COINS) since terminal pages with charts are valid even without articles — the `robots` meta handles the indexing concern. | ✅ Done |
-| **T-06** | P1 | `frontend/src/app/terminal/[coin]/opengraph-image.tsx` | **Handle null masterArticle gracefully for OG images.** The current code already handles null (falls back to default headline). No changes needed to this file, but verify the edge runtime doesn't break when backend returns null. If the API call fails, the catch already handles it. **VERIFICATION ONLY — no code changes expected unless a bug is found.** | ✅ Done |
-
-#### Phase D — Sitemap Fix (T-07)
-
-| Task ID | Priority | File(s) | Task Description | Status |
-|---|---|---|---|---|---|
-| **T-07** | P0 | `frontend/src/app/sitemap.ts` | **Filter coin pages in sitemap to only include coins with master articles.** (1) Import `terminalApi` from `@/features/terminal/api`. (2) Convert `buildCoinPages()` from a synchronous function to `async function buildArticleCoinPages(): Promise<MetadataRoute.Sitemap>`. (3) Inside it, call `const coinsWithArticles = await terminalApi.getMasterArticleCoins();` — if the array is empty (API failed), return an empty array (skip all coin pages rather than generate ghost pages). (4) Filter: only generate sitemap entries for coins in `coinsWithArticles`. Map each coin to both `/terminal/{coin}` and `/terminal/{coin}/alpha` as before. (5) In the default `sitemap()` export (line 66), change `const coinPages = buildCoinPages();` to `const coinPages = await buildArticleCoinPages();`. (6) Remove the now-unused `buildCoinPages` function. | ✅ Done |
+| **T-01** | P0 | **Imports & Types** | Constants, MoverRow interface, all imports. | ✅ Done |
+| **T-02** | P0 | **Helper Functions** | toMoverRow, formatPrice (with NaN guard), SkeletonRows, EmptyState, ReconnectingState. | ✅ Done |
+| **T-03** | P0 | **State & Data Fetching** | useState, useRef, useCallback, useEffect with dual intervals (30s poll + 5s badge cleanup). | ✅ Done |
+| **T-04** | P0 | **Header Section** | Flat market swap, live indicator, "⚠ Live Delayed" on error with cached data. | ✅ Done |
+| **T-05** | P0 | **Body — Conditional Rendering** | Skeleton → Reconnecting → Empty → Data table. | ✅ Done |
+| **T-06** | P0 | **Mover Table Rows** | Rank, symbol + NEW/Extreme badges, change + price, proportional volume bar. | ✅ Done |
+| **T-07** | P1 | **Edge Cases & Polish** | USDT strip, key props, division-by-zero guard, no console.logs, named export. | ✅ Done |
 
 ---
 
 ### 3. QA & Security Stage (QA Hunter)
 
-**Status:** ✅ Execution Complete — All 7 tasks landed, awaiting QA audit
-
-**QA Checklist for Reviewer:**
-1. Verify `GET /market/master/coins` returns correct coin list from DB
-2. Verify `/terminal/pepe/alpha` (no article) returns 404 with `notFound()`
-3. Verify `/terminal/sol/alpha` (has article) renders correctly
-4. Verify `/terminal/xyz` (invalid coin) returns 404
-5. Verify `/sitemap.xml` only contains coins that have master articles
-6. Verify `robots` meta is `noindex, nofollow` on article-less terminal pages
-7. Verify direct deep-link navigation to `/terminal/sol` loads with chart + wire (even without article)
-8. Verify existing functionality is NOT broken: wire, radar, chat all work on terminal pages
+**Status:** ✅ QA PASSED — All 15 checklist items verified. Mandatory fix applied (NaN guard in `formatPrice`). TypeScript compilation clean. No new dependencies. Named export matches `page.tsx:5`.
 
 ---
 
 ### 4. Deployment Stage (Release Manager)
 
-- **Commit Message:** [To be determined after QA pass]
-- **Status:** Pending
+- **Commit Message:** `feat(home): rewrite TopMovers widget with live polling, NEW/Extreme badges, flat market detection`
+- **Status:** Ready for commit

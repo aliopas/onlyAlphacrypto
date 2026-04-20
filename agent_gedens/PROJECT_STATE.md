@@ -1,7 +1,7 @@
 # 🤖 ONLYALPHA — PROJECT STATE
 
 **Last Updated:** April 20, 2026
-**Current Focus:** Phase 9 — Terminal Deep-Link & SEO Integrity Fix
+**Current Focus:** Phase 10 — Top Movers Widget: Full Implementation
 
 ## 🏗 Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,23 +15,27 @@
 2. **Modular Boundaries:** Cache logic → `CacheManager`. AI calls → `AIGateway`. Prompts → `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## 🔴 Current Mission: Phase 9 — Terminal Deep-Link & SEO Integrity Fix
+## 🔴 Current Mission: Phase 10 — Top Movers Widget: Full Implementation
 
 **Status:** 🟡 IN PROGRESS — Micro-Tasks Defined in THE_NEXUS_HUB.md, Ready for Execution
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
-**Scope:** 3 bugs — Deep-link article loading failure, Ghost page indexing, SEO indexing errors
-**Root Causes Identified:**
-1. All API calls in `api.ts` silently catch errors → `null` fallbacks → page renders empty without `notFound()`
-2. `generateStaticParams()` generates pages for ALL 30 coins regardless of DB article existence
-3. No `notFound()` guard in any terminal page when master article is `null`
-4. `sitemap.ts` blindly lists all 30 coin terminal + alpha URLs without checking article existence
-**Task Breakdown:** 7 micro-tasks (T-01→T-07) in `agent_gedens/THE_NEXUS_HUB.md`
-- Phase A (Backend): T-01 (controller) + T-02 (route) — new `GET /market/master/coins` endpoint
-- Phase B (Frontend API): T-03 — new `getMasterArticleCoins()` method
-- Phase C (Frontend Pages): T-04 (alpha notFound) + T-05 (terminal robots meta) + T-06 (OG verify)
-- Phase D (Sitemap): T-07 — filter sitemap to only coins with articles
+**Scope:** Frontend-only. Single file rewrite of `TopMovers.tsx` — replace "Coming Soon" placeholder with live-updating Top Movers widget
+**Backend Status:** Already complete — `GET /market/movers` endpoint is live and cached 30s
+**Task Breakdown:** 7 sub-tasks (T-01→T-07) in `agent_gedens/THE_NEXUS_HUB.md`
+- T-01: Imports & Types (constants, MoverRow interface)
+- T-02: Helper Functions (toMoverRow, formatPrice, SkeletonRows, EmptyState, ReconnectingState)
+- T-03: State & Data Fetching (useState, useEffect, polling, NEW badge tracking)
+- T-04: Header Section (flat market detection, live/error indicators)
+- T-05: Body — Conditional Rendering (loading/error/empty states)
+- T-06: Mover Table Rows (rank, symbol, badges, change, price, volume bar)
+- T-07: Edge Cases & Polish (safety checks, no stale closures, export signature)
 
 ## ✅ Completed Phases
+
+### Phase 9 — Terminal Deep-Link & SEO Integrity Fix
+**Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Completed:** April 20, 2026
+**Tasks:** 7 (T-01 through T-07) — All Passed QA
 
 ### Market Mood Gauge — Frontend Implementation (Phase 8)
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`

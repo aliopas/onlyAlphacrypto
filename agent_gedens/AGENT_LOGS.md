@@ -4,6 +4,14 @@
 
 ---
 
+## Phase 10 — Top Movers Widget: Full Implementation
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|---|
+| Apr 20, 2026 | P10-PLANNING | PLANNED | Strategic Planner | — | 7 sub-tasks defined (T-01→T-07). Frontend-only single-file rewrite of TopMovers.tsx. Written to THE_NEXUS_HUB.md. |
+
+---
+
 ## Phase 9 — Terminal Deep-Link & SEO Integrity Fix
 
 | Date | Task ID | Verdict | Executor | Reviewer | Notes |
