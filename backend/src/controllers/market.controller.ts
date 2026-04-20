@@ -243,12 +243,12 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
                 sentiment: coinMasterArticles.sentiment,
                 impactScore: coinMasterArticles.confidenceScore,
                 isBreaking: sql<number>`1`,
-                publishedAt: coinMasterArticles.createdAt,
+                publishedAt: coinMasterArticles.updatedAt,
                 createdAt: coinMasterArticles.createdAt
             }).from(coinMasterArticles);
             return coin && coin.toUpperCase() !== 'ALL'
-                ? q.where(eq(coinMasterArticles.coinSymbol, coin.toUpperCase())).orderBy(desc(coinMasterArticles.createdAt)).limit(fetchLimit)
-                : q.orderBy(desc(coinMasterArticles.createdAt)).limit(fetchLimit);
+                ? q.where(eq(coinMasterArticles.coinSymbol, coin.toUpperCase())).orderBy(desc(coinMasterArticles.updatedAt)).limit(fetchLimit)
+                : q.orderBy(desc(coinMasterArticles.updatedAt)).limit(fetchLimit);
         };
 
         const [timelineRows, masterRows] = await Promise.all([buildTimeline(), buildMaster()]);
@@ -448,6 +448,38 @@ export async function getTopMoversController(req: Request, res: Response, next: 
         const movers = await getTopMovers(10);
         await setCache(cacheKey, movers, 30);
         res.json(movers);
+    } catch (err) { next(err); }
+}
+
+export async function getArchiveArticles(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const cacheKey = 'archive:all';
+        const cached = await getCache(cacheKey);
+        if (cached) { res.json(cached); return; }
+
+        const articles = await db
+            .select({
+                id: coinMasterArticles.id,
+                coinSymbol: coinMasterArticles.coinSymbol,
+                headline: coinMasterArticles.headline,
+                hook: coinMasterArticles.hook,
+                metaTitle: coinMasterArticles.metaTitle,
+                metaDescription: coinMasterArticles.metaDescription,
+                sentiment: coinMasterArticles.sentiment,
+                verdict: coinMasterArticles.verdict,
+                convictionScore: coinMasterArticles.convictionScore,
+                posture: coinMasterArticles.posture,
+                riskTags: coinMasterArticles.riskTags,
+                majorUpdateCount: coinMasterArticles.majorUpdateCount,
+                minorUpdateCount: coinMasterArticles.minorUpdateCount,
+                createdAt: coinMasterArticles.createdAt,
+                updatedAt: coinMasterArticles.updatedAt,
+            })
+            .from(coinMasterArticles)
+            .orderBy(desc(coinMasterArticles.updatedAt));
+
+        await setCache(cacheKey, articles, 3600);
+        res.json(articles);
     } catch (err) { next(err); }
 }
 
