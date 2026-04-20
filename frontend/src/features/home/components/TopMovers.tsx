@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import Link from 'next/link';
 import { homeApi } from '@/features/home/api';
 import { TopMover } from '@/features/home/types';
 
@@ -14,7 +13,6 @@ const EXTREME_THRESHOLD = 40;
 interface MoverRow {
     symbol: string;
     displayName: string;
-    linkTarget: string;
     changeNum: number;
     priceNum: number;
     volumeNum: number;
@@ -29,7 +27,6 @@ function toMoverRow(m: TopMover): MoverRow {
     return {
         symbol: m.symbol,
         displayName: rawName,
-        linkTarget: `/terminal/${rawName.toLowerCase()}`,
         changeNum,
         priceNum,
         volumeNum,
@@ -221,10 +218,9 @@ export function TopMovers() {
                         const volumeWidth = maxVolume > 0 ? (row.volumeNum / maxVolume) * 100 : 0;
 
                         return (
-                            <Link
+                            <div
                                 key={row.symbol}
-                                href={row.linkTarget}
-                                className={`flex items-center gap-2 py-1.5 hover:bg-white/5 transition-colors cursor-pointer${row.isExtreme ? ' opacity-80' : ''}`}
+                                className={`flex items-center gap-2 py-1.5${row.isExtreme ? ' opacity-80' : ''}`}
                             >
                                 <span className="w-4 text-[10px] font-mono text-[#555]">
                                     {index + 1}
@@ -258,7 +254,7 @@ export function TopMovers() {
                                         style={{ width: `${volumeWidth}%` }}
                                     />
                                 </span>
-                            </Link>
+                            </div>
                         );
                     })}
                 </div>
