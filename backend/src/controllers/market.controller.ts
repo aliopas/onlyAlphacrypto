@@ -243,12 +243,12 @@ export async function getLatestWire(req: Request, res: Response, next: NextFunct
                 sentiment: coinMasterArticles.sentiment,
                 impactScore: coinMasterArticles.confidenceScore,
                 isBreaking: sql<number>`1`,
-                publishedAt: coinMasterArticles.updatedAt,
+                publishedAt: sql<Date>`GREATEST(${coinMasterArticles.updatedAt}, COALESCE(${coinMasterArticles.lastMajorUpdate}, '1970-01-01'), COALESCE(${coinMasterArticles.lastMinorUpdate}, '1970-01-01'))`,
                 createdAt: coinMasterArticles.createdAt
             }).from(coinMasterArticles);
             return coin && coin.toUpperCase() !== 'ALL'
-                ? q.where(eq(coinMasterArticles.coinSymbol, coin.toUpperCase())).orderBy(desc(coinMasterArticles.updatedAt)).limit(fetchLimit)
-                : q.orderBy(desc(coinMasterArticles.updatedAt)).limit(fetchLimit);
+                ? q.where(eq(coinMasterArticles.coinSymbol, coin.toUpperCase())).orderBy(desc(sql`GREATEST(${coinMasterArticles.updatedAt}, COALESCE(${coinMasterArticles.lastMajorUpdate}, '1970-01-01'), COALESCE(${coinMasterArticles.lastMinorUpdate}, '1970-01-01'))`)).limit(fetchLimit)
+                : q.orderBy(desc(sql`GREATEST(${coinMasterArticles.updatedAt}, COALESCE(${coinMasterArticles.lastMajorUpdate}, '1970-01-01'), COALESCE(${coinMasterArticles.lastMinorUpdate}, '1970-01-01'))`)).limit(fetchLimit);
         };
 
         const [timelineRows, masterRows] = await Promise.all([buildTimeline(), buildMaster()]);
