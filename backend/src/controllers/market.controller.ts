@@ -165,6 +165,25 @@ export async function getRadarSignals(req: Request, res: Response, next: NextFun
     } catch (err) { next(err); }
 }
 
+export async function getMasterArticleCoins(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const cacheKey = 'master:coins:list';
+        const cached = await getCache(cacheKey);
+        if (cached !== null) { res.json(cached); return; }
+
+        const result = await db.execute(sql`
+            SELECT DISTINCT coin_symbol FROM coin_master_articles WHERE coin_symbol IS NOT NULL
+        `);
+
+        const coins = (result.rows as Array<Record<string, unknown>>).map(
+            (row) => String(row.coin_symbol).toUpperCase()
+        );
+        const output = { coins };
+        await setCache(cacheKey, output, 300);
+        res.json(output);
+    } catch (err) { next(err); }
+}
+
 export async function getAssetCount(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const cacheKey = 'stats:asset-count';

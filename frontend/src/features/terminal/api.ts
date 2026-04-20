@@ -48,5 +48,15 @@ export const terminalApi = {
             return { updates: [], total: 0 };
         }
     },
+
+    getMasterArticleCoins: async (): Promise<string[]> => {
+        try {
+            const { data } = await apiClient.get<{ coins: string[] }>('/market/master/coins');
+            return data.coins;
+        } catch (error) {
+            console.error('[API] getMasterArticleCoins failed:', error);
+            return [];
+        }
+    },
 };
 

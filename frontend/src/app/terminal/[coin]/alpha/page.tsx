@@ -1,22 +1,15 @@
 import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
 import { LivingArticle } from '@/features/terminal/components/LivingArticle';
 import { terminalApi } from '@/features/terminal/api';
 import { MasterArticle } from '@/features/terminal/types';
+import { COINS, SITE_URL } from '@/lib/constants';
 
 export const revalidate = 60;
-
-const COINS = [
-    'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE', 'AVAX',
-    'DOT', 'MATIC', 'LINK', 'UNI', 'ATOM', 'NEAR', 'APT', 'ARB',
-    'OP', 'SUI', 'SEI', 'TIA', 'JUP', 'WIF', 'PEPE', 'FLOKI',
-    'INJ', 'FTM', 'RENDER', 'AAVE', 'MKR', 'SNX',
-];
 
 export function generateStaticParams() {
     return COINS.map((coin) => ({ coin: coin.toLowerCase() }));
 }
-
-const SITE_URL = 'https://onlyalphacrypto.com';
 
 type Params = Promise<{ coin: string }>;
 
@@ -27,6 +20,14 @@ function buildArticleJsonLd(symbol: string, masterArticle: MasterArticle | null)
             '@type': 'WebPage',
             name: `${symbol} Alpha Intelligence Report`,
             url: `${SITE_URL}/terminal/${symbol.toLowerCase()}/alpha`,
+            breadcrumb: {
+                '@type': 'BreadcrumbList',
+                itemListElement: [
+                    { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+                    { '@type': 'ListItem', position: 2, name: 'Terminal', item: `${SITE_URL}/terminal` },
+                    { '@type': 'ListItem', position: 3, name: `${symbol} Alpha Report`, item: `${SITE_URL}/terminal/${symbol.toLowerCase()}/alpha` },
+                ],
+            },
         };
     }
 
@@ -45,6 +46,14 @@ function buildArticleJsonLd(symbol: string, masterArticle: MasterArticle | null)
         datePublished: masterArticle.createdAt,
         dateModified: masterArticle.updatedAt,
         mainEntityOfPage: `${SITE_URL}/terminal/${symbol.toLowerCase()}/alpha`,
+        breadcrumb: {
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+                { '@type': 'ListItem', position: 2, name: 'Terminal', item: `${SITE_URL}/terminal` },
+                { '@type': 'ListItem', position: 3, name: `${symbol} Alpha Report`, item: `${SITE_URL}/terminal/${symbol.toLowerCase()}/alpha` },
+            ],
+        },
     };
 }
 
@@ -55,6 +64,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     let title = `${symbol} Alpha Intelligence Report`;
     let description = `Deep AI intelligence report and living article for ${symbol}. Comprehensive analysis with conviction scores, posture, and timeline.`;
     let keywords: string[] | undefined = undefined;
+    let noArticle = false;
 
     try {
         const { masterArticle } = await terminalApi.getMasterArticle(symbol);
@@ -66,15 +76,19 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
             if (masterArticle.seoKeywords && Array.isArray(masterArticle.seoKeywords)) {
                 keywords = masterArticle.seoKeywords;
             }
+        } else {
+            noArticle = true;
         }
     } catch (e) {
         console.error('[SEO] Error fetching master article for alpha metadata:', e);
+        noArticle = true;
     }
 
     return {
         title: { absolute: title },
         description,
         keywords,
+        ...(noArticle && { robots: { index: false, follow: false } }),
         openGraph: {
             title,
             description,
@@ -105,6 +119,10 @@ export default async function AlphaSnapshotPage({
         const resp = await terminalApi.getMasterArticle(coinSymbol);
         masterArticle = resp.masterArticle;
     } catch { /* silently fail, JSON-LD fallback handles it */ }
+
+    if (!masterArticle) {
+        notFound();
+    }
 
     const jsonLd = buildArticleJsonLd(coinSymbol, masterArticle);
 

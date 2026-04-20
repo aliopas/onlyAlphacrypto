@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 const NAV_ITEMS = [
     { href: '/', icon: 'home', label: 'Home', disabled: false },
     { href: '/terminal', icon: 'terminal', label: 'Terminal', disabled: false },
-    { href: '/airdrops', icon: 'flight_takeoff', label: 'Airdrops', disabled: true }
+    { href: '/airdrops', icon: 'flight_takeoff', label: 'Airdrops', disabled: false }
 ];
 
 export function Sidebar() {

@@ -1,15 +1,8 @@
 import type { MetadataRoute } from 'next';
 import { airdropApi } from '@/features/airdrop/api';
+import { terminalApi } from '@/features/terminal/api';
 import { AirdropProject } from '@/features/airdrop/types';
-
-const SITE_URL = 'https://onlyalphacrypto.com';
-
-const COINS = [
-    'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE', 'AVAX',
-    'DOT', 'MATIC', 'LINK', 'UNI', 'ATOM', 'NEAR', 'APT', 'ARB',
-    'OP', 'SUI', 'SEI', 'TIA', 'JUP', 'WIF', 'PEPE', 'FLOKI',
-    'INJ', 'FTM', 'RENDER', 'AAVE', 'MKR', 'SNX',
-];
+import { SITE_URL } from '@/lib/constants';
 
 const STATIC_PAGES: MetadataRoute.Sitemap = [
     {
@@ -30,10 +23,25 @@ const STATIC_PAGES: MetadataRoute.Sitemap = [
         changeFrequency: 'hourly',
         priority: 0.8,
     },
+    {
+        url: `${SITE_URL}/archive`,
+        lastModified: new Date(),
+        changeFrequency: 'daily',
+        priority: 0.7,
+    },
 ];
 
-function buildCoinPages(): MetadataRoute.Sitemap {
-    return COINS.map((coin) => [
+async function buildArticleCoinPages(): Promise<MetadataRoute.Sitemap> {
+    let coinsWithArticles: string[] = [];
+    try {
+        coinsWithArticles = await terminalApi.getMasterArticleCoins();
+    } catch (error) {
+        console.error('[Sitemap] Failed to fetch coins with articles:', error);
+    }
+
+    if (coinsWithArticles.length === 0) return [];
+
+    return coinsWithArticles.map((coin) => [
         {
             url: `${SITE_URL}/terminal/${coin.toLowerCase()}`,
             lastModified: new Date(),
@@ -67,7 +75,7 @@ async function buildAirdropPages(): Promise<MetadataRoute.Sitemap> {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const airdropPages = await buildAirdropPages();
-    const coinPages = buildCoinPages();
+    const coinPages = await buildArticleCoinPages();
 
     return [...STATIC_PAGES, ...coinPages, ...airdropPages];
 }

@@ -1,7 +1,7 @@
 # 🤖 ONLYALPHA — PROJECT STATE
 
-**Last Updated:** April 19, 2026
-**Current Focus:** SEO & Platform Quality Audit — Fix Implementation
+**Last Updated:** April 20, 2026
+**Current Focus:** Phase 9 — Terminal Deep-Link & SEO Integrity Fix
 
 ## 🏗 Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,27 +15,31 @@
 2. **Modular Boundaries:** Cache logic → `CacheManager`. AI calls → `AIGateway`. Prompts → `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## 🔴 Current Mission: SEO & Platform Quality Audit — Fix Implementation
+## 🔴 Current Mission: Phase 9 — Terminal Deep-Link & SEO Integrity Fix
 
-**Plan Path:** `plans/THE SUPREME REVIEWER_plans/revio.md`
-**Hub File:** `agent_gedens/THE_NEXUS_HUB.md`
-**Total Tasks:** 8 micro-tasks
-**Priority Breakdown:**
-- P0 (Critical): 3 tasks — Google indexing blockers
-- P1 (High): 2 tasks — Backend data quality
-- P2 (Medium): 3 tasks — UX & enhancement
-
-**Status:** 🟡 Planning Complete — Awaiting Execution
-
-**Audit Findings Being Addressed:**
-1. Google indexing 404 pages instead of articles (missing redirects)
-2. No custom 404 page (Google indexes error pages with default metadata)
-3. Dead SearchAction JSON-LD schema (references non-existent /search route)
-4. Article re-processing loop in AI Workflow cron
-5. Meta description validation failures (>160 chars)
-6. Existing articles with poor/null meta tags
-7. LivingArticle template literal bug (renders `${symbol}` as literal text)
-8. Static OG image shared across all pages (no per-coin differentiation)
+**Status:** 🟡 IN PROGRESS — Micro-Tasks Defined in THE_NEXUS_HUB.md, Ready for Execution
+**Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Scope:** 3 bugs — Deep-link article loading failure, Ghost page indexing, SEO indexing errors
+**Root Causes Identified:**
+1. All API calls in `api.ts` silently catch errors → `null` fallbacks → page renders empty without `notFound()`
+2. `generateStaticParams()` generates pages for ALL 30 coins regardless of DB article existence
+3. No `notFound()` guard in any terminal page when master article is `null`
+4. `sitemap.ts` blindly lists all 30 coin terminal + alpha URLs without checking article existence
+**Task Breakdown:** 7 micro-tasks (T-01→T-07) in `agent_gedens/THE_NEXUS_HUB.md`
+- Phase A (Backend): T-01 (controller) + T-02 (route) — new `GET /market/master/coins` endpoint
+- Phase B (Frontend API): T-03 — new `getMasterArticleCoins()` method
+- Phase C (Frontend Pages): T-04 (alpha notFound) + T-05 (terminal robots meta) + T-06 (OG verify)
+- Phase D (Sitemap): T-07 — filter sitemap to only coins with articles
 
 ## ✅ Completed Phases
-(None yet)
+
+### Market Mood Gauge — Frontend Implementation (Phase 8)
+**Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Completed:** April 20, 2026
+**Tasks:** 6 (T-01 through T-06) — All Passed QA
+**Files Modified:** `MarketMoodGauge.tsx`, `page.tsx`, `api.ts`, `types.ts`
+
+### SEO & Platform Quality Audit — Fix Implementation
+**Plan Path:** `plans/THE SUPREME REVIEWER_plans/revio.md`
+**Completed:** April 19, 2026
+**Tasks:** 8 (T-01 through T-08) — All Passed QA

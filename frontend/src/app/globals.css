@@ -28,7 +28,8 @@ body {
   height: 100%;
   margin: 0;
   padding: 0;
-  antialiased: true;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ── Scrollbar ─────────────────────────────── */

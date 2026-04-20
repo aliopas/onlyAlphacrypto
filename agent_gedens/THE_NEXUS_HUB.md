@@ -4,23 +4,23 @@
 
 ---
 
-## 📋 Active Phase: SEO & Platform Quality Audit — Fix Implementation
+## 📋 Active Phase: Phase 9 — Terminal Deep-Link & SEO Integrity Fix
 
-**Plan Source:** `plans/THE SUPREME REVIEWER_plans/revio.md`
-**Total Tasks:** 8
-**Priority Order:** P0 (Critical) → P1 (High) → P2 (Medium)
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Total Tasks:** 7
+**Priority Order:** T-01 → T-07 (T-01 & T-02 are backend prerequisite, then T-03→T-07 are frontend)
 
 ---
 
-### 1. Planning Stage (Planner & Architect)
+### 1. Planning Stage (Planner)
 
-**Target:** Fix all SEO indexing issues, backend data quality bugs, and UX bugs identified in the Supreme Review audit.
+**Target:** Fix 3 critical bugs: (1) Deep-link article loading failure, (2) Ghost page indexing, (3) SEO indexing errors. The root causes are: API calls silently catch errors returning `null` fallbacks without triggering `notFound()`, `generateStaticParams()` creates pages for all 30 COINS regardless of DB article existence, and `sitemap.ts` blindly lists all coin URLs without verifying article existence.
+
 **Architecture Notes:**
-- P0 fixes are blocking Google indexing — must deploy first.
-- P1 fixes address backend data quality — can deploy alongside P0.
-- P2 fixes are UX enhancements — can deploy independently.
-- No new packages, no new routes, no test files.
-- Only files listed below may be modified.
+- **Bug 1 (Deep-Link):** `frontend/src/app/terminal/[coin]/page.tsx` and `frontend/src/app/terminal/[coin]/alpha/page.tsx` both fetch `getMasterArticle()` but silently swallow errors (lines 127-130 in `[coin]/page.tsx`, lines 112-115 in `alpha/page.tsx`). No `notFound()` guard exists anywhere. The `terminal/[coin]/page.tsx` page renders `TerminalPageClient` even when `masterArticle` is null — the terminal page SHOULD still render (it has chart + wire), but the `alpha/page.tsx` page should absolutely `notFound()` if no master article exists, because its entire purpose IS the article.
+- **Bug 2 (Ghost Pages):** `frontend/src/app/sitemap.ts` → `buildCoinPages()` (line 33) iterates ALL 30 COINS and generates both `/terminal/{coin}` and `/terminal/{coin}/alpha` URLs unconditionally. Need a backend endpoint to query which coins actually have master articles, and filter sitemap entries accordingly.
+- **Bug 3 (SEO Errors):** `generateStaticParams()` in both `page.tsx` files (lines 10-12) returns all 30 COINS. Next.js pre-renders 60 pages (30 terminal + 30 alpha), most with empty/no content. The `meta robots` tag should be `noindex, nofollow` for pages without articles to prevent thin content indexing.
+- **Backend Need:** A new lightweight endpoint `GET /market/master/coins` that returns an array of coin symbols that have master articles. This is needed by both `sitemap.ts` and `generateStaticParams()` to filter.
 
 **Status:** ✅ Ready for Execution
 
@@ -28,84 +28,52 @@
 
 ### 2. Execution Stage (Senior Developer)
 
-#### P0 — Critical (Blocking Google Indexing)
+#### Phase A — Backend Prerequisite (T-01, T-02)
 
 | Task ID | Priority | File(s) | Task Description | Status |
 |---|---|---|---|---|
-| **T-01** | P0 | `frontend/next.config.ts` | **Add 301 redirects for all 30 coins.** Add an `async redirects()` function to the `nextConfig` object that maps `/{coin}` → `/terminal/{coin}` for all 30 coins (lowercase). Use `permanent: true` (301). The COINS array must be defined inside the function. Do NOT alter existing `headers()` or `images` config. | ✅ Done |
-| **T-02** | P0 | `frontend/src/app/not-found.tsx` (NEW) | **Create custom 404 page.** Create this new file with: (a) `export const metadata: Metadata` with `robots: { index: false, follow: false }` and `title: 'Page Not Found'`. (b) Default export function `NotFound()` returning a centered layout with "404" heading, descriptive text, and a link back to `/`. Use Tailwind classes matching the platform's dark theme (`text-white`, `text-gray-400`, `text-emerald-500`). | ✅ Done |
-| **T-03** | P0 | `frontend/src/app/layout.tsx` | **Remove dead SearchAction JSON-LD schema.** In the `<head>` section, locate the second JSON-LD block (the one with `@type: "WebSite"` containing `SearchAction`). Remove this entire JSON-LD script block. Keep ONLY the Organization JSON-LD block. Do NOT touch anything else in layout.tsx — no metadata changes, no GA changes, no structural changes. | ✅ Done |
+| **T-01** | P0 | `backend/src/controllers/market.controller.ts` | **Add `getMasterArticleCoins` controller.** Create a new exported async function `getMasterArticleCoins(req, res, next)` that queries `SELECT DISTINCT coin_symbol FROM coin_master_articles WHERE coin_symbol IS NOT NULL`, caches the result for 300s under key `master:coins:list`, and returns `{ coins: string[] }` (uppercase symbols). Follow the exact same caching pattern as `getAssetCount` (line 168). Do NOT modify any existing function. | ✅ Done |
+| **T-02** | P0 | `backend/src/routes/market.routes.ts` | **Register the new route.** Add `router.get('/master/coins', apiLimiter, getMasterArticleCoins);` ABOVE the existing `router.get('/master/:symbol', ...)` line (line 18) so the static `/coins` path matches before the dynamic `/:symbol` path. Import `getMasterArticleCoins` in the destructured import on line 2. | ✅ Done |
 
-#### P1 — High (Backend Data Quality)
-
-| Task ID | Priority | File(s) | Task Description | Status |
-|---|---|---|---|---|
-| **T-04** | P1 | `backend/src/crons/aiWorkflow.cron.ts` | **Stop article re-processing loop.** In the AI Workflow cron, after an item from `rawNewsBuffer` is successfully processed (published or skipped as duplicate), mark it as consumed so it's not re-selected in the next hourly cycle. Implementation: Add a `consumed_at` timestamp update (e.g., `SET consumed_at = NOW()`) to the query/update logic after processing. Exclude items where `consumed_at IS NOT NULL` from the initial buffer query. If no `consumed_at` column exists in the DB schema, note this in the execution log — the Senior should check the Drizzle schema first and add the column if needed. | ✅ Done |
-| **T-05** | P1 | `backend/src/services/openai.service.ts` | **Add metaDescription truncation safety net.** Before Zod validation runs on AI responses, add a truncation step: (a) `metaDescription` → truncate to 160 characters max. (b) `metaTitle` → truncate to 60 characters max. This should be a small utility function (e.g., `truncateMetaField(value: string, max: number): string`) applied right after JSON parsing and before schema validation. Do NOT alter existing retry logic or fallback logic. | ✅ Done |
-
-#### P2 — Medium (UX & Enhancement)
+#### Phase B — Frontend API Layer (T-03)
 
 | Task ID | Priority | File(s) | Task Description | Status |
 |---|---|---|---|---|
-| **T-06** | P2 | `frontend/src/features/terminal/components/LivingArticle.tsx` | **Fix template literal bug on line 56.** Change the plain string `"No living article found for ${symbol}"` to a template literal `` `No living article found for ${symbol}` ``. This is a single-character fix (wrap in backticks). Do NOT alter anything else in this file. | ✅ Done |
-| **T-07** | P2 | `backend/src/scripts/repair-meta-tags.ts` (NEW) | **Create meta tag repair script.** Build a standalone TypeScript script that: (a) Queries all `coinMasterArticles` from the DB. (b) Identifies articles with `null`, empty, or poor meta tags (metaTitle < 20 chars, metaDescription < 50 chars or > 160 chars). (c) For each flagged article, uses `AIGateway` to regenerate proper SEO meta tags. (d) Updates the database with the new values. The script should be runnable via `npx tsx scripts/repair-meta-tags.ts` and log progress to console. Use existing infrastructure (AIGateway, PromptFactory, Drizzle). | ✅ Done |
-| **T-08** | P2 | `frontend/src/app/terminal/[coin]/opengraph-image.tsx` (NEW) | **Create per-coin dynamic OG image.** Create a new file that exports `ImageResponse` from `next/og`. It should: (a) Accept the `coin` param from the dynamic route. (b) Fetch the master article via `terminalApi.getMasterArticle(symbol)`. (c) Render a 1200x630 image with the coin symbol (large) and article headline/title. (d) Use the platform's dark theme colors (dark background, emerald accents). (e) Use edge runtime. Fallback: if no article data, render coin symbol with generic "AI-Powered Analysis" subtitle. | ✅ Done |
+| **T-03** | P0 | `frontend/src/features/terminal/api.ts` | **Add `getMasterArticleCoins` API method.** Add a new method to `terminalApi` object: `getMasterArticleCoins: async (): Promise<string[]>` that calls `apiClient.get<{ coins: string[] }>('/market/master/coins')` and returns `data.coins`. On error, return `[]` (empty array — safe fallback means "we don't know which coins have articles" → sitemap will skip all coin pages to avoid ghost pages). Do NOT modify any existing method. | ✅ Done |
+
+#### Phase C — Frontend Pages Fix (T-04, T-05, T-06)
+
+| Task ID | Priority | File(s) | Task Description | Status |
+|---|---|---|---|---|
+| **T-04** | P0 | `frontend/src/app/terminal/[coin]/alpha/page.tsx` | **Add `notFound()` guard for missing articles.** (1) Add `import { notFound } from 'next/navigation';` at top. (2) In the page component (line 103), after `masterArticle` is resolved (line 114), add: `if (!masterArticle) { notFound(); }` — this MUST be before the `jsonLd` build. (3) In `generateMetadata()` (line 59): if the catch block fires OR if `masterArticle` is null after the try, set `robots: { index: false, follow: false }` in the returned Metadata object to prevent indexing empty alpha pages. | ✅ Done |
+| **T-05** | P1 | `frontend/src/app/terminal/[coin]/page.tsx` | **Add conditional `robots` meta for article-less terminal pages + guard invalid coins.** (1) In `generateMetadata()` (line 60): after the try/catch fetching `masterArticle`, if `masterArticle` is null, add `robots: { index: false, follow: false }` to the returned Metadata. This prevents ghost terminal pages from being indexed while still allowing the page to render (user sees chart + wire). (2) In the page component (line 106): add a guard at the top after resolving `params` — if `coin` is not in the COINS array (validate against the const), call `notFound()`. This prevents random slug pages like `/terminal/xyz` from generating. (3) Update `generateStaticParams()` to remain as-is (all COINS) since terminal pages with charts are valid even without articles — the `robots` meta handles the indexing concern. | ✅ Done |
+| **T-06** | P1 | `frontend/src/app/terminal/[coin]/opengraph-image.tsx` | **Handle null masterArticle gracefully for OG images.** The current code already handles null (falls back to default headline). No changes needed to this file, but verify the edge runtime doesn't break when backend returns null. If the API call fails, the catch already handles it. **VERIFICATION ONLY — no code changes expected unless a bug is found.** | ✅ Done |
+
+#### Phase D — Sitemap Fix (T-07)
+
+| Task ID | Priority | File(s) | Task Description | Status |
+|---|---|---|---|---|---|
+| **T-07** | P0 | `frontend/src/app/sitemap.ts` | **Filter coin pages in sitemap to only include coins with master articles.** (1) Import `terminalApi` from `@/features/terminal/api`. (2) Convert `buildCoinPages()` from a synchronous function to `async function buildArticleCoinPages(): Promise<MetadataRoute.Sitemap>`. (3) Inside it, call `const coinsWithArticles = await terminalApi.getMasterArticleCoins();` — if the array is empty (API failed), return an empty array (skip all coin pages rather than generate ghost pages). (4) Filter: only generate sitemap entries for coins in `coinsWithArticles`. Map each coin to both `/terminal/{coin}` and `/terminal/{coin}/alpha` as before. (5) In the default `sitemap()` export (line 66), change `const coinPages = buildCoinPages();` to `const coinPages = await buildArticleCoinPages();`. (6) Remove the now-unused `buildCoinPages` function. | ✅ Done |
 
 ---
 
 ### 3. QA & Security Stage (QA Hunter)
 
-**Audit Date:** April 19, 2026
-**Re-Audit Date:** April 19, 2026 (post-fix verification)
-**Auditor:** QA & Security Hunter
-**Overall Verdict:** ✅ **FULL PASS — All 8 tasks approved**
+**Status:** ✅ Execution Complete — All 7 tasks landed, awaiting QA audit
 
----
-
-#### T-01 — P0: 301 Redirects (`next.config.ts`) — ✅ PASS
-All 30 coins mapped, `permanent: true`, lowercase, COINS scoped inside function. `headers()` and `images` untouched.
-
-#### T-02 — P0: Custom 404 Page (`not-found.tsx`) — ✅ PASS
-`robots: { index: false, follow: false }` correctly set. Dark theme Tailwind classes applied. `<a>` upgraded to Next.js `<Link>` for client-side navigation.
-
-#### T-03 — P0: Remove Dead SearchAction JSON-LD (`layout.tsx`) — ✅ PASS
-Only Organization JSON-LD block remains. GA, metadata, fonts, structural layout — all untouched.
-
-#### T-04 — P1: Article Re-Processing Loop (`aiWorkflow.cron.ts`) — ✅ PASS
-`consumedAt` column confirmed in Drizzle schema. `markBufferItemConsumed()` called on ALL exit paths. `isNull(rawNewsBuffer.consumedAt)` filter applied to both buffer queries.
-
-#### T-05 — P1: Meta Truncation Safety Net (`openai.service.ts`) — ✅ PASS
-`truncateMetaField()` handles `unknown` input safely. Applied in 3 locations: `callGptNanoWriter`, `callWriterStage2A`, `callGptNanoMasterUpdate`. Placed AFTER JSON parse, BEFORE Zod validation.
-
-#### T-06 — P2: Template Literal Bug (`LivingArticle.tsx`) — ✅ PASS (fixed)
-**Fix verified at line 56:** `{`No living article found for ${symbol}`}` — correctly wrapped in JSX expression. `${symbol}` now interpolates properly.
-
-#### T-07 — P2: Meta Tag Repair Script (`repair-meta-tags.ts`) — ✅ PASS
-Idempotency guard with `repair_meta_tags_v3` flag. Hard truncation enforces limits. 3-second delay between API calls. Clean error handling.
-
-#### T-08 — P2: Per-Coin OG Image (`opengraph-image.tsx`) — ✅ PASS (fixed)
-**Fixes verified:** `params` typed as `Promise<{ coin: string }>` and awaited (line 10-11). `export const revalidate = 300` added (line 8). 5-minute ISR cache prevents crawler abuse.
-
----
-
-### Summary
-
-| Task | Verdict |
-|---|---|
-| T-01 | ✅ Pass |
-| T-02 | ✅ Pass |
-| T-03 | ✅ Pass |
-| T-04 | ✅ Pass |
-| T-05 | ✅ Pass |
-| T-06 | ✅ Pass (fixed) |
-| T-07 | ✅ Pass |
-| T-08 | ✅ Pass (fixed) |
-
-**Status:** ✅ **FULL PASS — Release Manager cleared to proceed.**
+**QA Checklist for Reviewer:**
+1. Verify `GET /market/master/coins` returns correct coin list from DB
+2. Verify `/terminal/pepe/alpha` (no article) returns 404 with `notFound()`
+3. Verify `/terminal/sol/alpha` (has article) renders correctly
+4. Verify `/terminal/xyz` (invalid coin) returns 404
+5. Verify `/sitemap.xml` only contains coins that have master articles
+6. Verify `robots` meta is `noindex, nofollow` on article-less terminal pages
+7. Verify direct deep-link navigation to `/terminal/sol` loads with chart + wire (even without article)
+8. Verify existing functionality is NOT broken: wire, radar, chat all work on terminal pages
 
 ---
 
 ### 4. Deployment Stage (Release Manager)
 
-- **Commit Message:** [To be determined after all tasks complete]
+- **Commit Message:** [To be determined after QA pass]
 - **Status:** Pending

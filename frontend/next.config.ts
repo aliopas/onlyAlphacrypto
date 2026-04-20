@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { COINS } from "./src/lib/constants";
 
 const nextConfig: NextConfig = {
     async headers() {
@@ -16,13 +17,6 @@ const nextConfig: NextConfig = {
         ];
     },
     async redirects() {
-        const COINS = [
-            'BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'ADA', 'DOGE', 'AVAX',
-            'DOT', 'MATIC', 'LINK', 'UNI', 'ATOM', 'NEAR', 'APT', 'ARB',
-            'OP', 'SUI', 'SEI', 'TIA', 'JUP', 'WIF', 'PEPE', 'FLOKI',
-            'INJ', 'FTM', 'RENDER', 'AAVE', 'MKR', 'SNX',
-        ];
-
         return COINS.map((coin) => ({
             source: `/${coin.toLowerCase()}`,
             destination: `/terminal/${coin.toLowerCase()}`,

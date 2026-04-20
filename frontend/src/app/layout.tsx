@@ -4,12 +4,10 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Sidebar } from '@/features/shared/components/Sidebar';
 import { TickerBar } from '@/features/shared/components/TickerBar';
-
-const GA_ID = 'G-VWQNMXJ2JK';
+import { ErrorBoundary } from '@/features/shared/components/ErrorBoundary';
+import { SITE_URL, GA_MEASUREMENT_ID } from '@/lib/constants';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
-
-const SITE_URL = 'https://onlyalphacrypto.com';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -77,13 +75,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark">
       <head>
-        <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
+        <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`} strategy="afterInteractive" />
         <Script id="google-analytics" strategy="afterInteractive">
           {`
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
-            gtag('config', '${GA_ID}');
+            gtag('config', '${GA_MEASUREMENT_ID}');
           `}
         </Script>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -115,7 +113,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
           {/* Page content */}
           <div className="flex-1 overflow-y-auto p-4 md:p-6">
-            {children}
+            <ErrorBoundary>{children}</ErrorBoundary>
           </div>
         </main>
       </body>
