@@ -8,6 +8,11 @@ export type MarketMood = {
     label: string;
 };
 
+export type MarketMoodHistory = MarketMood & {
+    validForDate: string;
+    createdAt: string;
+};
+
 export type AlphaFocus = {
     // original DB fields
     coinSymbol: string;

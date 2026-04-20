@@ -1,5 +1,5 @@
 import { apiClient } from '@/features/shared/api/client';
-import { MarketMood, AlphaFocus, RadarSignal, TopMover } from './types';
+import { MarketMood, MarketMoodHistory, AlphaFocus, RadarSignal, TopMover } from './types';
 
 export const homeApi = {
     getMarketMood: async (): Promise<MarketMood | null> => {
@@ -49,6 +49,16 @@ export const homeApi = {
         } catch (error) {
             console.error('[API] getAssetCount failed:', error);
             return 0;
+        }
+    },
+
+    getMarketMoodHistory: async (): Promise<MarketMoodHistory[]> => {
+        try {
+            const { data } = await apiClient.get<MarketMoodHistory[]>('/market/mood/history');
+            return data;
+        } catch (error) {
+            console.error('[API] getMarketMoodHistory failed:', error);
+            return [];
         }
     }
 };
