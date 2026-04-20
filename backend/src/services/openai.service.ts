@@ -26,6 +26,25 @@ export interface AirdropValidationResult {
 
 
 
+export interface AirdropArticleValidationResult {
+    isLegitimate: boolean;
+    riskVerdict: 'LOW' | 'MEDIUM' | 'HIGH' | 'SCAM';
+    projectName: string;
+    network: string;
+    tasks: Array<{
+        description: string;
+        contractAddress?: string;
+        minAmount?: number;
+        tokenSymbol?: string;
+        chain?: string;
+        isAutoVerifiable: boolean;
+    }>;
+    estValue: string;
+    snapshotDate: string | null;
+    tgeDate: string | null;
+    aiReport: string;
+}
+
 export interface DeepAnalysisResult {
     sentiment: 'bullish' | 'bearish' | 'neutral';
     impactScore: number;
@@ -318,6 +337,27 @@ export async function validateAirdrop(
     });
 
     // Store in cache
+    cache.set(cacheKey, result);
+    return result;
+}
+
+export async function validateAirdropFromArticle(
+    articleContext: string
+): Promise<AirdropArticleValidationResult> {
+    const cacheKey = cache.generateKey('airdropArticleValidation', articleContext);
+    const cached = cache.get<AirdropArticleValidationResult>(cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    const messages = prompts.buildAirdropFromArticleMessages(articleContext);
+    const result = await gateway.chat<AirdropArticleValidationResult>({
+        model: env.DEEPSEEK_MODEL,
+        temperature: 0.2,
+        responseFormat: { type: 'json_object' },
+        messages,
+    });
+
     cache.set(cacheKey, result);
     return result;
 }

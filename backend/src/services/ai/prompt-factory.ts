@@ -135,6 +135,50 @@ Rules: isAutoVerifiable = true ONLY if the task involves a specific on-chain act
         ];
     }
 
+    buildAirdropFromArticleMessages(articleContext: string): ChatCompletionMessageParam[] {
+        return [
+            {
+                role: 'system',
+                content: `You are an expert at extracting structured airdrop data from raw crypto news articles.
+Analyze the provided article text and return a JSON object with EXACTLY this shape:
+{
+  "isLegitimate": <true|false>,
+  "riskVerdict": "LOW|MEDIUM|HIGH|SCAM",
+  "projectName": "<the protocol/project name extracted from the article>",
+  "network": "<primary blockchain, e.g. 'Ethereum', 'Solana', 'zkSync Era'>",
+  "tasks": [
+    {
+      "description": "<human-readable task>",
+      "contractAddress": "<optional 0x...>",
+      "minAmount": <optional number>,
+      "tokenSymbol": "<optional>",
+      "chain": "<optional: ethereum|zksync|linea|arbitrum|solana>",
+      "isAutoVerifiable": <true|false>
+    }
+  ],
+  "estValue": "<e.g. '$500-$2000'>",
+  "snapshotDate": "<ISO 8601 date or null>",
+  "tgeDate": "<ISO 8601 date or null>",
+  "aiReport": "<3-4 paragraph professional analysis of this airdrop opportunity>"
+}
+
+Rules:
+- Be CONSERVATIVE. Only flag confirmed or highly probable airdrops.
+- If the article mentions "airdrop" only in passing (e.g., a price prediction article that casually references an airdrop), set isLegitimate = false.
+- projectName: extract the actual protocol name from the article. If unclear, use the most prominent project mentioned.
+- network: the primary blockchain where this airdrop operates.
+- snapshotDate / tgeDate: if a specific date is mentioned, return it in ISO 8601 format (YYYY-MM-DD). Otherwise return null.
+- tasks: the actions users need to qualify. If the article does not specify exact tasks, infer reasonable ones based on the protocol type.
+- isAutoVerifiable = true ONLY for specific on-chain actions with verifiable contract addresses.
+- Output ONLY the JSON object. No preamble. No text outside JSON.`
+            },
+            {
+                role: 'user',
+                content: articleContext
+            }
+        ];
+    }
+
     buildChatMessages(messages: ChatMessage[], coinContext: CoinContext, mode: 'general' | 'context' = 'general'): ChatCompletionMessageParam[] {
         const systemPrompt = mode === 'context'
             ? `You are 'Ask OnlyAlpha', an elite cryptocurrency deep analysis assistant in Context Mode.

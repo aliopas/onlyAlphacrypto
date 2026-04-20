@@ -9,6 +9,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { timeMiddleware } from './middleware/time.middleware';
 import { startAiWorkflowCron } from './crons/aiWorkflow.cron';
 import { startAirdropHunterCron } from './crons/airdropHunter.cron';
+import { startAirdropRSSCron } from './crons/airdropRssHunter.cron';
 import { startDailyAlphaCron } from './crons/dailyAlpha.cron';
 import { startHistoricalNewsCron } from './crons/historicalNews.cron';
 import { startMarketMoodCron } from './crons/marketMood.cron';
@@ -84,7 +85,8 @@ async function bootstrap(): Promise<void> {
         const cronStartDelay = 5000;
         const crons = [
             { name: 'AiWorkflow', fn: startAiWorkflowCron },
-            // { name: 'AirdropHunter', fn: startAirdropHunterCron }, // TEMPORARILY DISABLED
+            { name: 'AirdropHunter', fn: startAirdropHunterCron },
+            { name: 'AirdropRSSHunter', fn: startAirdropRSSCron },
             { name: 'DailyAlpha', fn: startDailyAlphaCron },
             { name: 'HistoricalNews', fn: startHistoricalNewsCron },
             { name: 'MarketMood', fn: startMarketMoodCron },

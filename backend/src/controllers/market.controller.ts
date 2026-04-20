@@ -503,7 +503,7 @@ export async function getArchiveArticles(req: Request, res: Response, next: Next
 }
 
 import { runAiWorkflow, backfillRadarSignals } from '../crons/aiWorkflow.cron';
-import { runDiscovery, runRoutineSync } from '../crons/airdropHunter.cron';
+import { runRoutineSync } from '../crons/airdropHunter.cron';
 import { computeMarketMood } from '../crons/marketMood.cron';
 import { selectDailyAlpha } from '../crons/dailyAlpha.cron';
 
@@ -519,7 +519,7 @@ export async function forceSeed(req: Request, res: Response, next: NextFunction)
 
         const [aCount] = await db.select({ id: airdropProjects.id }).from(airdropProjects).limit(1);
         if (!aCount) {
-            await runDiscovery();
+            console.log('[ForceSeed] No airdrop projects found — waiting for RSS hunter cron to populate.');
         } else {
             await runRoutineSync();
         }

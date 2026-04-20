@@ -1,7 +1,7 @@
 # 🤖 ONLYALPHA — PROJECT STATE
 
 **Last Updated:** April 20, 2026
-**Current Focus:** Phase 10 — Top Movers Widget: Full Implementation
+**Current Focus:** Phase 11 — Airdrop RSS Hunter: Real Data Pipeline
 
 ## 🏗 Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,22 +15,26 @@
 2. **Modular Boundaries:** Cache logic → `CacheManager`. AI calls → `AIGateway`. Prompts → `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## 🔴 Current Mission: Phase 10 — Top Movers Widget: Full Implementation
+## 🔴 Current Mission: Phase 11 — Airdrop RSS Hunter: Real Data Pipeline
 
-**Status:** 🟡 IN PROGRESS — Micro-Tasks Defined in THE_NEXUS_HUB.md, Ready for Execution
+**Status:** 🟡 PLANNING — Micro-Tasks Defined in THE_NEXUS_HUB.md, Ready for Execution
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
-**Scope:** Frontend-only. Single file rewrite of `TopMovers.tsx` — replace "Coming Soon" placeholder with live-updating Top Movers widget
-**Backend Status:** Already complete — `GET /market/movers` endpoint is live and cached 30s
-**Task Breakdown:** 7 sub-tasks (T-01→T-07) in `agent_gedens/THE_NEXUS_HUB.md`
-- T-01: Imports & Types (constants, MoverRow interface)
-- T-02: Helper Functions (toMoverRow, formatPrice, SkeletonRows, EmptyState, ReconnectingState)
-- T-03: State & Data Fetching (useState, useEffect, polling, NEW badge tracking)
-- T-04: Header Section (flat market detection, live/error indicators)
-- T-05: Body — Conditional Rendering (loading/error/empty states)
-- T-06: Mover Table Rows (rank, symbol, badges, change, price, volume bar)
-- T-07: Edge Cases & Polish (safety checks, no stale closures, export signature)
+**Scope:** Backend-only. 2 NEW files + 3 modified files. Zero new npm packages.
+**Task Breakdown:** 7 tasks (T-01→T-07) in `agent_gedens/THE_NEXUS_HUB.md`
+- T-01: Create `airdropRss.service.ts` — Types, RSS Sources, Fetch & Keyword Filter
+- T-02: Add dedup helpers & context builder to `airdropRss.service.ts`
+- T-03: Add `buildAirdropFromArticleMessages()` to `prompt-factory.ts`
+- T-04: Add `validateAirdropFromArticle()` + `AirdropArticleValidationResult` to `openai.service.ts`
+- T-05: Create `airdropRssHunter.cron.ts` — Main Orchestrator (fetch → filter → dedup → AI → DB)
+- T-06: Register `startAirdropRSSCron` in `server.ts` + re-enable disabled AirdropHunter cron
+- T-07: Edge cases, safety verification, TypeScript compilation check
 
 ## ✅ Completed Phases
+
+### Phase 10 — Top Movers Widget: Full Implementation
+**Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Completed:** April 20, 2026
+**Tasks:** 7 (T-01 through T-07) — All Passed QA
 
 ### Phase 9 — Terminal Deep-Link & SEO Integrity Fix
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`

@@ -7,7 +7,7 @@ import { users, userWallets } from './user.model';
 // ─── AIRDROP PROJECTS ─────────────────────────────────────────────────────────
 export const airdropProjects = pgTable('airdrop_projects', {
     id: serial('id').primaryKey(),
-    name: varchar('name', { length: 100 }).notNull(),              // 'ZkSync Era'
+    name: varchar('name', { length: 100 }).notNull().unique(),              // 'ZkSync Era'
     network: varchar('network', { length: 50 }).notNull(),          // 'Mainnet' | 'Testnet'
     logoUrl: varchar('logo_url', { length: 500 }),
     estValue: varchar('est_value', { length: 255 }),                 // '$1,200'
