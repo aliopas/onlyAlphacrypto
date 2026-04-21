@@ -1,7 +1,7 @@
 # 🤖 ONLYALPHA — PROJECT STATE
 
-**Last Updated:** April 20, 2026
-**Current Focus:** Phase 11 — Airdrop RSS Hunter: Real Data Pipeline
+**Last Updated:** April 21, 2026
+**Current Focus:** Phase 12 — Airdrop UX Overhaul: From Functional to Premium
 
 ## 🏗 Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,21 +15,33 @@
 2. **Modular Boundaries:** Cache logic → `CacheManager`. AI calls → `AIGateway`. Prompts → `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## 🔴 Current Mission: Phase 11 — Airdrop RSS Hunter: Real Data Pipeline
+## 🔴 Current Mission: Phase 12 — Airdrop UX Overhaul: From Functional to Premium
 
-**Status:** 🟡 PLANNING — Micro-Tasks Defined in THE_NEXUS_HUB.md, Ready for Execution
+**Status:** 🟡 APPROVED — Tech Lead Review Complete, Guardrails Issued, Ready for Architect
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
-**Scope:** Backend-only. 2 NEW files + 3 modified files. Zero new npm packages.
-**Task Breakdown:** 7 tasks (T-01→T-07) in `agent_gedens/THE_NEXUS_HUB.md`
-- T-01: Create `airdropRss.service.ts` — Types, RSS Sources, Fetch & Keyword Filter
-- T-02: Add dedup helpers & context builder to `airdropRss.service.ts`
-- T-03: Add `buildAirdropFromArticleMessages()` to `prompt-factory.ts`
-- T-04: Add `validateAirdropFromArticle()` + `AirdropArticleValidationResult` to `openai.service.ts`
-- T-05: Create `airdropRssHunter.cron.ts` — Main Orchestrator (fetch → filter → dedup → AI → DB)
-- T-06: Register `startAirdropRSSCron` in `server.ts` + re-enable disabled AirdropHunter cron
-- T-07: Edge cases, safety verification, TypeScript compilation check
+**Scope:** Frontend-heavy. 3 NEW components + 5 modified files + 1 backend endpoint fix. Zero new npm packages.
+**Task Breakdown:** 15 tasks (T-01→T-15) in `agent_gedens/THE_NEXUS_HUB.md`
+- Batch 1 (P0): T-01→T-05 — Urgent endpoint, frontend API, Radar widget, smart cards, progress bars
+- Batch 2 (P1): T-06→T-09 — Task timeline, manual attestation, AI report, detail page integration
+- Batch 3 (P2): T-10→T-13 — Stats fix, portfolio hero, deadline banner, live countdown
+- Batch 4 (P3): T-14→T-15 — Gamification (streak + badges)
+
+### ⚠️ Tech Lead Guardrails (MUST be followed)
+1. `/urgent` endpoint: `optionalAuth` + 60s Redis cache + explicit return type
+2. Progress in cards: EMBED `progressPercentage` in `/projects` list response via SQL join — zero extra API calls
+3. Preserve existing 30s polling in TaskList rewrite (lines 24-41 of current TaskList.tsx)
+4. AI report parser: defensive, no fragile regex, always fall through to unstructured display
+5. `parseEstValue`: single utility function, handles all edge cases (single, range, TBD, null)
+6. Toast/banner: React state + Tailwind only, no external libraries
+7. Countdown timer: strict `useEffect` cleanup pattern (no memory leaks)
+8. `userProgress` type: use `completed: boolean` + `verifiedBy: 'auto' | 'manual'` to match DB schema (NOT `status` enum)
 
 ## ✅ Completed Phases
+
+### Phase 11 — Airdrop RSS Hunter: Real Data Pipeline
+**Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Completed:** April 21, 2026
+**Tasks:** 7 (T-01 through T-07) — All Passed QA
 
 ### Phase 10 — Top Movers Widget: Full Implementation
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
@@ -41,7 +53,7 @@
 **Completed:** April 20, 2026
 **Tasks:** 7 (T-01 through T-07) — All Passed QA
 
-### Market Mood Gauge — Frontend Implementation (Phase 8)
+### Phase 8 — Market Mood Gauge — Frontend Implementation
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
 **Completed:** April 20, 2026
 **Tasks:** 6 (T-01 through T-06) — All Passed QA

@@ -8,21 +8,52 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { getCache, setCache, deleteCache } from '../config/redis';
 import { logger } from '../utils/logger';
 
+function parseEstValue(raw: string | null | undefined): number {
+    if (!raw) return 0;
+    const trimmed = raw.trim();
+    if (/^tbd$/i.test(trimmed) || trimmed === '' || trimmed === '-') return 0;
+
+    const nums = trimmed.match(/\d[\d,]*\.?\d*/g);
+    if (!nums || nums.length === 0) return 0;
+
+    const parsed = nums.map((n) => parseFloat(n.replace(/,/g, ''))).filter((n) => !isNaN(n) && n > 0);
+    if (parsed.length === 0) return 0;
+
+    parsed.sort((a, b) => a - b);
+    return parsed[0];
+}
+
 // GET /api/airdrop/projects
-export async function getProjects(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function getProjects(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
         const cacheKey = 'airdrop:projects';
-        const cached = await getCache(cacheKey);
-        if (cached) { res.json(cached); return; }
+        let projects = await getCache<Record<string, unknown>[]>(cacheKey);
+        if (!projects) {
+            projects = await db
+                .select()
+                .from(airdropProjects)
+                .where(eq(airdropProjects.isActive, true))
+                .orderBy(desc(airdropProjects.updatedAt));
+            await setCache(cacheKey, projects, 300);
+        }
 
-        const projects = await db
-            .select()
-            .from(airdropProjects)
-            .where(eq(airdropProjects.isActive, true))
-            .orderBy(desc(airdropProjects.updatedAt));
+        const userId = req.userId;
+        if (userId && projects.length > 0) {
+            const enriched = await Promise.all(
+                projects.map(async (p) => {
+                    try {
+                        const progress = await getProjectProgress(userId, Number(p.id));
+                        return { ...p, progressPercent: progress.percent };
+                    } catch {
+                        return { ...p, progressPercent: 0 };
+                    }
+                })
+            );
+            res.json(enriched);
+            return;
+        }
 
-        await setCache(cacheKey, projects, 300);
-        res.json(projects);
+        res.json(projects.map((p) => ({ ...p, progressPercent: 0 })));
     } catch (err) { next(err); }
 }
 
@@ -62,12 +93,37 @@ export async function getProgress(req: AuthRequest, res: Response, next: NextFun
         const projectId = parseInt(String(req.params['id']), 10);
         const userId = req.userId;
         if (!userId) {
-            res.json({ projectId, completedTasks: 0, totalTasks: 0, tasks: [] });
+            res.json({ percent: 0, completedCount: 0, totalCount: 0, userProgress: [] });
             return;
         }
 
         const progress = await getProjectProgress(userId, projectId);
-        res.json(progress);
+
+        const tasks = await db
+            .select({ id: airdropTasks.id })
+            .from(airdropTasks)
+            .where(eq(airdropTasks.projectId, projectId));
+
+        const taskIds = tasks.map((t) => t.id);
+
+        const rows = taskIds.length > 0
+            ? await db
+                .select()
+                .from(userProgress)
+                .where(
+                    and(
+                        eq(userProgress.userId, userId),
+                        sql`${userProgress.taskId} = ANY(${taskIds})`
+                    )
+                )
+            : [];
+
+        res.json({
+            percent: progress.percent,
+            completedCount: progress.completedCount,
+            totalCount: progress.totalCount,
+            userProgress: rows,
+        });
     } catch (err) { next(err); }
 }
 
@@ -119,8 +175,30 @@ export async function getStats(req: AuthRequest, res: Response, next: NextFuncti
             .from(userProgress)
             .where(and(eq(userProgress.userId, userId), eq(userProgress.completed, true)));
 
+        const activeProjects = await db
+            .select({
+                id: airdropProjects.id,
+                estValue: airdropProjects.estValue,
+            })
+            .from(airdropProjects)
+            .where(eq(airdropProjects.isActive, true));
+
+        let totalValue = 0;
+        const progressPromises = activeProjects.map(async (p) => {
+            const lowerBound = parseEstValue(p.estValue);
+            if (lowerBound <= 0) return 0;
+            try {
+                const progress = await getProjectProgress(userId, p.id);
+                return lowerBound * (progress.percent / 100);
+            } catch {
+                return 0;
+            }
+        });
+        const values = await Promise.all(progressPromises);
+        totalValue = values.reduce((sum, v) => sum + v, 0);
+
         res.json({
-            totalValue: 0,
+            totalValue: Math.round(totalValue),
             walletCount: walletCountResult[0]?.count ?? 0,
             txCount: txCountResult[0]?.count ?? 0,
             completedTasks: completedTasksResult[0]?.count ?? 0,
@@ -196,6 +274,105 @@ export async function getActivity(req: AuthRequest, res: Response, next: NextFun
         logger.error('[Airdrop] getActivity failed:', error);
         res.status(500).json({ error: 'Failed to fetch activity' });
     }
+}
+
+// GET /api/airdrop/urgent (optional auth — returns top 3 urgent airdrops)
+interface UrgentAirdropItem {
+    id: number;
+    name: string;
+    logoUrl: string | null;
+    network: string;
+    estValue: string | null;
+    riskVerdict: string | null;
+    snapshotAt: Date | null;
+    tgeAt: Date | null;
+    createdAt: Date;
+    urgencyScore: number;
+    daysLeft: number | null;
+    isNew: boolean;
+    progressPercent: number;
+}
+
+export async function getUrgentAirdrops(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const cacheKey = 'airdrop:urgent';
+        const cached = await getCache(cacheKey);
+        if (cached) { res.json(cached); return; }
+
+        const projects = await db
+            .select({
+                id: airdropProjects.id,
+                name: airdropProjects.name,
+                logoUrl: airdropProjects.logoUrl,
+                network: airdropProjects.network,
+                estValue: airdropProjects.estValue,
+                riskVerdict: airdropProjects.riskVerdict,
+                snapshotAt: airdropProjects.snapshotAt,
+                tgeAt: airdropProjects.tgeAt,
+                createdAt: airdropProjects.createdAt,
+            })
+            .from(airdropProjects)
+            .where(eq(airdropProjects.isActive, true));
+
+        const userId = req.userId;
+
+        const now = new Date();
+        const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+
+        const scored: UrgentAirdropItem[] = await Promise.all(
+            projects.map(async (p) => {
+                const deadline = p.snapshotAt || p.tgeAt;
+                const daysLeft = deadline
+                    ? Math.max(0, Math.floor((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+                    : null;
+                const isNew = p.createdAt >= fortyEightHoursAgo;
+
+                let progressPercent = 0;
+                if (userId) {
+                    try {
+                        const progress = await getProjectProgress(userId, p.id);
+                        progressPercent = progress.percent;
+                    } catch {
+                        progressPercent = 0;
+                    }
+                }
+
+                let urgencyScore = 0;
+                if (daysLeft !== null && daysLeft <= 3) urgencyScore += 100;
+                if (isNew) urgencyScore += 30;
+                if (daysLeft !== null && progressPercent < 50 && deadline && deadline > now) urgencyScore += 20;
+
+                return {
+                    id: p.id,
+                    name: p.name,
+                    logoUrl: p.logoUrl ?? null,
+                    network: p.network,
+                    estValue: p.estValue ?? null,
+                    riskVerdict: p.riskVerdict ?? null,
+                    snapshotAt: p.snapshotAt ?? null,
+                    tgeAt: p.tgeAt ?? null,
+                    createdAt: p.createdAt,
+                    urgencyScore,
+                    daysLeft,
+                    isNew,
+                    progressPercent,
+                };
+            })
+        );
+
+        scored.sort((a, b) => b.urgencyScore - a.urgencyScore);
+        const top3 = scored.slice(0, 3);
+
+        const serialized = top3.map((item) => ({
+            ...item,
+            snapshotAt: item.snapshotAt ? item.snapshotAt.toISOString() : null,
+            tgeAt: item.tgeAt ? item.tgeAt.toISOString() : null,
+            createdAt: item.createdAt.toISOString(),
+        }));
+
+        await setCache(cacheKey, serialized, 60);
+        res.json(serialized);
+    } catch (err) { next(err); }
 }
 
 // GET /api/airdrop/sidebar-deadlines (requires auth)

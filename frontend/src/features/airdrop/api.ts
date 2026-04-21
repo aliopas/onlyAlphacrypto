@@ -1,5 +1,5 @@
 import { apiClient } from '@/features/shared/api/client';
-import { AirdropProject, ProgressResponse } from './types';
+import { AirdropProject, ProgressResponse, UrgentAirdrop } from './types';
 
 export interface AirdropStats {
     totalValue: number;
@@ -97,6 +97,16 @@ export const airdropApi = {
         } catch (error) {
             console.error('[API] getDeadlines failed:', error);
             return null;
+        }
+    },
+
+    getUrgentAirdrops: async (): Promise<UrgentAirdrop[]> => {
+        try {
+            const { data } = await apiClient.get<UrgentAirdrop[]>('/airdrop/urgent');
+            return data;
+        } catch (error) {
+            console.error('[API] getUrgentAirdrops failed:', error);
+            return [];
         }
     },
 };

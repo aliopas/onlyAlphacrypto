@@ -1,11 +1,56 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { airdropApi } from '@/features/airdrop/api';
 import { AirdropProject, ProgressResponse } from '@/features/airdrop/types';
 import { TaskList } from '@/features/airdrop/components/TaskList';
-import { ArrowLeft, Loader2, Target, Zap, Clock } from 'lucide-react';
+import { AiReportStructured } from '@/features/airdrop/components/AiReportStructured';
+import { ArrowLeft, Loader2, Target, Zap, Clock, Timer } from 'lucide-react';
 import Link from 'next/link';
+
+function useCountdown(targetDate: string | undefined): string | null {
+    const [remaining, setRemaining] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!targetDate) {
+            setRemaining(null);
+            return;
+        }
+
+        const compute = () => {
+            const target = new Date(targetDate).getTime();
+            const now = Date.now();
+            const diff = target - now;
+
+            if (diff <= 0) {
+                setRemaining('PASSED');
+                return false;
+            }
+
+            const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((diff % (1000 * 60)) / 1000);
+
+            setRemaining(
+                `${String(d).padStart(2, '0')}:${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+            );
+            return true;
+        };
+
+        const shouldContinue = compute();
+        if (!shouldContinue) return;
+
+        const interval = setInterval(() => {
+            const cont = compute();
+            if (!cont) clearInterval(interval);
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [targetDate]);
+
+    return remaining;
+}
 
 export function AirdropDetailClient({
     project: initialProject,
@@ -16,6 +61,9 @@ export function AirdropDetailClient({
 }) {
     const [project, setProject] = useState<AirdropProject>(initialProject);
     const [progress, setProgress] = useState<ProgressResponse | null>(initialProgress);
+
+    const deadlineDate = project.snapshotAt || project.tgeAt;
+    const countdown = useCountdown(deadlineDate);
 
     const fetchDetails = useCallback(async () => {
         if (!project.id) return;
@@ -58,12 +106,35 @@ export function AirdropDetailClient({
                         <div className="bg-black/20 rounded-xl p-4 border border-white/5 flex flex-col justify-center relative overflow-hidden">
                             <div
                                 className="absolute bottom-0 left-0 h-1 bg-primary transition-all duration-1000"
-                                style={{ width: `${progress?.progressPercentage || 0}%` }}
+                                style={{ width: `${progress?.percent || 0}%` }}
                             />
                             <p className="text-sm text-muted-foreground mb-1">Your Progress</p>
-                            <p className="font-bold text-2xl text-primary">{progress?.progressPercentage || 0}%</p>
+                            <p className="font-bold text-2xl text-primary">{progress?.percent || 0}%</p>
                         </div>
                     </div>
+
+                    {countdown && countdown !== 'PASSED' && (
+                        <div className="mt-6 bg-black/20 rounded-xl p-4 border border-white/5 flex items-center gap-3">
+                            <Timer className="w-5 h-5 text-red-400 shrink-0" />
+                            <div>
+                                <p className="text-xs text-muted-foreground">
+                                    {project.snapshotAt ? 'Snapshot' : 'TGE'} Countdown
+                                </p>
+                                <p className="text-2xl font-mono-nums font-bold text-red-400 tracking-widest">
+                                    {countdown}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {countdown === 'PASSED' && deadlineDate && (
+                        <div className="mt-6 bg-black/20 rounded-xl p-4 border border-white/5 flex items-center gap-3">
+                            <Timer className="w-5 h-5 text-[#555] shrink-0" />
+                            <span className="text-sm text-[#555] font-mono">
+                                {project.snapshotAt ? 'Snapshot' : 'TGE'} date has passed
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -81,13 +152,14 @@ export function AirdropDetailClient({
             </div>
 
             {project.aiReport && (
-                <div className="mt-8 border border-[#222] bg-black p-6">
-                    <h3 className="text-xs font-mono font-bold text-[#00ff88] uppercase tracking-wider mb-4">
-                        AI Intelligence Report
-                    </h3>
-                    <div className="text-sm font-mono text-[#ccc] leading-relaxed whitespace-pre-wrap">
-                        {project.aiReport}
-                    </div>
+                <div className="mt-8">
+                    <AiReportStructured report={project.aiReport} timestamp={project.updatedAt} />
+                </div>
+            )}
+
+            {!project.aiReport && (
+                <div className="mt-8">
+                    <AiReportStructured report={null} timestamp={null} />
                 </div>
             )}
         </div>

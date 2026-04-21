@@ -26,22 +26,39 @@ export type AirdropProject = {
     createdAt: string;
     updatedAt: string;
     tasks?: AirdropTask[];
+    progressPercent?: number;
 };
 
 export type UserProgress = {
     id: number;
     userId: number;
-    projectId: number;
     taskId: number;
-    status: 'PENDING' | 'VERIFIED' | 'FAILED';
+    walletId?: number;
+    completed: boolean;
+    completedAt?: string;
+    verifiedBy?: 'auto' | 'manual';
     txHash?: string;
-    verifiedAt?: string;
+};
+
+export type UrgentAirdrop = {
+    id: number;
+    name: string;
+    logoUrl: string | null;
+    network: string;
+    estValue: string | null;
+    riskVerdict: string | null;
+    snapshotAt: string | null;
+    tgeAt: string | null;
+    createdAt: string;
+    urgencyScore: number;
+    daysLeft: number | null;
+    isNew: boolean;
+    progressPercent: number;
 };
 
 export type ProgressResponse = {
-    projectId: number;
-    totalTasks: number;
-    completedTasks: number;
-    progressPercentage: number;
+    percent: number;
+    completedCount: number;
+    totalCount: number;
     userProgress: UserProgress[];
 };

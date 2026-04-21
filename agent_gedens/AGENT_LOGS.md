@@ -1,6 +1,23 @@
 # 📋 ONLYALPHA — AGENT LOGS
 
-**Last Updated:** April 20, 2026
+**Last Updated:** April 21, 2026
+
+---
+
+## Phase 12 — Airdrop UX Overhaul: From Functional to Premium
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|---|
+| Apr 21, 2026 | P12-TECH-REVIEW | CONDITIONALLY APPROVED | — | Tech Lead | 7 guardrails issued. Critical bug found: `UserProgress` type used `status` enum but DB uses `completed` boolean + `verifiedBy`. Fixed. `ProgressResponse` type mismatch with backend also fixed. Backend `getProgress` now returns `userProgress[]` rows. |
+| Apr 21, 2026 | P12-STATE-FIX | FIXED | Tech Lead | — | Reconciled PROJECT_STATE.md (Phase 11→Completed, Phase 12→Current). Fixed `types.ts`, `TaskList.tsx`, `AirdropDetailClient.tsx`, `airdrop.controller.ts`. |
+
+---
+
+## Phase 11 — Airdrop RSS Hunter: Real Data Pipeline
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|---|
+| Apr 21, 2026 | P11-STATE | COMPLETED | — | Tech Lead | Phase marked complete in PROJECT_STATE. All 7 tasks previously passed QA. |
 
 ---
 
