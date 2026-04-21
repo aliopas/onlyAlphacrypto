@@ -6,6 +6,7 @@ import { MasterArticle } from '@/features/terminal/types';
 import { COINS, SITE_URL } from '@/lib/constants';
 
 export const revalidate = 60;
+export const dynamicParams = true;
 
 export function generateStaticParams() {
     return COINS.map((coin) => ({ coin: coin.toLowerCase() }));

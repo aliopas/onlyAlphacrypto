@@ -4,24 +4,31 @@
 
 ---
 
-## 📋 Active Phase: Phase 12 — Airdrop UX Overhaul: From Functional to Premium
+## 📋 Active Phase: Phase 13 — 404 Fix: Dynamic AI Radar Coins
 
 **Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
-**Total Tasks:** 15 (T-01 through T-15, in Batches)
-**Priority Order:** Batch 1 → Batch 2 → Batch 3 → Batch 4
+**Total Tasks:** 4 (T-01 through T-04, Single Batch)
+**Priority Order:** Single Batch (all 4 tasks are sequential and interdependent)
 **Executor:** Senior Developer
-**Scope:** Frontend-heavy. 3 NEW components + 5 modified files + 1 backend endpoint fix. Zero new npm packages.
+**Scope:** 2 files modified. Zero new files. Zero new npm packages. Zero backend changes.
 
 ---
 
 ### 1. Planning Stage (Planner)
 
-**Target:** Make the Airdrop UI reflect the powerful AI pipeline. Move from static placeholders and raw text dumps to a premium, gamified, and highly informative frontend experience.
-**Key Constraints:** 
-1. Zero new npm packages — use existing Tailwind CSS, Lucide icons, React primitives.
-2. No backend schema changes — use existing tables.
-3. No changes to crons or AI pipelines — only frontend + controller modifications.
-4. Backward compatible API usage.
+**Target:** Fix the 404 error when clicking on dynamic AI Radar coin cards (e.g., `$RAVE`, `$CHIP`, `$UTK`) in the LIVE AI RADAR section. These coins are not in the hardcoded `COINS` array (30 coins) and are rejected by a whitelist gate + missing `dynamicParams` config.
+
+**Root Cause — Three Layers:**
+1. **Layer 1 (PRIMARY):** `page.tsx:127-129` — explicit `COINS.includes()` whitelist check calls `notFound()` for any coin not in the hardcoded 30-coin array.
+2. **Layer 2 (AGGRAVATING):** `page.tsx` has no `export const dynamicParams = true`. Next.js defaults to `dynamicParams: false`, rejecting dynamic routes not in `generateStaticParams` before even reaching the page component.
+3. **Layer 3 (SAME BUG VECTOR):** `AlphaFocusCard.tsx:127` links arbitrary coins to `/terminal/[coin]?alpha=true`, hitting the same whitelist wall.
+
+**Key Constraints:**
+1. **DO NOT** remove or modify `generateStaticParams` — still needed for ISR SEO pre-rendering of top 30 coins.
+2. **DO NOT** change any routing, API, or component files (no RadarGrid, no AlphaFocusCard changes).
+3. **DO NOT** add backend coin validation — unnecessary complexity.
+4. **DO NOT** touch the `masterArticle` null check in `alpha/page.tsx:123` — that's intentional (alpha page genuinely requires an article).
+5. The terminal page already works for ANY coin — `TerminalPageClient` defaults to `'SOL'` if no coin-specific data exists. The whitelist is the ONLY blocker.
 
 **Status:** ✅ Ready for Execution
 
@@ -29,169 +36,78 @@
 
 ### 2. Execution Stage (Senior Developer)
 
-> **EXECUTION ORDER:** Work sequentially through Batches 1 to 4.
+> **EXECUTION ORDER:** Work sequentially T-01 → T-04. Each task is a precise surgical edit.
 
 ---
 
-#### Batch 1: P0 — Immediate Impact (E-1 + E-2)
+#### Single Batch: P0 — Surgical Fix (All Tasks)
 
-**T-01: Add `GET /api/airdrop/urgent` backend endpoint**
-**File:** `backend/src/controllers/airdrop.controller.ts` & `backend/src/routes/airdrop.routes.ts`
+**T-01: Remove whitelist gate from `terminal/[coin]/page.tsx`**
+**File:** `frontend/src/app/terminal/[coin]/page.tsx`
 **Status:** ✅ Done
 **Scope:**
-1. In `airdrop.controller.ts`, add `getUrgentAirdrops` method.
-2. Query the `airdrop_projects` table (and user progress if applicable) to return the top 3 projects sorted by urgency composite score.
-   - Urgency pseudo calculation: `(daysLeft <= 3 ? 100 : 0) + (isNew ? 30 : 0) + (progressPct < 50 && hasDeadline ? 20 : 0)`
-   - Include progress data for the user if applicable.
-3. In `airdrop.routes.ts` (or equivalent route file), add the GET route `/urgent` pointing to the new controller, ensuring appropriate auth middleware if needed (or make it public but returning personalized data if logged in).
-
-**T-02: Add `getUrgentAirdrops()` to frontend API client**
-**File:** `frontend/src/features/airdrop/api.ts` & types file
-**Status:** ✅ Done
-**Scope:**
-1. Define the frontend types for the urgent endpoint response.
-2. Add `export const getUrgentAirdrops = async () => ...` to fetch from `/api/airdrop/urgent`.
-
-**T-03: Rewrite `AirdropWatchlist.tsx` as live Alpha Airdrop Radar**
-**File:** `frontend/src/features/home/components/AirdropWatchlist.tsx`
-**Status:** ✅ Done
-**Scope:**
-1. Fetch data using `getUrgentAirdrops()`.
-2. Replace static "Coming Soon" with a micro-feed of top 3 urgent airdrops.
-3. Display project name, pulsing red dot for critical urgency.
-4. Display a countdown timer (DD:HH:MM) for deadlines.
-5. Display mini progress bar.
-6. Display "NEW" badge if created within 48h.
-7. Risk verdict colors (SAFE=emerald, MEDIUM=yellow, HIGH=orange, SCAM=red).
-8. Handle edge cases: Zero airdrops (show educational text), disconnected wallet (blur with "Connect wallet"), deadlines passed.
-
-**T-04: Add smart card state logic to `AirdropsPageClient.tsx`**
-**File:** `frontend/src/features/airdrop/components/AirdropsPageClient.tsx`
-**Status:** ✅ Done
-**Scope:**
-1. Implement 4 visual states per card:
-   - 🔴 **CRITICAL_DEADLINE**: TGE <= 3 days. Red pulsing border, countdown timer, red shadow.
-   - 🟢 **ON_TRACK**: >50% tasks done, no deadline. Green border, mini checkmark.
-   - 🔵 **NEWLY_DISCOVERED**: `createdAt` last 48h. Blue "NEW" badge, blue glow.
-   - 🟡 **NEEDS_ATTENTION**: <30% tasks AND deadline <= 14 days. Amber stripe, "X tasks remaining", amber progress bar.
-2. Prioritize states: CRITICAL > NEEDS_ATTENTION > NEWLY_DISCOVERED > ON_TRACK.
-3. Network badge as colored chip.
-4. Format Est. Value prominently (prefixed with $, suffix with +).
-5. Relative time for snapshot if <= 7 days.
-
-**T-05: Wire real progress data into card progress bars**
-**File:** `frontend/src/features/airdrop/components/AirdropsPageClient.tsx`
-**Status:** ✅ Done
-**Scope:**
-1. Ensure `progressPercentage` replaces the hardcoded `w-0` in all progress bars recursively.
-2. Must dynamically display the state sourced from backend (`/projects/:id/progress`).
+1. **DELETED** lines 127-129 — the `if (!COINS.includes(coinSymbol as typeof COINS[number])) { notFound(); }` block removed.
+2. Primary blocker eliminated. Any coin symbol now reaches `TerminalPageClient`.
 
 ---
 
-#### Batch 2: P1 — Core UX (E-3 + E-4)
-
-**T-06: Redesign `TaskList.tsx` as vertical quest timeline**
-**File:** `frontend/src/features/airdrop/components/TaskList.tsx`
+**T-02: Add `dynamicParams` to `terminal/[coin]/page.tsx`**
+**File:** `frontend/src/app/terminal/[coin]/page.tsx`
 **Status:** ✅ Done
 **Scope:**
-1. Implement vertical timeline UI with connected vertical lines.
-2. Verified task: Show truncated TX hash with explorer link, "Verified by: Auto" + timestamp, animated green checkmark.
-3. Pending/verifying task: Show watched contract address, "Checking on-chain..." + spinner. If fail: "Will retry in 30s".
-4. Color-coded timeline lines: green (verified), blue (in-progress), gray (not started).
-5. Handle disconnected wallets: "Connect wallet to auto-verify" tooltip.
-6. All verified: Show "🎉 All tasks complete!" celebration.
-
-**T-07: Add manual task self-attestation button + external link**
-**File:** `frontend/src/features/airdrop/components/TaskList.tsx`
-**Status:** ✅ Done
-**Scope:**
-1. For manual tasks (not auto-verifiable), show `[🔗 Open External Link]` if a URL is relevant.
-2. Show `[✓ I've Done This]` which manually marks it verified and updates state properly in the DB/local context.
-3. Ensure no Disabled "MANUAL" button is left in the UI.
-
-**T-08: Create `AiReportStructured.tsx` component**
-**File:** `frontend/src/features/airdrop/components/AiReportStructured.tsx` (NEW)
-**Status:** ✅ Done
-**Scope:**
-1. Create a structured renderer mapping common AI headings to accordion sections (Risk, Legitimate, Value, Funding).
-2. If text is unstructured, show as-is with "Limited intelligence" header.
-3. Scannable format: display confidence bars and safe/risk verdicts.
-4. Display `updatedAt` timestamp + "AI-analyzed" badge.
-5. Provide empty state logic: "Limited intelligence available...".
-
-**T-09: Integrate structured AI report into detail page**
-**File:** `frontend/src/features/airdrop/components/AirdropDetailClient.tsx`
-**Status:** ✅ Done
-**Scope:**
-1. Replace the raw `whitespace-pre-wrap` dump of `project.aiReport` with the newly created `<AiReportStructured report={project.aiReport} timestamp={...} />`.
-2. Minor layout adjustments to accommodate the new component beautifully.
+1. **KEPT** `COINS` import — still required by `generateStaticParams`. Removing it would break ISR pre-rendering.
+2. **ADDED** `export const dynamicParams = true;` after `revalidate = 60`.
+3. **VERIFIED** `generateStaticParams` untouched — still pre-renders top 30 coins.
 
 ---
 
-#### Batch 3: P2 — Polish & Retention (E-5 + E-6)
-
-**T-10: Fix `getStats` backend to calculate real `totalValue`**
-**File:** `backend/src/controllers/airdrop.controller.ts`
-**Status:** ✅ Done
+**T-03: Remove unused `COINS` import from `terminal/[coin]/alpha/page.tsx`**
+**File:** `frontend/src/app/terminal/[coin]/alpha/page.tsx`
+**Status:** ⏭️ Skipped (Per Plan)
 **Scope:**
-1. Update `getStats` calculation: parse `estValue` strings (extract numeric bounds, drop "TBD").
-2. Compute `totalValue` dynamically based on project's estimated value lower bound * user's `progressPercentage`.
-3. Sum across all active participated projects.
-4. Ensure no `0` hardcode is left.
-
-**T-11: Add portfolio value hero section to Hub**
-**File:** `frontend/src/features/airdrop/components/AirdropsPageClient.tsx`
-**Status:** ✅ Done
-**Scope:**
-1. Extract and fetch modified `getStats`.
-2. Build prominent hero strip at the top:
-   - Total unrealized value (formatted `$X,XXX+`).
-   - Active projects count and completed count.
-   - Handle empty state properly: "You could be earning $X..." or "$0 - Start farming...".
-   - Value "TBD" pending handling.
-
-**T-12: Add deadline banner + toast notification system**
-**File:** `frontend/src/features/airdrop/components/AirdropsPageClient.tsx`
-**Status:** ✅ Done
-**Scope:**
-1. Implement a dismissible banner for the most urgent deadline using an alert component.
-2. Banner should mention project name, remaining time, and uncompleted tasks.
-3. Save dismissal in `sessionStorage` so it hides for the session.
-
-**T-13: Add live `DD:HH:MM:SS` countdown to detail page**
-**File:** `frontend/src/features/airdrop/components/AirdropDetailClient.tsx`
-**Status:** ✅ Done
-**Scope:**
-1. Implement a `setInterval` ticking timer on the `snapshotDate` / `tgeDate`.
-2. Ensure interval cleans up on unmount.
-3. Output precise hours, minutes, seconds dynamically.
+1. `COINS` IS still used in `generateStaticParams` (line 12). Import must stay.
 
 ---
 
-#### Batch 4: P3 — Gamification (E-7)
-
-**T-14: Create `FarmingStreak.tsx` component**
-**File:** `frontend/src/features/airdrop/components/FarmingStreak.tsx` (NEW)
+**T-04: Add `dynamicParams = true` to `terminal/[coin]/alpha/page.tsx`**
+**File:** `frontend/src/app/terminal/[coin]/alpha/page.tsx`
 **Status:** ✅ Done
 **Scope:**
-1. Build light UI for simple streaks: "🔥 X-day farming streak".
-2. Add static view for achievements: "Early Bird", "Completionist", "Degen".
-3. Empty state: "Start your first farm".
-
-**T-15: Integrate streak + badges into Hub page**
-**File:** `frontend/src/features/airdrop/components/AirdropsPageClient.tsx`
-**Status:** ✅ Done
-**Scope:**
-1. Render `<FarmingStreak />` component appropriately in the page hierarchy (e.g., sidebar or sub-header).
+1. **ADDED** `export const dynamicParams = true;` after `revalidate = 60`.
+2. **VERIFIED** `masterArticle` null check untouched (intentional).
+3. **VERIFIED** `generateStaticParams` untouched.
 
 ---
 
 ### 3. QA & Security Stage (QA Hunter)
 
-**Status:** 🟡 Ready — All 15 Execution Tasks Marked Done, Awaiting QA Audit
+**Status:** ✅ PASSED — All Tasks Verified Clean
+**QA Date:** April 21, 2026
+
+**Final Audit:**
+- T-01 (whitelist gate removed): ✅ PASS
+- T-02 (`dynamicParams` added to page.tsx): ✅ PASS
+- T-03 (skipped — COINS import still needed): ✅ PASS
+- T-04 (`dynamicParams` added to alpha/page.tsx): ✅ PASS
+- `generateStaticParams`: ✅ Untouched in both files
+- `masterArticle` null check in alpha page: ✅ Preserved
+- Dead import `notFound` cleanup: ✅ Fixed & Verified
+- TypeScript strictness: ✅ Zero `any`, zero dead imports
+- Edge cases (non-whitelist coins, nonexistent coins): ✅ Graceful fallback
 
 ---
 
 ### 4. Deployment Stage (Release Manager)
 
 **Status:** ⬜ Pending — Awaiting QA Pass
+
+---
+
+---
+
+## 📦 Completed Phases (Archived)
+
+### Phase 12 — Airdrop UX Overhaul: From Functional to Premium
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Total Tasks:** 15 (T-01 through T-15, in Batches)
+**Status:** ✅ All Tasks Done — Awaiting Final QA

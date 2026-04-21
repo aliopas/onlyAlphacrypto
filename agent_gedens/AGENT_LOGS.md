@@ -4,6 +4,14 @@
 
 ---
 
+## Phase 13 — 404 Fix: Dynamic AI Radar Coins
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|---|
+| Apr 21, 2026 | P13-PLANNING | PLANNED | Strategic Planner | — | 4 micro-tasks defined (T-01→T-04). 2 files: `terminal/[coin]/page.tsx` + `terminal/[coin]/alpha/page.tsx`. Critical catch: T-03 revised — `COINS` import in alpha page is still used by `generateStaticParams`, do NOT remove. Only add `dynamicParams`. |
+
+---
+
 ## Phase 12 — Airdrop UX Overhaul: From Functional to Premium
 
 | Date | Task ID | Verdict | Executor | Reviewer | Notes |

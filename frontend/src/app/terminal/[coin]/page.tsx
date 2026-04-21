@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 import { TerminalPageClient } from '@/features/terminal/components/TerminalPageClient';
 import { terminalApi } from '@/features/terminal/api';
 import { homeApi } from '@/features/home/api';
@@ -7,6 +6,7 @@ import { MasterArticle } from '@/features/terminal/types';
 import { COINS, SITE_URL } from '@/lib/constants';
 
 export const revalidate = 60;
+export const dynamicParams = true;
 
 export function generateStaticParams() {
     return COINS.map((coin) => ({ coin: coin.toLowerCase() }));
@@ -123,10 +123,6 @@ export default async function CoinTerminalPage({
     const resolvedParams = await params;
     const resolvedSearchParams = await searchParams;
     const coinSymbol = resolvedParams.coin.toUpperCase();
-
-    if (!COINS.includes(coinSymbol as typeof COINS[number])) {
-        notFound();
-    }
 
     const radarId = resolvedSearchParams.radarId ? Number(resolvedSearchParams.radarId) : undefined;
     const isAlphaFocus = resolvedSearchParams.alpha === 'true';

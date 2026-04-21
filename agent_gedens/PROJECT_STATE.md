@@ -1,7 +1,7 @@
 # 🤖 ONLYALPHA — PROJECT STATE
 
 **Last Updated:** April 21, 2026
-**Current Focus:** Phase 12 — Airdrop UX Overhaul: From Functional to Premium
+**Current Focus:** Phase 13 — 404 Fix: Dynamic AI Radar Coins
 
 ## 🏗 Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,33 +15,27 @@
 2. **Modular Boundaries:** Cache logic → `CacheManager`. AI calls → `AIGateway`. Prompts → `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## 🔴 Current Mission: Phase 12 — Airdrop UX Overhaul: From Functional to Premium
+## 🔴 Current Mission: Phase 13 — 404 Fix: Dynamic AI Radar Coins
 
-**Status:** 🟡 APPROVED — Tech Lead Review Complete, Guardrails Issued, Ready for Architect
+**Status:** 🟡 PLANNED — Ready for Senior Developer Execution
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
-**Scope:** Frontend-heavy. 3 NEW components + 5 modified files + 1 backend endpoint fix. Zero new npm packages.
-**Task Breakdown:** 15 tasks (T-01→T-15) in `agent_gedens/THE_NEXUS_HUB.md`
-- Batch 1 (P0): T-01→T-05 — Urgent endpoint, frontend API, Radar widget, smart cards, progress bars
-- Batch 2 (P1): T-06→T-09 — Task timeline, manual attestation, AI report, detail page integration
-- Batch 3 (P2): T-10→T-13 — Stats fix, portfolio hero, deadline banner, live countdown
-- Batch 4 (P3): T-14→T-15 — Gamification (streak + badges)
+**Scope:** 2 files modified. Zero new files. Zero backend changes. Zero new npm packages.
+**Task Breakdown:** 4 tasks (T-01→T-04) in `agent_gedens/THE_NEXUS_HUB.md`
+- Single Batch (P0): T-01→T-04 — Remove whitelist gate, add `dynamicParams`, clean unused imports
+**Root Cause:** Hardcoded 30-coin `COINS` whitelist in terminal page + missing `dynamicParams` export = 404 for any radar coin not in the array.
 
 ### ⚠️ Tech Lead Guardrails (MUST be followed)
-1. `/urgent` endpoint: `optionalAuth` + 60s Redis cache + explicit return type
-2. Progress in cards: EMBED `progressPercentage` in `/projects` list response via SQL join — zero extra API calls
-3. Preserve existing 30s polling in TaskList rewrite (lines 24-41 of current TaskList.tsx)
-4. AI report parser: defensive, no fragile regex, always fall through to unstructured display
-5. `parseEstValue`: single utility function, handles all edge cases (single, range, TBD, null)
-6. Toast/banner: React state + Tailwind only, no external libraries
-7. Countdown timer: strict `useEffect` cleanup pattern (no memory leaks)
-8. `userProgress` type: use `completed: boolean` + `verifiedBy: 'auto' | 'manual'` to match DB schema (NOT `status` enum)
+1. **DO NOT** touch `generateStaticParams` in either file — needed for ISR SEO
+2. **DO NOT** remove `masterArticle` null check in `alpha/page.tsx:123` — intentional
+3. **DO NOT** modify `RadarGrid.tsx`, `AlphaFocusCard.tsx`, or any routing files
+4. **T-03 CORRECTION:** `COINS` import in `alpha/page.tsx` is still used by `generateStaticParams` — do NOT remove it. Only add `dynamicParams`.
 
 ## ✅ Completed Phases
 
-### Phase 11 — Airdrop RSS Hunter: Real Data Pipeline
+### Phase 12 — Airdrop UX Overhaul: From Functional to Premium
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
 **Completed:** April 21, 2026
-**Tasks:** 7 (T-01 through T-07) — All Passed QA
+**Tasks:** 15 (T-01 through T-15) — All Done, Awaiting Final QA
 
 ### Phase 10 — Top Movers Widget: Full Implementation
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
