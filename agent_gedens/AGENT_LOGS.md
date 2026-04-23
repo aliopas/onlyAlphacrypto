@@ -1,13 +1,25 @@
 # 📋 ONLYALPHA — AGENT LOGS
 
-**Last Updated:** April 21, 2026
+**Last Updated:** April 23, 2026
+
+---
+
+## Phase 14 — Article Content Disappears After Update + Cache Invalidation Fix
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|
+| Apr 23, 2026 | P14-PLANNING | PLANNED | Strategic Planner | — | 2 micro-tasks defined (T-01→T-02). T-01: Validate stale radarId in `TerminalPageClient.tsx:23-25`. T-02: Add `master:${symbol}` cache invalidation in `aiWorkflow.cron.ts:490`. Tasks are independent — parallel execution allowed. Tech Lead guardrails: only modify these 2 files, no component/routing/controller changes. |
+| Apr 23, 2026 | P14-T01 | ✅ DONE | Senior Developer | — | Implemented `safeInitialRadarId` validation, updated fallback chain. Only lines 23-28 modified. |
+| Apr 23, 2026 | P14-T02 | ✅ DONE | Senior Developer | — | Added `await deleteCache(\`master:${symbol}\`)` at line 490 before `news:${symbol}`. Single line addition. |
+| Apr 23, 2026 | P14-QA | ✅ PASS | — | QA Hunter | Full audit: 9/9 T-01 checks pass, 8/8 T-02 checks pass. Zero `any`, zero guardrail violations, `tsc --noEmit` clean on both frontend & backend. Git diff confirms exact scope. Ready for deployment. |
 
 ---
 
 ## Phase 13 — 404 Fix: Dynamic AI Radar Coins
 
 | Date | Task ID | Verdict | Executor | Reviewer | Notes |
-|---|---|---|---|---|---|
+|---|---|---|---|---|
+| Apr 23, 2026 | P13-COMPLETE | COMPLETED | — | Strategic Planner | Phase archived. All 4 tasks done, QA passed. Moved to Deployment Pending. |
 | Apr 21, 2026 | P13-PLANNING | PLANNED | Strategic Planner | — | 4 micro-tasks defined (T-01→T-04). 2 files: `terminal/[coin]/page.tsx` + `terminal/[coin]/alpha/page.tsx`. Critical catch: T-03 revised — `COINS` import in alpha page is still used by `generateStaticParams`, do NOT remove. Only add `dynamicParams`. |
 
 ---

@@ -487,6 +487,7 @@ export async function runAiWorkflow(): Promise<void> {
                 }
 
                 // 4i. Redis invalidation (targeted only)
+                await deleteCache(`master:${symbol}`);
                 await deleteCache(`news:${symbol}`);
                 await deleteCache('insight:all');
 

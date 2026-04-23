@@ -20,8 +20,11 @@ interface Props {
 export function TerminalPageClient({ initialNews, coin, radarSignals = [], initialRadarId, isAlphaFocus }: Props) {
     const validSignals = radarSignals.filter(r => r.coin);
     const defaultTab = (initialRadarId ?? null) !== null || isAlphaFocus ? 'RADAR' : 'WIRE';
-    const latestRadarForCoin = validSignals.find(r => r.coin?.toUpperCase() === coin?.toUpperCase())?.id;
-    const defaultRadarId = initialRadarId ?? (isAlphaFocus ? latestRadarForCoin : null);
+    const latestRadarForCoin = validSignals.find(r => r.coin?.toUpperCase() === coin?.toUpperCase());
+    const safeInitialRadarId = initialRadarId != null && validSignals.some(r => r.id === initialRadarId) ? initialRadarId : null;
+    const defaultRadarId = isAlphaFocus
+        ? (safeInitialRadarId ?? latestRadarForCoin?.id ?? null)
+        : safeInitialRadarId;
     const finalDefaultRadarId = defaultRadarId ?? validSignals[0]?.id ?? null;
 
     const [activeTab, setActiveTab] = useState<'WIRE' | 'RADAR'>(defaultTab);
