@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
-import { airdropProjects, airdropTasks } from '../models/index';
+import { airdropProjects, airdropTasks, airdropPipelineRuns } from '../models/index';
 import { validateAirdropFromArticle } from '../services/openai.service';
 import {
     fetchAirdropRSSFeeds,
@@ -46,6 +46,7 @@ function parseOptionalDate(dateStr: string | null): Date | null {
 }
 
 async function runAirdropRSSDiscovery(): Promise<void> {
+    const startTime = Date.now();
     console.log('[AirdropRSS] Discovery run started');
 
     let articles: AirdropRSSArticle[];
@@ -172,6 +173,21 @@ async function runAirdropRSSDiscovery(): Promise<void> {
             '[AirdropRSS] Redis cache invalidation failed:',
             error instanceof Error ? error.message : String(error)
         );
+    }
+
+    const durationMs = Date.now() - startTime;
+    try {
+        await db.insert(airdropPipelineRuns).values({
+            runType: 'rss_discovery',
+            articlesFound: articles.length,
+            articlesProcessed: candidates.length,
+            projectsInserted,
+            projectsRejected: rejections,
+            errors: 0,
+            durationMs,
+        });
+    } catch (logErr) {
+        console.error('[AirdropRSS] Failed to log pipeline run:', logErr instanceof Error ? logErr.message : String(logErr));
     }
 
     console.log(

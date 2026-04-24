@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../config/db';
-import { airdropProjects, airdropTasks, userProgress, userWallets } from '../models/index';
+import { airdropProjects, airdropTasks, userProgress, userWallets, airdropPipelineRuns } from '../models/index';
 import { desc, eq, and, sql, count, gt, asc } from 'drizzle-orm';
 import { getProjectProgress, verifyTask } from '../services/verification.service';
 import { AppError } from '../middleware/errorHandler';
@@ -416,4 +416,29 @@ export async function getSidebarDeadlines(req: Request, res: Response, next: Nex
         logger.error('[Airdrop] getSidebarDeadlines failed:', error);
         res.status(500).json({ error: 'Failed to fetch deadlines' });
     }
+}
+
+// GET /api/airdrop/pipeline-status
+export async function getPipelineStatusHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const [latestRun] = await db.select()
+            .from(airdropPipelineRuns)
+            .where(eq(airdropPipelineRuns.runType, 'rss_discovery'))
+            .orderBy(desc(airdropPipelineRuns.runAt))
+            .limit(1);
+
+        if (!latestRun) {
+            res.json({ lastScan: null, nextScan: null, sources: 0 });
+            return;
+        }
+
+        const lastScan = latestRun.runAt.toISOString();
+        const nextScan = new Date(new Date(lastScan).getTime() + 6 * 60 * 60 * 1000).toISOString();
+
+        res.json({
+            lastScan,
+            nextScan,
+            sources: 5,
+        });
+    } catch (err) { next(err); }
 }

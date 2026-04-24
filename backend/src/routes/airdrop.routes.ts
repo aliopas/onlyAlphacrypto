@@ -2,7 +2,7 @@ import { Router } from 'express';
 import {
     getProjects, getProjectById, triggerVerification,
     getProgress, getDeadlines, getStats, getActivity, getSidebarDeadlines,
-    getUrgentAirdrops
+    getUrgentAirdrops, getPipelineStatusHandler
 } from '../controllers/airdrop.controller';
 import { authMiddleware, optionalAuth } from '../middleware/auth.middleware';
 import { apiLimiter } from '../middleware/rateLimit.middleware';
@@ -20,5 +20,6 @@ router.post('/verify/:taskId', authMiddleware, triggerVerification);
 router.get('/stats', optionalAuth, getStats);
 router.get('/activity', optionalAuth, getActivity);
 router.get('/sidebar-deadlines', getSidebarDeadlines);
+router.get('/pipeline-status', getPipelineStatusHandler);
 
 export default router;

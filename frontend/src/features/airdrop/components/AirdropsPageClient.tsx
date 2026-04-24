@@ -135,6 +135,38 @@ function formatEstValue(value: string | undefined): string {
     return '$' + trimmed + '+';
 }
 
+function GridSkeleton() {
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="bg-[#0A0A0A] border border-[#222] p-6 animate-pulse">
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="flex-1">
+                            <div className="h-5 w-32 bg-[#1A1A1A] rounded mb-2" />
+                            <div className="flex gap-2">
+                                <div className="h-4 w-16 bg-[#1A1A1A] rounded" />
+                                <div className="h-4 w-12 bg-[#1A1A1A] rounded" />
+                            </div>
+                        </div>
+                        <div className="h-5 w-16 bg-[#1A1A1A] rounded" />
+                    </div>
+                    <div className="mb-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <div className="h-3 w-24 bg-[#1A1A1A] rounded" />
+                            <div className="h-3 w-8 bg-[#1A1A1A] rounded" />
+                        </div>
+                        <div className="h-1.5 w-full bg-[#1A1A1A] rounded-full" />
+                    </div>
+                    <div className="space-y-2">
+                        <div className="h-3 w-40 bg-[#1A1A1A] rounded" />
+                        <div className="h-3 w-28 bg-[#1A1A1A] rounded" />
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 export function AirdropsPageClient({ initialProjects, initialError }: { initialProjects: AirdropProject[]; initialError?: boolean }) {
     const [projects, setProjects] = useState<AirdropProject[]>(initialProjects);
     const [stats, setStats] = useState<AirdropStats | null>(null);
@@ -143,6 +175,8 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
     const [sidebarLoading, setSidebarLoading] = useState(true);
     const [bannerDismissed, setBannerDismissed] = useState(false);
     const [fetchError] = useState(initialError ?? false);
+    const [gridLoading, setGridLoading] = useState(true);
+    const [pipelineStatus, setPipelineStatus] = useState<{ lastScan: string | null; nextScan: string | null; sources: number } | null>(null);
 
     const loadSidebarData = useCallback(async () => {
         try {
@@ -164,6 +198,14 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
     useEffect(() => {
         loadSidebarData();
     }, [loadSidebarData]);
+
+    useEffect(() => {
+        if (initialProjects.length >= 0) setGridLoading(false);
+    }, [initialProjects]);
+
+    useEffect(() => {
+        airdropApi.getPipelineStatus().then(setPipelineStatus);
+    }, []);
 
     useEffect(() => {
         try {
@@ -254,6 +296,21 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
                     </div>
                 )}
 
+                {pipelineStatus && (
+                    <div className="flex items-center gap-4 text-[9px] font-mono text-[#444] uppercase tracking-wider px-1">
+                        <span className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            Pipeline Active
+                        </span>
+                        <span>
+                            Last scan: {pipelineStatus.lastScan ? formatRelativeTime(pipelineStatus.lastScan) : 'N/A'}
+                        </span>
+                        <span>
+                            Next scan: {pipelineStatus.nextScan ? formatRelativeTime(pipelineStatus.nextScan) : '~6h'}
+                        </span>
+                    </div>
+                )}
+
                 <div className="flex items-center justify-between mb-2">
                     <h2 className="text-[11px] font-mono text-[#888] uppercase tracking-[0.2em] flex items-center gap-2">
                         <span className="w-2 h-2 bg-blue-500 inline-block" /> Active Farm Grid
@@ -263,7 +320,9 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
                     </div>
                 </div>
 
-                {fetchError && (
+                {gridLoading && <GridSkeleton />}
+
+                {!gridLoading && fetchError && (
                     <div className="bg-red-500/5 border border-red-500/20 p-8 flex flex-col items-center justify-center gap-3">
                         <AlertTriangle className="w-8 h-8 text-red-400/60" />
                         <p className="text-[12px] font-mono text-red-300/80">Unable to load airdrops. Please try again later.</p>
@@ -276,7 +335,7 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
                     </div>
                 )}
 
-                {!fetchError && projects.length === 0 && (
+                {!gridLoading && !fetchError && projects.length === 0 && (
                     <div className="bg-[#0A0A0A] border border-[#222] p-10 flex flex-col items-center justify-center gap-4">
                         <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center">
                             <TrendingUp className="w-7 h-7 text-blue-400/60" />
@@ -294,7 +353,7 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
                     </div>
                 )}
 
-                {!fetchError && projects.length > 0 && (
+                {!gridLoading && !fetchError && projects.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {projects.map((p) => {
                         const verdict = p.riskVerdict || 'SAFE';

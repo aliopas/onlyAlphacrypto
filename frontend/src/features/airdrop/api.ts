@@ -109,4 +109,13 @@ export const airdropApi = {
             return [];
         }
     },
+
+    getPipelineStatus: async (): Promise<{ lastScan: string | null; nextScan: string | null; sources: number } | null> => {
+        try {
+            const { data } = await apiClient.get<{ lastScan: string | null; nextScan: string | null; sources: number }>('/airdrop/pipeline-status');
+            return data;
+        } catch {
+            return null;
+        }
+    },
 };

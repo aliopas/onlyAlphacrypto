@@ -1,11 +1,12 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
-import { airdropProjects, airdropTasks } from '../models/index';
+import { airdropProjects, airdropTasks, airdropPipelineRuns } from '../models/index';
 import { validateAirdrop } from '../services/openai.service';
 import { deleteCache, deleteCachePattern } from '../config/redis';
 import { eq } from 'drizzle-orm';
 
 async function runRoutineSync(): Promise<void> {
+    const startTime = Date.now();
     console.log('[AirdropHunter] Routine sync of active projects...');
 
     const activeProjects = await db
@@ -18,6 +19,7 @@ async function runRoutineSync(): Promise<void> {
         return;
     }
 
+    let syncErrors = 0;
     for (const project of activeProjects) {
         try {
             const raw = `Project: ${project.name}\nNetwork: ${project.network}${project.fundingRound ? `\nFunding: ${project.fundingRound}` : ''}`;
@@ -57,6 +59,7 @@ async function runRoutineSync(): Promise<void> {
                 `[AirdropHunter] Synced: ${project.name} — risk=${validation.riskVerdict}, legitimate=${validation.isLegitimate}`
             );
         } catch (err) {
+            syncErrors++;
             console.error(
                 `[AirdropHunter] Sync error for ${project.name}:`,
                 err instanceof Error ? err.message : String(err)
@@ -67,6 +70,21 @@ async function runRoutineSync(): Promise<void> {
     await deleteCache('airdrop:projects');
     await deleteCache('airdrop:deadlines');
     await deleteCachePattern('airdrop:project:*');
+
+    const durationMs = Date.now() - startTime;
+    try {
+        await db.insert(airdropPipelineRuns).values({
+            runType: 'routine_sync',
+            articlesFound: 0,
+            articlesProcessed: activeProjects.length,
+            projectsInserted: 0,
+            projectsRejected: 0,
+            errors: syncErrors,
+            durationMs,
+        });
+    } catch (logErr) {
+        console.error('[AirdropHunter] Failed to log pipeline run:', logErr instanceof Error ? logErr.message : String(logErr));
+    }
 
     console.log(`[AirdropHunter] Routine sync complete — ${activeProjects.length} projects processed`);
 }

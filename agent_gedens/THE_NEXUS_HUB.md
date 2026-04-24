@@ -62,7 +62,7 @@
 - `AirdropsPageClient.tsx:265-327` — grid rendering (no empty state when `projects.length === 0`)
 - `page.tsx:31-35` — silent error catch returns `projects = []`
 
-**Status:** Ready for Execution
+**Status:** ✅ ALL TASKS DONE — QA PASSED — AWAITING DEPLOYMENT
 
 ---
 
@@ -70,7 +70,7 @@
 
 > **DEPLOY 1 EXECUTION ORDER:** T-01 → T-02 → T-03 → T-04 (sequential — each builds on previous) **— ✅ ALL DONE, ALL QA PASSED**
 >
-> **DEPLOY 2 EXECUTION ORDER:** T-05 → T-06 → T-07 → T-08 → T-09 (sequential) — **PENDING**
+> **DEPLOY 2 EXECUTION ORDER:** T-05 → T-06 → T-07 → T-08 → T-09 (sequential) — **✅ ALL DONE, ALL QA PASSED**
 
 ---
 
@@ -422,7 +422,12 @@ At the END of the grid section (after the closing `</div>` of the grid + the `)}
 #### T-05: Add `airdropPipelineRuns` Table to Drizzle Model
 **File (MODIFY):** `backend/src/models/airdrop.model.ts`
 **Assigned To:** Senior Developer
-**Status:** Pending
+**Status:** ✅ Done — QA PASSED
+
+**QA Verdict (Apr 25, 2026 — QA Hunter):**
+- **VERDICT:** ✅ PASS
+- **Checklist (10/10):** New table after `userProgress` ✅ | `runType varchar(20) .notNull()` ✅ | All numeric fields `.default(0)` ✅ | `runAt .defaultNow().notNull()` ✅ | Table name `airdrop_pipeline_runs` ✅ | camelCase columns → snake_case DB ✅ | Existing exports untouched ✅ | Import list unchanged ✅ | `tsc --noEmit` clean ✅ | Zero `any` types ✅
+- **No deviations.** Exact spec compliance.
 
 **Target:** Add new table definition at the end of the file (after `userProgress` table, after line 50).
 
@@ -458,7 +463,12 @@ export const airdropPipelineRuns = pgTable('airdrop_pipeline_runs', {
 #### T-06: SQL Migration for `airdrop_pipeline_runs` Table
 **File (CREATE):** `backend/scripts/migrate-airdrop-pipeline-runs.sql`
 **Assigned To:** Senior Developer
-**Status:** Pending
+**Status:** ✅ Done — QA PASSED
+
+**QA Verdict (Apr 25, 2026 — QA Hunter):**
+- **VERDICT:** ✅ PASS
+- **Checklist (5/5):** File at `backend/scripts/migrate-airdrop-pipeline-runs.sql` ✅ | Column names match Drizzle schema snake_case mapping (all 9 columns verified 1:1) ✅ | `CREATE TABLE IF NOT EXISTS` idempotent ✅ | 2 indexes on `run_type` + `run_at` ✅ | Zero syntax errors ✅
+- **No deviations.** Exact spec compliance.
 
 **Full content:**
 ```sql
@@ -494,7 +504,13 @@ CREATE INDEX IF NOT EXISTS idx_pipeline_runs_at ON airdrop_pipeline_runs(run_at)
 #### T-07: Add Pipeline Health Logging to Both Cron Files
 **Files (MODIFY):** `backend/src/crons/airdropRssHunter.cron.ts` + `backend/src/crons/airdropHunter.cron.ts`
 **Assigned To:** Senior Developer
-**Status:** Pending
+**Status:** ✅ Done — QA PASSED
+
+**QA Verdict (Apr 25, 2026 — QA Hunter):**
+- **VERDICT:** ✅ PASS
+- **Checklist (13/13):** `airdropPipelineRuns` imported in both cron files ✅ | `startTime = Date.now()` first line in `runAirdropRSSDiscovery()` (line 49) ✅ | `startTime = Date.now()` first line in `runRoutineSync()` (line 9) ✅ | INSERT uses `db.insert(airdropPipelineRuns).values({...})` Drizzle pattern in both ✅ | `runType: 'rss_discovery'` in RSS hunter ✅ | `runType: 'routine_sync'` in routine hunter ✅ | Pipeline logging wrapped in try-catch (non-blocking) in both ✅ | RSS hunter: `articlesFound`, `articlesProcessed`, `projectsInserted`, `projectsRejected` from existing vars ✅ | Routine hunter: `syncErrors` counter tracks per-project errors (line 22, incremented at line 62) ✅ | Function signatures unchanged ✅ | Exported functions `startAirdropRSSCron()` / `startAirdropHunterCron()` unchanged ✅ | `runRoutineSync` still exported (line 97) ✅ | `tsc --noEmit` clean ✅
+- **Edge Cases:** Pipeline INSERT failure → logged, does not break cron run ✅ | `syncErrors` correctly scoped outside loop ✅ | Early returns (no articles / no projects) → no pipeline row logged (acceptable — only successful runs recorded) ⚠️ minor note, not a blocker
+- **No deviations.** Exact spec compliance.
 
 **Sub-task 7A: Add health logging to `airdropRssHunter.cron.ts`**
 
@@ -609,7 +625,13 @@ NOTE: To track errors properly, replace the `catch (err)` block at line 59 in `a
 #### T-08: Frontend — Loading Skeleton for Main Grid
 **File (MODIFY):** `frontend/src/features/airdrop/components/AirdropsPageClient.tsx`
 **Assigned To:** Senior Developer
-**Status:** Pending
+**Status:** ✅ Done — QA PASSED
+
+**QA Verdict (Apr 25, 2026 — QA Hunter):**
+- **VERDICT:** ✅ PASS
+- **Checklist (10/10):** `GridSkeleton` component defined before main component (line 138-168) ✅ | 4 skeleton cards rendered (matches 2-column grid) ✅ | Skeleton uses `animate-pulse` (Tailwind built-in) ✅ | Skeleton card dimensions match real card layout (header, progress bar, network info) ✅ | `gridLoading` state initialized to `true` (line 178), set to `false` after mount (line 202) ✅ | All three existing states gated by `!gridLoading` (error line 305, empty line 318, grid line 336) ✅ | Skeleton renders at line 303 (before conditionals) ✅ | Existing card design system untouched (lines 338-399) ✅ | Zero `any` types ✅ | `tsc --noEmit` clean ✅
+- **Edge Cases:** `gridLoading` always resolves to `false` on first render (useEffect fires immediately) ✅ | Skeleton → real content transition is instant (no flash) ✅ | Empty `initialProjects` array → skeleton shows briefly → empty state renders ✅
+- **No deviations.** Exact spec compliance.
 
 **Target:** Add a loading skeleton state for the main project grid that mimics the card layout.
 
@@ -704,7 +726,13 @@ All three existing conditionals (error, empty, grid) must be wrapped with `!grid
 #### T-09: Frontend — Pipeline Status Indicator (Optional Nice-to-Have)
 **File (MODIFY):** `frontend/src/features/airdrop/components/AirdropsPageClient.tsx`
 **Assigned To:** Senior Developer
-**Status:** Pending (Optional — defer to next deploy if time-constrained)
+**Status:** ✅ Done — QA PASSED
+
+**QA Verdict (Apr 25, 2026 — QA Hunter):**
+- **VERDICT:** ✅ PASS
+- **Checklist (8/8):** New backend endpoint `GET /api/airdrop/pipeline-status` registered at `airdrop.routes.ts:23` ✅ | Query uses Drizzle (zero raw SQL) — `db.select().from(airdropPipelineRuns).where(eq(...)).orderBy(desc(...)).limit(1)` ✅ | Frontend API function `getPipelineStatus()` follows existing `airdropApi` pattern at `api.ts:113-120` ✅ | Status bar only renders when `pipelineStatus` is non-null (line 299) ✅ | Uses existing color palette (`text-[#444]`, `bg-emerald-500`) ✅ | Graceful degradation: API fail → null → status bar hidden ✅ | Route registered behind `apiLimiter` (line 12 — applies to all routes) ✅ | Zero `any` types ✅
+- **Edge Cases:** No pipeline runs yet → `{ lastScan: null, nextScan: null, sources: 0 }` → status bar hidden ✅ | `formatRelativeTime` returns null for >7 days → falls back to `~6h` ✅ | `getPipelineStatus` catch → returns null → status bar hidden ✅
+- **No deviations.** Exact spec compliance.
 
 **Target:** Add a small status bar above the grid showing pipeline scan status.
 
@@ -795,6 +823,11 @@ Add a small bar between the stats bar and the "Active Farm Grid" header:
 **T-02:** ✅ PASS (Apr 25, 2026) — 17/17 checklist items, zero deviations, exact spec compliance
 **T-03:** ✅ PASS (Apr 25, 2026) — 11/11 checklist items, single-line change, exact spec compliance
 **T-04:** ✅ PASS (Apr 25, 2026) — 15/15 checklist items, zero deviations, exact spec compliance
+**T-05:** ✅ PASS (Apr 25, 2026) — 10/10 checklist items, zero deviations, exact spec compliance
+**T-06:** ✅ PASS (Apr 25, 2026) — 5/5 checklist items, zero deviations, exact spec compliance
+**T-07:** ✅ PASS (Apr 25, 2026) — 13/13 checklist items, zero deviations, exact spec compliance
+**T-08:** ✅ PASS (Apr 25, 2026) — 10/10 checklist items, zero deviations, exact spec compliance
+**T-09:** ✅ PASS (Apr 25, 2026) — 8/8 checklist items, zero deviations, exact spec compliance
 
 ---
 

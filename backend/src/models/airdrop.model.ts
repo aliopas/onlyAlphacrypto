@@ -48,3 +48,17 @@ export const userProgress = pgTable('user_progress', {
     verifiedBy: varchar('verified_by', { length: 20 }).default('auto'), // 'auto' | 'manual'
     txHash: varchar('tx_hash', { length: 100 }),
 });
+
+// ─── AIRDROP PIPELINE RUNS (Health Monitoring) ────────────────────────────────
+export const airdropPipelineRuns = pgTable('airdrop_pipeline_runs', {
+    id: serial('id').primaryKey(),
+    runType: varchar('run_type', { length: 20 }).notNull(),
+    runAt: timestamp('run_at').defaultNow().notNull(),
+    articlesFound: integer('articles_found').default(0),
+    articlesProcessed: integer('articles_processed').default(0),
+    projectsInserted: integer('projects_inserted').default(0),
+    projectsRejected: integer('projects_rejected').default(0),
+    errors: integer('errors').default(0),
+    durationMs: integer('duration_ms').default(0),
+    notes: text('notes'),
+});
