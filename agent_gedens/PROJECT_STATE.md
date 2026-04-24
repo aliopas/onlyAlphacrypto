@@ -1,39 +1,56 @@
-# 🤖 ONLYALPHA — PROJECT STATE
+# ONLYALPHA — PROJECT STATE
 
-**Last Updated:** April 23, 2026
-**Current Focus:** Phase 14 — COMPLETED (QA Passed, Awaiting Deployment)
+**Last Updated:** April 24, 2026
+**Current Focus:** Phase 15 — Strategic Intelligence Layer (Forward-Looking Intelligence)
 
-## 🏗 Global Architecture
+## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
 2. **Frontend:** Next.js (App Router), Tailwind CSS.
 3. **Data Sources:** Binance, Moralis, RSS feeds. (Note: Neon Serverless & Reddit API are strictly DELETED).
 4. **AI Routing:** Uses `AIGateway` (OpenRouter) & `PromptFactory`. 
    - **Models:** DeepSeek-r1 (Deep Analysis), Gemini 2.5 Flash (Article Writing), GPT-5-nano (SEO/Minor).
 
-## 🔒 Key Development Rules
+## Key Development Rules
 1. **Zero `any` Types:** Strict TypeScript enforcement.
-2. **Modular Boundaries:** Cache logic → `CacheManager`. AI calls → `AIGateway`. Prompts → `PromptFactory`.
+2. **Modular Boundaries:** Cache logic -> `CacheManager`. AI calls -> `AIGateway`. Prompts -> `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## 🔴 Current Mission: Phase 14 — Article Content Disappears After Update + Cache Invalidation Fix
+## Current Mission: Phase 15 — Strategic Intelligence Layer (Forward-Looking Intelligence)
 
-**Status:** ✅ COMPLETED — QA Passed — Awaiting Deployment
+**Status:** QA PASSED — Awaiting Deployment
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
-**Scope:** 2 files modified. Zero new files. Zero new npm packages.
-**Task Breakdown:** 2 tasks (T-01→T-02) in `agent_gedens/THE_NEXUS_HUB.md`
-- Single Batch (P0): T-01 + T-02 — Validate stale radarId in TerminalPageClient + Add master cache invalidation
-**Root Cause:** (1) `TerminalPageClient.tsx:24` blindly trusts `initialRadarId` from URL without validating it exists in `validSignals`. After article update creates a new radar signal with a new ID, old URL params point to orphaned IDs → `AlphaStream` renders standby. (2) `aiWorkflow.cron.ts:490` never invalidates `master:${symbol}` Redis cache key.
+**Scope:** 1 new SQL file, 1 new service file, 3 modified files, 0 new npm packages
+**Task Breakdown:** 5 tasks (T-01 through T-05) — All Done, QA Passed
 
-### ⚠️ Tech Lead Guardrails (MUST be followed)
-1. **DO NOT** touch `DeepDiveSection.tsx`, `LivingArticle.tsx`, `AlphaStream.tsx`, or any routing files
-2. **DO NOT** modify `getRadarSignals` DISTINCT ON logic — it's correct
-3. **DO NOT** add `onConflictDoUpdate` to radar signals insert — out of scope
-4. **DO NOT** change `market.model.ts` (no schema changes)
-5. **DO NOT** install new packages
-6. **DO NOT** modify any route, controller, or cron files EXCEPT `aiWorkflow.cron.ts` (single line addition)
-7. Only modify `TerminalPageClient.tsx` (lines 23-25) and `aiWorkflow.cron.ts` (line 490)
+**New Files Created:**
+- `backend/scripts/migrate-strategic-outlook.sql` — SQL migration fallback (22 columns, 2 tables, 3 indexes)
+- `backend/src/services/strategicOutlook.service.ts` — 5 exported functions (shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse, getStrategicOutlook, getActiveEventResponses)
 
-## ✅ Completed Phases
+**Files Modified:**
+- `backend/src/crons/aiWorkflow.cron.ts` — Import (line 19), outlook logic (lines 311-346), cache invalidation (line 531)
+- `backend/src/controllers/market.controller.ts` — Import (line 9), handler (lines 506-528)
+- `backend/src/routes/market.routes.ts` — Route registration (line 18)
+
+### Tech Lead Guardrails (MUST be followed)
+1. **ZERO `any` types** across all new code
+2. All existing exports must remain backward-compatible
+3. **DO NOT** install new packages
+4. **DO NOT** modify any other service files, controllers, routes, or crons
+5. **DO NOT** change `prompt-factory.ts` or `openai.service.ts`
+6. **DO NOT** change `market.model.ts`
+7. Follow existing patterns: use `getCache`/`setCache`/`deleteCache` from redis config
+8. `strategicOutlook` is optional — handle `undefined` gracefully
+9. No frontend changes in this phase
+
+## Completed Phases
+
+### Phase 15 — Strategic Intelligence Layer (Forward-Looking Intelligence)
+**Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Completed:** April 24, 2026
+**Tasks:** 5 (T-01 through T-05) — All Done, QA Passed, Awaiting Deployment
+**New Files:** `migrate-strategic-outlook.sql`, `strategicOutlook.service.ts`
+**Modified Files:** `aiWorkflow.cron.ts`, `market.controller.ts`, `market.routes.ts`
+**Architecture Changes:** Strategic outlook DB tables (coin_strategic_outlook, smart_event_responses), new service layer, cron integration for auto-generation on MAJOR events, new public API endpoint `GET /api/outlook/:symbol`
 
 ### Phase 14 — Article Content Disappears After Update + Cache Invalidation Fix
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`

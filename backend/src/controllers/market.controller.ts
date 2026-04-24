@@ -6,6 +6,7 @@ import {
     radarSignals, airdropProjects, priceSnapshots,
     coinMasterArticles, coinTimelineUpdates, coinIntelligenceCache
 } from '../models/index';
+import { getStrategicOutlook, getActiveEventResponses } from '../services/strategicOutlook.service';
 import { desc, eq, gte, and, asc, sql } from 'drizzle-orm';
 import { getLivePrices, getTopMovers } from '../services/binance.service';
 import { getPriceWithFallback } from '../services/priceService';
@@ -499,6 +500,30 @@ export async function getArchiveArticles(req: Request, res: Response, next: Next
 
         await setCache(cacheKey, articles, 3600);
         res.json(articles);
+    } catch (err) { next(err); }
+}
+
+export async function getStrategicOutlookHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const symbol = String(req.params['symbol'] || '').toUpperCase();
+        if (!symbol) throw new AppError('Symbol is required', 400);
+
+        const cacheKey = `outlook:${symbol}`;
+        const cached = await getCache(cacheKey);
+        if (cached) { res.json(cached); return; }
+
+        const [outlook, eventResponses] = await Promise.all([
+            getStrategicOutlook(symbol),
+            getActiveEventResponses(symbol),
+        ]);
+
+        const response = {
+            outlook,
+            activeEvents: eventResponses,
+        };
+
+        await setCache(cacheKey, response, 300);
+        res.json(response);
     } catch (err) { next(err); }
 }
 

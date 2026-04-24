@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCoinInsight, getAlphaFocus, getRadarSignals, getMarketMood, getLatestWire, getWireById, getTopMoversController, getAssetCount, forceSeed, getMasterArticle, getMasterArticleCoins, getTimeline, getArchiveArticles } from '../controllers/market.controller';
+import { getCoinInsight, getAlphaFocus, getRadarSignals, getMarketMood, getLatestWire, getWireById, getTopMoversController, getAssetCount, forceSeed, getMasterArticle, getMasterArticleCoins, getTimeline, getArchiveArticles, getStrategicOutlookHandler } from '../controllers/market.controller';
 import { apiLimiter } from '../middleware/rateLimit.middleware';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { optionalAuth } from '../middleware/auth.middleware';
@@ -15,6 +15,7 @@ router.get('/wire/:id', apiLimiter, getWireById);
 router.get('/movers', apiLimiter, getTopMoversController);
 router.get('/asset-count', apiLimiter, getAssetCount);
 router.get('/archive', apiLimiter, getArchiveArticles);
+router.get('/outlook/:symbol', apiLimiter, getStrategicOutlookHandler);
 router.get('/master/coins', apiLimiter, getMasterArticleCoins);
 router.get('/master/:symbol', apiLimiter, optionalAuth, getMasterArticle);
 router.get('/timeline/:symbol', apiLimiter, optionalAuth, getTimeline);

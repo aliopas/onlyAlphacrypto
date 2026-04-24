@@ -16,6 +16,7 @@ import { saveMemory } from '../services/coin-memory.service';
 import { isDuplicateByEmbedding } from '../services/similarity.service';
 import { storeEmbedding } from '../services/embedding.service';
 import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates } from '../models/market.model';
+import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } from '../services/strategicOutlook.service';
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 
@@ -307,6 +308,43 @@ export async function runAiWorkflow(): Promise<void> {
                     }
                 }
 
+                // 4d-ii. Strategic Outlook update (only for structurally significant events)
+                if (analysisResult.strategicOutlook) {
+                    const triggerInput = {
+                        classification,
+                        eventType,
+                        impactScore: analysisResult.impactScore,
+                        eventSeverity: analysisResult.eventSeverity,
+                        priceChange24h: price?.change24h ?? undefined,
+                    };
+
+                    if (shouldUpdateOutlook(triggerInput)) {
+                        try {
+                            await saveStrategicOutlook(symbol, analysisResult.strategicOutlook, item.title);
+                            console.log(`[AI Workflow] Strategic outlook updated for ${symbol}`);
+                        } catch (outlookErr) {
+                            console.error(`[AI Workflow] Failed to save strategic outlook for ${symbol}:`, outlookErr);
+                        }
+                    } else {
+                        console.log(`[AI Workflow] Outlook update skipped for ${symbol} - event not structurally significant`);
+                    }
+                }
+
+                // 4d-iii. Smart Event Response (for high-severity negative events)
+                const negativeEventTypes = ['Hack', 'Exploit', 'Regulatory', 'Delisting'];
+                if (
+                    analysisResult.sentiment === 'bearish' &&
+                    analysisResult.eventSeverity >= 2 &&
+                    negativeEventTypes.includes(eventType)
+                ) {
+                    try {
+                        await buildSmartEventResponse(symbol, eventType, item.title, currentPrice);
+                        console.log(`[AI Workflow] Smart event response generated for ${symbol} - ${eventType}`);
+                    } catch (eventErr) {
+                        console.error(`[AI Workflow] Failed to build smart event response for ${symbol}:`, eventErr);
+                    }
+                }
+
                 // 4e. GPT-nano Article (circuit breaker)
                 if (gptNanoBreaker.isOpen()) {
                     console.warn(`[AI Workflow] GPT-nano circuit open — skipping ${symbol}`);
@@ -490,6 +528,7 @@ export async function runAiWorkflow(): Promise<void> {
                 await deleteCache(`master:${symbol}`);
                 await deleteCache(`news:${symbol}`);
                 await deleteCache('insight:all');
+                await deleteCache(`outlook:${symbol}`);
 
                 console.log(`[AI Workflow] Published: ${symbol} — "${article.headline.slice(0, 50)}..."`);
 

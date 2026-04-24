@@ -1,207 +1,516 @@
-# Phase 14 — Article Content Disappears After Update + SEO Integrity Fix
+# Phase 15 — Strategic Intelligence Layer (Forward-Looking Intelligence)
 
-**Status:** PLANNED — Ready for Architect Breakdown
-**Date:** April 23, 2026
-**Priority:** P0 (Critical User-Facing Bug)
-**Scope:** 2 files modified. Zero new files. Zero new npm packages.
-
----
-
-## Bug Report: Article Content Fails to Load via Link ONLY After Being Updated
-
-### Normal Behavior (First Publish)
-When a new article is initially written and its metadata is created, the link works perfectly. If a user clicks the link, both the article content and the chart load correctly.
-
-### Buggy Behavior (After Update)
-When that exact same article gets updated, the link behavior breaks. If a user clicks the link after the update, the page ONLY displays the coin's chart. The actual article content disappears and does not show up at all.
+**Status:** IN PROGRESS — Partial schema changes applied, service + workflow integration pending  
+**Date:** April 24, 2026  
+**Priority:** P1 (Core Product Upgrade)  
+**Scope:** 2 new files, 3 modified files, 1 SQL migration, 1 new API endpoint  
 
 ---
 
-## ROOT CAUSE ANALYSIS (Tech Lead Verified)
+## OBJECTIVE
 
-### Primary Bug: Stale `radarId` URL Parameter After Article Update
+Transform OnlyAlpha from a **reactive news platform** (what happened) into a **forward-looking intelligence platform** (where the market is going + what to do about it).
 
-**Kill Chain (line-by-line trace):**
+Currently, the system is reactive only — signals and articles respond to news events, but there is NO layer that tells the user:
+- Where is the market heading in the **next 7 days**?
+- What is the best course of action **right now** based on combined technical + fundamental analysis?
+- Are we in a **bull run or bear market**?
+- Has the market **bottomed** or is there more downside?
 
-1. Article published for BTC → radar signal **id=42** created in `radar_signals` table
-2. `RadarGrid` on home page links to `/terminal/BTC?radarId=42`
-3. User clicks → `validSignals` includes id=42 → `activeRadar` found → `AlphaStream` renders radar text + `DeepDiveSection`
-4. Article updated by AI cron → new radar signal **id=43** created for BTC (new row, new auto-increment ID)
-5. User refreshes page or revisits via same URL `/terminal/BTC?radarId=42`
-6. Server ISR cache refreshes → `getRadarSignals` controller uses `DISTINCT ON (coin_symbol) ORDER BY coin_symbol, created_at DESC` → returns only id=43 (latest per coin), NOT id=42
-7. `TerminalPageClient.tsx:24` sets `selectedRadarId = 42` blindly (no validation)
-8. `activeRadar = signals.find(r => r.id === 42)` → **`undefined`**
-9. `AlphaStream` receives `newsId=null, radarSignal=undefined` → renders **standby view** (no content)
-10. Chart still works because `selectedCoin = coin` (from URL param `BTC`) → `TerminalChat` renders `TerminalChart`
-
-**Why this happens:**
-
-| Component | File | Line(s) | Issue |
-|-----------|------|---------|-------|
-| `radar_signals` table | `backend/src/models/market.model.ts` | 85-93 | NO unique constraint on `coinSymbol`. `id` is auto-increment. `onConflictDoNothing()` is a no-op — every MAJOR update with actionable verdict creates a NEW row with a NEW ID |
-| `getRadarSignals` controller | `backend/src/controllers/market.controller.ts` | 134-140 | `DISTINCT ON (coin_symbol) ORDER BY coin_symbol, created_at DESC` — returns only the LATEST signal per coin. Old signals silently excluded from API response |
-| `TerminalPageClient` | `frontend/src/features/terminal/components/TerminalPageClient.tsx` | 24 | `initialRadarId` is used **blindly** without validating it exists in `validSignals`. No fallback to latest radar for the same coin |
-| `AlphaStream` | `frontend/src/features/terminal/components/AlphaStream.tsx` | 114 | When `!newsId && !radarSignal` → shows "Alpha Stream Standby" — no article content at all |
-
-### Secondary Bug: Missing Redis Cache Invalidation for Master Article
-
-**File:** `backend/src/crons/aiWorkflow.cron.ts` — Line 490
-
-The cron deletes `news:${symbol}` and `insight:all` but **NEVER** invalidates `master:${symbol}` (the `getMasterArticle` cache key at `market.controller.ts:361`).
-
-| Cache Key | TTL | Invalidated by Cron? | Impact |
-|-----------|-----|---------------------|--------|
-| `master:${symbol}` | 60s | NO | Stale master article data served for up to 60s after update |
-| `wire:${coin}:...` | 120s | NO (wrong key `news:${symbol}`) | Stale wire feed for up to 120s |
-| `radar:latest:...` | 60s | NO | Stale radar signals for up to 60s |
-| `timeline:${symbol}:...` | 30s | NO | Stale timeline for up to 30s |
-| `master:coins:list` | 300s | NO | Stale coin list for up to 5 minutes |
-| `archive:all` | 3600s | NO | Stale archive for up to 1 hour |
-
-Note: The `master:${symbol}` cache self-expires after 60s, so it's not permanent. But the `master:coins:list` (300s) and `archive:all` (3600s) caches are never invalidated after article creation/updates — these are secondary concerns.
+The Living Article flips bullish/bearish with every headline, with **no stable strategic stance**.
 
 ---
 
-## FIX PLAN
+## WHAT HAS ALREADY BEEN DONE ✅
 
-### Fix 1 (P0): Validate Stale radarId in TerminalPageClient
+### 1. Database Schema — `market.model.ts` ✅ APPLIED
 
-**File:** `frontend/src/features/terminal/components/TerminalPageClient.tsx`
-**Lines:** 23-25
+Two new tables were added to `backend/src/models/market.model.ts`:
 
-**BEFORE (broken):**
+**`coin_strategic_outlook`** — Stores per-coin forward-looking intelligence:
+- Short-term (7d): direction, target price, invalidation level, upcoming catalysts, confidence
+- Long-term (3-6mo): market phase (Wyckoff), bull run probability, major support/resistance, isBottomIn, isTopIn, bull/bear evidence arrays
+- Action: recommendation (accumulate/hold/reduce/avoid/watch), rationale, risk management instructions
+- Meta: lastUpdatedByEvent, validUntil timestamp
+
+**`smart_event_responses`** — Stores AI-generated action plans for major negative events:
+- eventType, eventTitle, immediateImpact
+- historicalParallels (JSON array of similar past events with outcomes)
+- recommendedAction, watchLevels, timeHorizon
+- isActive flag (deactivates when event is resolved)
+
+### 2. DeepAnalysisResult Interface — `openai.service.ts` ✅ APPLIED
+
+The `DeepAnalysisResult` interface now includes an optional `strategicOutlook` field:
 ```typescript
-const latestRadarForCoin = validSignals.find(r => r.coin?.toUpperCase() === coin?.toUpperCase())?.id;
-const defaultRadarId = initialRadarId ?? (isAlphaFocus ? latestRadarForCoin : null);
-const finalDefaultRadarId = defaultRadarId ?? validSignals[0]?.id ?? null;
+strategicOutlook?: {
+    shortTerm: {
+        direction: 'bullish' | 'bearish' | 'neutral';
+        target: number | null;
+        invalidation: number | null;
+        catalysts: string[];
+        confidence: number;
+    };
+    longTerm: {
+        marketPhase: 'accumulation' | 'markup' | 'distribution' | 'markdown';
+        bullRunProbability: number;
+        majorSupport: number | null;
+        majorResistance: number | null;
+        isBottomIn: boolean;
+        isTopIn: boolean;
+        bullEvidence: string[];
+        bearEvidence: string[];
+    };
+    action: {
+        recommendation: 'accumulate' | 'hold' | 'reduce' | 'avoid' | 'watch';
+        rationale: string;
+        riskManagement: string;
+    };
+};
 ```
 
-**AFTER (fixed):**
-```typescript
-const latestRadarForCoin = validSignals.find(r => r.coin?.toUpperCase() === coin?.toUpperCase());
-const safeInitialRadarId = initialRadarId != null && validSignals.some(r => r.id === initialRadarId) ? initialRadarId : null;
-const defaultRadarId = isAlphaFocus
-    ? (safeInitialRadarId ?? latestRadarForCoin?.id ?? null)
-    : safeInitialRadarId;
-const finalDefaultRadarId = defaultRadarId ?? validSignals[0]?.id ?? null;
+### 3. DeepSeek Prompt — `prompt-factory.ts` ✅ APPLIED
+
+The `buildDeepAnalysisMessages()` system prompt now includes:
+- Full `strategicOutlook` JSON schema in the output specification
+- Strategic Outlook rules (target must come from real data, Wyckoff phases, specific evidence)
+- Safe Harbor compliance rules (NFA tag on signalText, forbidden words: buy/sell/invest/recommend/should/must)
+- signalText max raised from 40 → 70 words to accommodate source attribution + NFA suffix
+
+---
+
+## WHAT STILL NEEDS TO BE DONE 🔴
+
+### Task 1: SQL Migration Script (Priority: FIRST — blocks everything else)
+
+**Create:** `backend/scripts/migrate-strategic-outlook.sql`
+
+```sql
+-- Phase 15: Strategic Intelligence Layer
+-- Run this migration BEFORE deploying the new service code
+
+CREATE TABLE IF NOT EXISTS coin_strategic_outlook (
+    id SERIAL PRIMARY KEY,
+    coin_symbol VARCHAR(20) NOT NULL UNIQUE,
+
+    -- Short-term (7 days)
+    short_term_direction VARCHAR(10),
+    short_term_target REAL,
+    short_term_invalidation REAL,
+    short_term_catalysts JSON,
+    short_term_confidence INTEGER,
+
+    -- Long-term (3-6 months)
+    market_phase VARCHAR(20),
+    bull_run_probability INTEGER,
+    major_support REAL,
+    major_resistance REAL,
+    is_bottom_in BOOLEAN,
+    is_top_in BOOLEAN,
+    long_term_bull_evidence JSON,
+    long_term_bear_evidence JSON,
+
+    -- Recommended action
+    recommended_action VARCHAR(20),
+    action_rationale TEXT,
+    risk_management TEXT,
+
+    -- Meta
+    last_updated_by_event TEXT,
+    valid_until TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS smart_event_responses (
+    id SERIAL PRIMARY KEY,
+    coin_symbol VARCHAR(20) NOT NULL,
+    event_type VARCHAR(50) NOT NULL,
+    event_title TEXT NOT NULL,
+    immediate_impact TEXT,
+    historical_parallels JSON,
+    recommended_action TEXT,
+    watch_levels JSON,
+    time_horizon VARCHAR(10),
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_strategic_outlook_symbol ON coin_strategic_outlook(coin_symbol);
+CREATE INDEX IF NOT EXISTS idx_smart_event_responses_symbol ON smart_event_responses(coin_symbol);
+CREATE INDEX IF NOT EXISTS idx_smart_event_responses_active ON smart_event_responses(coin_symbol, is_active);
 ```
 
-**Fallback priority:**
-1. `initialRadarId` — if it actually exists in `validSignals` (not stale)
-2. Latest radar signal for the same coin — if `isAlphaFocus`
-3. First available signal — universal fallback
-4. `null` — no signals at all (standby view)
+**Run:** `psql $DATABASE_URL -f backend/scripts/migrate-strategic-outlook.sql`
 
-### Fix 2 (P0): Add Missing Redis Cache Invalidation
+---
+
+### Task 2: Create Strategic Outlook Service (Priority: HIGH)
+
+**Create:** `backend/src/services/strategicOutlook.service.ts`
+
+This service manages the entire Strategic Intelligence Layer. It has 4 functions:
+
+#### Function 1: `shouldUpdateOutlook()`
+
+Determines if an event is significant enough to trigger a strategic outlook update. The outlook should NOT swing with every minor headline — only with structurally significant events.
+
+```typescript
+interface OutlookTriggerInput {
+    classification: string;       // 'MAJOR' | 'MINOR' | 'NOISE'
+    eventType: string;            // 'ETF' | 'Hack' | 'Regulatory' | etc.
+    impactScore: number;          // 0-100
+    eventSeverity: number;        // 1-3
+    priceChange24h?: number;      // from price data
+}
+
+export function shouldUpdateOutlook(input: OutlookTriggerInput): boolean {
+    // Only MAJOR events qualify
+    if (input.classification !== 'MAJOR') return false;
+    // Must have meaningful impact
+    if (input.impactScore < 70) return false;
+    // Must be a structurally significant event type OR a large price move
+    const structuralEvents = ['Regulatory', 'ETF', 'Hack', 'Exploit', 'Listing', 'Delisting'];
+    const isStructural = structuralEvents.includes(input.eventType);
+    const isLargePriceMove = Math.abs(input.priceChange24h ?? 0) > 10;
+    return isStructural || isLargePriceMove || input.eventSeverity >= 3;
+}
+```
+
+#### Function 2: `saveStrategicOutlook()`
+
+Upserts the strategic outlook for a coin. Uses Drizzle `onConflictDoUpdate` on `coinSymbol`.
+
+```typescript
+import { db } from '../config/db';
+import { coinStrategicOutlook } from '../models/market.model';
+import { eq, sql } from 'drizzle-orm';
+import type { DeepAnalysisResult } from './openai.service';
+
+export async function saveStrategicOutlook(
+    coinSymbol: string,
+    outlook: NonNullable<DeepAnalysisResult['strategicOutlook']>,
+    triggerEventTitle: string
+): Promise<void> {
+    const values = {
+        coinSymbol,
+        shortTermDirection: outlook.shortTerm.direction,
+        shortTermTarget: outlook.shortTerm.target,
+        shortTermInvalidation: outlook.shortTerm.invalidation,
+        shortTermCatalysts: outlook.shortTerm.catalysts,
+        shortTermConfidence: outlook.shortTerm.confidence,
+        marketPhase: outlook.longTerm.marketPhase,
+        bullRunProbability: outlook.longTerm.bullRunProbability,
+        majorSupport: outlook.longTerm.majorSupport,
+        majorResistance: outlook.longTerm.majorResistance,
+        isBottomIn: outlook.longTerm.isBottomIn,
+        isTopIn: outlook.longTerm.isTopIn,
+        longTermBullEvidence: outlook.longTerm.bullEvidence,
+        longTermBearEvidence: outlook.longTerm.bearEvidence,
+        recommendedAction: outlook.action.recommendation,
+        actionRationale: outlook.action.rationale,
+        riskManagement: outlook.action.riskManagement,
+        lastUpdatedByEvent: triggerEventTitle,
+        validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days validity
+    };
+
+    await db.insert(coinStrategicOutlook)
+        .values(values)
+        .onConflictDoUpdate({
+            target: coinStrategicOutlook.coinSymbol,
+            set: {
+                ...values,
+                updatedAt: sql`NOW()`,
+            },
+        });
+
+    console.log(`[StrategicOutlook] Saved outlook for ${coinSymbol}: ${outlook.shortTerm.direction} → $${outlook.shortTerm.target}`);
+}
+```
+
+#### Function 3: `buildSmartEventResponse()`
+
+For major negative events (hacks, SEC actions, exploits), queries `coinNewsHistory` for similar past events and generates an action plan.
+
+```typescript
+import { coinNewsHistory, smartEventResponses } from '../models/market.model';
+import { eq, and, isNotNull, desc } from 'drizzle-orm';
+
+interface HistoricalParallel {
+    event: string;
+    date: string;
+    initialDrop: number;
+    recoveryDays: number | null;
+    finalOutcome: string;
+}
+
+export async function buildSmartEventResponse(
+    coinSymbol: string,
+    eventType: string,
+    eventTitle: string,
+    currentPrice: number
+): Promise<void> {
+    // 1. Find similar historical events across ALL coins (not just this one)
+    const similarEvents = await db.select()
+        .from(coinNewsHistory)
+        .where(and(
+            eq(coinNewsHistory.eventType, eventType),
+            isNotNull(coinNewsHistory.priceChange7d),
+            isNotNull(coinNewsHistory.priceAtTime)
+        ))
+        .orderBy(desc(coinNewsHistory.publishedAt))
+        .limit(10);
+
+    if (similarEvents.length === 0) {
+        console.log(`[SmartEventResponse] No historical parallels found for ${eventType}`);
+        return;
+    }
+
+    // 2. Calculate average impact and recovery stats
+    const parallels: HistoricalParallel[] = similarEvents.map(e => ({
+        event: `${e.coinSymbol}: ${e.title.slice(0, 80)}`,
+        date: e.publishedAt.toISOString().split('T')[0],
+        initialDrop: Number(e.priceChange7d ?? 0),
+        recoveryDays: null, // Would need price_30d_after data for recovery tracking
+        finalOutcome: e.isRugPull
+            ? 'Total loss — rug pull confirmed'
+            : `${Number(e.priceChange7d ?? 0) > 0 ? '+' : ''}${Number(e.priceChange7d ?? 0).toFixed(1)}% in 7 days`,
+    }));
+
+    const avgDrop = parallels.reduce((sum, p) => sum + p.initialDrop, 0) / parallels.length;
+    const recoveryRate = parallels.filter(p => p.initialDrop > -5).length / parallels.length;
+
+    // 3. Build recommended action text
+    const isBearish = avgDrop < -5;
+    const immediateImpact = isBearish
+        ? `Historical data shows ${eventType} events cause an average ${avgDrop.toFixed(1)}% price movement within 7 days. Recovery rate: ${(recoveryRate * 100).toFixed(0)}%.`
+        : `Historical data shows ${eventType} events have limited price impact (avg ${avgDrop.toFixed(1)}% over 7 days).`;
+
+    const recommendedAction = isBearish
+        ? `Short-term (1-2 weeks): Data suggests elevated risk — monitor for contagion. Medium-term (30-60 days): Historical recovery rate is ${(recoveryRate * 100).toFixed(0)}%. Watch key support levels for confirmation of stabilization.`
+        : `Data suggests limited direct price impact from this event type. Monitor for secondary effects.`;
+
+    // 4. Deactivate previous responses for same coin + event type
+    await db.update(smartEventResponses)
+        .set({ isActive: false })
+        .where(and(
+            eq(smartEventResponses.coinSymbol, coinSymbol),
+            eq(smartEventResponses.eventType, eventType),
+            eq(smartEventResponses.isActive, true)
+        ));
+
+    // 5. Insert new response
+    await db.insert(smartEventResponses).values({
+        coinSymbol,
+        eventType,
+        eventTitle,
+        immediateImpact,
+        historicalParallels: parallels,
+        recommendedAction,
+        watchLevels: { support: currentPrice * 0.9, exitTrigger: currentPrice * 0.85 },
+        timeHorizon: isBearish ? '1month' : '1week',
+        isActive: true,
+    });
+
+    console.log(`[SmartEventResponse] Generated action plan for ${coinSymbol} — ${eventType} (${parallels.length} parallels, avg impact: ${avgDrop.toFixed(1)}%)`);
+}
+```
+
+#### Function 4: `getStrategicOutlook()` + `getActiveEventResponses()`
+
+Simple getters for the API layer:
+
+```typescript
+export async function getStrategicOutlook(coinSymbol: string) {
+    const result = await db.select()
+        .from(coinStrategicOutlook)
+        .where(eq(coinStrategicOutlook.coinSymbol, coinSymbol))
+        .limit(1);
+    return result[0] ?? null;
+}
+
+export async function getActiveEventResponses(coinSymbol: string) {
+    return await db.select()
+        .from(smartEventResponses)
+        .where(and(
+            eq(smartEventResponses.coinSymbol, coinSymbol),
+            eq(smartEventResponses.isActive, true)
+        ))
+        .orderBy(desc(smartEventResponses.createdAt))
+        .limit(5);
+}
+```
+
+---
+
+### Task 3: Integrate into AI Workflow Cron (Priority: HIGH)
 
 **File:** `backend/src/crons/aiWorkflow.cron.ts`
-**Line:** 490
 
-**BEFORE (broken):**
+#### 3A. Add imports at top of file (after existing imports):
+
 ```typescript
-await deleteCache(`news:${symbol}`);
-await deleteCache('insight:all');
+import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } from '../services/strategicOutlook.service';
 ```
 
-**AFTER (fixed):**
+#### 3B. Add strategic outlook logic AFTER factual grounding (after line ~308, before the article writer section)
+
+Insert this block after the factual grounding validation (`if (grounding.removedLevels.length > 0)` block ends), and BEFORE the GPT-nano article writer section (`// 4e. GPT-nano Article`):
+
 ```typescript
-await deleteCache(`master:${symbol}`);
-await deleteCache(`news:${symbol}`);
-await deleteCache('insight:all');
+                // 4d-ii. Strategic Outlook update (only for structurally significant events)
+                if (analysisResult.strategicOutlook) {
+                    const triggerInput = {
+                        classification,
+                        eventType,
+                        impactScore: analysisResult.impactScore,
+                        eventSeverity: analysisResult.eventSeverity,
+                        priceChange24h: price?.change24h ?? undefined,
+                    };
+
+                    if (shouldUpdateOutlook(triggerInput)) {
+                        try {
+                            await saveStrategicOutlook(symbol, analysisResult.strategicOutlook, item.title);
+                            console.log(`[AI Workflow] Strategic outlook updated for ${symbol}`);
+                        } catch (outlookErr) {
+                            console.error(`[AI Workflow] Failed to save strategic outlook for ${symbol}:`, outlookErr);
+                        }
+                    } else {
+                        console.log(`[AI Workflow] Outlook update skipped for ${symbol} — event not structurally significant`);
+                    }
+                }
+
+                // 4d-iii. Smart Event Response (for high-severity negative events)
+                const negativeEventTypes = ['Hack', 'Exploit', 'Regulatory', 'Delisting'];
+                if (
+                    analysisResult.sentiment === 'bearish' &&
+                    analysisResult.eventSeverity >= 2 &&
+                    negativeEventTypes.includes(eventType)
+                ) {
+                    try {
+                        await buildSmartEventResponse(symbol, eventType, item.title, currentPrice);
+                        console.log(`[AI Workflow] Smart event response generated for ${symbol} — ${eventType}`);
+                    } catch (eventErr) {
+                        console.error(`[AI Workflow] Failed to build smart event response for ${symbol}:`, eventErr);
+                    }
+                }
+```
+
+#### 3C. Add Redis cache invalidation for strategic outlook (at line ~490, alongside existing cache invalidations):
+
+Add after `await deleteCache('insight:all');`:
+
+```typescript
+                await deleteCache(`outlook:${symbol}`);
 ```
 
 ---
 
-## SEO METADATA BEHAVIOR ON ARTICLE UPDATE (Verified OK — No Fix Needed)
+### Task 4: API Endpoint for Strategic Outlook (Priority: MEDIUM)
 
-### Findings
+**File:** `backend/src/controllers/market.controller.ts` (or create a new controller)
 
-| Scenario | SEO Fields Updated? | Assessment |
-|----------|-------------------|------------|
-| MAJOR update (new article) | Yes — `metaTitle`, `metaDescription`, `seoKeywords` generated via `callWriterStage2A` | Correct |
-| MAJOR update (existing article) | Yes — `callGptNanoMasterUpdate` (`openai.service.ts:654`) regenerates all SEO fields | Correct |
-| MINOR update | No — only `minorUpdateCount`, `lastMinorUpdate`, `updatedAt` bumped | Correct by design |
-| `generateMetadata` reads from API | Yes — `masterArticle.metaTitle`, `.metaDescription`, `.seoKeywords` | Correct |
-| ISR revalidation | 60s timer (`revalidate = 60`) | Acceptable for Google |
-| On-demand revalidation | NOT implemented — zero `revalidatePath`/`revalidateTag` calls in codebase | Nice-to-have, not critical |
+Add a new endpoint that serves the strategic outlook + active event responses for a coin:
 
-### Silent Failure in `callGptNanoMasterUpdate` (Low Risk)
+```typescript
+// GET /api/outlook/:symbol
+export async function getStrategicOutlookHandler(req: Request, res: Response) {
+    const { symbol } = req.params;
+    const cacheKey = `outlook:${symbol.toUpperCase()}`;
 
-`openai.service.ts:692` — if JSON parse fails, function returns `{}`. The DB update at `aiWorkflow.cron.ts:416` spreads `{}` into the SET clause, so only counters and timestamps are incremented. Article content/SEO remains unchanged (stale but not broken).
+    // Check Redis cache
+    if (redis) {
+        const cached = await redis.get(cacheKey);
+        if (cached) return res.json(JSON.parse(cached));
+    }
 
-**Recommendation (future phase):** If `callGptNanoMasterUpdate` returns `{}`, skip the DB update entirely (don't increment counters). This prevents false "last major update" timestamps when no actual content change occurred.
+    const [outlook, eventResponses] = await Promise.all([
+        getStrategicOutlook(symbol.toUpperCase()),
+        getActiveEventResponses(symbol.toUpperCase()),
+    ]);
 
----
+    const response = {
+        outlook,
+        activeEvents: eventResponses,
+    };
 
-## NAVIGATION LINK INTEGRITY (Verified — Fix 1 Covers This)
+    // Cache for 5 minutes
+    if (redis) {
+        await redis.set(cacheKey, JSON.stringify(response), 'EX', 300);
+    }
 
-### All External Links to Terminal Page
-
-| Source Component | Link Pattern | After Fix 1 |
-|-----------------|-------------|-------------|
-| `AlphaFocusCard` | `/terminal/${data.coin}?alpha=true` | Always works — no radarId in URL, falls back to latest radar for coin |
-| `RadarGrid` | `/terminal/${s.coin}?radarId=${s.id}` | Fixed — stale radarId validated and replaced with latest |
-| `ArchivePageClient` | `/terminal/${article.coinSymbol.toLowerCase()}/alpha` | Separate route (`/alpha` page), unaffected by this bug |
-| Browser bookmarks/history | `/terminal/BTC?radarId=42` (old ID) | Fixed — stale ID detected, falls back to latest radar for BTC |
-
-### Why `/terminal/[coin]/alpha` Route Is Unaffected
-
-The `/alpha` route renders `LivingArticle` independently. It fetches `getMasterArticle(symbol)` client-side — no dependency on `radarSignals` array or `radarId` URL param. This route has no chart component, so it doesn't match the user's reported bug pattern (chart + missing content).
-
----
-
-## COMPLETE RENDERING FLOW (Reference)
-
+    return res.json(response);
+}
 ```
-URL: /terminal/BTC?radarId=42
-         │
-         ▼
-[coin]/page.tsx (Server — ISR cached 60s)
-  ├── getLatestWire() → initialNews
-  ├── getRadarSignals() → radarSignals (DISTINCT ON → latest per coin)
-  ├── reads isAlphaFocus, initialRadarId from URL
-  └── passes to TerminalPageClient
-         │
-         ▼
-TerminalPageClient (Client)
-  ├── validates initialRadarId in validSignals ← FIX 1 HERE
-  ├── computes selectedRadarId
-  ├── passes to AlphaStream
-  └── passes selectedCoin to TerminalChat → TerminalChart (always works)
-         │
-         ▼
-AlphaStream (Client — Center Panel)
-  ├── if radarSignal → shows radar text + "Read Deep Dive" button
-  ├── if newsId → fetches getNewsById(id) → shows article sections
-  ├── if neither → STANDBY VIEW (bug manifests here)
-  └── DeepDiveSection (lazy-loaded) ← fetches getMasterArticle(symbol) fresh
-         │
-         ▼
-DeepDiveSection (Client — Full 7-Section Report)
-  ├── getMasterArticle(symbol) ← Redis cache key: master:${symbol} ← FIX 2 HERE
-  ├── getTimeline(symbol)
-  └── renders coreCatalyst, marketContext, strategicImpact, etc.
+
+**Route registration** — add to `backend/src/routes/index.ts`:
+
+```typescript
+router.get('/outlook/:symbol', getStrategicOutlookHandler);
 ```
 
 ---
 
-## TECH LEAD GUARDRAILS (MUST be followed)
+### Task 5: Export New Tables from Model Index (Priority: LOW — if needed)
 
-1. **DO NOT** touch `DeepDiveSection.tsx`, `LivingArticle.tsx`, `AlphaStream.tsx`, or any routing files
-2. **DO NOT** modify `getRadarSignals` DISTINCT ON logic — it's correct
-3. **DO NOT** add `onConflictDoUpdate` to radar signals insert — out of scope
-4. **DO NOT** change `market.model.ts` (no schema changes)
-5. **DO NOT** install new packages
-6. **DO NOT** modify any route, controller, or cron files EXCEPT `aiWorkflow.cron.ts` (single line addition)
-7. Only modify `TerminalPageClient.tsx` (lines 23-25) and `aiWorkflow.cron.ts` (line 490)
+**File:** `backend/src/models/index.ts`
 
-## TEST PLAN
+If the models index re-exports from `market.model.ts`, ensure the new tables are included:
 
-1. Publish a new article for BTC → verify radar signal created with ID=X
-2. Click RadarGrid link for BTC → verify `/terminal/BTC?radarId=X` loads article content + chart
-3. Trigger MAJOR update for BTC → verify new radar signal created with ID=Y (Y > X)
-4. Click the OLD link `/terminal/BTC?radarId=X` → verify article content STILL loads (falls back to ID=Y)
-5. Refresh the page with old URL → verify content still loads
-6. Verify chart still renders correctly throughout
-7. Verify `/terminal/BTC?alpha=true` (AlphaFocusCard link) works before and after update
-8. Verify `/terminal/BTC/alpha` (Archive link) works before and after update
+```typescript
+export { coinStrategicOutlook, smartEventResponses } from './market.model';
+```
+
+---
+
+## VALIDATION CHECKLIST
+
+After all tasks are complete, verify the following:
+
+| # | Test | Expected Result |
+|---|------|-----------------|
+| 1 | Run migration SQL against the database | Both tables created with correct columns and indexes |
+| 2 | Trigger a MAJOR event for BTC (impactScore ≥ 70, eventType = 'ETF') | Strategic outlook saved to `coin_strategic_outlook` table |
+| 3 | Trigger a MINOR event for BTC | Outlook NOT updated (shouldUpdateOutlook returns false) |
+| 4 | Trigger a MAJOR bearish event (eventType = 'Hack', severity ≥ 2) | Smart event response generated with historical parallels |
+| 5 | Check `signalText` output from DeepSeek | Ends with `\| NFA` |
+| 6 | Check `signalText` for forbidden words | No "buy", "sell", "invest", "recommend", "should" in any field |
+| 7 | Check `strategicOutlook.shortTerm.target` | Must be within ±50% of current price (not hallucinated) |
+| 8 | Call `GET /api/outlook/BTC` | Returns outlook + activeEvents JSON |
+| 9 | Check Redis invalidation after outlook update | `outlook:BTC` cache key deleted |
+| 10 | Verify existing pipeline still works | Articles, radar signals, timeline updates all function normally |
+
+---
+
+## RISK NOTES
+
+1. **DeepSeek prompt is now longer (~400 extra tokens).** Monitor for any degradation in output quality for the existing fields (sentiment, verdict, keyFacts). If quality drops, the strategic outlook should be split into a SEPARATE AI call using GLM.
+
+2. **`strategicOutlook` is optional (`?`).** The model may sometimes omit it. All code paths must handle `analysisResult.strategicOutlook === undefined` gracefully — the pipeline continues without saving an outlook.
+
+3. **`shouldUpdateOutlook()` is intentionally conservative.** Only ~10-20% of MAJOR events should trigger an outlook update. If the outlook updates too frequently, the "flip-flopping" problem returns. The threshold can be tuned later.
+
+4. **Smart Event Response uses ALL coins' history.** The `coinNewsHistory` query in `buildSmartEventResponse` does NOT filter by `coinSymbol` — it searches across all coins for the same `eventType`. This is intentional (cross-species pattern matching). If the user wants coin-specific parallels only, add an `eq(coinNewsHistory.coinSymbol, coinSymbol)` filter.
+
+5. **No frontend changes in this phase.** The API endpoint serves JSON. Frontend rendering of the strategic outlook (in LivingArticle, DeepDiveSection, or a new component) is a SEPARATE task for the frontend developer.
+
+---
+
+## FILES SUMMARY
+
+| File | Status | Action |
+|------|--------|--------|
+| `backend/src/models/market.model.ts` | ✅ DONE | 2 new tables added |
+| `backend/src/services/openai.service.ts` | ✅ DONE | `strategicOutlook` field added to `DeepAnalysisResult` |
+| `backend/src/services/ai/prompt-factory.ts` | ✅ DONE | DeepSeek prompt updated with outlook schema + NFA rules |
+| `backend/scripts/migrate-strategic-outlook.sql` | 🔴 TODO | Create migration script (SQL provided above) |
+| `backend/src/services/strategicOutlook.service.ts` | 🔴 TODO | Create new service (full code provided above) |
+| `backend/src/crons/aiWorkflow.cron.ts` | 🔴 TODO | Add 3 blocks: imports, outlook logic, cache invalidation |
+| `backend/src/controllers/market.controller.ts` | 🔴 TODO | Add `getStrategicOutlookHandler` endpoint |
+| `backend/src/routes/index.ts` | 🔴 TODO | Register `/outlook/:symbol` route |
+| `backend/src/models/index.ts` | 🔴 TODO (if needed) | Export new tables |
+
+---
+
+*Plan authored: April 24, 2026*  
+*Based on: Full codebase audit of all backend services, models, crons, and AI pipeline*

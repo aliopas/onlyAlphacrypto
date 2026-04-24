@@ -64,7 +64,32 @@ export interface DeepAnalysisResult {
     signalText: string;
     verdict: 'STRONG_BUY' | 'BUY' | 'NEUTRAL' | 'SELL' | 'STRONG_SELL';
     confidenceScore: number;
+    strategicOutlook?: {
+        shortTerm: {
+            direction: 'bullish' | 'bearish' | 'neutral';
+            target: number | null;
+            invalidation: number | null;
+            catalysts: string[];
+            confidence: number;
+        };
+        longTerm: {
+            marketPhase: 'accumulation' | 'markup' | 'distribution' | 'markdown';
+            bullRunProbability: number;
+            majorSupport: number | null;
+            majorResistance: number | null;
+            isBottomIn: boolean;
+            isTopIn: boolean;
+            bullEvidence: string[];
+            bearEvidence: string[];
+        };
+        action: {
+            recommendation: 'accumulate' | 'hold' | 'reduce' | 'avoid' | 'watch';
+            rationale: string;
+            riskManagement: string;
+        };
+    };
 }
+
 
 export interface ArticleWriterResult {
     headline: string;

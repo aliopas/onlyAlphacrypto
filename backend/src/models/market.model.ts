@@ -231,3 +231,52 @@ export const coinTimelineUpdates = pgTable('coin_timeline_updates', {
     convictionDelta: real('conviction_delta'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// ─── COIN STRATEGIC OUTLOOK (Forward-Looking Intelligence) ────────────────────
+export const coinStrategicOutlook = pgTable('coin_strategic_outlook', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull().unique(),
+
+    // Short-term (7 days)
+    shortTermDirection: varchar('short_term_direction', { length: 10 }),
+    shortTermTarget: real('short_term_target'),
+    shortTermInvalidation: real('short_term_invalidation'),
+    shortTermCatalysts: json('short_term_catalysts'),
+    shortTermConfidence: integer('short_term_confidence'),
+
+    // Long-term (3-6 months)
+    marketPhase: varchar('market_phase', { length: 20 }),
+    bullRunProbability: integer('bull_run_probability'),
+    majorSupport: real('major_support'),
+    majorResistance: real('major_resistance'),
+    isBottomIn: boolean('is_bottom_in'),
+    isTopIn: boolean('is_top_in'),
+    longTermBullEvidence: json('long_term_bull_evidence'),
+    longTermBearEvidence: json('long_term_bear_evidence'),
+
+    // Recommended action
+    recommendedAction: varchar('recommended_action', { length: 20 }),
+    actionRationale: text('action_rationale'),
+    riskManagement: text('risk_management'),
+
+    // Meta
+    lastUpdatedByEvent: text('last_updated_by_event'),
+    validUntil: timestamp('valid_until'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// ─── SMART EVENT RESPONSES (Action Plans for Major Events) ────────────────────
+export const smartEventResponses = pgTable('smart_event_responses', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    eventType: varchar('event_type', { length: 50 }).notNull(),
+    eventTitle: text('event_title').notNull(),
+    immediateImpact: text('immediate_impact'),
+    historicalParallels: json('historical_parallels'),
+    recommendedAction: text('recommended_action'),
+    watchLevels: json('watch_levels'),
+    timeHorizon: varchar('time_horizon', { length: 10 }),
+    isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});

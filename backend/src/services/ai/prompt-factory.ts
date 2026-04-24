@@ -249,9 +249,33 @@ DO NOT write articles. DO NOT write prose. Output STRICT JSON only.
   ],
   "supportLevels":    [<price>, <price>],
   "resistanceLevels": [<price>, <price>],
-  "signalText":       "<MAX 40 words. Bloomberg-style. One number required. English only.>",
+  "signalText":       "<MAX 70 words. Bloomberg-style. Include: specific dollar amount, source attribution in brackets [Source]. End with '| NFA'. English only.>",
   "verdict":          "STRONG_BUY|BUY|NEUTRAL|SELL|STRONG_SELL",
-  "confidenceScore":  <0-100>
+  "confidenceScore":  <0-100>,
+  "strategicOutlook": {
+    "shortTerm": {
+      "direction": "bullish|bearish|neutral",
+      "target": <next key price level — must be a resistance or support from data>,
+      "invalidation": <price that breaks the thesis — a key support/resistance>,
+      "catalysts": ["upcoming event 1", "upcoming event 2"],
+      "confidence": <0-100>
+    },
+    "longTerm": {
+      "marketPhase": "accumulation|markup|distribution|markdown",
+      "bullRunProbability": <0-100>,
+      "majorSupport": <key long-term support price>,
+      "majorResistance": <key long-term resistance price>,
+      "isBottomIn": <true|false>,
+      "isTopIn": <true|false>,
+      "bullEvidence": ["specific data-backed reason with number", "reason 2"],
+      "bearEvidence": ["specific data-backed reason with number", "reason 2"]
+    },
+    "action": {
+      "recommendation": "accumulate|hold|reduce|avoid|watch",
+      "rationale": "<1 paragraph data-driven rationale — NEVER use buy/sell/invest>",
+      "riskManagement": "<specific: 'If [coin] breaks $X → [action description]'>"
+    }
+  }
 }
 
 Rules:
@@ -260,7 +284,22 @@ Rules:
 - impactScore 80+: only events that directly move price (hacks, listings, SEC actions).
 - If temporal pattern provided → always reference it in analysis.temporalContext.
 - keyFacts: must contain specific numbers, dates, or verifiable claims.
-- CONSISTENCY RULE: The textual summary in signalText MUST strictly match the JSON verdict. Do NOT write bullish text if verdict is SELL. Do NOT write bearish text if verdict is BUY. The sentiment, signalText, and verdict must all be perfectly aligned.`
+- CONSISTENCY RULE: The textual summary in signalText MUST strictly match the JSON verdict. Do NOT write bullish text if verdict is SELL. Do NOT write bearish text if verdict is BUY. The sentiment, signalText, and verdict must all be perfectly aligned.
+
+STRATEGIC OUTLOOK RULES:
+- shortTerm.target MUST be a resistance or support level from the provided data, not invented.
+- shortTerm.invalidation MUST be a key level — if price breaks it, the directional thesis fails.
+- longTerm.marketPhase: use Wyckoff phases based on price action + trend data provided.
+- bullEvidence and bearEvidence MUST contain specific numbers and data points, not vague statements.
+- action.recommendation: frame as market analysis, NOT financial advice.
+- action.riskManagement MUST include a specific invalidation price and what to do if broken.
+
+SAFE HARBOR COMPLIANCE (MANDATORY):
+- signalText MUST end with "| NFA"
+- NEVER use these words in any field: buy, sell, invest, recommend, should, must
+- Use "data suggests", "metrics indicate", "analysis points to" instead
+- action.rationale must be framed as: "data suggests [X]", "metrics indicate [Y]"
+- This is market intelligence analysis, not financial advice`
             },
             {
                 role: 'user',
@@ -287,6 +326,7 @@ ${input.pattern ? JSON.stringify(input.pattern) : 'No historical pattern availab
             }
         ];
     }
+
 
     buildArticleWriterMessages(analysisJson: string, tone?: string): ChatCompletionMessageParam[] {
         const toneDirective = tone
