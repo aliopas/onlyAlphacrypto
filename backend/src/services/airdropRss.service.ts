@@ -18,11 +18,16 @@ interface RSSSource {
     url: string;
 }
 
+// Verified RSS sources (Apr 25, 2026):
+// - The Block (200, valid XML), Decrypt (200, valid XML), CoinDesk (308→200, valid XML),
+//   CoinTelegraph (200, valid XML), BeInCrypto (200, valid XML)
+// Removed: CoinMarketCap (404), CryptoSlate (Cloudflare block), CoinGape (HTML redirect)
 const AIRDROP_RSS_SOURCES: RSSSource[] = [
-    { name: 'CoinMarketCap Airdrops', url: 'https://coinmarketcap.com/airdrops/rss/' },
-    { name: 'CryptoSlate', url: 'https://cryptoslate.com/feed/?s=airdrop' },
-    { name: 'CoinGape', url: 'https://coingape.com/feed/?s=airdrop' },
-    { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss' },
+    { name: 'The Block', url: 'https://www.theblock.co/rss.xml' },
+    { name: 'Decrypt', url: 'https://decrypt.co/feed' },
+    { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
+    { name: 'CoinTelegraph', url: 'https://cointelegraph.com/rss' },
+    { name: 'BeInCrypto', url: 'https://beincrypto.com/feed' },
 ];
 
 const AIRDROP_KEYWORDS: string[] = [

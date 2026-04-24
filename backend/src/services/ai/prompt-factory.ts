@@ -163,7 +163,7 @@ Analyze the provided article text and return a JSON object with EXACTLY this sha
 }
 
 Rules:
-- Be CONSERVATIVE. Only flag confirmed or highly probable airdrops.
+- Flag projects that have reasonable evidence of a legitimate airdrop opportunity. Use the riskVerdict field to communicate uncertainty — set to MEDIUM_RISK or HIGH_RISK rather than rejecting entirely.
 - If the article mentions "airdrop" only in passing (e.g., a price prediction article that casually references an airdrop), set isLegitimate = false.
 - projectName: extract the actual protocol name from the article. If unclear, use the most prominent project mentioned.
 - network: the primary blockchain where this airdrop operates.

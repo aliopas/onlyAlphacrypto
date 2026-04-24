@@ -1,6 +1,19 @@
 # 📋 ONLYALPHA — AGENT LOGS
 
-**Last Updated:** April 24, 2026
+**Last Updated:** April 25, 2026
+
+---
+
+## Phase 16 — Airdrop Feature: Pipeline Fix & UX Empty States (P0)
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|
+| Apr 25, 2026 | P16-PLANNING | PLANNED | Strategic Planner | — | 9 micro-tasks defined (T-01 through T-09), split into Deploy 1 (T-01→T-04: RSS fix, Redis dedup, prompt tuning, frontend empty/error states) and Deploy 2 (T-05→T-09: pipeline health table, migration, health logging, loading skeleton, pipeline status indicator). Root cause: dead RSS (CMC 404), in-memory dedup reset on restart, overly conservative AI prompt, zero frontend empty/error states. All file paths and line numbers verified against current codebase. |
+| Apr 25, 2026 | P16-T01 | ✅ PASS | Senior Developer | QA Hunter | 12/12 checklist pass. CoinMarketCap removed, 5 verified sources (The Block, Decrypt, CoinDesk, CoinTelegraph, BeInCrypto). CryptoSlate/CoinGape removed (Cloudflare/redirect — dev substitution accepted). `tsc --noEmit` clean, zero `any`, all exports backward-compatible, only lines 21-31 modified. Edge cases: empty feeds, malformed XML, all-feeds-fail, cross-source dedup — all handled. |
+| Apr 25, 2026 | P16-T02 | ✅ PASS | Senior Developer | QA Hunter | 17/17 checklist pass. Redis-backed dedup with localHashes fallback. `redis.sismember`/`redis.sadd` (ioredis API), 7-day TTL. All 4 `processedHashes.add()` calls replaced with `await addProcessedHash()`. Async for-loop filter. `tsc --noEmit` clean, zero `any`. Edge cases: Redis null, mid-run failure, concurrent runs — all handled. Zero deviations. |
+| Apr 25, 2026 | P16-T03 | ✅ PASS | Senior Developer | QA Hunter | 11/11 checklist pass. Single-line change at line 166. `isLegitimate` field preserved, SCAM path preserved, `riskVerdict` enum unchanged, JSON schema unchanged, all other methods untouched. `tsc --noEmit` clean, zero `any`. Zero deviations. |
+| Apr 25, 2026 | P16-T04 | ✅ PASS | Senior Developer | QA Hunter | 15/15 checklist pass. Two files modified. `page.tsx` adds `fetchError` boolean + `initialError` prop. `AirdropsPageClient.tsx` adds error state (AlertTriangle + Retry), empty state (TrendingUp circle + heading + animated pipeline indicator), grid conditional wrapper. Dark theme, no internal errors exposed, backward-compatible optional prop, zero new imports. `tsc --noEmit` clean, zero `any`. Zero deviations. |
+| Apr 25, 2026 | P16-DEPLOY1 | ✅ COMPLETE | — | QA Hunter | Deploy 1 (T-01→T-04) fully QA passed. All 4 tasks: zero deviations, zero `any`, `tsc` clean on both frontend & backend. Ready for Deploy 2 when instructed. |
 
 ---
 

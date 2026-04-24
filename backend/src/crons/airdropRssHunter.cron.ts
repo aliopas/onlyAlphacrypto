@@ -8,12 +8,35 @@ import {
     getExistingProjectNames,
     type AirdropRSSArticle,
 } from '../services/airdropRss.service';
-import { deleteCache, deleteCachePattern } from '../config/redis';
+import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 
 const MAX_AI_CALLS_PER_RUN = 5;
 const PROCESSED_HASHES_MAX = 1000;
 
-const processedHashes: Set<string> = new Set();
+const REDIS_HASH_KEY = 'airdrop:processed_hashes';
+
+const localHashes: Set<string> = new Set();
+
+async function isHashProcessed(hash: string): Promise<boolean> {
+    if (!redis) return localHashes.has(hash);
+    try {
+        const result = await redis.sismember(REDIS_HASH_KEY, hash);
+        return result === 1;
+    } catch {
+        return localHashes.has(hash);
+    }
+}
+
+async function addProcessedHash(hash: string): Promise<void> {
+    localHashes.add(hash);
+    if (!redis) return;
+    try {
+        await redis.sadd(REDIS_HASH_KEY, hash);
+        await redis.expire(REDIS_HASH_KEY, 7 * 24 * 60 * 60);
+    } catch {
+        // Redis unavailable — local fallback sufficient
+    }
+}
 
 function parseOptionalDate(dateStr: string | null): Date | null {
     if (!dateStr) return null;
@@ -38,7 +61,11 @@ async function runAirdropRSSDiscovery(): Promise<void> {
 
     console.log(`[AirdropRSS] Articles after keyword filter: ${articles.length}`);
 
-    const unprocessedArticles = articles.filter(a => !processedHashes.has(a.hash));
+    const unprocessedArticles = [];
+    for (const article of articles) {
+        const seen = await isHashProcessed(article.hash);
+        if (!seen) unprocessedArticles.push(article);
+    }
     const candidates = unprocessedArticles.slice(0, MAX_AI_CALLS_PER_RUN);
 
     console.log(
@@ -64,7 +91,7 @@ async function runAirdropRSSDiscovery(): Promise<void> {
                     `[AirdropRSS] Rejected: "${article.title}" — legitimate=${validation.isLegitimate}, risk=${validation.riskVerdict}`
                 );
                 rejections++;
-                processedHashes.add(article.hash);
+                await addProcessedHash(article.hash);
                 continue;
             }
 
@@ -74,7 +101,7 @@ async function runAirdropRSSDiscovery(): Promise<void> {
                     `[AirdropRSS] Duplicate project skipped: "${validation.projectName}"`
                 );
                 rejections++;
-                processedHashes.add(article.hash);
+                await addProcessedHash(article.hash);
                 continue;
             }
 
@@ -112,7 +139,7 @@ async function runAirdropRSSDiscovery(): Promise<void> {
             }
 
             existingProjectNames.add(normalizedName);
-            processedHashes.add(article.hash);
+            await addProcessedHash(article.hash);
             projectsInserted++;
 
             console.log(
@@ -123,16 +150,16 @@ async function runAirdropRSSDiscovery(): Promise<void> {
                 `[AirdropRSS] Error processing article "${article.title}":`,
                 error instanceof Error ? error.message : String(error)
             );
-            processedHashes.add(article.hash);
+            await addProcessedHash(article.hash);
         }
     }
 
-    if (processedHashes.size > PROCESSED_HASHES_MAX) {
-        const hashArray = Array.from(processedHashes);
+    if (localHashes.size > PROCESSED_HASHES_MAX) {
+        const hashArray = Array.from(localHashes);
         const trimmed = hashArray.slice(hashArray.length - PROCESSED_HASHES_MAX);
-        processedHashes.clear();
+        localHashes.clear();
         for (const h of trimmed) {
-            processedHashes.add(h);
+            localHashes.add(h);
         }
     }
 
@@ -148,7 +175,7 @@ async function runAirdropRSSDiscovery(): Promise<void> {
     }
 
     console.log(
-        `[AirdropRSS] Discovery run complete — inserted: ${projectsInserted}, rejected: ${rejections}, processed hashes: ${processedHashes.size}`
+        `[AirdropRSS] Discovery run complete — inserted: ${projectsInserted}, rejected: ${rejections}, processed hashes: ${localHashes.size}`
     );
 }
 

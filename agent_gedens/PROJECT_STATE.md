@@ -1,7 +1,7 @@
 # ONLYALPHA — PROJECT STATE
 
-**Last Updated:** April 24, 2026
-**Current Focus:** Phase 15 — Strategic Intelligence Layer (Forward-Looking Intelligence)
+**Last Updated:** April 25, 2026
+**Current Focus:** Phase 16 — Airdrop Feature: Pipeline Fix & UX Empty States (P0)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,34 +15,46 @@
 2. **Modular Boundaries:** Cache logic -> `CacheManager`. AI calls -> `AIGateway`. Prompts -> `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## Current Mission: Phase 15 — Strategic Intelligence Layer (Forward-Looking Intelligence)
+## Current Mission: Phase 16 — Airdrop Feature: Pipeline Fix & UX Empty States (P0)
 
-**Status:** QA PASSED — Awaiting Deployment
+**Status:** DEPLOY 1 COMPLETE — T-01 through T-04 all QA Passed | Deploy 2 (T-05 through T-09) Pending
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
-**Scope:** 1 new SQL file, 1 new service file, 3 modified files, 0 new npm packages
-**Task Breakdown:** 5 tasks (T-01 through T-05) — All Done, QA Passed
+**Scope:** 5 modified files, 1 new SQL file, 1 new Drizzle table, 0 new npm packages
+**Task Breakdown:** 9 tasks (T-01 through T-09) — Deploy 1: T-01→T-04 ✅ DONE | Deploy 2: T-05→T-09 PENDING
 
-**New Files Created:**
-- `backend/scripts/migrate-strategic-outlook.sql` — SQL migration fallback (22 columns, 2 tables, 3 indexes)
-- `backend/src/services/strategicOutlook.service.ts` — 5 exported functions (shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse, getStrategicOutlook, getActiveEventResponses)
+**Deploy 1 (COMPLETE — All QA Passed):**
+- T-01: ✅ Replace dead RSS sources (`airdropRss.service.ts:21-31`)
+- T-02: ✅ Move dedup to Redis (`airdropRssHunter.cron.ts`)
+- T-03: Tune AI validation prompt (`prompt-factory.ts:166`)
+- T-04: Frontend empty + error states (`AirdropsPageClient.tsx:265`, `page.tsx:29-37`)
 
-**Files Modified:**
-- `backend/src/crons/aiWorkflow.cron.ts` — Import (line 19), outlook logic (lines 311-346), cache invalidation (line 531)
-- `backend/src/controllers/market.controller.ts` — Import (line 9), handler (lines 506-528)
-- `backend/src/routes/market.routes.ts` — Route registration (line 18)
+**Deploy 2 (Backend Hardening):**
+- T-05: Add `airdropPipelineRuns` table to `airdrop.model.ts`
+- T-06: Create SQL migration `migrate-airdrop-pipeline-runs.sql`
+- T-07: Add pipeline health logging to both cron files
+- T-08: Frontend loading skeleton for grid
+- T-09: Frontend pipeline status indicator (optional)
 
 ### Tech Lead Guardrails (MUST be followed)
-1. **ZERO `any` types** across all new code
+1. **ZERO `any` types** across all new/modified code
 2. All existing exports must remain backward-compatible
 3. **DO NOT** install new packages
-4. **DO NOT** modify any other service files, controllers, routes, or crons
-5. **DO NOT** change `prompt-factory.ts` or `openai.service.ts`
-6. **DO NOT** change `market.model.ts`
-7. Follow existing patterns: use `getCache`/`setCache`/`deleteCache` from redis config
-8. `strategicOutlook` is optional — handle `undefined` gracefully
-9. No frontend changes in this phase
+4. **DO NOT** change core AI model routing (DeepSeek for airdrop analysis)
+5. **DO NOT** remove `onConflictDoNothing` on `airdropProjects.name`
+6. **DO NOT** increase `MAX_AI_CALLS_PER_RUN` beyond 10
+7. **DO NOT** add manual airdrop submission from frontend
+8. Keep existing card design system — do NOT redesign cards
+9. Empty state must be visually premium (dark theme)
+10. Do NOT expose internal error details to user
+11. Redis fallback: if `redis === null`, fall back to in-memory Set
+12. Seed data must have `isActive = true`, valid `network`, reasonable `estValue`
 
 ## Completed Phases
+
+### Phase 16 — Airdrop Feature: Pipeline Fix & UX Empty States (P0)
+**Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Status:** PLANNED — 9 tasks defined (T-01 through T-09)
+**Scope:** RSS fix, Redis dedup, prompt tuning, frontend empty/error/skeleton states, pipeline health monitoring
 
 ### Phase 15 — Strategic Intelligence Layer (Forward-Looking Intelligence)
 **Plan Path:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`

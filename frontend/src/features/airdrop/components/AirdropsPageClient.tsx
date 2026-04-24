@@ -135,13 +135,14 @@ function formatEstValue(value: string | undefined): string {
     return '$' + trimmed + '+';
 }
 
-export function AirdropsPageClient({ initialProjects }: { initialProjects: AirdropProject[] }) {
+export function AirdropsPageClient({ initialProjects, initialError }: { initialProjects: AirdropProject[]; initialError?: boolean }) {
     const [projects, setProjects] = useState<AirdropProject[]>(initialProjects);
     const [stats, setStats] = useState<AirdropStats | null>(null);
     const [activity, setActivity] = useState<AirdropActivity[]>([]);
     const [deadlines, setDeadlines] = useState<AirdropDeadline[]>([]);
     const [sidebarLoading, setSidebarLoading] = useState(true);
     const [bannerDismissed, setBannerDismissed] = useState(false);
+    const [fetchError] = useState(initialError ?? false);
 
     const loadSidebarData = useCallback(async () => {
         try {
@@ -262,6 +263,38 @@ export function AirdropsPageClient({ initialProjects }: { initialProjects: Airdr
                     </div>
                 </div>
 
+                {fetchError && (
+                    <div className="bg-red-500/5 border border-red-500/20 p-8 flex flex-col items-center justify-center gap-3">
+                        <AlertTriangle className="w-8 h-8 text-red-400/60" />
+                        <p className="text-[12px] font-mono text-red-300/80">Unable to load airdrops. Please try again later.</p>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="text-[10px] font-mono text-red-400 border border-red-500/30 px-4 py-1.5 hover:bg-red-500/10 transition-colors uppercase tracking-widest"
+                        >
+                            Retry
+                        </button>
+                    </div>
+                )}
+
+                {!fetchError && projects.length === 0 && (
+                    <div className="bg-[#0A0A0A] border border-[#222] p-10 flex flex-col items-center justify-center gap-4">
+                        <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center">
+                            <TrendingUp className="w-7 h-7 text-blue-400/60" />
+                        </div>
+                        <div className="text-center">
+                            <h3 className="text-[14px] font-bold text-white uppercase tracking-tight mb-2">No Active Airdrops Tracked</h3>
+                            <p className="text-[11px] font-mono text-[#555] max-w-md leading-relaxed">
+                                Our AI pipeline scans for new airdrop opportunities every 6 hours. New verified projects will appear here automatically.
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[9px] font-mono text-[#444] uppercase tracking-wider">Pipeline Active — Scanning Sources</span>
+                        </div>
+                    </div>
+                )}
+
+                {!fetchError && projects.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {projects.map((p) => {
                         const verdict = p.riskVerdict || 'SAFE';
@@ -325,6 +358,7 @@ export function AirdropsPageClient({ initialProjects }: { initialProjects: Airdr
                         );
                     })}
                 </div>
+                )}
             </div>
 
             <div className="w-full lg:w-[30%] flex flex-col gap-6">

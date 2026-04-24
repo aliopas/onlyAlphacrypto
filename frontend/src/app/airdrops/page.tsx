@@ -28,11 +28,13 @@ export const metadata: Metadata = {
 
 export default async function AirdropsPage() {
     let projects: AirdropProject[] = [];
+    let fetchError = false;
     try {
         projects = await airdropApi.getProjects();
     } catch (error) {
         console.error('[Airdrops] Failed to load projects on server:', error);
+        fetchError = true;
     }
 
-    return <AirdropsPageClient initialProjects={projects} />;
+    return <AirdropsPageClient initialProjects={projects} initialError={fetchError} />;
 }
