@@ -9,6 +9,7 @@ import {
     type AirdropRSSArticle,
 } from '../services/airdropRss.service';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
+import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
 
 const MAX_AI_CALLS_PER_RUN = 5;
 const PROCESSED_HASHES_MAX = 1000;
@@ -84,7 +85,8 @@ async function runAirdropRSSDiscovery(): Promise<void> {
 
     for (const article of candidates) {
         try {
-            const context = buildProjectContextFromArticle(article);
+            let context = buildProjectContextFromArticle(article);
+            context = await enrichAirdropContext(article.title, context);
             const validation = await validateAirdropFromArticle(context);
 
             if (!validation.isLegitimate || validation.riskVerdict === 'SCAM') {

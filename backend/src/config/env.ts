@@ -59,6 +59,11 @@ const envSchema = z.object({
     NEXTJS_REVALIDATE_SECRET: z.string().optional(),
     NEXTJS_BASE_URL: z.string().url().optional(),
 
+    // Telegram (MTProto — public channel scraping)
+    TELEGRAM_API_ID: z.string().default(''),
+    TELEGRAM_API_HASH: z.string().default(''),
+    TELEGRAM_SESSION_STRING: z.string().default(''),
+
     // GLM / Zhipu AI (Planner + QA agents)
     GLM_API_KEY: z.string().min(1, 'GLM_API_KEY is required'),
     GLM_BASE_URL: z.string().default('https://open.bigmodel.cn/api/paas/v4'),

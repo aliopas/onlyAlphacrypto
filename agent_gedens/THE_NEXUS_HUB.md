@@ -4,65 +4,606 @@
 
 ---
 
-## Active Phase: Phase 16 — Airdrop Feature: Pipeline Fix & UX Empty States (P0)
+## Active Phase: Phase 17 — Telegram Pipeline Feed + Z.ai Airdrop Enrichment (P2)
 
-**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` (lines 521-783)
-**Total Tasks:** 9 (T-01 through T-09), split into 2 deploys
-**Priority Order:** Deploy 1: T-01 → T-02 → T-03 → T-04 (sequential). Then Deploy 2: T-05 → T-06 → T-07 → T-08 → T-09 (sequential).
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` (Phase 16 section — "Telegram Data Sources + Z.ai Web Search Enrichment")
+**Total Tasks:** 7 (T-01 through T-07), single deploy
+**Priority Order:** T-01 → T-02 → T-03 → T-04 → T-05 → T-06 → T-07 (sequential)
 **Executor:** Senior Developer
-**Scope:** 5 modified files, 1 new SQL file, 1 new Drizzle table, 0 new npm packages
+**Scope:** 3 new files, 3 modified files, 1 new npm package (`telegram`)
+**Prerequisites:** ✅ `npm install telegram` done. ✅ Telegram credentials in `.env` verified working.
 
 ---
 
 ### 1. Planning Stage (Planner)
 
-**Target:** Fix the airdrop pipeline that produces zero projects (dead RSS feeds, aggressive keyword filter, in-memory dedup lost on restart, conservative AI prompt) AND fix the frontend UX that shows an empty grid with $0 everywhere and zero explanation.
+**Target:** Feed the existing AI pipelines (news + airdrop) with data from Telegram public channels. When airdrop data is too thin (<500 chars), use Z.ai (GLM) web search to enrich it before AI validation.
 
-**Root Cause Summary:**
-1. RSS feed `coinmarketcap.com/airdrops/rss/` returns 404 — dead source
-2. In-memory `processedHashes` Set resets on every server restart — wastes AI calls
-3. AI validation prompt says "Be CONSERVATIVE" — too many false negatives
-4. No pipeline health monitoring — all failures are invisible console.log
-5. Frontend has no empty state, no error state, no loading skeleton for the grid
-
-**What Needs Doing (Deploy 1 — Immediate):**
-- T-01: Replace dead RSS sources + add working alternatives in `airdropRss.service.ts`
-- T-02: Move dedup from in-memory Set to Redis SET in `airdropRssHunter.cron.ts`
-- T-03: Tune AI validation prompt in `prompt-factory.ts` (reduce false negatives)
-- T-04: Frontend — Add empty state + error state to `AirdropsPageClient.tsx` + `page.tsx`
-
-**What Needs Doing (Deploy 2 — Backend Hardening):**
-- T-05: Add `airdropPipelineRuns` table to Drizzle model (`airdrop.model.ts`)
-- T-06: Create SQL migration for `airdrop_pipeline_runs` table
-- T-07: Add pipeline health logging to `airdropRssHunter.cron.ts` + `airdropHunter.cron.ts`
-- T-08: Frontend — Loading skeleton for main grid in `AirdropsPageClient.tsx`
-- T-09: Frontend — Pipeline status indicator (optional nice-to-have)
+**What Needs Doing:**
+- T-01: Add Telegram env vars to `config/env.ts`
+- T-02: Create `telegram.service.ts` — MTProto client that reads public channels
+- T-03: Create `telegramMonitor.cron.ts` — feeds news → `rawNewsBuffer`, airdrops → `airdropProjects`
+- T-04: Create `zhipuWebSearch.service.ts` — GLM web search for airdrop enrichment
+- T-05: Modify `airdropRssHunter.cron.ts` — merge Telegram + add Z.ai enrichment
+- T-06: Modify `airdropHunter.cron.ts` — add Z.ai enrichment to routine sync
+- T-07: Register Telegram cron in `server.ts`
 
 **Key Constraints (Tech Lead Guardrails):**
 1. **ZERO `any` types** across all new/modified code
 2. All existing exports must remain backward-compatible
-3. **DO NOT** install new packages
-4. **DO NOT** change the core AI model routing (DeepSeek for airdrop analysis is correct for cost)
-5. **DO NOT** remove `onConflictDoNothing` on `airdropProjects.name` — dedup by project name is essential
-6. **DO NOT** increase `MAX_AI_CALLS_PER_RUN` beyond 10 — cost control
-7. **DO NOT** add manual airdrop submission from frontend — admin-only concern
-8. Keep the existing card design system in `AirdropsPageClient.tsx` — do NOT redesign cards
-9. Empty state must be visually premium (dark theme, consistent with existing card design) — NOT a sad emoji placeholder
-10. Do NOT expose internal error details to the user — keep error states generic
-11. Redis fallback: if `redis` is `null`, fall back to in-memory Set (existing pattern in codebase — see `redis.ts:5-7`)
-12. Seed data (T-01 sub-task) must use `isActive = true`, valid `network`, and reasonable `estValue`
+3. **DO NOT** increase `MAX_AI_CALLS_PER_RUN` beyond 10
+4. **DO NOT** change existing RSS logic — Telegram is an ADDITIONAL source, not a replacement
+5. If Telegram credentials are missing → log warning, skip silently. Pipeline works without it
+6. If Z.ai web search fails → return original content unchanged. NEVER block pipeline
+7. Spam filter MUST run before anything enters the buffer
+8. Public channels ONLY — no private channel scraping
+9. Telegram polling interval: minimum 30 minutes (rate limit safety)
+10. Z.ai enrichment threshold: only enrich if content < 500 chars
 
-**Variable Scope Verification:**
-- `airdropRss.service.ts:21-26` — `AIRDROP_RSS_SOURCES` array (4 items, line 22 is dead 404)
-- `airdropRssHunter.cron.ts:13` — `MAX_AI_CALLS_PER_RUN = 5` (DO NOT increase beyond 10)
-- `airdropRssHunter.cron.ts:16` — `processedHashes: Set<string>` (in-memory, resets on restart)
-- `airdropRssHunter.cron.ts:57-128` — main processing loop with `validateAirdropFromArticle`
-- `airdropRssHunter.cron.ts:130-137` — hash cleanup logic when > `PROCESSED_HASHES_MAX`
-- `prompt-factory.ts:166` — "Be CONSERVATIVE" instruction in airdrop validation prompt
-- `AirdropsPageClient.tsx:265-327` — grid rendering (no empty state when `projects.length === 0`)
-- `page.tsx:31-35` — silent error catch returns `projects = []`
+**Env Vars (Already in `.env`):**
+- `TELEGRAM_API_ID=38263390` ✅
+- `TELEGRAM_API_HASH=44aee1638e7112a2d502a40b06085c8e` ✅
+- `TELEGRAM_SESSION_STRING=...` ✅ (verified working — test passed Apr 25, 2026)
+- `GLM_API_KEY` ✅ (already exists)
+- `GLM_BASE_URL` ✅ (already exists)
 
-**Status:** ✅ ALL TASKS DONE — QA PASSED — AWAITING DEPLOYMENT
+**Status:** PLANNING COMPLETE — READY FOR EXECUTION
+
+---
+
+### 2. Execution Stage (Senior Developer)
+
+> **EXECUTION ORDER:** T-01 → T-02 → T-03 → T-04 → T-05 → T-06 → T-07 (sequential)
+
+---
+
+#### T-01: Add Telegram Env Vars to Config
+**File (MODIFY):** `backend/src/config/env.ts`
+**Assigned To:** Senior Developer
+**Status:** 🔴 TODO
+
+**Target:** Add 3 new env vars to the env config.
+
+**ADD to the env schema/object:**
+```typescript
+TELEGRAM_API_ID: process.env.TELEGRAM_API_ID ?? '',
+TELEGRAM_API_HASH: process.env.TELEGRAM_API_HASH ?? '',
+TELEGRAM_SESSION_STRING: process.env.TELEGRAM_SESSION_STRING ?? '',
+```
+
+**Verification Checklist:**
+- 3 new vars added with `?? ''` fallback (empty string = disabled)
+- No other env vars changed
+- Existing exports unchanged
+
+---
+
+#### T-02: Create Telegram Service
+**File (CREATE):** `backend/src/services/telegram.service.ts`
+**Assigned To:** Senior Developer
+**Status:** 🔴 TODO
+
+**Target:** MTProto client that connects to Telegram and reads messages from configured public channels.
+
+**Full implementation spec:**
+
+```typescript
+import { TelegramClient } from 'telegram';
+import { StringSession } from 'telegram/sessions';
+import { createHash } from 'crypto';
+import { env } from '../config/env';
+
+// ─── Channel Configuration ──────────────────────────────────────────────────
+const NEWS_CHANNELS: string[] = [
+    'whale_alert_io',
+    'OKXAnnouncements',
+    'WuBlockchainReal',
+    'CryptoQuantOfficial',
+];
+
+const AIRDROP_CHANNELS: string[] = [
+    'AirdropAlpha',
+    'earndrop',
+    'AirdropAlert',
+];
+
+// ─── Spam Filter ─────────────────────────────────────────────────────────────
+const SPAM_PATTERNS: RegExp[] = [
+    /join.*group/i, /click.*link/i, /send.*dm/i,
+    /guaranteed.*profit/i, /100x/i, /pump.*signal/i,
+    /t\.me\/joinchat/i, /💰.*free.*money/i,
+];
+
+function isSpam(text: string): boolean {
+    return SPAM_PATTERNS.some(p => p.test(text));
+}
+
+// ─── Interfaces ──────────────────────────────────────────────────────────────
+export interface TelegramNewsItem {
+    title: string;
+    source: string;
+    sourceHash: string;
+    link: string;
+    publishedAt: Date;
+    rawContent: string;
+}
+
+export interface TelegramAirdropItem {
+    title: string;
+    link: string;
+    pubDate: string;
+    contentSnippet: string;
+    source: string;
+    content: string;
+    hash: string;
+}
+
+// ─── Client Singleton ────────────────────────────────────────────────────────
+let clientInstance: TelegramClient | null = null;
+
+async function getClient(): Promise<TelegramClient | null> {
+    if (clientInstance) return clientInstance;
+
+    const apiId = parseInt(env.TELEGRAM_API_ID, 10);
+    const apiHash = env.TELEGRAM_API_HASH;
+    const sessionStr = env.TELEGRAM_SESSION_STRING;
+
+    if (!apiId || !apiHash || !sessionStr) {
+        console.warn('[Telegram] Missing credentials — Telegram source disabled');
+        return null;
+    }
+
+    try {
+        const client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
+            connectionRetries: 3,
+        });
+        await client.connect();
+        clientInstance = client;
+        console.log('[Telegram] Connected successfully');
+        return client;
+    } catch (err) {
+        console.error('[Telegram] Connection failed:', err instanceof Error ? err.message : String(err));
+        return null;
+    }
+}
+
+// ─── Channel Readers ─────────────────────────────────────────────────────────
+export async function fetchNewsFromTelegram(minutesBack: number = 30): Promise<TelegramNewsItem[]> {
+    const client = await getClient();
+    if (!client) return [];
+
+    const cutoff = new Date(Date.now() - minutesBack * 60 * 1000);
+    const results: TelegramNewsItem[] = [];
+
+    for (const channel of NEWS_CHANNELS) {
+        try {
+            const messages = await client.getMessages(channel, { limit: 10 });
+            for (const msg of messages) {
+                if (!msg.message || msg.message.length < 20) continue;
+                const msgDate = new Date((msg.date ?? 0) * 1000);
+                if (msgDate < cutoff) continue;
+                if (isSpam(msg.message)) continue;
+
+                results.push({
+                    title: msg.message.slice(0, 200),
+                    source: `telegram:${channel}`,
+                    sourceHash: createHash('sha256').update(msg.message).digest('hex'),
+                    link: `https://t.me/${channel}/${msg.id}`,
+                    publishedAt: msgDate,
+                    rawContent: msg.message,
+                });
+            }
+        } catch (err) {
+            console.error(`[Telegram] Error reading ${channel}:`, err instanceof Error ? err.message : String(err));
+        }
+    }
+
+    console.log(`[Telegram] Fetched ${results.length} news items from ${NEWS_CHANNELS.length} channels`);
+    return results;
+}
+
+export async function fetchAirdropsFromTelegram(hoursBack: number = 6): Promise<TelegramAirdropItem[]> {
+    const client = await getClient();
+    if (!client) return [];
+
+    const cutoff = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
+    const results: TelegramAirdropItem[] = [];
+
+    for (const channel of AIRDROP_CHANNELS) {
+        try {
+            const messages = await client.getMessages(channel, { limit: 15 });
+            for (const msg of messages) {
+                if (!msg.message || msg.message.length < 30) continue;
+                const msgDate = new Date((msg.date ?? 0) * 1000);
+                if (msgDate < cutoff) continue;
+                if (isSpam(msg.message)) continue;
+
+                const hash = createHash('sha256').update(`${msg.message}||https://t.me/${channel}/${msg.id}`).digest('hex');
+                results.push({
+                    title: msg.message.slice(0, 200),
+                    link: `https://t.me/${channel}/${msg.id}`,
+                    pubDate: msgDate.toISOString(),
+                    contentSnippet: msg.message.slice(0, 300),
+                    source: `telegram:${channel}`,
+                    content: msg.message,
+                    hash,
+                });
+            }
+        } catch (err) {
+            console.error(`[Telegram] Error reading airdrop channel ${channel}:`, err instanceof Error ? err.message : String(err));
+        }
+    }
+
+    console.log(`[Telegram] Fetched ${results.length} airdrop items from ${AIRDROP_CHANNELS.length} channels`);
+    return results;
+}
+
+export async function disconnectTelegram(): Promise<void> {
+    if (clientInstance) {
+        await clientInstance.disconnect();
+        clientInstance = null;
+    }
+}
+```
+
+**Verification Checklist:**
+- `TelegramAirdropItem` interface matches `AirdropRSSArticle` exactly (same fields)
+- Spam filter runs before items enter results
+- `getClient()` returns `null` when credentials missing (no crash)
+- `clientInstance` singleton prevents multiple connections
+- `minutesBack` / `hoursBack` params respect the polling interval
+- Zero `any` types
+- All functions have explicit return types
+
+---
+
+#### T-03: Create Telegram Monitor Cron
+**File (CREATE):** `backend/src/crons/telegramMonitor.cron.ts`
+**Assigned To:** Senior Developer
+**Status:** 🔴 TODO
+
+**Target:** Cron with two jobs — news channels → rawNewsBuffer, airdrop channels → airdropProjects pipeline.
+
+```typescript
+import cron from 'node-cron';
+import { db } from '../config/db';
+import { rawNewsBuffer } from '../models/market.model';
+import { airdropProjects, airdropTasks } from '../models/index';
+import { fetchNewsFromTelegram, fetchAirdropsFromTelegram } from '../services/telegram.service';
+import { filterAirdropRelevant, getExistingProjectNames } from '../services/airdropRss.service';
+import { validateAirdropFromArticle } from '../services/openai.service';
+import { deleteCache, deleteCachePattern } from '../config/redis';
+import { eq } from 'drizzle-orm';
+import { env } from '../config/env';
+
+const MAX_AIRDROP_AI_CALLS = 3;
+
+async function telegramNewsJob(): Promise<void> {
+    if (!env.TELEGRAM_SESSION_STRING) return;
+    console.log('[TelegramMonitor] News scan started');
+
+    try {
+        const items = await fetchNewsFromTelegram(30);
+        if (items.length === 0) {
+            console.log('[TelegramMonitor] No new news items');
+            return;
+        }
+
+        let inserted = 0;
+        for (const item of items) {
+            try {
+                await db.insert(rawNewsBuffer).values({
+                    title: item.title,
+                    source: item.source,
+                    sourceHash: item.sourceHash,
+                    link: item.link,
+                    publishedAt: item.publishedAt,
+                }).onConflictDoNothing();
+                inserted++;
+            } catch (err) {
+                // Duplicate hash — expected, skip silently
+            }
+        }
+
+        console.log(`[TelegramMonitor] Inserted ${inserted}/${items.length} news items into rawNewsBuffer`);
+    } catch (err) {
+        console.error('[TelegramMonitor] News job failed:', err instanceof Error ? err.message : String(err));
+    }
+}
+
+async function telegramAirdropJob(): Promise<void> {
+    if (!env.TELEGRAM_SESSION_STRING) return;
+    console.log('[TelegramMonitor] Airdrop scan started');
+
+    try {
+        const items = await fetchAirdropsFromTelegram(6);
+        const airdropItems = items.filter(item => filterAirdropRelevant(`${item.title} ${item.content}`));
+
+        if (airdropItems.length === 0) {
+            console.log('[TelegramMonitor] No airdrop-relevant messages found');
+            return;
+        }
+
+        const existingNames = await getExistingProjectNames();
+        const candidates = airdropItems.slice(0, MAX_AIRDROP_AI_CALLS);
+        let inserted = 0;
+
+        for (const item of candidates) {
+            try {
+                const context = [
+                    `ARTICLE TITLE: ${item.title}`,
+                    `SOURCE: ${item.source}`,
+                    `PUBLISHED: ${item.pubDate}`,
+                    `LINK: ${item.link}`,
+                    '',
+                    '--- ARTICLE CONTENT ---',
+                    item.content.slice(0, 3200),
+                ].join('\n');
+
+                const validation = await validateAirdropFromArticle(context);
+
+                if (!validation.isLegitimate || validation.riskVerdict === 'SCAM') continue;
+                if (existingNames.has(validation.projectName.toLowerCase())) continue;
+
+                const [proj] = await db.insert(airdropProjects).values({
+                    name: validation.projectName.slice(0, 100),
+                    network: validation.network.slice(0, 50),
+                    estValue: validation.estValue.slice(0, 255),
+                    aiReport: validation.aiReport,
+                    riskVerdict: validation.riskVerdict,
+                    isActive: true,
+                }).onConflictDoNothing({ target: airdropProjects.name }).returning();
+
+                if (proj && validation.tasks.length > 0) {
+                    const taskValues = validation.tasks.map((task, index) => ({
+                        projectId: proj.id,
+                        description: task.description,
+                        contractAddress: task.contractAddress?.slice(0, 100) ?? null,
+                        minAmount: task.minAmount ?? null,
+                        tokenSymbol: task.tokenSymbol?.slice(0, 20) ?? null,
+                        chain: task.chain?.slice(0, 50) ?? null,
+                        isAutoVerifiable: task.isAutoVerifiable,
+                        orderIndex: index,
+                    }));
+                    await db.insert(airdropTasks).values(taskValues);
+                }
+
+                existingNames.add(validation.projectName.toLowerCase());
+                inserted++;
+                console.log(`[TelegramMonitor] Inserted airdrop: ${validation.projectName}`);
+            } catch (err) {
+                console.error(`[TelegramMonitor] Error processing airdrop:`, err instanceof Error ? err.message : String(err));
+            }
+        }
+
+        if (inserted > 0) {
+            await deleteCache('airdrop:projects');
+            await deleteCache('airdrop:deadlines');
+            await deleteCachePattern('airdrop:project:*');
+        }
+
+        console.log(`[TelegramMonitor] Airdrop scan complete — ${inserted} new projects`);
+    } catch (err) {
+        console.error('[TelegramMonitor] Airdrop job failed:', err instanceof Error ? err.message : String(err));
+    }
+}
+
+export function startTelegramMonitorCron(): void {
+    if (!env.TELEGRAM_SESSION_STRING) {
+        console.warn('[TelegramMonitor] No TELEGRAM_SESSION_STRING — cron disabled');
+        return;
+    }
+    cron.schedule('*/30 * * * *', telegramNewsJob);
+    cron.schedule('0 */4 * * *', telegramAirdropJob);
+    console.log('[TelegramMonitor] Crons scheduled — News: every 30min, Airdrops: every 4h');
+}
+```
+
+**IMPORTANT:** The `rawNewsBuffer` insert fields (`title`, `source`, `sourceHash`, `link`, `publishedAt`) MUST match the actual columns in `rawNewsBuffer` table. Developer MUST verify column names in `market.model.ts` before implementing. If column names differ, adapt the insert accordingly.
+
+**Verification Checklist:**
+- Both jobs check `env.TELEGRAM_SESSION_STRING` — skip silently if empty
+- News job inserts into `rawNewsBuffer` with `onConflictDoNothing`
+- Airdrop job uses `filterAirdropRelevant()` from existing service
+- Airdrop job uses `validateAirdropFromArticle()` — same as RSS pipeline
+- `MAX_AIRDROP_AI_CALLS = 3` per run (cost control)
+- Cache invalidation only when inserts > 0
+- `startTelegramMonitorCron()` is no-op when credentials missing
+- Zero `any` types
+- All error handling is try-catch (non-blocking)
+
+---
+
+#### T-04: Create Z.ai Web Search Service
+**File (CREATE):** `backend/src/services/zhipuWebSearch.service.ts`
+**Assigned To:** Senior Developer
+**Status:** 🔴 TODO
+
+**Target:** GLM web search to enrich thin airdrop content before AI validation.
+
+```typescript
+import { env } from '../config/env';
+
+interface WebSearchResult {
+    title: string;
+    url: string;
+    content: string;
+}
+
+export async function searchWeb(query: string): Promise<WebSearchResult[]> {
+    if (!env.GLM_API_KEY) return [];
+
+    try {
+        const res = await fetch(`${env.GLM_BASE_URL}/chat/completions`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${env.GLM_API_KEY}`,
+            },
+            body: JSON.stringify({
+                model: env.GLM_MODEL || 'glm-4-plus',
+                messages: [{ role: 'user', content: `Search the web for: ${query}. Return factual information only.` }],
+                tools: [{ type: 'web_search', web_search: { enable: true } }],
+            }),
+            signal: AbortSignal.timeout(15000),
+        });
+
+        if (!res.ok) return [];
+
+        const data = await res.json();
+        const content = data?.choices?.[0]?.message?.content ?? '';
+
+        if (!content) return [];
+
+        return [{
+            title: query,
+            url: 'glm-web-search',
+            content: typeof content === 'string' ? content.slice(0, 1500) : '',
+        }];
+    } catch (err) {
+        console.error('[ZhipuWebSearch] Error:', err instanceof Error ? err.message : String(err));
+        return [];
+    }
+}
+
+export async function enrichAirdropContext(
+    projectName: string,
+    existingContent: string
+): Promise<string> {
+    if (existingContent.length > 500) return existingContent;
+
+    console.log(`[ZhipuWebSearch] Enriching context for "${projectName}" (${existingContent.length} chars)`);
+
+    const results = await searchWeb(`${projectName} crypto airdrop eligibility criteria tokenomics 2025`);
+
+    if (results.length === 0) return existingContent;
+
+    const enrichment = results
+        .map(r => r.content.slice(0, 800))
+        .join('\n\n');
+
+    console.log(`[ZhipuWebSearch] Enriched "${projectName}" with ${enrichment.length} chars from web search`);
+    return `${existingContent}\n\n--- WEB RESEARCH (via Z.ai) ---\n${enrichment}`;
+}
+```
+
+**Verification Checklist:**
+- `searchWeb()` returns empty array on any failure (never blocks pipeline)
+- `enrichAirdropContext()` skips when content > 500 chars
+- 15-second timeout via `AbortSignal.timeout`
+- Uses existing `env.GLM_API_KEY` and `env.GLM_BASE_URL`
+- Zero `any` types
+- Logs enrichment activity for debugging
+
+---
+
+#### T-05: Modify Airdrop RSS Hunter — Add Z.ai Enrichment
+**File (MODIFY):** `backend/src/crons/airdropRssHunter.cron.ts`
+**Assigned To:** Senior Developer
+**Status:** 🔴 TODO
+
+**Sub-task 5A: Add import (after line 10)**
+
+```typescript
+import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
+```
+
+**Sub-task 5B: Add enrichment before validation (line ~87-88)**
+
+**BEFORE:**
+```typescript
+            const context = buildProjectContextFromArticle(article);
+            const validation = await validateAirdropFromArticle(context);
+```
+
+**AFTER:**
+```typescript
+            let context = buildProjectContextFromArticle(article);
+            context = await enrichAirdropContext(article.title, context);
+            const validation = await validateAirdropFromArticle(context);
+```
+
+**Verification Checklist:**
+- `const` changed to `let` for `context`
+- `enrichAirdropContext` called BEFORE `validateAirdropFromArticle`
+- Import added at top
+- No other changes to the file
+
+---
+
+#### T-06: Modify Airdrop Hunter — Add Z.ai Enrichment
+**File (MODIFY):** `backend/src/crons/airdropHunter.cron.ts`
+**Assigned To:** Senior Developer
+**Status:** 🔴 TODO
+
+**Sub-task 6A: Add import (after line 5)**
+
+```typescript
+import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
+```
+
+**Sub-task 6B: Add enrichment before validation (line ~25-26)**
+
+**BEFORE:**
+```typescript
+            const raw = `Project: ${project.name}\nNetwork: ${project.network}${project.fundingRound ? `\nFunding: ${project.fundingRound}` : ''}`;
+            const validation = await validateAirdrop(raw);
+```
+
+**AFTER:**
+```typescript
+            let raw = `Project: ${project.name}\nNetwork: ${project.network}${project.fundingRound ? `\nFunding: ${project.fundingRound}` : ''}`;
+            raw = await enrichAirdropContext(project.name, raw);
+            const validation = await validateAirdrop(raw);
+```
+
+**Verification Checklist:**
+- `const` changed to `let` for `raw`
+- `enrichAirdropContext` called BEFORE `validateAirdrop`
+- Import added at top
+- No other changes to the file
+
+---
+
+#### T-07: Register Telegram Cron in Server
+**File (MODIFY):** `backend/src/server.ts`
+**Assigned To:** Senior Developer
+**Status:** 🔴 TODO
+
+**Sub-task 7A: Add import**
+
+```typescript
+import { startTelegramMonitorCron } from './crons/telegramMonitor.cron';
+```
+
+**Sub-task 7B: Call in startCrons() (or equivalent initialization block)**
+
+```typescript
+startTelegramMonitorCron();
+```
+
+**Verification Checklist:**
+- Import added at top of file
+- `startTelegramMonitorCron()` called alongside existing cron registrations
+- No other changes to the file
+
+---
+
+### 3. QA & Security Stage (QA Hunter)
+
+**T-01:** 🔴 Pending
+**T-02:** 🔴 Pending
+**T-03:** 🔴 Pending
+**T-04:** 🔴 Pending
+**T-05:** 🔴 Pending
+**T-06:** 🔴 Pending
+**T-07:** 🔴 Pending
+
+---
+
+### 4. Deployment Stage (Release Manager)
+
+**Status:** Pending
 
 ---
 
@@ -841,6 +1382,11 @@ Add a small bar between the stats bar and the "Active Farm Grid" header:
 
 ## Completed Phases (Archived)
 
+### Phase 16 — Airdrop Feature: Pipeline Fix & UX Empty States (P0)
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` (lines 521-783)
+**Total Tasks:** 9 (T-01 through T-09)
+**Status:** All Tasks Done - QA Passed - Awaiting Deployment
+
 ### Phase 15 — Strategic Intelligence Layer (Forward-Looking Intelligence)
 **Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
 **Total Tasks:** 5 (T-01 through T-05)
@@ -862,3 +1408,4 @@ Add a small bar between the stats bar and the "Active Farm Grid" header:
 **Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
 **Total Tasks:** 15 (T-01 through T-15, in Batches)
 **Status:** All Tasks Done - Awaiting Final QA
+

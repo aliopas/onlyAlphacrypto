@@ -17,6 +17,7 @@ import { startTerminalEngineCron } from './crons/terminalEngine.cron';
 import { startTriageEngineCron } from './crons/triageEngine.cron';
 import { startBufferCleanupCron } from './crons/bufferCleanup.cron';
 import { startConvictionUpdateCron } from './crons/convictionUpdate.cron';
+import { startTelegramMonitorCron } from './crons/telegramMonitor.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -94,6 +95,7 @@ async function bootstrap(): Promise<void> {
             { name: 'TriageEngine', fn: startTriageEngineCron },
             { name: 'BufferCleanup', fn: startBufferCleanupCron },
             { name: 'ConvictionUpdate', fn: startConvictionUpdateCron },
+            { name: 'TelegramMonitor', fn: startTelegramMonitorCron },
         ];
 
         crons.forEach((cron, index) => {

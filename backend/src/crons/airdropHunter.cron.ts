@@ -3,6 +3,7 @@ import { db } from '../config/db';
 import { airdropProjects, airdropTasks, airdropPipelineRuns } from '../models/index';
 import { validateAirdrop } from '../services/openai.service';
 import { deleteCache, deleteCachePattern } from '../config/redis';
+import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
 import { eq } from 'drizzle-orm';
 
 async function runRoutineSync(): Promise<void> {
@@ -22,7 +23,8 @@ async function runRoutineSync(): Promise<void> {
     let syncErrors = 0;
     for (const project of activeProjects) {
         try {
-            const raw = `Project: ${project.name}\nNetwork: ${project.network}${project.fundingRound ? `\nFunding: ${project.fundingRound}` : ''}`;
+            let raw = `Project: ${project.name}\nNetwork: ${project.network}${project.fundingRound ? `\nFunding: ${project.fundingRound}` : ''}`;
+            raw = await enrichAirdropContext(project.name, raw);
             const validation = await validateAirdrop(raw);
 
             await db
