@@ -37,7 +37,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const activeArticleEarly = initialNews.find(n => n.id === null);
     const activeRadarEarly = validSignals.find(r => r.id === finalDefaultRadarId);
     const activeItemCoinEarly = activeRadarEarly?.coin;
-    const baseCoin = coin || activeItemCoinEarly || 'SOL';
+    const baseCoin = activeItemCoinEarly || coin || 'SOL';
 
     useEffect(() => {
         if (selectedRadarId === null && hasSignals && !finalDefaultRadarId) {
@@ -107,7 +107,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const activeRadar = signals.find(r => r.id === selectedRadarId);
 
     const activeItemCoin = activeTab === 'WIRE' ? activeArticle?.coin : activeRadar?.coin;
-    const selectedCoin = coin || activeItemCoin || 'SOL';
+    const selectedCoin = activeItemCoin || coin || 'SOL';
 
     return (
         <div className="flex-1 flex flex-col lg:flex-row gap-4 h-full lg:overflow-hidden pb-0">

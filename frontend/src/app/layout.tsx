@@ -5,6 +5,8 @@ import './globals.css';
 import { Sidebar } from '@/features/shared/components/Sidebar';
 import { TickerBar } from '@/features/shared/components/TickerBar';
 import { ErrorBoundary } from '@/features/shared/components/ErrorBoundary';
+import { Footer } from '@/features/shared/components/Footer';
+import { CookieBanner } from '@/features/shared/components/CookieBanner';
 import { SITE_URL, GA_MEASUREMENT_ID } from '@/lib/constants';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
@@ -84,6 +86,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             gtag('config', '${GA_MEASUREMENT_ID}');
           `}
         </Script>
+        {process.env.NEXT_PUBLIC_ADSENSE_ID && (
+          <Script
+            async
+            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${process.env.NEXT_PUBLIC_ADSENSE_ID}`}
+            crossOrigin="anonymous"
+            strategy="afterInteractive"
+          />
+        )}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -115,7 +125,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="flex-1 overflow-y-auto p-4 md:p-6">
             <ErrorBoundary>{children}</ErrorBoundary>
           </div>
+          <Footer />
         </main>
+        <CookieBanner />
       </body>
     </html>
   );
