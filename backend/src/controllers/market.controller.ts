@@ -4,7 +4,8 @@ import { getCache, setCache } from '../config/redis';
 import {
     marketInsights, dailyAlphaFocus, dailyMarketMood,
     radarSignals, airdropProjects, priceSnapshots,
-    coinMasterArticles, coinTimelineUpdates, coinIntelligenceCache
+    coinMasterArticles, coinTimelineUpdates, coinIntelligenceCache,
+    signalPerformance
 } from '../models/index';
 import { getStrategicOutlook, getActiveEventResponses } from '../services/strategicOutlook.service';
 import { desc, eq, gte, and, asc, sql } from 'drizzle-orm';
@@ -520,6 +521,54 @@ export async function getStrategicOutlookHandler(req: Request, res: Response, ne
         const response = {
             outlook,
             activeEvents: eventResponses,
+        };
+
+        await setCache(cacheKey, response, 300);
+        res.json(response);
+    } catch (err) { next(err); }
+}
+
+export async function getScorecardHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const cacheKey = 'scorecard:latest';
+        const cached = await getCache(cacheKey);
+        if (cached) { res.json(cached); return; }
+
+        const signals = await db.select()
+            .from(signalPerformance)
+            .orderBy(desc(signalPerformance.entryAt))
+            .limit(100);
+
+        const withPnl7d = signals.filter(s => s.pnl7d !== null);
+        const wins7d = withPnl7d.filter(s => s.isWin7d === true);
+        const totalSignals = signals.length;
+        const winRate7d = withPnl7d.length > 0
+            ? Math.round((wins7d.length / withPnl7d.length) * 100) : null;
+        const avgReturn7d = withPnl7d.length > 0
+            ? withPnl7d.reduce((sum, s) => sum + (s.pnl7d ?? 0), 0) / withPnl7d.length : null;
+
+        const coinMap = new Map<string, { signals: number; wins: number; totalPnl: number }>();
+        for (const s of withPnl7d) {
+            const existing = coinMap.get(s.coinSymbol) ?? { signals: 0, wins: 0, totalPnl: 0 };
+            existing.signals++;
+            if (s.isWin7d) existing.wins++;
+            existing.totalPnl += s.pnl7d ?? 0;
+            coinMap.set(s.coinSymbol, existing);
+        }
+
+        const bestCall = withPnl7d.length > 0
+            ? withPnl7d.reduce((best, s) => (s.pnl7d ?? 0) > (best.pnl7d ?? -Infinity) ? s : best, withPnl7d[0])
+            : null;
+
+        const response = {
+            overall: {
+                totalSignals,
+                winRate7d,
+                avgReturn7d: avgReturn7d !== null ? parseFloat(avgReturn7d.toFixed(1)) : null,
+                bestCall
+            },
+            recent: signals.slice(0, 20),
+            perCoin: Object.fromEntries(coinMap),
         };
 
         await setCache(cacheKey, response, 300);

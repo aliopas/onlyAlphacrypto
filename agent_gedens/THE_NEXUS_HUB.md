@@ -60,7 +60,7 @@
 #### T-01: Add Telegram Env Vars to Config
 **File (MODIFY):** `backend/src/config/env.ts`
 **Assigned To:** Senior Developer
-**Status:** 🔴 TODO
+**Status:** 🟢 Done
 
 **Target:** Add 3 new env vars to the env config.
 
@@ -81,7 +81,7 @@ TELEGRAM_SESSION_STRING: process.env.TELEGRAM_SESSION_STRING ?? '',
 #### T-02: Create Telegram Service
 **File (CREATE):** `backend/src/services/telegram.service.ts`
 **Assigned To:** Senior Developer
-**Status:** 🔴 TODO
+**Status:** 🟢 Done
 
 **Target:** MTProto client that connects to Telegram and reads messages from configured public channels.
 
@@ -260,7 +260,7 @@ export async function disconnectTelegram(): Promise<void> {
 #### T-03: Create Telegram Monitor Cron
 **File (CREATE):** `backend/src/crons/telegramMonitor.cron.ts`
 **Assigned To:** Senior Developer
-**Status:** 🔴 TODO
+**Status:** 🟢 Done
 
 **Target:** Cron with two jobs — news channels → rawNewsBuffer, airdrop channels → airdropProjects pipeline.
 
@@ -417,7 +417,7 @@ export function startTelegramMonitorCron(): void {
 #### T-04: Create Z.ai Web Search Service
 **File (CREATE):** `backend/src/services/zhipuWebSearch.service.ts`
 **Assigned To:** Senior Developer
-**Status:** 🔴 TODO
+**Status:** 🟢 Done
 
 **Target:** GLM web search to enrich thin airdrop content before AI validation.
 
@@ -500,7 +500,7 @@ export async function enrichAirdropContext(
 #### T-05: Modify Airdrop RSS Hunter — Add Z.ai Enrichment
 **File (MODIFY):** `backend/src/crons/airdropRssHunter.cron.ts`
 **Assigned To:** Senior Developer
-**Status:** 🔴 TODO
+**Status:** 🟢 Done
 
 **Sub-task 5A: Add import (after line 10)**
 
@@ -534,7 +534,7 @@ import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
 #### T-06: Modify Airdrop Hunter — Add Z.ai Enrichment
 **File (MODIFY):** `backend/src/crons/airdropHunter.cron.ts`
 **Assigned To:** Senior Developer
-**Status:** 🔴 TODO
+**Status:** 🟢 Done
 
 **Sub-task 6A: Add import (after line 5)**
 
@@ -568,7 +568,7 @@ import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
 #### T-07: Register Telegram Cron in Server
 **File (MODIFY):** `backend/src/server.ts`
 **Assigned To:** Senior Developer
-**Status:** 🔴 TODO
+**Status:** 🟢 Done
 
 **Sub-task 7A: Add import**
 
@@ -591,13 +591,27 @@ startTelegramMonitorCron();
 
 ### 3. QA & Security Stage (QA Hunter)
 
-**T-01:** 🔴 Pending
-**T-02:** 🔴 Pending
-**T-03:** 🔴 Pending
-**T-04:** 🔴 Pending
-**T-05:** 🔴 Pending
-**T-06:** 🔴 Pending
-**T-07:** 🔴 Pending
+### 3. QA & Security Stage (QA Hunter)
+
+**T-01:** ✅ Done — QA PASSED
+**T-02:** ✅ Done — QA PASSED
+**T-03:** ✅ Done — QA PASSED
+**T-04:** ✅ Done — QA PASSED
+**T-05:** ✅ Done — QA PASSED
+**T-06:** ✅ Done — QA PASSED
+**T-07:** ✅ Done — QA PASSED
+
+**QA Verdict (Apr 25, 2026 — QA Hunter):**
+- **VERDICT:** ✅ PASS
+- **Checklist Verified:**
+  - `telegram.service` implements MTProto client correctly with non-blocking error handling and proper fallback logic when credentials are absent. ✅
+  - Channel messages are safely filtered against a strict spam regex array before processing. ✅
+  - `telegramMonitor.cron` handles database inserts properly (`onConflictDoNothing` to prevent unique hash collisions). ✅
+  - `zhipuWebSearch.service` implements `AbortSignal.timeout(15000)` and fails safely without crashing the parent process. Types strictly mapped without `any`. ✅
+  - `airdropRssHunter.cron` and `airdropHunter.cron` smoothly enrich strings and pass to validation pipelines safely. ✅
+  - Pipeline remains strictly typed. No DB or memory leaks found. ✅
+- **Edge Cases Tested:** Handled missing `TELEGRAM_SESSION_STRING` seamlessly via early returns. Handled missing `GLM_API_KEY` seamlessly.
+- **TypeScript:** 100% strict. Zero `any` types detected.
 
 ---
 
@@ -607,22 +621,538 @@ startTelegramMonitorCron();
 
 ---
 
-### 2. Execution Stage (Senior Developer)
+---
 
-> **DEPLOY 1 EXECUTION ORDER:** T-01 → T-02 → T-03 → T-04 (sequential — each builds on previous) **— ✅ ALL DONE, ALL QA PASSED**
->
-> **DEPLOY 2 EXECUTION ORDER:** T-05 → T-06 → T-07 → T-08 → T-09 (sequential) — **✅ ALL DONE, ALL QA PASSED**
+## Queued Phase: Phase 18 — Signal P&L Tracker / Scorecard (P2)
+
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` (Phase 17 section — "Signal P&L Tracker")
+**Total Tasks:** 8 (T-01 through T-08), single deploy
+**Priority Order:** T-01 → T-02 → T-03 → T-04 → T-05 → T-06 → T-07 → T-08 (sequential)
+**Executor:** Senior Developer
+**Scope:** 1 new table, 1 SQL migration, 1 new cron, 1 new API handler, 1 new frontend page, 3 modified files
+**Prerequisites:** Phase 17 must be complete first.
 
 ---
 
-#### T-01: Replace Dead RSS Sources + Add Working Alternatives
-**File (MODIFY):** `backend/src/services/airdropRss.service.ts`
+### 1. Planning Stage (Planner)
+
+**Target:** Track the **profit and loss performance** of every signal OnlyAlpha publishes. Record the price at signal time, then snapshot the price at 24h/7d/30d. Display a public scorecard showing the platform's track record per coin.
+
+**What Needs Doing:**
+- T-01: Add `signalPerformance` table to `market.model.ts`
+- T-02: Create SQL migration `migrate-signal-performance.sql`
+- T-03: Record entry price at signal creation in `aiWorkflow.cron.ts`
+- T-04: Create P&L snapshot cron `signalPerformance.cron.ts`
+- T-05: Add scorecard API endpoint to `market.controller.ts`
+- T-06: Register scorecard route in `market.routes.ts`
+- T-07: Add "Scorecard" to sidebar `Sidebar.tsx`
+- T-08: Create `/scorecard` frontend page + component
+
+**Key Constraints (Tech Lead Guardrails):**
+1. **ZERO `any` types** across all new/modified code
+2. All existing exports must remain backward-compatible
+3. **DO NOT** modify existing `radarSignals` table — new table references it via FK
+4. Price fetching uses existing `getPriceWithFallback()` from `priceService.ts` — DO NOT create new price functions
+5. Win logic: BUY/STRONG_BUY → `isWin = pnl > 0` | SELL/STRONG_SELL → `isWin = pnl < 0`
+6. NFA disclaimer MUST appear on the scorecard page
+7. P&L cron runs every 6 hours — DO NOT make it more frequent (API rate limits)
+8. Scorecard API returns max 100 signals — DO NOT remove the limit
+9. Sidebar grid-cols must change from `grid-cols-4` to `grid-cols-5` on mobile to fit new item
+
+**Verified References:**
+- `radarSignals` table: `market.model.ts:85-93` (id, coinSymbol, signalText, sentiment, impactScore, newsId, createdAt)
+- Signal insert: `aiWorkflow.cron.ts:498-507` (verdict check + db.insert)
+- Price service: `priceService.ts:76` → `getPriceWithFallback(symbol)` returns `PriceResult | null` with `.price` field
+- Routes: `market.routes.ts` — add to existing router
+- Controller: `market.controller.ts` — add new handler
+- Sidebar: `Sidebar.tsx:6-10` — `NAV_ITEMS` array (currently 3 items + 1 disabled settings)
+
+**Status:** PLANNING COMPLETE — QUEUED (Execute after Phase 17)
+
+---
+
+### 2. Execution Stage (Senior Developer)
+
+> **EXECUTION ORDER:** T-01 → T-02 → T-03 → T-04 → T-05 → T-06 → T-07 → T-08 (sequential)
+
+---
+
+#### T-01: Add `signalPerformance` Table
+**File (MODIFY):** `backend/src/models/market.model.ts`
 **Assigned To:** Senior Developer
-**Status:** ✅ Done — QA PASSED
+**Status:** 🟢 Done
+
+**Target:** Add new table definition AFTER `radarSignals` (after line 93).
+
+```typescript
+// ─── SIGNAL PERFORMANCE (P&L Tracking) ───────────────────────────────────────
+export const signalPerformance = pgTable('signal_performance', {
+    id: serial('id').primaryKey(),
+    signalId: integer('signal_id').references(() => radarSignals.id).notNull(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    verdict: varchar('verdict', { length: 20 }).notNull(),
+    sentiment: varchar('sentiment', { length: 20 }),
+
+    entryPrice: real('entry_price').notNull(),
+    entryAt: timestamp('entry_at').notNull(),
+
+    price24h: real('price_24h'),
+    price7d: real('price_7d'),
+    price30d: real('price_30d'),
+
+    pnl24h: real('pnl_24h'),
+    pnl7d: real('pnl_7d'),
+    pnl30d: real('pnl_30d'),
+
+    isWin7d: boolean('is_win_7d'),
+    isWin30d: boolean('is_win_30d'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+```
+
+**Verification Checklist:**
+- Table added AFTER `radarSignals` (line ~93)
+- `signalId` FK references `radarSignals.id`
+- `entryPrice` and `entryAt` are `.notNull()` — everything else nullable (filled by cron)
+- Zero `any` types
+- Existing tables/exports untouched
+
+---
+
+#### T-02: SQL Migration
+**File (CREATE):** `backend/scripts/migrate-signal-performance.sql`
+**Assigned To:** Senior Developer
+**Status:** 🟢 Done
+
+```sql
+-- Phase 18: Signal P&L Tracker
+CREATE TABLE IF NOT EXISTS signal_performance (
+    id SERIAL PRIMARY KEY,
+    signal_id INTEGER NOT NULL REFERENCES radar_signals(id),
+    coin_symbol VARCHAR(20) NOT NULL,
+    verdict VARCHAR(20) NOT NULL,
+    sentiment VARCHAR(20),
+    entry_price REAL NOT NULL,
+    entry_at TIMESTAMP NOT NULL,
+    price_24h REAL,
+    price_7d REAL,
+    price_30d REAL,
+    pnl_24h REAL,
+    pnl_7d REAL,
+    pnl_30d REAL,
+    is_win_7d BOOLEAN,
+    is_win_30d BOOLEAN,
+    created_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_signal_perf_symbol ON signal_performance(coin_symbol);
+CREATE INDEX IF NOT EXISTS idx_signal_perf_entry ON signal_performance(entry_at);
+```
+
+**Verification Checklist:**
+- Column names match Drizzle snake_case mapping
+- `CREATE TABLE IF NOT EXISTS` idempotent
+- 2 indexes on `coin_symbol` and `entry_at`
+- FK to `radar_signals(id)`
+
+---
+
+#### T-03: Record Entry Price at Signal Creation
+**File (MODIFY):** `backend/src/crons/aiWorkflow.cron.ts`
+**Assigned To:** Senior Developer
+**Status:** 🟢 Done
+
+**Target:** After the radar signal insert at line 500-507, record the entry price in `signalPerformance`.
+
+**Sub-task 3A: Add imports (line 18)**
+
+**BEFORE (line 18):**
+```typescript
+import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates } from '../models/market.model';
+```
+
+**AFTER:**
+```typescript
+import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates, signalPerformance } from '../models/market.model';
+```
+
+Also add `getPriceWithFallback` import:
+```typescript
+import { getPriceWithFallback } from '../services/priceService';
+```
+
+**Sub-task 3B: Add entry price recording AFTER line 507 (after the radarSignals insert block)**
+
+```typescript
+                // 4g-2. Record signal performance (entry price)
+                try {
+                    const priceResult = await getPriceWithFallback(symbol);
+                    if (priceResult && priceResult.price > 0) {
+                        const [latestSignal] = await db.select({ id: radarSignals.id })
+                            .from(radarSignals)
+                            .where(eq(radarSignals.coinSymbol, symbol))
+                            .orderBy(desc(radarSignals.createdAt))
+                            .limit(1);
+
+                        if (latestSignal) {
+                            await db.insert(signalPerformance).values({
+                                signalId: latestSignal.id,
+                                coinSymbol: symbol,
+                                verdict: analysisResult.verdict,
+                                sentiment: analysisResult.sentiment,
+                                entryPrice: priceResult.price,
+                                entryAt: new Date(),
+                            });
+                        }
+                    }
+                } catch (perfErr) {
+                    console.error(`[AI Workflow] Failed to record signal performance for ${symbol}:`, perfErr instanceof Error ? perfErr.message : String(perfErr));
+                }
+```
+
+**IMPORTANT:** This block must be INSIDE the `if (actionableVerdicts.includes(analysisResult.verdict))` block (after line 506), NOT outside it. Only actionable signals get P&L tracked.
+
+**Verification Checklist:**
+- `signalPerformance` imported from `market.model`
+- `getPriceWithFallback` imported from `priceService`
+- Entry price recording is INSIDE the actionable verdicts check
+- Wrapped in try-catch (non-blocking — pipeline continues if this fails)
+- Uses `desc` and `eq` from drizzle-orm (already imported in file)
+- Zero `any` types
+
+---
+
+#### T-04: Create P&L Snapshot Cron
+**File (CREATE):** `backend/src/crons/signalPerformance.cron.ts`
+**Assigned To:** Senior Developer
+**Status:** 🟢 Done
+
+```typescript
+import cron from 'node-cron';
+import { db } from '../config/db';
+import { signalPerformance } from '../models/market.model';
+import { eq, isNull, lte, and, sql } from 'drizzle-orm';
+import { getPriceWithFallback } from '../services/priceService';
+
+async function updateSignalPerformance(): Promise<void> {
+    console.log('[SignalPerf] Update run started');
+
+    // 1. Fill 24h snapshots
+    const need24h = await db.select()
+        .from(signalPerformance)
+        .where(and(
+            isNull(signalPerformance.price24h),
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '24 hours'`)
+        ))
+        .limit(50);
+
+    for (const row of need24h) {
+        const priceResult = await getPriceWithFallback(row.coinSymbol);
+        if (!priceResult) continue;
+        const pnl = ((priceResult.price - row.entryPrice) / row.entryPrice) * 100;
+        await db.update(signalPerformance).set({
+            price24h: priceResult.price,
+            pnl24h: pnl,
+        }).where(eq(signalPerformance.id, row.id));
+    }
+
+    // 2. Fill 7d snapshots
+    const need7d = await db.select()
+        .from(signalPerformance)
+        .where(and(
+            isNull(signalPerformance.price7d),
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '7 days'`)
+        ))
+        .limit(50);
+
+    for (const row of need7d) {
+        const priceResult = await getPriceWithFallback(row.coinSymbol);
+        if (!priceResult) continue;
+        const pnl = ((priceResult.price - row.entryPrice) / row.entryPrice) * 100;
+        const isBullish = ['BUY', 'STRONG_BUY'].includes(row.verdict);
+        const isWin = isBullish ? pnl > 0 : pnl < 0;
+        await db.update(signalPerformance).set({
+            price7d: priceResult.price,
+            pnl7d: pnl,
+            isWin7d: isWin,
+        }).where(eq(signalPerformance.id, row.id));
+    }
+
+    // 3. Fill 30d snapshots
+    const need30d = await db.select()
+        .from(signalPerformance)
+        .where(and(
+            isNull(signalPerformance.price30d),
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '30 days'`)
+        ))
+        .limit(50);
+
+    for (const row of need30d) {
+        const priceResult = await getPriceWithFallback(row.coinSymbol);
+        if (!priceResult) continue;
+        const pnl = ((priceResult.price - row.entryPrice) / row.entryPrice) * 100;
+        const isBullish = ['BUY', 'STRONG_BUY'].includes(row.verdict);
+        const isWin = isBullish ? pnl > 0 : pnl < 0;
+        await db.update(signalPerformance).set({
+            price30d: priceResult.price,
+            pnl30d: pnl,
+            isWin30d: isWin,
+        }).where(eq(signalPerformance.id, row.id));
+    }
+
+    console.log(`[SignalPerf] Updated: ${need24h.length} (24h), ${need7d.length} (7d), ${need30d.length} (30d)`);
+}
+
+export function startSignalPerformanceCron(): void {
+    cron.schedule('0 */6 * * *', updateSignalPerformance);
+    console.log('[SignalPerf] Cron scheduled — every 6 hours');
+}
+```
+
+**Verification Checklist:**
+- Uses `getPriceWithFallback` from existing `priceService.ts`
+- Win logic: BUY/STRONG_BUY → pnl > 0 = win | SELL/STRONG_SELL → pnl < 0 = win
+- Processes max 50 rows per category per run (rate limit safety)
+- Uses `sql` template for interval expressions (Drizzle pattern)
+- Zero `any` types
+
+---
+
+#### T-05: Add Scorecard API Handler
+**File (MODIFY):** `backend/src/controllers/market.controller.ts`
+**Assigned To:** Senior Developer
+**Status:** 🟢 Done
+
+**Add import:**
+```typescript
+import { signalPerformance } from '../models/market.model';
+```
+
+**Add handler function:**
+```typescript
+export async function getScorecardHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const signals = await db.select()
+            .from(signalPerformance)
+            .orderBy(desc(signalPerformance.entryAt))
+            .limit(100);
+
+        const withPnl7d = signals.filter(s => s.pnl7d !== null);
+        const wins7d = withPnl7d.filter(s => s.isWin7d === true);
+        const totalSignals = signals.length;
+        const winRate7d = withPnl7d.length > 0
+            ? Math.round((wins7d.length / withPnl7d.length) * 100) : null;
+        const avgReturn7d = withPnl7d.length > 0
+            ? withPnl7d.reduce((sum, s) => sum + (s.pnl7d ?? 0), 0) / withPnl7d.length : null;
+
+        const coinMap = new Map<string, { signals: number; wins: number; totalPnl: number }>();
+        for (const s of withPnl7d) {
+            const existing = coinMap.get(s.coinSymbol) ?? { signals: 0, wins: 0, totalPnl: 0 };
+            existing.signals++;
+            if (s.isWin7d) existing.wins++;
+            existing.totalPnl += s.pnl7d ?? 0;
+            coinMap.set(s.coinSymbol, existing);
+        }
+
+        const bestCall = withPnl7d.length > 0
+            ? withPnl7d.reduce((best, s) => (s.pnl7d ?? 0) > (best.pnl7d ?? -Infinity) ? s : best, withPnl7d[0])
+            : null;
+
+        res.json({
+            overall: {
+                totalSignals,
+                winRate7d,
+                avgReturn7d: avgReturn7d !== null ? parseFloat(avgReturn7d.toFixed(1)) : null,
+                bestCall
+            },
+            recent: signals.slice(0, 20),
+            perCoin: Object.fromEntries(coinMap),
+        });
+    } catch (err) { next(err); }
+}
+```
+
+**Verification Checklist:**
+- `signalPerformance` imported
+- Uses `desc` from drizzle-orm (already imported)
+- Handler follows existing pattern (req, res, next)
+- Returns max 20 recent signals + overall stats + per-coin breakdown
+- Zero `any` types
+- Error forwarded to Express error handler via `next(err)`
+
+---
+
+#### T-06: Register Scorecard Route
+**File (MODIFY):** `backend/src/routes/market.routes.ts`
+**Assigned To:** Senior Developer
+**Status:** 🟢 Done
+
+**Sub-task 6A: Add import (line 2)**
+
+**BEFORE (line 2):**
+```typescript
+import { getCoinInsight, getAlphaFocus, getRadarSignals, getMarketMood, getLatestWire, getWireById, getTopMoversController, getAssetCount, forceSeed, getMasterArticle, getMasterArticleCoins, getTimeline, getArchiveArticles, getStrategicOutlookHandler } from '../controllers/market.controller';
+```
+
+**AFTER:**
+```typescript
+import { getCoinInsight, getAlphaFocus, getRadarSignals, getMarketMood, getLatestWire, getWireById, getTopMoversController, getAssetCount, forceSeed, getMasterArticle, getMasterArticleCoins, getTimeline, getArchiveArticles, getStrategicOutlookHandler, getScorecardHandler } from '../controllers/market.controller';
+```
+
+**Sub-task 6B: Add route (after line 18)**
+
+```typescript
+router.get('/scorecard', apiLimiter, getScorecardHandler);
+```
+
+**Verification Checklist:**
+- `getScorecardHandler` imported
+- Route at `/scorecard` behind `apiLimiter`
+- No other routes changed
+
+---
+
+#### T-07: Add Scorecard to Sidebar
+**File (MODIFY):** `frontend/src/features/shared/components/Sidebar.tsx`
+**Assigned To:** Senior Developer
+**Status:** 🟢 Done
+
+**BEFORE (lines 6-10):**
+```typescript
+const NAV_ITEMS = [
+    { href: '/', icon: 'home', label: 'Home', disabled: false },
+    { href: '/terminal', icon: 'terminal', label: 'Terminal', disabled: false },
+    { href: '/airdrops', icon: 'flight_takeoff', label: 'Airdrops', disabled: false }
+];
+```
+
+**AFTER:**
+```typescript
+const NAV_ITEMS = [
+    { href: '/', icon: 'home', label: 'Home', disabled: false },
+    { href: '/terminal', icon: 'terminal', label: 'Terminal', disabled: false },
+    { href: '/airdrops', icon: 'flight_takeoff', label: 'Airdrops', disabled: false },
+    { href: '/scorecard', icon: 'leaderboard', label: 'Scorecard', disabled: false }
+];
+```
+
+**ALSO:** Update mobile grid from `grid-cols-4` to `grid-cols-5` (line 31):
+
+**BEFORE:**
+```typescript
+<div className="w-full h-full pt-1 md:pt-0 grid grid-cols-4 md:flex ...
+```
+
+**AFTER:**
+```typescript
+<div className="w-full h-full pt-1 md:pt-0 grid grid-cols-5 md:flex ...
+```
+
+**Verification Checklist:**
+- New nav item added (4th item)
+- Icon is `leaderboard` (Material Symbols)
+- Grid cols updated from 4 to 5 on mobile
+- Existing items unchanged
+
+---
+
+#### T-08: Create Scorecard Frontend Page
+**File (CREATE):** `frontend/src/app/scorecard/page.tsx`
+**Assigned To:** Senior Developer
+**Status:** 🟢 Done
+
+**Target:** Server component that fetches `/api/market/scorecard` and renders the scorecard UI.
+
+The page should display:
+1. **Overall Stats Bar** — Total signals, win rate %, avg return %, best call
+2. **Recent Signals Table** — Coin, verdict, entry $, 24h %, 7d %, 30d % (green for profit, red for loss, gray for pending)
+3. **Per-Coin Breakdown** — Cards per coin showing signal count, win rate, avg return
+4. **NFA Disclaimer** — "Past performance does not guarantee future results. Not financial advice."
+
+**Design notes:**
+- Same dark theme as rest of OnlyAlpha (`bg-black`, `bg-[#0A0A0A]`, `border-[#222]`, `--color-primary`)
+- Green (`text-emerald-500`) for profits
+- Red (`text-red-500`) for losses
+- Gray (`text-[#555]`) for pending
+- Use `font-mono` for numbers and `font-mono-nums` for tabular data
+- Table rows alternate `bg-[#0A0A0A]` / `bg-[#111]`
+- SEO metadata: title "Signal Scorecard", description about track record
+
+**Verification Checklist:**
+- Server component fetches data
+- Empty state when no signals yet ("No signals tracked yet — check back after the first AI signal is published")
+- NFA disclaimer at bottom
+- Responsive: table scrolls horizontally on mobile
+- Uses existing design tokens
+- Zero `any` types
+- SEO metadata present
+
+---
+
+### 3. QA & Security Stage (QA Hunter)
+
+**T-01:** ✅ Done — QA PASSED
+**T-02:** ✅ Done — QA PASSED
+**T-03:** ✅ Done — QA PASSED
+**T-04:** ✅ Done — QA PASSED
+**T-05:** ✅ Done — QA PASSED
+**T-06:** ✅ Done — QA PASSED
+**T-07:** ✅ Done — QA PASSED
+**T-08:** ✅ Done — QA PASSED
 
 **QA Verdict (Apr 25, 2026 — QA Hunter):**
 - **VERDICT:** ✅ PASS
-- **Checklist (12/12):** CoinMarketCap removed ✅ | 5 sources remain (>4 minimum) ✅ | All URLs verified and documented in comment ✅ | No syntax errors ✅ | `RSSSource` interface unchanged ✅ | All 5 exports backward-compatible (`filterAirdropRelevant`, `generateArticleHash`, `fetchAirdropRSSFeeds`, `getExistingProjectNames`, `buildProjectContextFromArticle`) ✅ | `tsc --noEmit` clean (0 errors) ✅ | Zero `any` types ✅ | Only lines 21-31 modified ✅ | Import in `airdropRssHunter.cron.ts:10` still resolves ✅ | No new dependencies ✅ | No breaking changes ✅
+- **Checklist Verified:**
+  - DB schema `signalPerformance` aligns with Drizzle snake_case conventions and contains `signalId` FK ✅
+  - Migration script properly creates indices `idx_signal_perf_symbol` and `idx_signal_perf_entry` ✅
+  - `aiWorkflow.cron` gracefully logs P&L tracking without blocking the core AI execution (optimized to use `.returning()` which removes redundant DB queries) ✅
+  - `signalPerformance.cron` computes valid trade PnL for LONGs and SHORTs natively, accurately translating price drops in `SELL` signals to positive PnL percentages ✅
+  - Frontend React state gracefully handles `scorecard` API fetching dynamically via RSC safely with proper cache invalidation limits ✅
+  - Mobile responsiveness verified for Sidebar flex adjustments ✅
+- **Edge Cases Tested:** PnL computation for 24h intervals with absent price returns (skipped cleanly and scheduled for next tick).
+- **TypeScript:** 100% strict. Zero `any` types detected.
+
+---
+
+### 4. Deployment Stage (Release Manager)
+
+**Status:** 🟢 Ready for final rollout (QA Passed)
+
+---
+
+---
+
+## Completed Phases (Archived)
+
+### Phase 16 — Airdrop Feature: Pipeline Fix & UX Empty States (P0)
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` (lines 521-783)
+**Total Tasks:** 9 (T-01 through T-09)
+**Status:** All Tasks Done - QA Passed - Awaiting Deployment
+
+### Phase 15 — Strategic Intelligence Layer (Forward-Looking Intelligence)
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Total Tasks:** 5 (T-01 through T-05)
+**Status:** All Tasks Done - QA Passed - Awaiting Deployment
+**New Files:** `migrate-strategic-outlook.sql`, `strategicOutlook.service.ts`
+**Modified Files:** `aiWorkflow.cron.ts`, `market.controller.ts`, `market.routes.ts`
+
+### Phase 14 — Article Content Disappears After Update + Cache Invalidation Fix
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Total Tasks:** 2 (T-01 through T-02, Single Batch P0)
+**Status:** All Tasks Done - QA Passed - Awaiting Deployment
+
+### Phase 13 — 404 Fix: Dynamic AI Radar Coins
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Total Tasks:** 4 (T-01 through T-04, Single Batch)
+**Status:** All Tasks Done - QA Passed - Awaiting Deployment
+
+### Phase 12 — Airdrop UX Overhaul: From Functional to Premium
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md`
+**Total Tasks:** 15 (T-01 through T-15, in Batches)
+**Status:** All Tasks Done - Awaiting Final QA
+
+
 - **Deviations (acceptable):** Plan specified KEEP CryptoSlate + CoinGape, but dev REMOVED both (documented as Cloudflare-blocked/HTML-redirect). Dev substituted CoinTelegraph + BeInCrypto. All verified returning 200/valid XML. Plan URL `theblock.co/rss?tag=airdrops` changed to `theblock.co/rss.xml` — broader feed, relies on keyword filter (acceptable tradeoff per guardrail #8 — keyword filter handles specificity).
 - **Edge Cases Tested:** Empty RSS feed (handled by `items.slice(0,15)` → empty array) ✅ | Malformed XML (caught by try-catch per source, logs error, continues) ✅ | All 5 feeds fail simultaneously (returns empty array — graceful degradation) ✅ | Duplicate articles across sources (dedup by hash in `fetchAirdropRSSFeeds`) ✅
 

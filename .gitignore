@@ -45,3 +45,6 @@ Thumbs.db
 
 # Kilo CLI
 .kilo/
+
+# Windows Reserved Files
+nul

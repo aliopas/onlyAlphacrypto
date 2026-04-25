@@ -15,7 +15,7 @@ import { auditArticleQuality } from '../services/ai/quality-auditor';
 import { saveMemory } from '../services/coin-memory.service';
 import { isDuplicateByEmbedding } from '../services/similarity.service';
 import { storeEmbedding } from '../services/embedding.service';
-import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates } from '../models/market.model';
+import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates, signalPerformance } from '../models/market.model';
 import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } from '../services/strategicOutlook.service';
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
@@ -497,13 +497,30 @@ export async function runAiWorkflow(): Promise<void> {
                 // 4g. Radar signal for actionable verdicts
                 const actionableVerdicts = ['STRONG_BUY', 'STRONG_SELL', 'BUY', 'SELL'];
                 if (actionableVerdicts.includes(analysisResult.verdict)) {
-                    await db.insert(radarSignals).values({
+                    const insertedRadar = await db.insert(radarSignals).values({
                         coinSymbol: symbol,
                         signalText: analysisResult.signalText,
                         sentiment: analysisResult.sentiment,
                         impactScore: analysisResult.impactScore,
                         newsId,
-                    }).onConflictDoNothing();
+                    }).returning({ id: radarSignals.id });
+
+                    // 4g-2. Record signal performance (entry price)
+                    try {
+                        const priceResult = await getPriceWithFallback(symbol);
+                        if (priceResult && priceResult.price > 0 && insertedRadar.length > 0) {
+                            await db.insert(signalPerformance).values({
+                                signalId: insertedRadar[0].id,
+                                coinSymbol: symbol,
+                                verdict: analysisResult.verdict,
+                                sentiment: analysisResult.sentiment,
+                                entryPrice: priceResult.price,
+                                entryAt: new Date(),
+                            });
+                        }
+                    } catch (perfErr) {
+                        console.error(`[AI Workflow] Failed to record signal performance for ${symbol}:`, perfErr instanceof Error ? perfErr.message : String(perfErr));
+                    }
                 }
 
                 // 4h. Save to coinMemory (non-blocking)

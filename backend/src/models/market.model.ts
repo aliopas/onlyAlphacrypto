@@ -92,6 +92,31 @@ export const radarSignals = pgTable('radar_signals', {
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
+// ─── SIGNAL PERFORMANCE (P&L Tracking) ───────────────────────────────────────
+export const signalPerformance = pgTable('signal_performance', {
+    id: serial('id').primaryKey(),
+    signalId: integer('signal_id').references(() => radarSignals.id).notNull(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    verdict: varchar('verdict', { length: 20 }).notNull(),
+    sentiment: varchar('sentiment', { length: 20 }),
+
+    entryPrice: real('entry_price').notNull(),
+    entryAt: timestamp('entry_at').notNull(),
+
+    price24h: real('price_24h'),
+    price7d: real('price_7d'),
+    price30d: real('price_30d'),
+
+    pnl24h: real('pnl_24h'),
+    pnl7d: real('pnl_7d'),
+    pnl30d: real('pnl_30d'),
+
+    isWin7d: boolean('is_win_7d'),
+    isWin30d: boolean('is_win_30d'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 // ─── DAILY ALPHA FOCUS ───────────────────────────────────────────────────────
 export const dailyAlphaFocus = pgTable('daily_alpha_focus', {
     id: serial('id').primaryKey(),
