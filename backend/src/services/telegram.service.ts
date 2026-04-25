@@ -5,15 +5,12 @@ import { env } from '../config/env';
 
 const NEWS_CHANNELS: string[] = [
     'whale_alert_io',
-    'OKXAnnouncements',
-    'WuBlockchainReal',
-    'CryptoQuantOfficial',
+    'cointelegraph',
 ];
 
 const AIRDROP_CHANNELS: string[] = [
-    'AirdropAlpha',
-    'earndrop',
-    'AirdropAlert',
+    'airdrops_io',
+    'airdropofficial',
 ];
 
 const SPAM_PATTERNS: RegExp[] = [
