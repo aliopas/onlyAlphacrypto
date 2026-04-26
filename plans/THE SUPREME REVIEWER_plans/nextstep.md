@@ -1492,3 +1492,54 @@ Three sections:
 *Phase 17 authored: April 24, 2026*  
 *Signal flow: radarSignals insert → signalPerformance record (entry price) → cron fills 24h/7d/30d P&L → scorecard API → frontend*
 
+
+---
+---
+
+# Phase 19 — Google AdSense Readiness & Legal Compliance
+
+**Status:** PLANNED  
+**Date:** April 25, 2026  
+**Priority:** P1 (Monetization Blocker)  
+**Scope:** 5 new static pages, 1 UI component, routing updates
+
+## OBJECTIVE
+
+To get OnlyAlpha approved for Google AdSense monetization, the platform must meet Google's strict publisher guidelines. Currently, the site acts as an intelligence dashboard but lacks the required legal, compliance, and structural pages that AdSense manual reviewers look for to verify legitimacy and user safety. 
+
+Because the site uses AI to aggregate and rewrite news/signals, having explicit disclaimers and policy pages is non-negotiable.
+
+## REQUIRED TASKS
+
+### 1. Mandatory Static Pages
+Create the following static routes in the Next.js frontend (`frontend/src/app/...`):
+- `/privacy-policy` (سياسة الخصوصية): Explaining data collection, third-party cookies (AdSense), and analytics.
+- `/terms` (الشروط والأحكام): User agreements, IP rights.
+- `/about` (من نحن): Explaining what OnlyAlpha is, how the AI pipeline works, and establishing "E-E-A-T" (Experience, Expertise, Authoritativeness, and Trustworthiness).
+- `/contact` (اتصل بنا): A form or email address for users to reach out.
+- `/disclaimer` (إخلاء المسؤولية): **CRITICAL**. A comprehensive "Not Financial Advice" (NFA) disclaimer explaining that signals are automated intelligence, not investment advice.
+
+### 2. Cookie Consent Banner (GDPR/CCPA)
+- Create a global `CookieBanner` component that appears for all new users.
+- It must explicitly mention that third-party vendors (Google) use cookies to serve ads based on prior visits.
+- Requires "Accept" and "Decline" states.
+
+### 3. Clear Navigation (Footer)
+- Create a `Footer` component (or update existing) to house links to all the legal pages.
+- AdSense reviewers look for these links at the bottom of the page.
+
+### 4. NFA Warning Visibility
+- Ensure the "Not Financial Advice" label is explicitly visible on the `/scorecard` and individual article pages, not just buried in text.
+
+### 5. AdSense Script Injection Placeholder
+- Add the Google AdSense script tag to `frontend/src/app/layout.tsx` (can be commented out or conditional based on `NEXT_PUBLIC_ADSENSE_ID`) so the `<head>` is ready for the verification process.
+
+## FILES AFFECTED
+- `frontend/src/app/privacy-policy/page.tsx` (NEW)
+- `frontend/src/app/terms/page.tsx` (NEW)
+- `frontend/src/app/about/page.tsx` (NEW)
+- `frontend/src/app/contact/page.tsx` (NEW)
+- `frontend/src/app/disclaimer/page.tsx` (NEW)
+- `frontend/src/features/shared/components/CookieBanner.tsx` (NEW)
+- `frontend/src/features/shared/components/Footer.tsx` (NEW/UPDATE)
+- `frontend/src/app/layout.tsx` (UPDATE)
