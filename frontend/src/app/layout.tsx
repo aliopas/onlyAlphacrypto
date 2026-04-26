@@ -4,8 +4,6 @@ import { Inter } from 'next/font/google';
 import './globals.css';
 import { Sidebar } from '@/features/shared/components/Sidebar';
 import { TickerBar } from '@/features/shared/components/TickerBar';
-import { ErrorBoundary } from '@/features/shared/components/ErrorBoundary';
-import { Footer } from '@/features/shared/components/Footer';
 import { CookieBanner } from '@/features/shared/components/CookieBanner';
 import { SITE_URL, GA_MEASUREMENT_ID } from '@/lib/constants';
 
@@ -121,13 +119,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {/* Top ticker bar */}
           <TickerBar />
 
-          {/* Page content */}
-          <div className="flex-1 overflow-y-auto">
-            <div className="p-4 md:p-6">
-              <ErrorBoundary>{children}</ErrorBoundary>
-            </div>
-            <Footer />
-          </div>
+          {/* Page content — rendered by route group layouts */}
+          {children}
         </main>
         <CookieBanner />
       </body>
