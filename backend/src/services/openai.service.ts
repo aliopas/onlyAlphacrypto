@@ -5,6 +5,7 @@ import { env } from '../config/env';
 import { CacheManager } from './ai/cache-manager';
 import { AIGateway, AITruncationError, LONG_RESPONSE_MAX_TOKENS } from './ai/ai-gateway';
 import { PromptFactory, DeepAnalysisInput, MasterUpdateInput, MinorUpdateInput } from './ai/prompt-factory';
+import { getRecentMemory } from './coin-memory.service';
 import { coinMasterArticles } from '../models/market.model';
 
 // Define interfaces locally to avoid circular imports
@@ -391,7 +392,25 @@ export async function callDeepSeekAnalysis(input: DeepAnalysisInput, attempt: nu
     const MAX_ATTEMPTS = 3;
 
     try {
-        const messages = prompts.buildDeepAnalysisMessages(input);
+        let recentMemory: DeepAnalysisInput['recentMemory'];
+        try {
+            const memory = await getRecentMemory(input.coinSymbol, 5);
+            recentMemory = memory.length > 0 ? memory.map((m: Record<string, unknown>) => ({
+                eventType: m.eventType as string,
+                eventSummary: m.eventSummary as string,
+                priceAtEvent: m.priceAtEvent as number | null,
+                verdict: m.verdict as string | null,
+                confidenceScore: m.confidenceScore as number | null,
+                riskVerdict: m.riskVerdict as string | null,
+                keyDrivers: m.keyDrivers as string[] | null,
+                redFlags: m.redFlags as string[] | null,
+                createdAt: m.createdAt as Date,
+            })) : undefined;
+        } catch {
+            recentMemory = undefined;
+        }
+        const enrichedInput: DeepAnalysisInput = { ...input, recentMemory };
+        const messages = prompts.buildDeepAnalysisMessages(enrichedInput);
         // Use DeepSeek Direct if available, otherwise fallback to OpenRouter
         const targetGateway = deepseekGateway || gateway;
         const targetModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.DEEPSEEK_MODEL;
@@ -664,8 +683,8 @@ export async function streamChatResponse(
     });
 }
 
-export async function callGptNanoMinorUpdate(newsTitle: string, existingHeadline: string): Promise<string> {
-    const messages = prompts.buildMinorUpdateMessages({ newsTitle, existingHeadline });
+export async function callGptNanoMinorUpdate(input: MinorUpdateInput): Promise<string> {
+    const messages = prompts.buildMinorUpdateMessages(input);
 
     const raw = await gateway.chatRaw({
         model: env.SEO_MODEL,

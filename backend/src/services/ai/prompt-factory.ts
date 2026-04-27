@@ -33,6 +33,18 @@ export interface DeepAnalysisInput {
     intelligence: CoinIntelligence | null;
     pattern: TemporalPattern | null;
     price: PriceResult | null;
+    coinSymbol: string;
+    recentMemory?: ReadonlyArray<{
+        eventType: string;
+        eventSummary: string;
+        priceAtEvent: number | null;
+        verdict: string | null;
+        confidenceScore: number | null;
+        riskVerdict: string | null;
+        keyDrivers: string[] | null;
+        redFlags: string[] | null;
+        createdAt: Date;
+    }>;
 }
 
 export interface MasterUpdateInput {
@@ -44,6 +56,14 @@ export interface MasterUpdateInput {
 export interface MinorUpdateInput {
     newsTitle: string;
     existingHeadline: string;
+    coinSymbol: string;
+    currentPrice: number | null;
+    priceChange24h: number | null;
+    recentTimeline: ReadonlyArray<{
+        updateText: string;
+        createdAt: Date;
+        severity: string;
+    }>;
 }
 
 // Define additional interfaces used in the prompts
@@ -322,7 +342,14 @@ ${input.intelligence ? JSON.stringify({
 }) : 'No intelligence data available'}
 
 --- HISTORICAL PATTERN ---
-${input.pattern ? JSON.stringify(input.pattern) : 'No historical pattern available'}`
+${input.pattern ? JSON.stringify(input.pattern) : 'No historical pattern available'}
+
+--- RECENT EVENTS FOR THIS COIN ---
+${input.recentMemory && input.recentMemory.length > 0
+    ? input.recentMemory.map((m, i) =>
+        `${i + 1}. [${m.createdAt.toISOString().split('T')[0]}] ${m.eventType}: ${m.eventSummary} | Price: $${m.priceAtEvent ?? 'N/A'} | Verdict: ${m.verdict ?? 'N/A'} | Confidence: ${m.confidenceScore ?? 'N/A'}${m.redFlags && m.redFlags.length > 0 ? ` | Red Flags: ${m.redFlags.join(', ')}` : ''}${m.keyDrivers && m.keyDrivers.length > 0 ? ` | Drivers: ${m.keyDrivers.join(', ')}` : ''}`
+    ).join('\n')
+    : 'No prior events recorded for this coin.'}`
             }
         ];
     }
@@ -509,11 +536,33 @@ CRITICAL RULES:
         return [
             {
                 role: 'system',
-                content: 'You are a crypto news update writer. Write factual, concise updates.'
+                content: `You are OnlyAlpha's senior market analyst writing a living article timeline update.
+You receive a new development and context about the coin's current state.
+Write a concise, data-rich timeline update (2-3 paragraphs).
+Rules:
+- Include specific numbers (price, percentages, timeframes) when available.
+- Reference the coin's current price and 24h change if provided.
+- If this is a continuation of a recent trend, say so explicitly.
+- Do NOT repeat what was already said in the existing story — add new information only.
+- Tone: factual, analytical, Bloomberg-style.
+- Output: plain text, 150-400 words. No JSON. No headers.`
             },
             {
                 role: 'user',
-                content: `Given this new development: ${input.newsTitle}, in context of the existing story: ${input.existingHeadline}, write a concise 1-2 paragraph timeline update. Factual, no filler.`
+                content: `New Development: ${input.newsTitle}
+Coin: ${input.coinSymbol}
+Current Price: ${input.currentPrice !== null ? `$${input.currentPrice.toLocaleString()}` : 'N/A'}${input.priceChange24h !== null ? ` (24h change: ${input.priceChange24h > 0 ? '+' : ''}${input.priceChange24h.toFixed(2)}%)` : ''}
+
+Existing Story: ${input.existingHeadline}
+
+Recent Timeline Updates (last 3):
+${input.recentTimeline.length > 0
+    ? input.recentTimeline.map((t, i) =>
+        `${i + 1}. [${t.createdAt.toISOString().split('T')[0]}] (${t.severity}) ${t.updateText.slice(0, 200)}`
+    ).join('\n')
+    : 'No prior timeline updates for this article.'}
+
+Write a 2-3 paragraph timeline update that incorporates the new development into the ongoing story. Include the current price context if available. Do not repeat what was already covered in the existing story or recent timeline.`
             }
         ];
     }

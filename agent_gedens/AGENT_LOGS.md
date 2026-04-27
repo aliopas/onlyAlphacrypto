@@ -1,6 +1,15 @@
 # 📋 ONLYALPHA — AGENT LOGS
 
-**Last Updated:** April 25, 2026
+**Last Updated:** April 27, 2026
+
+---
+
+## Phase 20 — AI Pipeline Quality Fix: Memory Injection, Minor Update Overhaul & Model Upgrade (P0)
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|---|
+| Apr 27, 2026 | P20-PLANNING | PLANNED | Strategic Planner | — | 8 micro-tasks defined (T-01 through T-08). 3 fixes from codebase audit: Fix 1 (coin_memory injection into deep analysis), Fix 2 (minor update overhaul with price/timeline context), Fix 3 (model inversion fix — `deepseek-chat` → `deepseek-reasoner`). Scope: 4 files modified, 0 new files, 0 new deps. Execution order: T-01 (env, 1 line) → T-02 (prompt factory DeepAnalysisInput) → T-03 (openai.service memory fetch) → T-04 (workflow symbol pass) → T-05 (prompt factory MinorUpdateInput) → T-06 (openai.service signature change) → T-07 (workflow timeline+price fetch) → T-08 (verify). 16 guardrails issued. Key verified line refs: env.ts:37, prompt-factory.ts:31-36,44-47,225-328,508-519, openai.service.ts:390-416,667-677, aiWorkflow.cron.ts:233,278-294. |
+| Apr 27, 2026 | P20-QA | ✅ PASS | Senior Developer | QA Hunter | Full audit: 8/8 tasks PASS + bonus file (repair-incomplete-articles.ts). `tsc --noEmit` clean. Zero `any` types (verified via grep — only matches in English prompt text/comments). All 16 guardrails satisfied. Backward compatibility verified: `callDeepSeekAnalysis` returns `Promise<DeepAnalysisResult>`, `callGptNanoMinorUpdate` returns `Promise<string>`, all callers (aiWorkflow.cron.ts, repair-incomplete-articles.ts) updated. Memory fail-safe with try-catch. Timeline fetch with LIMIT 3. Null-safe price mapping. Retry logic (3 attempts) preserved. Advisory: `Record<string, unknown>` cast at openai.service.ts:398 is functionally correct (Drizzle json→unknown), consider stricter typing in future. |
 
 ---
 

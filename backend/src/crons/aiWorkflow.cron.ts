@@ -230,7 +230,30 @@ export async function runAiWorkflow(): Promise<void> {
                     continue;
                 }
                 const existingHeadline = master[0].headline;
-                const updateText = await callGptNanoMinorUpdate(item.title, existingHeadline);
+                const recentTimelineRows = await db.select({
+                    updateText: coinTimelineUpdates.updateText,
+                    createdAt: coinTimelineUpdates.createdAt,
+                    severity: coinTimelineUpdates.severity,
+                })
+                    .from(coinTimelineUpdates)
+                    .where(eq(coinTimelineUpdates.masterArticleId, master[0].id))
+                    .orderBy(desc(coinTimelineUpdates.createdAt))
+                    .limit(3);
+
+                const updatePrice = await getPriceWithFallback(symbol);
+
+                const updateText = await callGptNanoMinorUpdate({
+                    newsTitle: item.title,
+                    existingHeadline: existingHeadline,
+                    coinSymbol: symbol,
+                    currentPrice: updatePrice?.price ?? null,
+                    priceChange24h: updatePrice?.change24h ?? null,
+                    recentTimeline: recentTimelineRows.map(r => ({
+                        updateText: r.updateText,
+                        createdAt: r.createdAt,
+                        severity: r.severity,
+                    })),
+                });
 
                 await db.insert(coinTimelineUpdates).values({
                     coinSymbol: symbol,
@@ -282,6 +305,7 @@ export async function runAiWorkflow(): Promise<void> {
                         intelligence,
                         pattern,
                         price,
+                        coinSymbol: symbol,
                     });
                     deepseekBreaker.recordSuccess();
                 } catch (err) {

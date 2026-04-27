@@ -136,6 +136,7 @@ async function repairCoin(coin: typeof coinMasterArticles.$inferSelect): Promise
                 intelligence,
                 pattern,
                 price: price ?? null,
+                coinSymbol: symbol,
             });
             console.log(`  ✓ DeepSeek analysis: verdict=${analysisResult.verdict}, confidence=${analysisResult.confidenceScore}`);
         } catch (err) {
