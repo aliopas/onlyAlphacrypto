@@ -149,24 +149,6 @@ export default async function CoinTerminalPage({
                 initialRadarId={radarId}
                 isAlphaFocus={isAlphaFocus}
             />
-            <div className="mt-8 p-4 bg-[#0A0A0A] border border-[#1A1A1A] rounded-lg">
-                <div className="flex items-start gap-3">
-                    <span className="material-symbols-outlined text-[#444] text-base mt-0.5 shrink-0">shield</span>
-                    <div>
-                        <h4 className="text-[11px] font-mono uppercase tracking-widest text-[#555] mb-2">Disclaimer</h4>
-                        <p className="text-[11px] text-[#555] leading-relaxed">
-                            All content on this page is <span className="text-[#888]">AI-generated</span> and for{' '}
-                            <span className="text-[#888]">informational purposes only</span>. It does{' '}
-                            <span className="text-[#888]">not</span> constitute financial advice, investment recommendations,
-                            or solicitation to buy or sell any asset. OnlyAlpha is{' '}
-                            <span className="text-[#888]">not</span> a registered financial advisor. Always{' '}
-                            <span className="text-[#888]">do your own research (DYOR)</span> and consult a licensed
-                            professional before making investment decisions.{' '}
-                            <span className="text-[#888]">NFA — Not Financial Advice.</span>
-                        </p>
-                    </div>
-                </div>
-            </div>
         </>
     );
 }
