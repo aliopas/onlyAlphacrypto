@@ -11,7 +11,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:purge": "ts-node src/scripts/purge-data.ts"
+    "db:purge": "ts-node src/scripts/purge-data.ts",
+    "test": "jest --verbose",
+    "test:airdrop": "jest --verbose specs/airdropPipelineV2.spec.ts"
   },
   "keywords": [],
   "author": "",
@@ -49,12 +51,15 @@
     "request-ip": "^3.3.0",
     "rss-parser": "^3.13.0",
     "telegram": "^2.26.22",
-    "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "@types/jest": "^30.0.0",
+    "jest": "^30.3.0",
+    "nodemon": "^3.1.14",
+    "ts-jest": "^29.4.9",
+    "ts-node": "^10.9.2"
   }
 }
