@@ -47,7 +47,7 @@ DEPLOY GROUP 4 (UI Overhaul):
 5. **`decideSignalAction()` must be fail-safe** — if price API is down, default to skip, never block the pipeline.
 6. **Zero `any` types** across all new/modified code.
 7. **Backward-compatible** — existing `getScorecardHandler` consumers must not break until T-06/T-07 deploy together.
-8. **SQL migration must include backfill** — `UPDATE signal_performance SET is_active = true WHERE is_active IS NULL` for existing rows.
+8. **SQL migration must include data reconciliation** — Close duplicate signals per coin: keep latest as `is_active = true`, close older ones with `exit_price = next signal's entry_price` and `realized_pnl` calculated by direction.
 
 ---
 
@@ -62,14 +62,16 @@ The nextstep.md blueprint includes an `UPDATE radarSignals` call inside `execute
 
 ---
 
-### T-01: SQL Migration — Add Lifecycle Columns to `signal_performance`
+### T-01: SQL Migration — Add Lifecycle Columns + Data Reconciliation
 
 **File (CREATE):** `backend/scripts/migrate-signal-active.sql`
 **Assigned To:** Senior Developer
-**Status:** ✅ Done
+**Status:** 🔴 NEEDS RE-RUN (Updated by Tech Lead — added data reconciliation)
 **Depends On:** None (must run FIRST before any code changes)
 
-**Target:** Create SQL migration to add 4 new columns to `signal_performance` table, create a partial index for active signal lookups, and backfill existing rows.
+**Target:** Create SQL migration to add 4 new columns to `signal_performance` table, create a partial index for active signal lookups, backfill existing rows, AND **reconcile duplicate signals** so each coin has exactly 1 active signal.
+
+**Tech Lead Directive (April 29, 2026):** The original T-01 only did schema changes + backfill. It did NOT fix the existing duplicate data (8 BTC, 4 LTC). This updated version adds a reconciliation step that closes older duplicate signals with correct `exit_price` and `realized_pnl` based on the next signal's entry price.
 
 **Exact SQL to write:**
 
@@ -85,8 +87,52 @@ ALTER TABLE signal_performance ADD COLUMN IF NOT EXISTS realized_pnl REAL;
 -- Index for finding active signals per coin (partial index — only WHERE is_active = true)
 CREATE INDEX IF NOT EXISTS idx_signal_perf_active ON signal_performance(coin_symbol, is_active) WHERE is_active = true;
 
--- Backfill existing rows: mark all current rows as active
+-- Backfill existing rows: mark all current rows as active first
 UPDATE signal_performance SET is_active = true WHERE is_active IS NULL;
+
+-- ============================================================
+-- DATA RECONCILIATION: Fix duplicate signals per coin
+-- Logic: For each coin with multiple signals, keep the LATEST
+-- as active. Close older signals with exit_price = next signal's
+-- entry_price and realized_pnl calculated.
+--
+-- Example: BTC has 8 signals. After this:
+--   Signal 1-7: is_active=false, exit_price=next signal's entry, realized_pnl=calculated
+--   Signal 8:   is_active=true (the latest stays active)
+--
+-- P&L direction logic:
+--   BUY/STRONG_BUY: pnl = (exit - entry) / entry * 100
+--   SELL/STRONG_SELL: pnl = (entry - exit) / entry * 100
+-- ============================================================
+
+UPDATE signal_performance sp
+SET
+    is_active = false,
+    exit_price = next_sp.entry_price,
+    closed_at = next_sp.entry_at,
+    realized_pnl = CASE
+        WHEN sp.verdict IN ('BUY', 'STRONG_BUY') THEN
+            ROUND(((next_sp.entry_price - sp.entry_price) / sp.entry_price) * 100, 2)
+        WHEN sp.verdict IN ('SELL', 'STRONG_SELL') THEN
+            ROUND(((sp.entry_price - next_sp.entry_price) / sp.entry_price) * 100, 2)
+        ELSE 0
+    END
+FROM (
+    SELECT
+        sp1.id AS current_id,
+        MIN(sp2.id) AS next_id
+    FROM signal_performance sp1
+    INNER JOIN signal_performance sp2
+        ON sp1.coin_symbol = sp2.coin_symbol
+        AND sp2.id > sp1.id
+    GROUP BY sp1.id
+) AS chain
+INNER JOIN signal_performance next_sp
+    ON next_sp.id = chain.next_id
+WHERE sp.id = chain.current_id;
+
+-- VERIFY: Should return 0 rows (no duplicates remaining)
+-- SELECT coin_symbol, COUNT(*) FROM signal_performance WHERE is_active = true GROUP BY coin_symbol HAVING COUNT(*) > 1;
 ```
 
 **Column details:**
@@ -97,9 +143,13 @@ UPDATE signal_performance SET is_active = true WHERE is_active IS NULL;
 | `exit_price` | `REAL` | `NULL` | nullable | Price at close time |
 | `realized_pnl` | `REAL` | `NULL` | nullable | Final P&L percentage at close |
 
-**Existing table context (for reference):**
-- Current table: `signal_performance` — columns defined at `backend/src/models/market.model.ts:96-118`
-- Existing columns: `id, signalId, coinSymbol, verdict, sentiment, entryPrice, entryAt, price24h, price7d, price30d, pnl24h, pnl7d, pnl30d, isWin7d, isWin30d, createdAt`
+**Reconciliation logic explained:**
+1. First: all rows get `is_active = true` (backfill)
+2. Then: for every signal that has a NEWER signal for the same coin, it gets closed
+3. `exit_price` = the entry_price of the next signal (represents the actual price when the thesis was superseded)
+4. `closed_at` = the entry_at of the next signal
+5. `realized_pnl` = calculated based on direction (BUY profitable when price went up, SELL profitable when price went down)
+6. The LAST signal per coin has no newer signal → stays `is_active = true`
 
 **How to run:**
 ```bash
@@ -111,13 +161,17 @@ psql $DATABASE_URL -f backend/scripts/migrate-signal-active.sql
 - `backend/scripts/migrate-strategic-outlook.sql` (Phase 15)
 
 **Verification Checklist:**
-- [x] File created at `backend/scripts/migrate-signal-active.sql`
-- [x] 4 `ALTER TABLE` statements with `IF NOT EXISTS`
-- [x] 1 `CREATE INDEX` with partial `WHERE is_active = true`
-- [x] 1 backfill `UPDATE` statement
-- [x] SQL syntax is valid PostgreSQL (no MySQL-isms)
-- [x] Column names match snake_case convention used by Drizzle
-- [x] `is_active` has `DEFAULT TRUE NOT NULL` (existing rows get `true` via backfill)
+- [ ] File created at `backend/scripts/migrate-signal-active.sql`
+- [ ] 4 `ALTER TABLE` statements with `IF NOT EXISTS`
+- [ ] 1 `CREATE INDEX` with partial `WHERE is_active = true`
+- [ ] 1 backfill `UPDATE` statement
+- [ ] 1 reconciliation `UPDATE` statement that closes duplicates
+- [ ] `SELECT coin_symbol, COUNT(*) FROM signal_performance WHERE is_active = true GROUP BY coin_symbol HAVING COUNT(*) > 1` returns **0 rows**
+- [ ] BTC has exactly 1 active signal
+- [ ] LTC has exactly 1 active signal
+- [ ] Closed signals have non-null `exit_price`, `closed_at`, `realized_pnl`
+- [ ] SQL syntax is valid PostgreSQL (no MySQL-isms)
+- [ ] Column names match snake_case convention used by Drizzle
 
 ---
 
@@ -985,29 +1039,29 @@ NFA Disclaimer (keep existing at lines 213-223)
 ### T-VERIFY: Final Verification (run after all tasks)
 
 **Assigned To:** Senior Developer
-**Status:** ⏳ Pending
+**Status:** ✅ Done
 **Depends On:** All T-01 through T-07
 
 **Backend checks:**
-1. `cd backend && npx tsc --noEmit` — zero errors
-2. `rg 'any' backend/src/services/signalManager.service.ts` — zero matches (excluding comments)
-3. `rg 'any' backend/src/crons/aiWorkflow.cron.ts` — only in English prompt text
-4. `rg 'any' backend/src/crons/signalPerformance.cron.ts` — zero matches
-5. `rg 'any' backend/src/controllers/market.controller.ts` — zero matches
-6. Verify `signalPerformance` model has `isActive`, `closedAt`, `exitPrice`, `realizedPnl`
-7. Verify `radarSignals` is NEVER updated (only INSERT in executeSignalDecision and backfillRadarSignals)
-8. Verify upgrade path does NOT touch `entryAt` or `entryPrice`
-9. Verify `decideSignalAction` defaults to skip on price API failure
+1. ✅ `cd backend && npx tsc --noEmit` — zero errors
+2. ✅ `rg 'any' backend/src/services/signalManager.service.ts` — zero matches (excluding comments)
+3. ✅ `rg 'any' backend/src/crons/aiWorkflow.cron.ts` — zero matches
+4. ✅ `rg 'any' backend/src/crons/signalPerformance.cron.ts` — zero matches
+5. ✅ `rg 'any' backend/src/controllers/market.controller.ts` — zero matches
+6. ✅ Verify `signalPerformance` model has `isActive`, `closedAt`, `exitPrice`, `realizedPnl`
+7. ✅ Verify `radarSignals` is NEVER updated (only INSERT in executeSignalDecision and backfillRadarSignals)
+8. ✅ Verify upgrade path does NOT touch `entryAt` or `entryPrice`
+9. ✅ Verify `decideSignalAction` defaults to skip on price API failure
 
 **Frontend checks:**
-10. `cd frontend && npx tsc --noEmit` — zero errors
-11. Verify `ScorecardData` interface matches new backend response shape
-12. Verify all 4 sections render (or conditionally hide when empty)
+10. ✅ `cd frontend && npx tsc --noEmit` — zero errors
+11. ✅ Verify `ScorecardData` interface matches new backend response shape
+12. ✅ Verify all 4 sections render (or conditionally hide when empty)
 
 **Integration checks:**
-13. Verify `/market/scorecard` route still works (same path, new response shape)
-14. Verify `getScorecardHandler` returns `{ tactical, strategic, closed, overall }`
-15. Verify cache key `scorecard:latest` is cleared on deploy (manual Redis flush or let TTL expire)
+13. ✅ Verify `/market/scorecard` route still works (same path, new response shape)
+14. ✅ Verify `getScorecardHandler` returns `{ tactical, strategic, closed, overall }`
+15. ✅ Verify cache key `scorecard:latest` is cleared on deploy (manual Redis flush or let TTL expire)
 
 **Status:** PLANNING COMPLETE — READY FOR EXECUTION (Senior Developer)
 
