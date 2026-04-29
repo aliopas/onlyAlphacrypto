@@ -139,7 +139,7 @@ async function main(): Promise<void> {
         check('DeFiLlama /protocols — HTTP', dlRes.ok, `Status: ${dlRes.status}`);
 
         if (dlRes.ok) {
-            const protocols: Array<Record<string, unknown>> = await dlRes.json();
+            const protocols = (await dlRes.json()) as Array<Record<string, unknown>>;
             const tokenless = protocols.filter(p =>
                 !p.gecko_id && !p.symbol && (p.tvl as number) > 0 && p.name && (p.name as string).length > 1
             );
