@@ -204,7 +204,7 @@ async function main(): Promise<void> {
 
             const ttl = await client.ttl('airdrop:processed_hashes');
             check('Redis processed_hashes TTL', ttl > 0 || setSize === 0,
-                ttl > 0 ? `${Math.round(ttl / 3600)}h remaining` : 'NO TTL set (keys will persist forever)' || 'Empty set');
+                ttl > 0 ? `${Math.round(ttl / 3600)}h remaining` : setSize === 0 ? 'Empty set' : 'NO TTL set (keys will persist forever)');
 
             await client.disconnect();
         } catch (err) {
