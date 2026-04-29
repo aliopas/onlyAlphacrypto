@@ -4,7 +4,1012 @@
 
 ---
 
-## Active Phase: NONE — All Phases Complete
+## Active Phase: Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (P0)
+
+**Priority:** P0 — Production scorecard shows duplicate/conflicting signals, empty P&L, zero dedup
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` — Phase 21 section (lines 1955-2724)
+**Authorized By:** Tech Lead — April 29, 2026
+**Planned By:** Strategic Planner — April 29, 2026
+**Total Tasks:** 7 (T-01 through T-07) — Granular Micro-Tasks Ready
+
+**Core Problem (Production):**
+- 8 BTC signals with conflicting BUY/SELL verdicts at $77,479-$77,809 range
+- 4 LTC SELL signals within $0.26 of each other
+- Win Rate, Avg Return, Best Call all empty (no 7d data yet)
+- Every MAJOR event blindly creates a new signal regardless of existing signals
+
+---
+
+### Execution Order & Dependency Chain
+
+```
+DEPLOY GROUP 1 (DB Schema):
+  T-01 (SQL migration) + T-02 (Drizzle model) — parallel OK, deploy together
+
+DEPLOY GROUP 2 (Core Logic):
+  T-03 (signalManager.service.ts) — independent, can deploy alone
+
+DEPLOY GROUP 3 (Pipeline Integration):
+  T-04 (aiWorkflow.cron.ts) + T-05 (signalPerformance.cron.ts) — both depend on T-01+T-02+T-03
+
+DEPLOY GROUP 4 (UI Overhaul):
+  T-06 (scorecard controller) + T-07 (scorecard frontend) — T-07 depends on T-06
+```
+
+---
+
+### Tech Lead Guardrails (MANDATORY)
+
+1. **`radarSignals` table stays append-only** — never UPDATE or DELETE from it. It's a feed.
+2. **All state management goes through `signalPerformance`** — that's where isActive, upgrades, closes happen.
+3. **One active signal per coin** — enforced at application level, not DB constraint (DB can have multiple if race condition, but decision logic picks the first).
+4. **Signal upgrade does NOT reset entryAt or entryPrice** — the upgrade just changes verdict on the existing row.
+5. **`decideSignalAction()` must be fail-safe** — if price API is down, default to skip, never block the pipeline.
+6. **Zero `any` types** across all new/modified code.
+7. **Backward-compatible** — existing `getScorecardHandler` consumers must not break until T-06/T-07 deploy together.
+8. **SQL migration must include backfill** — `UPDATE signal_performance SET is_active = true WHERE is_active IS NULL` for existing rows.
+
+---
+
+### ⚠️ GUARDRAIL CONFLICT FLAGGED
+
+**Guardrail #1 vs nextstep.md Task 3 Code:**
+The nextstep.md blueprint includes an `UPDATE radarSignals` call inside `executeSignalDecision()` (upgrade path). This **VIOLATES** Guardrail #1 ("radarSignals stays append-only"). The Strategic Planner has **removed** the radar update from T-03 below. Only `signalPerformance` gets the verdict upgrade. The radar feed remains untouched.
+
+---
+
+## 1. Planning Stage — Strategic Planner Breakdown
+
+---
+
+### T-01: SQL Migration — Add Lifecycle Columns to `signal_performance`
+
+**File (CREATE):** `backend/scripts/migrate-signal-active.sql`
+**Assigned To:** Senior Developer
+**Status:** ✅ Done
+**Depends On:** None (must run FIRST before any code changes)
+
+**Target:** Create SQL migration to add 4 new columns to `signal_performance` table, create a partial index for active signal lookups, and backfill existing rows.
+
+**Exact SQL to write:**
+
+```sql
+-- Phase 21: Multi-Timeframe Signal System
+-- Add active/closed tracking to signal_performance
+
+ALTER TABLE signal_performance ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE NOT NULL;
+ALTER TABLE signal_performance ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP;
+ALTER TABLE signal_performance ADD COLUMN IF NOT EXISTS exit_price REAL;
+ALTER TABLE signal_performance ADD COLUMN IF NOT EXISTS realized_pnl REAL;
+
+-- Index for finding active signals per coin (partial index — only WHERE is_active = true)
+CREATE INDEX IF NOT EXISTS idx_signal_perf_active ON signal_performance(coin_symbol, is_active) WHERE is_active = true;
+
+-- Backfill existing rows: mark all current rows as active
+UPDATE signal_performance SET is_active = true WHERE is_active IS NULL;
+```
+
+**Column details:**
+| Column | Type | Default | Nullable | Purpose |
+|---|---|---|---|---|
+| `is_active` | `BOOLEAN` | `TRUE` | `NOT NULL` | Tracks whether signal is currently active (one per coin) |
+| `closed_at` | `TIMESTAMP` | `NULL` | nullable | Set when signal is closed (direction change) |
+| `exit_price` | `REAL` | `NULL` | nullable | Price at close time |
+| `realized_pnl` | `REAL` | `NULL` | nullable | Final P&L percentage at close |
+
+**Existing table context (for reference):**
+- Current table: `signal_performance` — columns defined at `backend/src/models/market.model.ts:96-118`
+- Existing columns: `id, signalId, coinSymbol, verdict, sentiment, entryPrice, entryAt, price24h, price7d, price30d, pnl24h, pnl7d, pnl30d, isWin7d, isWin30d, createdAt`
+
+**How to run:**
+```bash
+psql $DATABASE_URL -f backend/scripts/migrate-signal-active.sql
+```
+
+**Precedent files (existing migrations for reference):**
+- `backend/scripts/migrate-signal-performance.sql` (Phase 18)
+- `backend/scripts/migrate-strategic-outlook.sql` (Phase 15)
+
+**Verification Checklist:**
+- [x] File created at `backend/scripts/migrate-signal-active.sql`
+- [x] 4 `ALTER TABLE` statements with `IF NOT EXISTS`
+- [x] 1 `CREATE INDEX` with partial `WHERE is_active = true`
+- [x] 1 backfill `UPDATE` statement
+- [x] SQL syntax is valid PostgreSQL (no MySQL-isms)
+- [x] Column names match snake_case convention used by Drizzle
+- [x] `is_active` has `DEFAULT TRUE NOT NULL` (existing rows get `true` via backfill)
+
+---
+
+### T-02: Update Drizzle Model — Add 4 New Columns to `signalPerformance`
+
+**File (MODIFY):** `backend/src/models/market.model.ts`
+**Assigned To:** Senior Developer
+**Status:** ✅ Done
+**Depends On:** None (can be done in parallel with T-01, must deploy together)
+
+**Target:** Add `isActive`, `closedAt`, `exitPrice`, `realizedPnl` columns to the Drizzle `signalPerformance` table definition to match the SQL migration in T-01.
+
+**Exact insertion point — AFTER line 115 (`isWin30d`) and BEFORE line 117 (`createdAt`):**
+
+**BEFORE (lines 96-118):**
+```typescript
+export const signalPerformance = pgTable('signal_performance', {
+    id: serial('id').primaryKey(),
+    signalId: integer('signal_id').references(() => radarSignals.id).notNull(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    verdict: varchar('verdict', { length: 20 }).notNull(),
+    sentiment: varchar('sentiment', { length: 20 }),
+
+    entryPrice: real('entry_price').notNull(),
+    entryAt: timestamp('entry_at').notNull(),
+
+    price24h: real('price_24h'),
+    price7d: real('price_7d'),
+    price30d: real('price_30d'),
+
+    pnl24h: real('pnl_24h'),
+    pnl7d: real('pnl_7d'),
+    pnl30d: real('pnl_30d'),
+
+    isWin7d: boolean('is_win_7d'),
+    isWin30d: boolean('is_win_30d'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+```
+
+**AFTER (lines 96-122):**
+```typescript
+export const signalPerformance = pgTable('signal_performance', {
+    id: serial('id').primaryKey(),
+    signalId: integer('signal_id').references(() => radarSignals.id).notNull(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    verdict: varchar('verdict', { length: 20 }).notNull(),
+    sentiment: varchar('sentiment', { length: 20 }),
+
+    entryPrice: real('entry_price').notNull(),
+    entryAt: timestamp('entry_at').notNull(),
+
+    price24h: real('price_24h'),
+    price7d: real('price_7d'),
+    price30d: real('price_30d'),
+
+    pnl24h: real('pnl_24h'),
+    pnl7d: real('pnl_7d'),
+    pnl30d: real('pnl_30d'),
+
+    isWin7d: boolean('is_win_7d'),
+    isWin30d: boolean('is_win_30d'),
+
+    isActive:       boolean('is_active').default(true).notNull(),
+    closedAt:       timestamp('closed_at'),
+    exitPrice:      real('exit_price'),
+    realizedPnl:    real('realized_pnl'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+```
+
+**New columns (4):**
+| Drizzle Name | DB Column | Type | Default | Nullable |
+|---|---|---|---|---|
+| `isActive` | `is_active` | `boolean()` | `true` | `notNull()` |
+| `closedAt` | `closed_at` | `timestamp()` | none | yes |
+| `exitPrice` | `exit_price` | `real()` | none | yes |
+| `realizedPnl` | `realized_pnl` | `real()` | none | yes |
+
+**Important notes:**
+- `boolean` is already imported at line 3 from `drizzle-orm/pg-core` — no new import needed
+- `timestamp` is already imported at line 2 — no new import needed
+- `real` is already imported at line 2 — no new import needed
+- Column ordering: lifecycle columns (isActive, closedAt, exitPrice, realizedPnl) placed after tracking columns (isWin7d, isWin30d) and before createdAt
+- This matches the SQL migration column order from T-01
+
+**Verification Checklist:**
+- [x] 4 new columns added between lines 116-119 (after `isWin30d`, before `createdAt`)
+- [x] `isActive` uses `boolean('is_active').default(true).notNull()`
+- [x] `closedAt` uses `timestamp('closed_at')` — no default, nullable
+- [x] `exitPrice` uses `real('exit_price')` — no default, nullable
+- [x] `realizedPnl` uses `real('realized_pnl')` — no default, nullable
+- [x] No new imports needed (boolean, timestamp, real already imported)
+- [x] DB column names (snake_case) match SQL migration exactly
+- [x] Drizzle column names (camelCase) follow existing convention
+- [x] `tsc --noEmit` clean
+- [x] Zero `any` types
+
+---
+
+### T-03: Create `signalManager.service.ts` — Signal Decision Logic Engine
+
+**File (CREATE):** `backend/src/services/signalManager.service.ts`
+**Assigned To:** Senior Developer
+**Status:** ✅ Done
+**Depends On:** T-01 + T-02 (Drizzle model must have isActive column before queries reference it)
+
+**Target:** Create the core signal decision engine that implements the multi-timeframe signal system. Two exported functions: `decideSignalAction()` (pure decision) and `executeSignalDecision()` (side-effect executor).
+
+**Full implementation outline:**
+
+**Imports required:**
+```typescript
+import { db } from '../config/db';
+import { radarSignals, signalPerformance } from '../models/market.model';
+import { eq, and, desc } from 'drizzle-orm';
+import { getPriceWithFallback, type PriceResult } from './priceService';
+```
+
+**Types to define:**
+```typescript
+type SignalDirection = 'bullish' | 'bearish';
+type SignalVerdict = 'STRONG_BUY' | 'BUY' | 'SELL' | 'STRONG_SELL';
+
+interface SignalDecision {
+    action: 'create' | 'upgrade' | 'close_and_replace' | 'skip';
+    verdict: SignalVerdict;
+    closedSignal?: {
+        id: number;
+        exitPrice: number;
+        realizedPnl: number;
+        closedAt: Date;
+    };
+    reason: string;
+}
+```
+
+**Helper functions (internal, not exported):**
+
+1. `verdictToDirection(verdict: string): SignalDirection` — returns `'bullish'` for STRONG_BUY/BUY, `'bearish'` for SELL/STRONG_SELL
+2. `isStrongVerdict(verdict: string): boolean` — returns `true` only for STRONG_BUY or STRONG_SELL
+3. `canUpgrade(oldVerdict: string): boolean` — returns `true` only for BUY or SELL (not STRONG_*)
+
+**Export 1: `decideSignalAction(coinSymbol: string, newVerdict: SignalVerdict): Promise<SignalDecision>`**
+
+**Logic flow (MUST follow the Decision Matrix from nextstep.md:2037-2049):**
+
+```
+Step 1: Find active signal for coinSymbol
+  → Query: db.select().from(signalPerformance).where(and(eq(signalPerformance.coinSymbol, coinSymbol), eq(signalPerformance.isActive, true))).limit(1)
+  → If no active signal found → return { action: 'create', verdict: newVerdict, reason: '...' }
+
+Step 2: Determine directions
+  → oldDirection = verdictToDirection(activeSignal.verdict)
+  → newDirection = verdictToDirection(newVerdict)
+
+Step 3: Same direction check
+  → If oldDirection === newDirection:
+    → If canUpgrade(active.verdict) AND isStrongVerdict(newVerdict):
+      → Fetch price via getPriceWithFallback(coinSymbol)
+      → If price fails OR price.price <= 0 → return { action: 'skip', ... }  ← FAIL-SAFE
+      → Calculate tradePnl: ((price - entryPrice) / entryPrice) * 100, negate for bearish
+      → If tradePnl > 0 → return { action: 'upgrade', verdict: newVerdict, reason: '...' }
+    → Otherwise → return { action: 'skip', verdict: active.verdict, reason: '...' }
+
+Step 4: Direction changed
+  → Fetch price via getPriceWithFallback(coinSymbol)
+  → If price fails OR price.price <= 0 → return { action: 'skip', ... }  ← FAIL-SAFE
+  → Calculate tradePnl for the closing signal
+  → return { action: 'close_and_replace', verdict: newVerdict, closedSignal: { id, exitPrice, realizedPnl, closedAt }, reason: '...' }
+```
+
+**Export 2: `executeSignalDecision(coinSymbol: string, signalText: string, sentiment: string, impactScore: number, decision: SignalDecision): Promise<number | null>`**
+
+**Logic flow:**
+
+```
+Step 1: Close old signal (if action === 'close_and_replace')
+  → UPDATE signalPerformance SET isActive=false, closedAt, exitPrice, realizedPnl WHERE id = decision.closedSignal.id
+  → console.log with signal close details
+
+Step 2: Upgrade existing signal (if action === 'upgrade')
+  → UPDATE signalPerformance SET verdict=decision.verdict WHERE coinSymbol=coinSymbol AND isActive=true
+  → ⚠️ DO NOT update radarSignals (Guardrail #1 — append-only feed)
+  → console.log with upgrade details
+  → return null (no new radar row created)
+
+Step 3: Skip (if action === 'skip')
+  → console.log with skip reason
+  → return null
+
+Step 4: Create new signal (if action === 'create')
+  → INSERT into radarSignals: { coinSymbol, signalText, sentiment, impactScore, newsId: null }
+  → Get returned ID
+  → Fetch price via getPriceWithFallback(coinSymbol)
+  → If price available AND insertedRadar exists:
+    → INSERT into signalPerformance: { signalId, coinSymbol, verdict, sentiment, entryPrice, entryAt: new Date(), isActive: true }
+    → console.log creation details
+    → return radar ID
+  → return null
+```
+
+**Critical design notes:**
+
+1. **Price fetch fail-safe (Guardrail #5):** EVERY `getPriceWithFallback` call must be guarded. If it returns `null` or `price <= 0`, default to `skip`. Never throw. Never block the pipeline.
+
+2. **No radar UPDATE (Guardrail #1):** The upgrade path only touches `signalPerformance`. The `radarSignals` table is NEVER updated. On upgrade, the old radar row stays as-is — it's a feed, not state.
+
+3. **Entry preservation (Guardrail #4):** Upgrade only changes `verdict`. The `entryAt` and `entryPrice` fields are NEVER touched during upgrade.
+
+4. **Close+Replace closes FIRST, then creates:** The DB operations must be sequential — close the old signal before creating the new one. This prevents a race condition where both are active.
+
+5. **`impactScore` type:** The function parameter is `number`. The caller passes `analysisResult.impactScore` which is a `number` from `DeepAnalysisResult`. No type coercion needed.
+
+6. **`sentiment` type:** The function parameter is `string`. The caller passes `analysisResult.sentiment` which is a `string` ('bullish'|'bearish'|'neutral'). No type coercion needed.
+
+**Precedent for reference:**
+- `backend/src/services/coin-memory.service.ts` — similar pattern of DB operations + console.log
+- `backend/src/services/priceService.ts:76-98` — `getPriceWithFallback(symbol)` returns `Promise<PriceResult | null>`
+
+**Verification Checklist:**
+- [x] File created at `backend/src/services/signalManager.service.ts`
+- [x] Zero `any` types (use `SignalDirection`, `SignalVerdict`, `SignalDecision` interfaces)
+- [x] `PriceResult` imported as type from `./priceService` (line 64-72 of priceService.ts)
+- [x] `decideSignalAction` exported — takes `(coinSymbol: string, newVerdict: SignalVerdict)` returns `Promise<SignalDecision>`
+- [x] `executeSignalDecision` exported — takes `(coinSymbol: string, signalText: string, sentiment: string, impactScore: number, decision: SignalDecision)` returns `Promise<number | null>`
+- [x] Price fetch is fail-safe: null check + `price <= 0` check → defaults to skip
+- [x] `radarSignals` is NEVER updated (Guardrail #1 — only INSERT in create path)
+- [x] Upgrade only changes `verdict` on `signalPerformance` (Guardrail #4 — no entryAt/entryPrice reset)
+- [x] Close sets `isActive=false, closedAt, exitPrice, realizedPnl`
+- [x] `SignalVerdict` is `'STRONG_BUY' | 'BUY' | 'SELL' | 'STRONG_SELL'` — no `NEUTRAL`
+- [x] `SignalDecision.action` is `'create' | 'upgrade' | 'close_and_replace' | 'skip'`
+- [x] Every DB operation has console.log for observability
+- [x] `tsc --noEmit` clean
+
+---
+
+### T-04: Integrate Signal Manager into AI Workflow Cron
+
+**File (MODIFY):** `backend/src/crons/aiWorkflow.cron.ts`
+**Assigned To:** Senior Developer
+**Status:** ✅ Done
+**Depends On:** T-01 + T-02 + T-03
+
+**Target:** Replace the current blind radar signal INSERT block (lines 521-548) with the smart signal management system using `decideSignalAction()` + `executeSignalDecision()`.
+
+**Sub-task 4A: Add import at top of file (line 19 area, with other service imports)**
+
+Add after line 19:
+```typescript
+import { decideSignalAction, executeSignalDecision } from '../services/signalManager.service';
+```
+
+**Sub-task 4B: Replace lines 519-548 (the 4g radar signal block)**
+
+**BEFORE (lines 519-548):**
+```typescript
+                const newsId = null;
+
+                // 4g. Radar signal for actionable verdicts
+                const actionableVerdicts = ['STRONG_BUY', 'STRONG_SELL', 'BUY', 'SELL'];
+                if (actionableVerdicts.includes(analysisResult.verdict)) {
+                    const insertedRadar = await db.insert(radarSignals).values({
+                        coinSymbol: symbol,
+                        signalText: analysisResult.signalText,
+                        sentiment: analysisResult.sentiment,
+                        impactScore: analysisResult.impactScore,
+                        newsId,
+                    }).returning({ id: radarSignals.id });
+
+                    // 4g-2. Record signal performance (entry price)
+                    try {
+                        const priceResult = await getPriceWithFallback(symbol);
+                        if (priceResult && priceResult.price > 0 && insertedRadar.length > 0) {
+                            await db.insert(signalPerformance).values({
+                                signalId: insertedRadar[0].id,
+                                coinSymbol: symbol,
+                                verdict: analysisResult.verdict,
+                                sentiment: analysisResult.sentiment,
+                                entryPrice: priceResult.price,
+                                entryAt: new Date(),
+                            });
+                        }
+                    } catch (perfErr) {
+                        console.error(`[AI Workflow] Failed to record signal performance for ${symbol}:`, perfErr instanceof Error ? perfErr.message : String(perfErr));
+                    }
+                }
+```
+
+**AFTER:**
+```typescript
+                // 4g. Radar signal for actionable verdicts (with smart signal management)
+                const actionableVerdicts: ReadonlyArray<'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL'> = ['STRONG_BUY', 'STRONG_SELL', 'BUY', 'SELL'];
+                if (actionableVerdicts.includes(analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL')) {
+                    try {
+                        const decision = await decideSignalAction(symbol, analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL');
+                        console.log(`[AI Workflow] Signal decision for ${symbol}: ${decision.action} — ${decision.reason}`);
+
+                        const signalId = await executeSignalDecision(
+                            symbol,
+                            analysisResult.signalText,
+                            analysisResult.sentiment,
+                            analysisResult.impactScore,
+                            decision
+                        );
+                    } catch (sigErr) {
+                        console.error(`[AI Workflow] Signal management failed for ${symbol}:`, sigErr instanceof Error ? sigErr.message : String(sigErr));
+                    }
+                }
+```
+
+**What changed:**
+- **Removed:** Direct `db.insert(radarSignals)` — now handled inside `executeSignalDecision`
+- **Removed:** Direct `db.insert(signalPerformance)` — now handled inside `executeSignalDecision`
+- **Removed:** `const newsId = null;` — no longer needed (passed as `null` inside `executeSignalDecision`)
+- **Added:** `decideSignalAction(symbol, verdict)` call — determines what to do
+- **Added:** `executeSignalDecision(...)` call — executes the decision
+- **Added:** `actionableVerdicts` typed as `ReadonlyArray<'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL'>` (zero `any`)
+- **Added:** Type assertion on `analysisResult.verdict` (because `DeepAnalysisResult.verdict` may be typed as `string`)
+
+**Note:** The `newsId` variable at line 519 is no longer used. It should be REMOVED. The `executeSignalDecision` function hardcodes `newsId: null` internally.
+
+**Variable in scope (verified from reading the file):**
+- `symbol` — coin symbol, string, available from the for loop at line 181
+- `analysisResult.verdict` — the AI verdict string
+- `analysisResult.signalText` — the signal text
+- `analysisResult.sentiment` — the sentiment ('bullish'|'bearish'|'neutral')
+- `analysisResult.impactScore` — the impact score number
+
+**Verification Checklist:**
+- [x] Import added for `decideSignalAction` and `executeSignalDecision` from `'../services/signalManager.service'`
+- [x] Lines 519-548 replaced with new signal management block
+- [x] `const newsId = null;` removed (no longer needed)
+- [x] No direct `db.insert(radarSignals)` remains in this file (except `backfillRadarSignals` function at line 618 which is a one-time utility)
+- [x] No direct `db.insert(signalPerformance)` remains in this file
+- [x] `actionableVerdicts` is properly typed — no `any`
+- [x] `analysisResult.verdict` cast to the narrow verdict type (no `any`)
+- [x] try-catch wraps the entire signal block — failure is non-blocking
+- [x] Error message uses `sigErr instanceof Error ? sigErr.message : String(sigErr)` pattern (no `any`)
+- [x] All other code in the file is UNTOUCHED — article writing, memory save, cache invalidation, etc.
+- [x] `tsc --noEmit` clean
+- [x] Zero `any` types
+
+---
+
+### T-05: Update Signal Performance Cron — Active-Only P&L Tracking
+
+**File (MODIFY):** `backend/src/crons/signalPerformance.cron.ts`
+**Assigned To:** Senior Developer
+**Status:** ✅ Done
+**Depends On:** T-01 + T-02 (signalPerformance model must have `isActive` column)
+
+**Target:** Add `isActive = true` filter to all three P&L queries (24h, 7d, 30d) so the cron only processes active signals. Closed signals already have `realizedPnl` and should not be updated.
+
+**Current file structure (85 lines total):**
+- Lines 1-5: Imports
+- Lines 7-80: `updateSignalPerformance()` function
+  - Lines 10-29: 24h P&L block (`need24h`)
+  - Lines 31-53: 7d P&L block (`need7d`)
+  - Lines 55-77: 30d P&L block (`need30d`)
+- Lines 82-85: `startSignalPerformanceCron()` scheduler
+
+**Sub-task 5A: Add `eq` import if not already present**
+
+**BEFORE (line 4):**
+```typescript
+import { eq, isNull, lte, and, sql } from 'drizzle-orm';
+```
+`eq` is already imported — no change needed.
+
+**Sub-task 5B: Add `isActive = true` filter to `need24h` query (line 10-16)**
+
+**BEFORE (lines 10-16):**
+```typescript
+    const need24h = await db.select()
+        .from(signalPerformance)
+        .where(and(
+            isNull(signalPerformance.price24h),
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '24 hours'`)
+        ))
+        .limit(50);
+```
+
+**AFTER:**
+```typescript
+    const need24h = await db.select()
+        .from(signalPerformance)
+        .where(and(
+            eq(signalPerformance.isActive, true),
+            isNull(signalPerformance.price24h),
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '24 hours'`)
+        ))
+        .limit(50);
+```
+
+**Sub-task 5C: Add `isActive = true` filter to `need7d` query (lines 31-37)**
+
+**BEFORE (lines 31-37):**
+```typescript
+    const need7d = await db.select()
+        .from(signalPerformance)
+        .where(and(
+            isNull(signalPerformance.price7d),
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '7 days'`)
+        ))
+        .limit(50);
+```
+
+**AFTER:**
+```typescript
+    const need7d = await db.select()
+        .from(signalPerformance)
+        .where(and(
+            eq(signalPerformance.isActive, true),
+            isNull(signalPerformance.price7d),
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '7 days'`)
+        ))
+        .limit(50);
+```
+
+**Sub-task 5D: Add `isActive = true` filter to `need30d` query (lines 55-61)**
+
+**BEFORE (lines 55-61):**
+```typescript
+    const need30d = await db.select()
+        .from(signalPerformance)
+        .where(and(
+            isNull(signalPerformance.price30d),
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '30 days'`)
+        ))
+        .limit(50);
+```
+
+**AFTER:**
+```typescript
+    const need30d = await db.select()
+        .from(signalPerformance)
+        .where(and(
+            eq(signalPerformance.isActive, true),
+            isNull(signalPerformance.price30d),
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '30 days'`)
+        ))
+        .limit(50);
+```
+
+**What changed:**
+- Each of the 3 queries (need24h, need7d, need30d) now has `eq(signalPerformance.isActive, true)` as the FIRST condition in the `and()` chain
+- This ensures the cron only computes P&L for active signals
+- Closed signals already have `realizedPnl` set by `executeSignalDecision()` and should NOT be updated
+- No other changes to the file — the P&L calculation logic, the for-loops, and the UPDATE statements remain identical
+
+**Verification Checklist:**
+- [x] `eq(signalPerformance.isActive, true)` added to need24h query (line ~12)
+- [x] `eq(signalPerformance.isActive, true)` added to need7d query (line ~33)
+- [x] `eq(signalPerformance.isActive, true)` added to need30d query (line ~57)
+- [x] Each `isActive` filter is the FIRST condition in `and()` chain (before `isNull` and `lte`)
+- [x] No other code changed — P&L calculation logic, for-loops, UPDATEs all untouched
+- [x] No new imports needed (`eq` already imported at line 4)
+- [x] `tsc --noEmit` clean
+- [x] Zero `any` types
+
+---
+
+### T-06: Rewrite Scorecard Controller — 3-Section Response Architecture
+
+**File (MODIFY):** `backend/src/controllers/market.controller.ts`
+**Assigned To:** Senior Developer
+**Status:** ✅ Done
+**Depends On:** T-01 + T-02 + T-03 (signalPerformance model and signalManager must be ready)
+
+**Target:** Completely rewrite `getScorecardHandler()` (lines 531-577) to return a 3-section response architecture: tactical signals (active), strategic stance (from `coinStrategicOutlook`), and closed signals (history with realized P&L).
+
+**Sub-task 6A: Add import for `coinStrategicOutlook`**
+
+**Current import at line 8:**
+```typescript
+    signalPerformance
+```
+
+**AFTER (add `coinStrategicOutlook`):**
+```typescript
+    signalPerformance, coinStrategicOutlook
+```
+
+**Sub-task 6B: Add import for `getPriceWithFallback` if not already present**
+
+Checking line 13 — `getPriceWithFallback` is already imported:
+```typescript
+import { getPriceWithFallback } from '../services/priceService';
+```
+No change needed.
+
+**Sub-task 6C: Replace entire `getScorecardHandler` function (lines 531-577)**
+
+**BEFORE (lines 531-577):**
+```typescript
+export async function getScorecardHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const cacheKey = 'scorecard:latest';
+        const cached = await getCache(cacheKey);
+        if (cached) { res.json(cached); return; }
+
+        const signals = await db.select()
+            .from(signalPerformance)
+            .orderBy(desc(signalPerformance.entryAt))
+            .limit(100);
+
+        const withPnl7d = signals.filter(s => s.pnl7d !== null);
+        const wins7d = withPnl7d.filter(s => s.isWin7d === true);
+        const totalSignals = signals.length;
+        const winRate7d = withPnl7d.length > 0
+            ? Math.round((wins7d.length / withPnl7d.length) * 100) : null;
+        const avgReturn7d = withPnl7d.length > 0
+            ? withPnl7d.reduce((sum, s) => sum + (s.pnl7d ?? 0), 0) / withPnl7d.length : null;
+
+        const coinMap = new Map<string, { signals: number; wins: number; totalPnl: number }>();
+        for (const s of withPnl7d) {
+            const existing = coinMap.get(s.coinSymbol) ?? { signals: 0, wins: 0, totalPnl: 0 };
+            existing.signals++;
+            if (s.isWin7d) existing.wins++;
+            existing.totalPnl += s.pnl7d ?? 0;
+            coinMap.set(s.coinSymbol, existing);
+        }
+
+        const bestCall = withPnl7d.length > 0
+            ? withPnl7d.reduce((best, s) => (s.pnl7d ?? 0) > (best.pnl7d ?? -Infinity) ? s : best, withPnl7d[0])
+            : null;
+
+        const response = {
+            overall: {
+                totalSignals,
+                winRate7d,
+                avgReturn7d: avgReturn7d !== null ? parseFloat(avgReturn7d.toFixed(1)) : null,
+                bestCall
+            },
+            recent: signals.slice(0, 20),
+            perCoin: Object.fromEntries(coinMap),
+        };
+
+        await setCache(cacheKey, response, 300);
+        res.json(response);
+    } catch (err) { next(err); }
+}
+```
+
+**AFTER (complete replacement):**
+```typescript
+export async function getScorecardHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const cacheKey = 'scorecard:latest';
+        const cached = await getCache(cacheKey);
+        if (cached) { res.json(cached); return; }
+
+        // --- Section 1: Tactical Signals (active, one per coin) ---
+        const activeSignals = await db.select()
+            .from(signalPerformance)
+            .where(eq(signalPerformance.isActive, true))
+            .orderBy(desc(signalPerformance.entryAt))
+            .limit(50);
+
+        const tacticalSignals: Array<{
+            id: number;
+            coinSymbol: string;
+            verdict: string;
+            sentiment: string | null;
+            entryPrice: number;
+            entryAt: Date;
+            unrealizedPnl: number | null;
+            currentPrice: number | null;
+        }> = [];
+
+        for (const row of activeSignals) {
+            const price = await getPriceWithFallback(row.coinSymbol);
+            let unrealizedPnl: number | null = null;
+            if (price && price.price > 0) {
+                const rawPnl = ((price.price - row.entryPrice) / row.entryPrice) * 100;
+                const isBearish = row.verdict === 'SELL' || row.verdict === 'STRONG_SELL';
+                unrealizedPnl = isBearish ? -rawPnl : rawPnl;
+            }
+            tacticalSignals.push({
+                id: row.id,
+                coinSymbol: row.coinSymbol,
+                verdict: row.verdict,
+                sentiment: row.sentiment,
+                entryPrice: row.entryPrice,
+                entryAt: row.entryAt,
+                unrealizedPnl,
+                currentPrice: price?.price ?? null,
+            });
+        }
+
+        // --- Section 2: Closed Signals (with realized P&L) ---
+        const closedSignals = await db.select()
+            .from(signalPerformance)
+            .where(eq(signalPerformance.isActive, false))
+            .orderBy(desc(signalPerformance.closedAt))
+            .limit(30);
+
+        const closedWithPnl = closedSignals.filter(s => s.realizedPnl !== null);
+        const wins = closedWithPnl.filter(s => s.realizedPnl !== null && s.realizedPnl > 0);
+        const totalClosed = closedWithPnl.length;
+        const winRate = totalClosed > 0 ? Math.round((wins.length / totalClosed) * 100) : null;
+        const avgRealizedPnl = totalClosed > 0
+            ? closedWithPnl.reduce((sum, s) => sum + (s.realizedPnl ?? 0), 0) / totalClosed
+            : null;
+        const bestTrade = closedWithPnl.length > 0
+            ? closedWithPnl.reduce((best, s) => ((s.realizedPnl ?? 0) > (best.realizedPnl ?? -Infinity) ? s : best), closedWithPnl[0])
+            : null;
+
+        // --- Section 3: Strategic Stance (from coin_strategic_outlook — Phase 15) ---
+        const strategicStance = await db.select()
+            .from(coinStrategicOutlook)
+            .orderBy(desc(coinStrategicOutlook.updatedAt))
+            .limit(10);
+
+        const response = {
+            tactical: tacticalSignals,
+            strategic: strategicStance,
+            closed: closedSignals.slice(0, 20),
+            overall: {
+                activePositions: tacticalSignals.length,
+                totalClosed,
+                wins: wins.length,
+                winRate,
+                avgRealizedPnl: avgRealizedPnl !== null ? parseFloat(avgRealizedPnl.toFixed(1)) : null,
+                bestTrade,
+            },
+        };
+
+        await setCache(cacheKey, response, 300);
+        res.json(response);
+    } catch (err) { next(err); }
+}
+```
+
+**Key design decisions:**
+
+1. **Response shape change (BREAKING for frontend):** The old response had `{ overall, recent, perCoin }`. The new response has `{ tactical, strategic, closed, overall }`. This is intentionally breaking — T-07 (frontend) must deploy simultaneously.
+
+2. **Win rate is now based on closed signals, not 7d P&L:** Old logic counted wins from `isWin7d` (which requires 7 days to fill). New logic counts wins from `realizedPnl > 0` (available immediately when a signal is closed).
+
+3. **Unrealized P&L computed at query time:** For each active signal, current price is fetched and unrealized P&L is calculated. This is NOT stored in DB (per nextstep.md risk note #3).
+
+4. **`closedAt` ordering for closed signals:** Uses `desc(signalPerformance.closedAt)` — nulls last by default in PostgreSQL, which is correct (rows without closedAt are still active).
+
+5. **`eq` is already imported** at line 11 from `drizzle-orm` — no new import needed.
+
+6. **No `perCoin` breakdown:** Replaced by the per-coin guarantee from the signal manager (one active signal per coin). The old perCoin was based on 7d P&L and was often empty.
+
+**Verification Checklist:**
+- [x] `coinStrategicOutlook` added to the model import at line 8
+- [x] `getScorecardHandler` completely rewritten (lines 531-577)
+- [x] Section 1: Active signals queried with `eq(signalPerformance.isActive, true)`, enriched with unrealized P&L
+- [x] Section 2: Closed signals queried with `eq(signalPerformance.isActive, false)`, ordered by `closedAt`
+- [x] Section 3: Strategic stance queried from `coinStrategicOutlook`
+- [x] Overall stats computed from closed signals (not 7d): winRate, avgRealizedPnl, bestTrade
+- [x] `tacticalSignals` array is explicitly typed — no `any`
+- [x] `tacticalSignals[].currentPrice` is `number | null` (not undefined)
+- [x] `tacticalSignals[].unrealizedPnl` is `number | null` (not undefined)
+- [x] Price fetch fail-safe: if `getPriceWithFallback` returns null, `unrealizedPnl` stays `null`
+- [x] Cache key `scorecard:latest` unchanged (same as before)
+- [x] Cache TTL 300 seconds unchanged
+- [x] All other controller functions untouched (`getRadarSignals`, `getMasterArticle`, etc.)
+- [x] `tsc --noEmit` clean
+- [x] Zero `any` types
+
+---
+
+### T-07: Rewrite Scorecard Frontend — 4-Section Layout
+
+**File (MODIFY):** `frontend/src/app/(standard)/scorecard/page.tsx`
+**Assigned To:** Senior Developer
+**Status:** ✅ Done
+**Depends On:** T-06 (new response shape must be deployed first)
+
+**Target:** Complete rewrite of the scorecard page with 4 visual sections: Overall Stats Bar, Tactical Signals (active), Strategic Stance (long-term), and Closed Signals (history).
+
+**Current file:** 227 lines, server component, single `ScorecardPage` function
+
+**New TypeScript interfaces (replace lines 27-54):**
+
+```typescript
+interface TacticalSignal {
+    id: number;
+    coinSymbol: string;
+    verdict: string;
+    sentiment: string | null;
+    entryPrice: number;
+    entryAt: string;
+    unrealizedPnl: number | null;
+    currentPrice: number | null;
+}
+
+interface StrategicStance {
+    id: number;
+    coinSymbol: string;
+    marketPhase: string | null;
+    bullRunProbability: number | null;
+    recommendedAction: string | null;
+    updatedAt: string | null;
+}
+
+interface ClosedSignal {
+    id: number;
+    coinSymbol: string;
+    verdict: string;
+    sentiment: string | null;
+    entryPrice: number;
+    entryAt: string;
+    exitPrice: number | null;
+    realizedPnl: number | null;
+    closedAt: string | null;
+}
+
+interface OverallStats {
+    activePositions: number;
+    totalClosed: number;
+    wins: number;
+    winRate: number | null;
+    avgRealizedPnl: number | null;
+    bestTrade: ClosedSignal | null;
+}
+
+interface ScorecardData {
+    tactical: TacticalSignal[];
+    strategic: StrategicStance[];
+    closed: ClosedSignal[];
+    overall: OverallStats;
+}
+```
+
+**Keep existing helper functions (lines 56-78) — `pnlClass()`, `pnlFormat()`, `verdictBadge()` — unchanged.**
+
+**Add new helper function for relative time:**
+```typescript
+function timeAgo(dateStr: string): string {
+    const now = Date.now();
+    const date = new Date(dateStr).getTime();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 30) return `${diffDays}d ago`;
+    return `${Math.floor(diffDays / 30)}mo ago`;
+}
+
+function formatPrice(price: number | null): string {
+    if (price === null) return '—';
+    if (price >= 1) return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
+}
+
+function wyckoffColor(phase: string | null): string {
+    if (!phase) return 'text-[#555]';
+    const green = new Set(['Accumulation', 'Markup']);
+    const red = new Set(['Distribution', 'Markdown']);
+    if (green.has(phase)) return 'text-emerald-400';
+    if (red.has(phase)) return 'text-red-400';
+    return 'text-[#555]';
+}
+
+function durationBetween(start: string, end: string | null): string {
+    if (!end) return '—';
+    const diffMs = new Date(end).getTime() - new Date(start).getTime();
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays > 0) return `${diffDays}d`;
+    return `${diffHours}h`;
+}
+```
+
+**Complete page layout (replace lines 80-227):**
+
+```
+Empty state check:
+  → if (!data || (data.overall.activePositions === 0 && data.overall.totalClosed === 0))
+  → Show "No Signals Tracked Yet" (reuse existing empty state at lines 92-104)
+
+Section 1: Overall Stats Bar (5 stat cards in a grid)
+  → Active Positions | Closed Signals | Win Rate | Avg P&L | Best Trade
+  → Grid: `grid-cols-2 md:grid-cols-5 gap-3`
+  → Same card style: `bg-[#0A0A0A] border border-[#222] rounded-lg p-4`
+  → Best Trade shows: coinSymbol + pnlFormat(bestTrade.realizedPnl)
+
+Section 2: Tactical Signals (Active) — Table
+  → Header: "Tactical Signals"
+  → Subtitle: "Short-term active positions (1-3 days). One signal per coin."
+  → Columns: Coin | Signal | Entry $ | Current $ | Unrealized | Since
+  → Table style: same as existing (overflow-x-auto, border, dark theme)
+  → Coin: `font-mono font-semibold`
+  → Signal: verdict badge (reuse existing verdictBadge function)
+  → Entry $: `formatPrice(row.entryPrice)`
+  → Current $: `formatPrice(row.currentPrice)`
+  → Unrealized: colored with pnlClass, formatted with pnlFormat
+  → Since: `timeAgo(row.entryAt)`
+  → Empty state: "No active signals currently."
+
+Section 3: Strategic Stance (Long-term) — Table
+  → Only render if data.strategic.length > 0
+  → Header: "Strategic Stance"
+  → Subtitle: "Long-term outlook (weeks/months). From AI structural analysis."
+  → Columns: Coin | Wyckoff Phase | Bull Probability | Action
+  → Wyckoff: colored with wyckoffColor function
+  → Bull Prob: show as `${value}%` with a simple inline progress bar (div with width percentage)
+  → Action: `recommendedAction` or "—"
+  → Empty state: hidden (section only renders if strategic.length > 0)
+
+Section 4: Closed Signals (History) — Table
+  → Only render if data.closed.length > 0
+  → Header: "Closed Signals"
+  → Subtitle: "Historical signal performance with realized P&L."
+  → Columns: Coin | Signal | Entry → Exit | P&L | Held | Result
+  → Entry → Exit: `formatPrice(entryPrice) → ${exitPrice ? formatPrice(exitPrice) : '—'}`
+  → P&L: colored with pnlClass, formatted with pnlFormat
+  → Held: `durationBetween(entryAt, closedAt)`
+  → Result: checkmark (✅) for wins, X (❌) for losses
+  → Empty state: hidden (section only renders if closed.length > 0)
+
+NFA Disclaimer (keep existing at lines 213-223)
+```
+
+**Design system rules:**
+- Dark theme: `bg-black` page, `bg-[#0A0A0A]` cards, `border-[#222]` borders
+- Text colors: `text-white` headings, `text-[#666]` labels, `text-[#888]` secondary
+- Font: `font-mono` for numbers/symbols, default for text
+- Tailwind only — no inline styles, no CSS modules
+- Material icons: `material-symbols-outlined` class
+- Responsive: `md:` breakpoints for grid adjustments
+
+**Precedent files (for consistent styling):**
+- `frontend/src/features/home/components/TopMovers.tsx` — dark card + table styling
+- `frontend/src/features/home/components/MarketMoodGauge.tsx` — stat card styling
+- Current scorecard page (lines 108-226) — existing dark theme tokens
+
+**Verification Checklist:**
+- [x] 4 new TypeScript interfaces defined: `TacticalSignal`, `StrategicStance`, `ClosedSignal`, `OverallStats`
+- [x] `ScorecardData` interface matches new backend response shape exactly
+- [x] Zero `any` types across all interfaces and functions
+- [x] Server component (no `'use client'` — same as current)
+- [x] `metadata` export unchanged (lines 8-25)
+- [x] `revalidate = 360` unchanged (line 4)
+- [x] `apiClient.get<ScorecardData>('/market/scorecard')` updated with new type
+- [x] Empty state handles both `!data` and `activePositions === 0 && totalClosed === 0`
+- [x] Section 1: 5 stat cards in responsive grid
+- [x] Section 2: Tactical table with Coin, Signal, Entry, Current, Unrealized, Since columns
+- [x] Section 3: Strategic table with Coin, Wyckoff, Bull Prob, Action columns (conditional render)
+- [x] Section 4: Closed table with Coin, Signal, Entry→Exit, P&L, Held, Result columns (conditional render)
+- [x] NFA disclaimer preserved at bottom
+- [x] `timeAgo()` handles minutes, hours, days, months
+- [x] `formatPrice()` handles null, high prices (2 decimals), low prices (6 decimals)
+- [x] `wyckoffColor()` returns emerald for Accumulation/Markup, red for Distribution/Markdown
+- [x] `durationBetween()` returns days or hours
+- [x] Bull probability shown as `XX%` with visual progress bar
+- [x] Dark theme consistent with existing pages
+- [x] No new imports (all existing Tailwind classes and material icons)
+- [x] `tsc --noEmit` clean (frontend)
+
+---
+
+### T-VERIFY: Final Verification (run after all tasks)
+
+**Assigned To:** Senior Developer
+**Status:** ⏳ Pending
+**Depends On:** All T-01 through T-07
+
+**Backend checks:**
+1. `cd backend && npx tsc --noEmit` — zero errors
+2. `rg 'any' backend/src/services/signalManager.service.ts` — zero matches (excluding comments)
+3. `rg 'any' backend/src/crons/aiWorkflow.cron.ts` — only in English prompt text
+4. `rg 'any' backend/src/crons/signalPerformance.cron.ts` — zero matches
+5. `rg 'any' backend/src/controllers/market.controller.ts` — zero matches
+6. Verify `signalPerformance` model has `isActive`, `closedAt`, `exitPrice`, `realizedPnl`
+7. Verify `radarSignals` is NEVER updated (only INSERT in executeSignalDecision and backfillRadarSignals)
+8. Verify upgrade path does NOT touch `entryAt` or `entryPrice`
+9. Verify `decideSignalAction` defaults to skip on price API failure
+
+**Frontend checks:**
+10. `cd frontend && npx tsc --noEmit` — zero errors
+11. Verify `ScorecardData` interface matches new backend response shape
+12. Verify all 4 sections render (or conditionally hide when empty)
+
+**Integration checks:**
+13. Verify `/market/scorecard` route still works (same path, new response shape)
+14. Verify `getScorecardHandler` returns `{ tactical, strategic, closed, overall }`
+15. Verify cache key `scorecard:latest` is cleared on deploy (manual Redis flush or let TTL expire)
+
+**Status:** PLANNING COMPLETE — READY FOR EXECUTION (Senior Developer)
 
 ---
 

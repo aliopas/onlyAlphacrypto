@@ -5,7 +5,7 @@ import {
     marketInsights, dailyAlphaFocus, dailyMarketMood,
     radarSignals, airdropProjects, priceSnapshots,
     coinMasterArticles, coinTimelineUpdates, coinIntelligenceCache,
-    signalPerformance
+    signalPerformance, coinStrategicOutlook
 } from '../models/index';
 import { getStrategicOutlook, getActiveEventResponses } from '../services/strategicOutlook.service';
 import { desc, eq, gte, and, asc, sql } from 'drizzle-orm';
@@ -534,41 +534,80 @@ export async function getScorecardHandler(req: Request, res: Response, next: Nex
         const cached = await getCache(cacheKey);
         if (cached) { res.json(cached); return; }
 
-        const signals = await db.select()
+        // --- Section 1: Tactical Signals (active, one per coin) ---
+        const activeSignals = await db.select()
             .from(signalPerformance)
+            .where(eq(signalPerformance.isActive, true))
             .orderBy(desc(signalPerformance.entryAt))
-            .limit(100);
+            .limit(50);
 
-        const withPnl7d = signals.filter(s => s.pnl7d !== null);
-        const wins7d = withPnl7d.filter(s => s.isWin7d === true);
-        const totalSignals = signals.length;
-        const winRate7d = withPnl7d.length > 0
-            ? Math.round((wins7d.length / withPnl7d.length) * 100) : null;
-        const avgReturn7d = withPnl7d.length > 0
-            ? withPnl7d.reduce((sum, s) => sum + (s.pnl7d ?? 0), 0) / withPnl7d.length : null;
+        const tacticalSignals: Array<{
+            id: number;
+            coinSymbol: string;
+            verdict: string;
+            sentiment: string | null;
+            entryPrice: number;
+            entryAt: Date;
+            unrealizedPnl: number | null;
+            currentPrice: number | null;
+        }> = [];
 
-        const coinMap = new Map<string, { signals: number; wins: number; totalPnl: number }>();
-        for (const s of withPnl7d) {
-            const existing = coinMap.get(s.coinSymbol) ?? { signals: 0, wins: 0, totalPnl: 0 };
-            existing.signals++;
-            if (s.isWin7d) existing.wins++;
-            existing.totalPnl += s.pnl7d ?? 0;
-            coinMap.set(s.coinSymbol, existing);
+        for (const row of activeSignals) {
+            const price = await getPriceWithFallback(row.coinSymbol);
+            let unrealizedPnl: number | null = null;
+            if (price && price.price > 0) {
+                const rawPnl = ((price.price - row.entryPrice) / row.entryPrice) * 100;
+                const isBearish = row.verdict === 'SELL' || row.verdict === 'STRONG_SELL';
+                unrealizedPnl = isBearish ? -rawPnl : rawPnl;
+            }
+            tacticalSignals.push({
+                id: row.id,
+                coinSymbol: row.coinSymbol,
+                verdict: row.verdict,
+                sentiment: row.sentiment,
+                entryPrice: row.entryPrice,
+                entryAt: row.entryAt,
+                unrealizedPnl,
+                currentPrice: price?.price ?? null,
+            });
         }
 
-        const bestCall = withPnl7d.length > 0
-            ? withPnl7d.reduce((best, s) => (s.pnl7d ?? 0) > (best.pnl7d ?? -Infinity) ? s : best, withPnl7d[0])
+        // --- Section 2: Closed Signals (with realized P&L) ---
+        const closedSignals = await db.select()
+            .from(signalPerformance)
+            .where(eq(signalPerformance.isActive, false))
+            .orderBy(desc(signalPerformance.closedAt))
+            .limit(30);
+
+        const closedWithPnl = closedSignals.filter(s => s.realizedPnl !== null);
+        const wins = closedWithPnl.filter(s => s.realizedPnl !== null && s.realizedPnl > 0);
+        const totalClosed = closedWithPnl.length;
+        const winRate = totalClosed > 0 ? Math.round((wins.length / totalClosed) * 100) : null;
+        const avgRealizedPnl = totalClosed > 0
+            ? closedWithPnl.reduce((sum, s) => sum + (s.realizedPnl ?? 0), 0) / totalClosed
+            : null;
+        const bestTrade = closedWithPnl.length > 0
+            ? closedWithPnl.reduce((best, s) => ((s.realizedPnl ?? 0) > (best.realizedPnl ?? -Infinity) ? s : best), closedWithPnl[0])
             : null;
 
+        // --- Section 3: Strategic Stance (from coin_strategic_outlook — Phase 15) ---
+        const strategicStance = await db.select()
+            .from(coinStrategicOutlook)
+            .orderBy(desc(coinStrategicOutlook.updatedAt))
+            .limit(10);
+
         const response = {
+            tactical: tacticalSignals,
+            strategic: strategicStance,
+            closed: closedSignals.slice(0, 20),
             overall: {
-                totalSignals,
-                winRate7d,
-                avgReturn7d: avgReturn7d !== null ? parseFloat(avgReturn7d.toFixed(1)) : null,
-                bestCall
+                activePositions: tacticalSignals.length,
+                totalClosed,
+                wins: wins.length,
+                winRate,
+                avgRealizedPnl: avgRealizedPnl !== null ? parseFloat(avgRealizedPnl.toFixed(1)) : null,
+                bestTrade,
             },
-            recent: signals.slice(0, 20),
-            perCoin: Object.fromEntries(coinMap),
         };
 
         await setCache(cacheKey, response, 300);

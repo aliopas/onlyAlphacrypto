@@ -10,6 +10,7 @@ async function updateSignalPerformance(): Promise<void> {
     const need24h = await db.select()
         .from(signalPerformance)
         .where(and(
+            eq(signalPerformance.isActive, true),
             isNull(signalPerformance.price24h),
             lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '24 hours'`)
         ))
@@ -31,6 +32,7 @@ async function updateSignalPerformance(): Promise<void> {
     const need7d = await db.select()
         .from(signalPerformance)
         .where(and(
+            eq(signalPerformance.isActive, true),
             isNull(signalPerformance.price7d),
             lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '7 days'`)
         ))
@@ -55,6 +57,7 @@ async function updateSignalPerformance(): Promise<void> {
     const need30d = await db.select()
         .from(signalPerformance)
         .where(and(
+            eq(signalPerformance.isActive, true),
             isNull(signalPerformance.price30d),
             lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '30 days'`)
         ))

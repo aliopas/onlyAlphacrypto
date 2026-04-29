@@ -17,6 +17,7 @@ import { isDuplicateByEmbedding } from '../services/similarity.service';
 import { storeEmbedding } from '../services/embedding.service';
 import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates, signalPerformance } from '../models/market.model';
 import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } from '../services/strategicOutlook.service';
+import { decideSignalAction, executeSignalDecision } from '../services/signalManager.service';
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 
@@ -516,34 +517,22 @@ export async function runAiWorkflow(): Promise<void> {
 
                 await storeEmbedding(item.id, item.title);
 
-                const newsId = null;
-
-                // 4g. Radar signal for actionable verdicts
-                const actionableVerdicts = ['STRONG_BUY', 'STRONG_SELL', 'BUY', 'SELL'];
-                if (actionableVerdicts.includes(analysisResult.verdict)) {
-                    const insertedRadar = await db.insert(radarSignals).values({
-                        coinSymbol: symbol,
-                        signalText: analysisResult.signalText,
-                        sentiment: analysisResult.sentiment,
-                        impactScore: analysisResult.impactScore,
-                        newsId,
-                    }).returning({ id: radarSignals.id });
-
-                    // 4g-2. Record signal performance (entry price)
+                // 4g. Radar signal for actionable verdicts (with smart signal management)
+                const actionableVerdicts: ReadonlyArray<'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL'> = ['STRONG_BUY', 'STRONG_SELL', 'BUY', 'SELL'];
+                if (actionableVerdicts.includes(analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL')) {
                     try {
-                        const priceResult = await getPriceWithFallback(symbol);
-                        if (priceResult && priceResult.price > 0 && insertedRadar.length > 0) {
-                            await db.insert(signalPerformance).values({
-                                signalId: insertedRadar[0].id,
-                                coinSymbol: symbol,
-                                verdict: analysisResult.verdict,
-                                sentiment: analysisResult.sentiment,
-                                entryPrice: priceResult.price,
-                                entryAt: new Date(),
-                            });
-                        }
-                    } catch (perfErr) {
-                        console.error(`[AI Workflow] Failed to record signal performance for ${symbol}:`, perfErr instanceof Error ? perfErr.message : String(perfErr));
+                        const decision = await decideSignalAction(symbol, analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL');
+                        console.log(`[AI Workflow] Signal decision for ${symbol}: ${decision.action} — ${decision.reason}`);
+
+                        const signalId = await executeSignalDecision(
+                            symbol,
+                            analysisResult.signalText,
+                            analysisResult.sentiment,
+                            analysisResult.impactScore,
+                            decision
+                        );
+                    } catch (sigErr) {
+                        console.error(`[AI Workflow] Signal management failed for ${symbol}:`, sigErr instanceof Error ? sigErr.message : String(sigErr));
                     }
                 }
 

@@ -114,6 +114,11 @@ export const signalPerformance = pgTable('signal_performance', {
     isWin7d: boolean('is_win_7d'),
     isWin30d: boolean('is_win_30d'),
 
+    isActive:       boolean('is_active').default(true).notNull(),
+    closedAt:       timestamp('closed_at'),
+    exitPrice:      real('exit_price'),
+    realizedPnl:    real('realized_pnl'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

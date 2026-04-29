@@ -1,7 +1,7 @@
 # ONLYALPHA — PROJECT STATE
 
-**Last Updated:** April 27, 2026
-**Current Focus:** Phase 20 — AI Pipeline Quality Fix: Memory Injection, Minor Update Overhaul & Model Upgrade (P0)
+**Last Updated:** April 29, 2026
+**Current Focus:** Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (P0)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,11 +15,21 @@
 2. **Modular Boundaries:** Cache logic -> `CacheManager`. AI calls -> `AIGateway`. Prompts -> `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## Current Mission: NONE — Awaiting Next Assignment
+## Current Mission: Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (P0)
+
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` — Phase 21 section (lines 1955-2724)
+**Tasks:** 7 (T-01 through T-07) + T-VERIFY — Granular Micro-Tasks Ready
+**Scope:** 1 new file (`signalManager.service.ts`), 6 modified files, 1 SQL migration
+**Status:** PLANNED — Ready for Senior Developer Execution
+**Key Objective:** Fix production scorecard showing duplicate/conflicting signals, empty P&L, zero dedup. Transform from blind signal INSERT to smart multi-timeframe signal management.
 
 **Previous:** Phase 20 — AI Pipeline Quality Fix (P0) — ✅ COMPLETE
 
 ## Completed Phases
+
+### Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (P0)
+**Started:** April 29, 2026
+**Tasks:** 7 (T-01 through T-07) — Pending Execution
 
 ### Phase 20 — AI Pipeline Quality Fix (P0)
 **Started:** April 27, 2026

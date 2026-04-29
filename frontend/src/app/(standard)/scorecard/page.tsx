@@ -24,33 +24,52 @@ export const metadata: Metadata = {
     },
 };
 
-interface SignalRow {
+interface TacticalSignal {
     id: number;
     coinSymbol: string;
     verdict: string;
     sentiment: string | null;
     entryPrice: number;
     entryAt: string;
-    price24h: number | null;
-    price7d: number | null;
-    price30d: number | null;
-    pnl24h: number | null;
-    pnl7d: number | null;
-    pnl30d: number | null;
-    isWin7d: boolean | null;
-    isWin30d: boolean | null;
-    createdAt: string;
+    unrealizedPnl: number | null;
+    currentPrice: number | null;
+}
+
+interface StrategicStance {
+    id: number;
+    coinSymbol: string;
+    marketPhase: string | null;
+    bullRunProbability: number | null;
+    recommendedAction: string | null;
+    updatedAt: string | null;
+}
+
+interface ClosedSignal {
+    id: number;
+    coinSymbol: string;
+    verdict: string;
+    sentiment: string | null;
+    entryPrice: number;
+    entryAt: string;
+    exitPrice: number | null;
+    realizedPnl: number | null;
+    closedAt: string | null;
+}
+
+interface OverallStats {
+    activePositions: number;
+    totalClosed: number;
+    wins: number;
+    winRate: number | null;
+    avgRealizedPnl: number | null;
+    bestTrade: ClosedSignal | null;
 }
 
 interface ScorecardData {
-    overall: {
-        totalSignals: number;
-        winRate7d: number | null;
-        avgReturn7d: number | null;
-        bestCall: SignalRow | null;
-    };
-    recent: SignalRow[];
-    perCoin: Record<string, { signals: number; wins: number; totalPnl: number }>;
+    tactical: TacticalSignal[];
+    strategic: StrategicStance[];
+    closed: ClosedSignal[];
+    overall: OverallStats;
 }
 
 function pnlClass(value: number | null): string {
@@ -77,6 +96,44 @@ function verdictBadge(verdict: string): string {
     return map[verdict] ?? 'bg-[#222] text-[#888]';
 }
 
+function timeAgo(dateStr: string): string {
+    const now = Date.now();
+    const date = new Date(dateStr).getTime();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 30) return `${diffDays}d ago`;
+    return `${Math.floor(diffDays / 30)}mo ago`;
+}
+
+function formatPrice(price: number | null): string {
+    if (price === null) return '—';
+    if (price >= 1) return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
+}
+
+function wyckoffColor(phase: string | null): string {
+    if (!phase) return 'text-[#555]';
+    const green = new Set(['Accumulation', 'Markup']);
+    const red = new Set(['Distribution', 'Markdown']);
+    if (green.has(phase)) return 'text-emerald-400';
+    if (red.has(phase)) return 'text-red-400';
+    return 'text-[#555]';
+}
+
+function durationBetween(start: string, end: string | null): string {
+    if (!end) return '—';
+    const diffMs = new Date(end).getTime() - new Date(start).getTime();
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays > 0) return `${diffDays}d`;
+    return `${diffHours}h`;
+}
+
 export default async function ScorecardPage() {
     let data: ScorecardData | null = null;
 
@@ -87,7 +144,7 @@ export default async function ScorecardPage() {
         data = null;
     }
 
-    if (!data || data.overall.totalSignals === 0) {
+    if (!data || (data.overall.activePositions === 0 && data.overall.totalClosed === 0)) {
         return (
             <div className="min-h-screen bg-black flex items-center justify-center px-4">
                 <div className="text-center max-w-md">
@@ -96,14 +153,12 @@ export default async function ScorecardPage() {
                     </div>
                     <h1 className="text-xl font-semibold text-white mb-3">No Signals Tracked Yet</h1>
                     <p className="text-sm text-[#666] leading-relaxed">
-                        Check back after the first AI signal is published. The scorecard will populate automatically as signals are recorded and tracked over 24h, 7d, and 30d windows.
+                        Check back after the first AI signal is published. The scorecard will populate automatically as signals are recorded and tracked over time.
                     </p>
                 </div>
             </div>
         );
     }
-
-    const { overall, recent, perCoin } = data;
 
     return (
         <div className="min-h-screen bg-black text-white">
@@ -113,29 +168,33 @@ export default async function ScorecardPage() {
                     <p className="text-sm text-[#666] mt-1">Transparent performance tracking of every AI signal.</p>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                        <div className="text-xs text-[#666] mb-1">Total Signals</div>
-                        <div className="text-2xl font-mono font-bold">{overall.totalSignals}</div>
+                        <div className="text-xs text-[#666] mb-1">Active Positions</div>
+                        <div className="text-2xl font-mono font-bold">{data.overall.activePositions}</div>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                        <div className="text-xs text-[#666] mb-1">Win Rate (7d)</div>
+                        <div className="text-xs text-[#666] mb-1">Closed Signals</div>
+                        <div className="text-2xl font-mono font-bold">{data.overall.totalClosed}</div>
+                    </div>
+                    <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
+                        <div className="text-xs text-[#666] mb-1">Win Rate</div>
                         <div className="text-2xl font-mono font-bold">
-                            {overall.winRate7d !== null ? `${overall.winRate7d}%` : '—'}
+                            {data.overall.winRate !== null ? `${data.overall.winRate}%` : '—'}
                         </div>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                        <div className="text-xs text-[#666] mb-1">Avg Return (7d)</div>
-                        <div className={`text-2xl font-mono font-bold ${pnlClass(overall.avgReturn7d)}`}>
-                            {overall.avgReturn7d !== null ? pnlFormat(overall.avgReturn7d) : '—'}
+                        <div className="text-xs text-[#666] mb-1">Avg P&L</div>
+                        <div className={`text-2xl font-mono font-bold ${pnlClass(data.overall.avgRealizedPnl)}`}>
+                            {data.overall.avgRealizedPnl !== null ? pnlFormat(data.overall.avgRealizedPnl) : '—'}
                         </div>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                        <div className="text-xs text-[#666] mb-1">Best Call</div>
+                        <div className="text-xs text-[#666] mb-1">Best Trade</div>
                         <div className="text-lg font-mono font-bold">
-                            {overall.bestCall ? (
-                                <span className={pnlClass(overall.bestCall.pnl7d)}>
-                                    {overall.bestCall.coinSymbol} {pnlFormat(overall.bestCall.pnl7d)}
+                            {data.overall.bestTrade ? (
+                                <span className={pnlClass(data.overall.bestTrade.realizedPnl)}>
+                                    {data.overall.bestTrade.coinSymbol} {pnlFormat(data.overall.bestTrade.realizedPnl)}
                                 </span>
                             ) : '—'}
                         </div>
@@ -143,69 +202,139 @@ export default async function ScorecardPage() {
                 </div>
 
                 <div className="mb-8">
-                    <h2 className="text-lg font-semibold mb-4">Recent Signals</h2>
+                    <h2 className="text-lg font-semibold mb-4">Tactical Signals</h2>
+                    <p className="text-xs text-[#666] mb-4">Short-term active positions (1-3 days). One signal per coin.</p>
                     <div className="overflow-x-auto border border-[#222] rounded-lg">
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="bg-[#111] text-[#666] text-xs uppercase tracking-wider">
                                     <th className="text-left px-4 py-3 font-medium">Coin</th>
-                                    <th className="text-left px-4 py-3 font-medium">Verdict</th>
+                                    <th className="text-left px-4 py-3 font-medium">Signal</th>
                                     <th className="text-right px-4 py-3 font-medium">Entry $</th>
-                                    <th className="text-right px-4 py-3 font-medium">24h</th>
-                                    <th className="text-right px-4 py-3 font-medium">7d</th>
-                                    <th className="text-right px-4 py-3 font-medium">30d</th>
+                                    <th className="text-right px-4 py-3 font-medium">Current $</th>
+                                    <th className="text-right px-4 py-3 font-medium">Unrealized</th>
+                                    <th className="text-right px-4 py-3 font-medium">Since</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {recent.map((row, index) => (
-                                    <tr
-                                        key={row.id}
-                                        className={`border-t border-[#222] ${index % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'}`}
-                                    >
-                                        <td className="px-4 py-3 font-mono font-semibold">{row.coinSymbol}</td>
-                                        <td className="px-4 py-3">
-                                            <span className={`text-xs px-2 py-0.5 rounded font-mono ${verdictBadge(row.verdict)}`}>
-                                                {row.verdict.replace('_', ' ')}
-                                            </span>
+                                {data.tactical.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="px-4 py-8 text-center text-[#666]">
+                                            No active signals currently.
                                         </td>
-                                        <td className="px-4 py-3 text-right font-mono">${row.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}</td>
-                                        <td className={`px-4 py-3 text-right font-mono ${pnlClass(row.pnl24h)}`}>{pnlFormat(row.pnl24h)}</td>
-                                        <td className={`px-4 py-3 text-right font-mono ${pnlClass(row.pnl7d)}`}>{pnlFormat(row.pnl7d)}</td>
-                                        <td className={`px-4 py-3 text-right font-mono ${pnlClass(row.pnl30d)}`}>{pnlFormat(row.pnl30d)}</td>
                                     </tr>
-                                ))}
+                                ) : (
+                                    data.tactical.map((row, index) => (
+                                        <tr
+                                            key={row.id}
+                                            className={`border-t border-[#222] ${index % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'}`}
+                                        >
+                                            <td className="px-4 py-3 font-mono font-semibold">{row.coinSymbol}</td>
+                                            <td className="px-4 py-3">
+                                                <span className={`text-xs px-2 py-0.5 rounded font-mono ${verdictBadge(row.verdict)}`}>
+                                                    {row.verdict.replace('_', ' ')}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-mono">{formatPrice(row.entryPrice)}</td>
+                                            <td className="px-4 py-3 text-right font-mono">{formatPrice(row.currentPrice)}</td>
+                                            <td className={`px-4 py-3 text-right font-mono ${pnlClass(row.unrealizedPnl)}`}>{pnlFormat(row.unrealizedPnl)}</td>
+                                            <td className="px-4 py-3 text-right font-mono text-[#888]">{timeAgo(row.entryAt)}</td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                {Object.keys(perCoin).length > 0 && (
+                {data.strategic.length > 0 && (
                     <div className="mb-8">
-                        <h2 className="text-lg font-semibold mb-4">Per-Coin Breakdown</h2>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                            {Object.entries(perCoin).map(([symbol, stats]) => {
-                                const coinWinRate = stats.signals > 0 ? Math.round((stats.wins / stats.signals) * 100) : 0;
-                                const coinAvgReturn = stats.signals > 0 ? stats.totalPnl / stats.signals : 0;
-                                return (
-                                    <div key={symbol} className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                                        <div className="font-mono font-bold text-lg mb-2">{symbol}</div>
-                                        <div className="grid grid-cols-3 gap-2 text-xs">
-                                            <div>
-                                                <div className="text-[#666]">Signals</div>
-                                                <div className="font-mono">{stats.signals}</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-[#666]">Win Rate</div>
-                                                <div className="font-mono">{coinWinRate}%</div>
-                                            </div>
-                                            <div>
-                                                <div className="text-[#666]">Avg P&L</div>
-                                                <div className={`font-mono ${pnlClass(coinAvgReturn)}`}>{pnlFormat(coinAvgReturn)}</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                        <h2 className="text-lg font-semibold mb-4">Strategic Stance</h2>
+                        <p className="text-xs text-[#666] mb-4">Long-term outlook (weeks/months). From AI structural analysis.</p>
+                        <div className="overflow-x-auto border border-[#222] rounded-lg">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="bg-[#111] text-[#666] text-xs uppercase tracking-wider">
+                                        <th className="text-left px-4 py-3 font-medium">Coin</th>
+                                        <th className="text-left px-4 py-3 font-medium">Wyckoff Phase</th>
+                                        <th className="text-left px-4 py-3 font-medium">Bull Probability</th>
+                                        <th className="text-left px-4 py-3 font-medium">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {data.strategic.map((row, index) => (
+                                        <tr
+                                            key={row.id}
+                                            className={`border-t border-[#222] ${index % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'}`}
+                                        >
+                                            <td className="px-4 py-3 font-mono font-semibold">{row.coinSymbol}</td>
+                                            <td className="px-4 py-3">
+                                                <span className={`font-mono ${wyckoffColor(row.marketPhase)}`}>
+                                                    {row.marketPhase || '—'}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {row.bullRunProbability !== null ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-12 h-1.5 bg-[#333] rounded-full overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-emerald-400 rounded-full"
+                                                                style={{ width: `${row.bullRunProbability}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="font-mono text-xs">{row.bullRunProbability}%</span>
+                                                    </div>
+                                                ) : '—'}
+                                            </td>
+                                            <td className="px-4 py-3 text-[#888]">{row.recommendedAction || '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
+                {data.closed.length > 0 && (
+                    <div className="mb-8">
+                        <h2 className="text-lg font-semibold mb-4">Closed Signals</h2>
+                        <p className="text-xs text-[#666] mb-4">Historical signal performance with realized P&L.</p>
+                        <div className="overflow-x-auto border border-[#222] rounded-lg">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="bg-[#111] text-[#666] text-xs uppercase tracking-wider">
+                                        <th className="text-left px-4 py-3 font-medium">Coin</th>
+                                        <th className="text-left px-4 py-3 font-medium">Signal</th>
+                                        <th className="text-left px-4 py-3 font-medium">Entry → Exit</th>
+                                        <th className="text-right px-4 py-3 font-medium">P&L</th>
+                                        <th className="text-right px-4 py-3 font-medium">Held</th>
+                                        <th className="text-center px-4 py-3 font-medium">Result</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {data.closed.map((row, index) => (
+                                        <tr
+                                            key={row.id}
+                                            className={`border-t border-[#222] ${index % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'}`}
+                                        >
+                                            <td className="px-4 py-3 font-mono font-semibold">{row.coinSymbol}</td>
+                                            <td className="px-4 py-3">
+                                                <span className={`text-xs px-2 py-0.5 rounded font-mono ${verdictBadge(row.verdict)}`}>
+                                                    {row.verdict.replace('_', ' ')}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 font-mono text-[#888]">
+                                                {formatPrice(row.entryPrice)} → {row.exitPrice ? formatPrice(row.exitPrice) : '—'}
+                                            </td>
+                                            <td className={`px-4 py-3 text-right font-mono ${pnlClass(row.realizedPnl)}`}>{pnlFormat(row.realizedPnl)}</td>
+                                            <td className="px-4 py-3 text-right font-mono text-[#888]">{durationBetween(row.entryAt, row.closedAt)}</td>
+                                            <td className="px-4 py-3 text-center">
+                                                {row.realizedPnl !== null && row.realizedPnl > 0 ? '✅' : '❌'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 )}
