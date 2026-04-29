@@ -146,7 +146,12 @@ ${newsBatch.map((item, index) => `${index + 1}. Title: "${item.title}"${item.sou
   "estValue": "<e.g. $500-$2000>",
   "aiReport": "<3-4 paragraph professional audit report>"
 }
-Rules: isAutoVerifiable = true ONLY if the task involves a specific on-chain action with a verifiable contract.`
+Rules:
+- BE GENEROUS: If the project is a tokenless DeFi protocol with TVL, funding, or active users, it likely has a future airdrop. Set isLegitimate = true and use riskVerdict to express confidence level.
+- ONLY set isLegitimate = false for confirmed scams, phishing, or completely inactive/dead projects.
+- Tokenless protocols (no token yet) are prime airdrop candidates — default to isLegitimate = true with MEDIUM or HIGH risk.
+- Infer reasonable tasks based on the protocol type (e.g., provide liquidity, bridge, trade, stake).
+- isAutoVerifiable = true ONLY if the task involves a specific on-chain action with a verifiable contract.`
             },
             {
                 role: 'user',
@@ -183,13 +188,15 @@ Analyze the provided article text and return a JSON object with EXACTLY this sha
 }
 
 Rules:
-- Flag projects that have reasonable evidence of a legitimate airdrop opportunity. Use the riskVerdict field to communicate uncertainty — set to MEDIUM_RISK or HIGH_RISK rather than rejecting entirely.
-- If the article mentions "airdrop" only in passing (e.g., a price prediction article that casually references an airdrop), set isLegitimate = false.
+- BE GENEROUS: If the article mentions ANY crypto project with airdrop, token, TGE, snapshot, claim, or testnet reward activity, set isLegitimate = true. Use the riskVerdict field to express uncertainty (MEDIUM or HIGH) instead of rejecting.
+- ONLY set isLegitimate = false if the article is completely unrelated to crypto (e.g., sports, politics, weather) or is clearly a scam warning/phishing alert article.
+- Even brief mentions of upcoming airdrops, token distributions, or testnet incentives are VALID — extract the project and create an entry.
 - projectName: extract the actual protocol name from the article. If unclear, use the most prominent project mentioned.
-- network: the primary blockchain where this airdrop operates.
+- network: the primary blockchain where this airdrop operates. Default to "Unknown" if not specified.
 - snapshotDate / tgeDate: if a specific date is mentioned, return it in ISO 8601 format (YYYY-MM-DD). Otherwise return null.
-- tasks: the actions users need to qualify. If the article does not specify exact tasks, infer reasonable ones based on the protocol type.
+- tasks: infer reasonable tasks based on the protocol type (e.g., bridge assets, provide liquidity, trade, stake, follow on social media).
 - isAutoVerifiable = true ONLY for specific on-chain actions with verifiable contract addresses.
+- estValue: estimate based on similar projects if not specified. Use ranges like "$100-$500", "$500-$2000".
 - Output ONLY the JSON object. No preamble. No text outside JSON.`
             },
             {

@@ -18,6 +18,7 @@ import { startTriageEngineCron } from './crons/triageEngine.cron';
 import { startBufferCleanupCron } from './crons/bufferCleanup.cron';
 import { startConvictionUpdateCron } from './crons/convictionUpdate.cron';
 import { startTelegramMonitorCron } from './crons/telegramMonitor.cron';
+import { startAirdropDiscoveryCron } from './crons/airdropDiscovery.cron';
 import { startSignalPerformanceCron } from './crons/signalPerformance.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
@@ -89,6 +90,7 @@ async function bootstrap(): Promise<void> {
             { name: 'AiWorkflow', fn: startAiWorkflowCron },
             { name: 'AirdropHunter', fn: startAirdropHunterCron },
             { name: 'AirdropRSSHunter', fn: startAirdropRSSCron },
+            { name: 'AirdropDiscovery', fn: startAirdropDiscoveryCron },
             { name: 'DailyAlpha', fn: startDailyAlphaCron },
             { name: 'HistoricalNews', fn: startHistoricalNewsCron },
             { name: 'MarketMood', fn: startMarketMoodCron },

@@ -6,6 +6,8 @@ interface WebSearchResult {
     content: string;
 }
 
+const WEB_SEARCH_MODEL = 'glm-4.5-air';
+
 export async function searchWeb(query: string): Promise<WebSearchResult[]> {
     if (!env.GLM_API_KEY) return [];
 
@@ -17,26 +19,39 @@ export async function searchWeb(query: string): Promise<WebSearchResult[]> {
                 'Authorization': `Bearer ${env.GLM_API_KEY}`,
             },
             body: JSON.stringify({
-                model: env.GLM_PLANNER_MODEL,
-                messages: [{ role: 'user', content: `Search the web for: ${query}. Return factual information only.` }],
-                tools: [{ type: 'web_search', web_search: { enable: true } }],
+                model: WEB_SEARCH_MODEL,
+                messages: [{ role: 'user', content: query }],
+                tools: [{
+                    type: 'web_search',
+                    web_search: {
+                        enable: true,
+                        search_engine: 'search-prime',
+                    },
+                }],
+                max_tokens: 2000,
             }),
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(30000),
         });
 
-        if (!res.ok) return [];
+        if (!res.ok) {
+            console.error(`[ZhipuWebSearch] API error: ${res.status}`);
+            return [];
+        }
 
         const data = await res.json() as {
-            choices?: Array<{ message?: { content?: string } }>;
+            choices?: Array<{ message?: { content?: string; reasoning_content?: string } }>;
         };
-        const content = data?.choices?.[0]?.message?.content ?? '';
 
-        if (!content) return [];
+        const choice = data?.choices?.[0]?.message;
+        if (!choice) return [];
+
+        const rawContent = choice.content || choice.reasoning_content || '';
+        if (!rawContent) return [];
 
         return [{
             title: query,
-            url: 'glm-web-search',
-            content: typeof content === 'string' ? content.slice(0, 1500) : '',
+            url: 'zai-web-search',
+            content: rawContent.slice(0, 1500),
         }];
     } catch (err) {
         console.error('[ZhipuWebSearch] Error:', err instanceof Error ? err.message : String(err));
