@@ -33,6 +33,8 @@ interface TacticalSignal {
     entryAt: string;
     unrealizedPnl: number | null;
     currentPrice: number | null;
+    stopLossPrice: number | null;
+    takeProfitPrice: number | null;
 }
 
 interface StrategicStance {
@@ -54,6 +56,7 @@ interface ClosedSignal {
     exitPrice: number | null;
     realizedPnl: number | null;
     closedAt: string | null;
+    autoClosedReason: string | null;
 }
 
 interface OverallStats {
@@ -94,6 +97,24 @@ function verdictBadge(verdict: string): string {
         NEUTRAL: 'bg-[#222] text-[#888]',
     };
     return map[verdict] ?? 'bg-[#222] text-[#888]';
+}
+
+function closeReasonBadge(reason: string | null): string {
+    const map: Record<string, string> = {
+        take_profit: 'bg-emerald-500/20 text-emerald-400',
+        stop_loss: 'bg-red-500/20 text-red-400',
+        time_expiry: 'bg-[#222] text-[#888]',
+    };
+    return map[reason ?? ''] ?? 'bg-[#222] text-[#888]';
+}
+
+function closeReasonLabel(reason: string | null): string {
+    const map: Record<string, string> = {
+        take_profit: 'TP Hit',
+        stop_loss: 'SL Hit',
+        time_expiry: 'Expired',
+    };
+    return map[reason ?? ''] ?? 'Reversed';
 }
 
 function timeAgo(dateStr: string): string {
@@ -211,6 +232,8 @@ export default async function ScorecardPage() {
                                     <th className="text-left px-4 py-3 font-medium">Coin</th>
                                     <th className="text-left px-4 py-3 font-medium">Signal</th>
                                     <th className="text-right px-4 py-3 font-medium">Entry $</th>
+                                    <th className="text-right px-4 py-3 font-medium">SL</th>
+                                    <th className="text-right px-4 py-3 font-medium">TP</th>
                                     <th className="text-right px-4 py-3 font-medium">Current $</th>
                                     <th className="text-right px-4 py-3 font-medium">Unrealized</th>
                                     <th className="text-right px-4 py-3 font-medium">Since</th>
@@ -219,7 +242,7 @@ export default async function ScorecardPage() {
                             <tbody>
                                 {data.tactical.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-4 py-8 text-center text-[#666]">
+                                        <td colSpan={8} className="px-4 py-8 text-center text-[#666]">
                                             No active signals currently.
                                         </td>
                                     </tr>
@@ -236,6 +259,8 @@ export default async function ScorecardPage() {
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-right font-mono">{formatPrice(row.entryPrice)}</td>
+                                            <td className="px-4 py-3 text-right font-mono text-[#666]">{formatPrice(row.stopLossPrice)}</td>
+                                            <td className="px-4 py-3 text-right font-mono text-[#666]">{formatPrice(row.takeProfitPrice)}</td>
                                             <td className="px-4 py-3 text-right font-mono">{formatPrice(row.currentPrice)}</td>
                                             <td className={`px-4 py-3 text-right font-mono ${pnlClass(row.unrealizedPnl)}`}>{pnlFormat(row.unrealizedPnl)}</td>
                                             <td className="px-4 py-3 text-right font-mono text-[#888]">{timeAgo(row.entryAt)}</td>
@@ -308,6 +333,7 @@ export default async function ScorecardPage() {
                                         <th className="text-left px-4 py-3 font-medium">Entry → Exit</th>
                                         <th className="text-right px-4 py-3 font-medium">P&L</th>
                                         <th className="text-right px-4 py-3 font-medium">Held</th>
+                                        <th className="text-center px-4 py-3 font-medium">Reason</th>
                                         <th className="text-center px-4 py-3 font-medium">Result</th>
                                     </tr>
                                 </thead>
@@ -328,6 +354,11 @@ export default async function ScorecardPage() {
                                             </td>
                                             <td className={`px-4 py-3 text-right font-mono ${pnlClass(row.realizedPnl)}`}>{pnlFormat(row.realizedPnl)}</td>
                                             <td className="px-4 py-3 text-right font-mono text-[#888]">{durationBetween(row.entryAt, row.closedAt)}</td>
+                                            <td className="px-4 py-3 text-center">
+                                                <span className={`text-xs px-2 py-0.5 rounded font-mono ${closeReasonBadge(row.autoClosedReason)}`}>
+                                                    {closeReasonLabel(row.autoClosedReason)}
+                                                </span>
+                                            </td>
                                             <td className="px-4 py-3 text-center">
                                                 {row.realizedPnl !== null && row.realizedPnl > 0 ? '✅' : '❌'}
                                             </td>

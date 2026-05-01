@@ -18,6 +18,7 @@ import { storeEmbedding } from '../services/embedding.service';
 import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates, signalPerformance } from '../models/market.model';
 import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } from '../services/strategicOutlook.service';
 import { decideSignalAction, executeSignalDecision } from '../services/signalManager.service';
+import { calculateTpsl } from '../services/tpslCalculator.service';
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 
@@ -524,12 +525,20 @@ export async function runAiWorkflow(): Promise<void> {
                         const decision = await decideSignalAction(symbol, analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL');
                         console.log(`[AI Workflow] Signal decision for ${symbol}: ${decision.action} — ${decision.reason}`);
 
+                        const tpslData = calculateTpsl({
+                            entryPrice: price?.price ?? 0,
+                            verdict: analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL',
+                            supportLevels: analysisResult.supportLevels,
+                            resistanceLevels: analysisResult.resistanceLevels,
+                        });
+
                         const signalId = await executeSignalDecision(
                             symbol,
                             analysisResult.signalText,
                             analysisResult.sentiment,
                             analysisResult.impactScore,
-                            decision
+                            decision,
+                            tpslData
                         );
                     } catch (sigErr) {
                         console.error(`[AI Workflow] Signal management failed for ${symbol}:`, sigErr instanceof Error ? sigErr.message : String(sigErr));

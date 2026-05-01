@@ -118,6 +118,9 @@ export const signalPerformance = pgTable('signal_performance', {
     closedAt:       timestamp('closed_at'),
     exitPrice:      real('exit_price'),
     realizedPnl:    real('realized_pnl'),
+    stopLossPrice:  real('stop_loss_price'),
+    takeProfitPrice: real('take_profit_price'),
+    autoClosedReason: varchar('auto_closed_reason', { length: 20 }),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });

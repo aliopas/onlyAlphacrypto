@@ -2,6 +2,7 @@ import { db } from '../config/db';
 import { radarSignals, signalPerformance } from '../models/market.model';
 import { eq, and } from 'drizzle-orm';
 import { getPriceWithFallback } from './priceService';
+import { calculateTpsl } from './tpslCalculator.service';
 
 type SignalDirection = 'bullish' | 'bearish';
 type SignalVerdict = 'STRONG_BUY' | 'BUY' | 'SELL' | 'STRONG_SELL';
@@ -122,7 +123,8 @@ export async function executeSignalDecision(
     signalText: string,
     sentiment: string,
     impactScore: number,
-    decision: SignalDecision
+    decision: SignalDecision,
+    tpslData?: { stopLossPrice: number; takeProfitPrice: number }
 ): Promise<number | null> {
     if (decision.action === 'close_and_replace' && decision.closedSignal) {
         await db.update(signalPerformance)
@@ -177,7 +179,9 @@ export async function executeSignalDecision(
                 sentiment,
                 entryPrice: price.price,
                 entryAt: new Date(),
-                isActive: true
+                isActive: true,
+                stopLossPrice: tpslData?.stopLossPrice,
+                takeProfitPrice: tpslData?.takeProfitPrice
             });
 
             console.log(`[SignalManager] Created ${decision.verdict} signal for ${coinSymbol}: entryPrice=$${price.price}, signalId=${insertedRadar[0].id}`);

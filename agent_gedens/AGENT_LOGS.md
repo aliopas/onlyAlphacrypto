@@ -1,6 +1,26 @@
 # 📋 ONLYALPHA — AGENT LOGS
 
-**Last Updated:** April 29, 2026
+**Last Updated:** May 1, 2026
+
+---
+
+## Phase 23 — TP/SL Auto-Close & Signal Lifecycle (P0)
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|---|
+| May 1, 2026 | P23-AUTH | AUTHORIZED | Tech Lead | — | 9 tasks defined (T-01 through T-09). Root cause: zero TP/SL mechanism — signals stay active indefinitely until AI reverses direction. Trades hitting +10% to +90% never close. Scorecard Win Rate artificially destroyed. AI already outputs supportLevels/resistanceLevels (prompt-factory.ts:277-278) but they're completely unused. Fix: derive TP/SL from S/R levels, store in DB, new cron monitors every 15min for TP/SL hits + 30d expiry. 3 new columns, 1 new utility service, 1 new cron. 10 Tech Lead guardrails issued. 4 deploy groups: G1 (T-01+T-02 schema), G2 (T-03→T-05 core logic, sequential), G3 (T-06+T-07 monitoring), G4 (T-08+T-09 API+frontend). Plan written to THE_NEXUS_HUB.md. |
+
+---
+
+## Phase 22 — Airdrop Pipeline Resurrection (P0 HOTFIX)
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|---|
+| Apr 29, 2026 | P22-DIAGNOSIS | ROOT CAUSE FOUND | Tech Lead | — | 3 critical failures found: (1) DeepSeek-R1 rejecting 100% of articles (10 runs, 0 insertions), (2) GLM web_search tool incompatible with `glm-5-turbo` on coding endpoint → timeout, (3) `startAirdropDiscoveryCron` never registered in `server.ts`. Diagnostic script `test-airdrop-pipeline.ts` created and deployed. |
+| Apr 29, 2026 | P22-T01 | ✅ DEPLOYED | Tech Lead | — | `zhipuWebSearch.service.ts` rewritten: switched from `glm-5-turbo` to `glm-4.5-air` with `web_search` tool on coding endpoint. Verified via curl (HTTP 200, 15s, real search results). |
+| Apr 29, 2026 | P22-T02 | ✅ DEPLOYED | Tech Lead | — | `server.ts`: added `import { startAirdropDiscoveryCron }` + registered in crons array. DeFiLlama+Z.ai pipeline now runs every 6h. |
+| Apr 29, 2026 | P22-T03 | ✅ DEPLOYED | Tech Lead | — | `prompt-factory.ts`: relaxed both `buildAirdropFromArticleMessages` and `buildAirdropValidationMessages`. Changed from "reject if mentioned in passing" to "BE GENEROUS". |
+| Apr 29, 2026 | P22-DEPLOY | ✅ PUSHED | Tech Lead | — | Commit `110313b` pushed to main. 3 files changed, +39/-15 lines. `tsconfig.json` updated to exclude `test-*.ts` from build. |
 
 ---
 

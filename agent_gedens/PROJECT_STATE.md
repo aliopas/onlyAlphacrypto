@@ -1,7 +1,7 @@
 # ONLYALPHA — PROJECT STATE
 
-**Last Updated:** April 29, 2026
-**Current Focus:** Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (P0)
+**Last Updated:** May 1, 2026
+**Current Focus:** Phase 23 — TP/SL Auto-Close & Signal Lifecycle (P0)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,17 +15,49 @@
 2. **Modular Boundaries:** Cache logic -> `CacheManager`. AI calls -> `AIGateway`. Prompts -> `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## Current Mission: Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (P0)
+## Current Mission: Phase 23 — TP/SL Auto-Close & Signal Lifecycle (P0)
 
-**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` — Phase 21 section (lines 1955-2724)
-**Tasks:** 7 (T-01 through T-07) + T-VERIFY — Granular Micro-Tasks Ready
-**Scope:** 1 new file (`signalManager.service.ts`), 6 modified files, 1 SQL migration
-**Status:** PLANNED — Ready for Senior Developer Execution
-**Key Objective:** Fix production scorecard showing duplicate/conflicting signals, empty P&L, zero dedup. Transform from blind signal INSERT to smart multi-timeframe signal management.
+**Status:** PLANNED — Authorized May 1, 2026
+**Key Objective:** Add Stop-Loss / Take-Profit auto-close mechanism to signal system. Currently signals stay active indefinitely until AI reverses direction — trades that hit +10% to +90% profit never close and P&L evaporates. Scorecard Win Rate is artificially destroyed.
 
-**Previous:** Phase 20 — AI Pipeline Quality Fix (P0) — ✅ COMPLETE
+**Root Cause:**
+- Zero TP/SL mechanism in schema, services, or crons
+- AI already outputs `supportLevels` and `resistanceLevels` (prompt-factory.ts:277-278) but they're completely unused
+- No time-based auto-expiry for stale signals
+- Only closure path is AI direction reversal (unpredictable timing)
+
+**Architecture Changes:**
+- 3 new columns: `stop_loss_price`, `take_profit_price`, `auto_closed_reason` on `signal_performance`
+- New utility: `tpslCalculator.service.ts` — derives TP/SL from S/R levels or default %
+- New cron: `tpslMonitor.cron.ts` — runs every 15 min, auto-closes on TP/SL hit + 30d expiry
+- Signal creation flow enhanced: S/R levels → TP/SL calculator → stored in DB
+- Scorecard API returns TP/SL data + close reason
+- Frontend displays TP/SL columns and close reason badges
+
+**Files Plan (9 tasks):**
+| # | File | Action | Description |
+|---|------|--------|-------------|
+| T-01 | `backend/scripts/migrate-tpsl-columns.sql` | NEW | SQL migration + backfill |
+| T-02 | `backend/src/models/market.model.ts` | MODIFY | 3 new Drizzle columns |
+| T-03 | `backend/src/services/tpslCalculator.service.ts` | NEW | Pure TP/SL calculator from S/R |
+| T-04 | `backend/src/services/signalManager.service.ts` | MODIFY | Store TP/SL on INSERT |
+| T-05 | `backend/src/crons/aiWorkflow.cron.ts` | MODIFY | Pass S/R levels to signal manager |
+| T-06 | `backend/src/crons/tpslMonitor.cron.ts` | NEW | TP/SL monitor + 30d expiry |
+| T-07 | `backend/src/server.ts` | MODIFY | Register new cron |
+| T-08 | `backend/src/controllers/market.controller.ts` | MODIFY | Return TP/SL in API |
+| T-09 | `frontend/src/app/(standard)/scorecard/page.tsx` | MODIFY | Display TP/SL + close reason |
+
+**Default TP/SL (fallback if no S/R from AI):**
+- BUY/STRONG_BUY: TP = +15%, SL = -8%
+- SELL/STRONG_SELL: TP = +15%, SL = -8% (inverse direction)
+
+**Previous:** Phase 22 — Airdrop Pipeline Resurrection (P0 HOTFIX) — ✅ DEPLOYED
 
 ## Completed Phases
+
+### Phase 22 — Airdrop Pipeline Resurrection (P0 HOTFIX)
+**Completed:** April 29, 2026
+**Deploy Commit:** `110313b`
 
 ### Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (P0)
 **Started:** April 29, 2026

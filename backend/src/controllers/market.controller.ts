@@ -550,6 +550,8 @@ export async function getScorecardHandler(req: Request, res: Response, next: Nex
             entryAt: Date;
             unrealizedPnl: number | null;
             currentPrice: number | null;
+            stopLossPrice: number | null;
+            takeProfitPrice: number | null;
         }> = [];
 
         for (const row of activeSignals) {
@@ -569,6 +571,8 @@ export async function getScorecardHandler(req: Request, res: Response, next: Nex
                 entryAt: row.entryAt,
                 unrealizedPnl,
                 currentPrice: price?.price ?? null,
+                stopLossPrice: row.stopLossPrice,
+                takeProfitPrice: row.takeProfitPrice,
             });
         }
 

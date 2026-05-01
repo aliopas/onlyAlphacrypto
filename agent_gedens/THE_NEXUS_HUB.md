@@ -4,6 +4,236 @@
 
 ---
 
+## Active Phase: Phase 23 — TP/SL Auto-Close & Signal Lifecycle (P0)
+
+**Priority:** P0 — Signals hit 10-90% profit but never close, Scorecard Win Rate destroyed
+**Authorized By:** Tech Lead — May 1, 2026
+**Planned By:** Tech Lead — May 1, 2026
+**Total Tasks:** 9 (T-01 through T-09) — Granular Micro-Tasks Ready
+
+**Core Problem (Production):**
+- Zero stop-loss or take-profit mechanism — signals stay active indefinitely
+- Trades that hit +10% to +90% never close — profit evaporates as market reverses
+- Signals only close when AI reverses direction (could be days/weeks)
+- Scorecard Win Rate and Avg P&L are artificially terrible
+- No time-based auto-expiry — dead signals accumulate
+
+**AI Already Outputs S/R Levels** (prompt-factory.ts:277-278):
+- `supportLevels: [price, price]`
+- `resistanceLevels: [price, price]`
+- These are PERFECT for deriving TP/SL — just not being used
+
+---
+
+### PHASE 23 — MICRO-TASKS BREAKDOWN
+
+#### T-01: SQL Migration — Add TP/SL + Auto-Close Columns
+**File:** `backend/scripts/migrate-tpsl-columns.sql` (NEW)
+**What:**
+```sql
+ALTER TABLE signal_performance
+    ADD COLUMN stop_loss_price REAL,
+    ADD COLUMN take_profit_price REAL,
+    ADD COLUMN auto_closed_reason VARCHAR(20);
+
+CREATE INDEX idx_signal_perf_tpsl
+    ON signal_performance (is_active, take_profit_price, stop_loss_price)
+    WHERE is_active = true AND (take_profit_price IS NOT NULL OR stop_loss_price IS NOT NULL);
+```
+**Plus backfill:** For each active signal, calculate default TP/SL:
+- BUY/STRONG_BUY: `TP = entry_price * 1.15`, `SL = entry_price * 0.92`
+- SELL/STRONG_SELL: `TP = entry_price * 0.85`, `SL = entry_price * 1.08`
+**Guardrails:** No data deletion. Existing columns untouched. NULL-safe.
+
+---
+
+#### T-02: Drizzle Model Update — Add 3 New Columns
+**File:** `backend/src/models/market.model.ts` (lines 117-122)
+**What:** Add after `realizedPnl` (line 120):
+```typescript
+stopLossPrice: real('stop_loss_price'),
+takeProfitPrice: real('take_profit_price'),
+autoClosedReason: varchar('auto_closed_reason', { length: 20 }),
+```
+**Guardrails:** Only add 3 lines. No other schema changes. All existing imports/re-exports untouched.
+
+---
+
+#### T-03: TP/SL Calculator Utility
+**File:** `backend/src/services/tpslCalculator.service.ts` (NEW)
+**What:** Pure function to calculate TP/SL from analysis data:
+```typescript
+interface TpslInput {
+    entryPrice: number;
+    verdict: 'STRONG_BUY' | 'BUY' | 'SELL' | 'STRONG_SELL';
+    supportLevels?: number[];
+    resistanceLevels?: number[];
+}
+
+interface TpslOutput {
+    stopLossPrice: number;
+    takeProfitPrice: number;
+}
+
+export function calculateTpsl(input: TpslInput): TpslOutput
+```
+**Logic:**
+- For BUY/STRONG_BUY:
+  - TP = nearest resistance above entry (from `resistanceLevels`), else `entry * 1.15`
+  - SL = nearest support below entry (from `supportLevels`), else `entry * 0.92`
+- For SELL/STRONG_SELL:
+  - TP = nearest support below entry (from `supportLevels`), else `entry * 0.85`
+  - SL = nearest resistance above entry (from `resistanceLevels`), else `entry * 1.08`
+- If no S/R levels provided → fall back to default percentages
+- Guard: TP and SL must be at least 2% away from entry (prevent instant triggers)
+**Guardrails:** Pure function. No DB calls. No side effects. Fully testable.
+
+---
+
+#### T-04: Signal Manager — Store TP/SL on Create
+**File:** `backend/src/services/signalManager.service.ts`
+**What:**
+1. Add optional `tpslData?: { stopLossPrice: number; takeProfitPrice: number }` to `executeSignalDecision` parameters
+2. In the `create` / `close_and_replace` branches (lines 157-189), include `stopLossPrice` and `takeProfitPrice` in the `signalPerformance` INSERT
+3. Add import for `calculateTpsl` from `tpslCalculator.service.ts`
+**Guardrails:** Don't change the `decideSignalAction` function. Don't change upgrade/skip logic. Only touch the INSERT in `executeSignalDecision`.
+
+---
+
+#### T-05: AI Workflow — Pass S/R Levels to Signal Manager
+**File:** `backend/src/crons/aiWorkflow.cron.ts` (lines 527-532)
+**What:**
+1. Import `calculateTpsl` from `tpslCalculator.service.ts`
+2. Before calling `executeSignalDecision`, compute TP/SL:
+```typescript
+const tpslData = calculateTpsl({
+    entryPrice: price?.price ?? 0,
+    verdict: analysisResult.verdict,
+    supportLevels: analysisResult.supportLevels,
+    resistanceLevels: analysisResult.resistanceLevels,
+});
+```
+3. Pass `tpslData` as new parameter to `executeSignalDecision`
+**Guardrails:** Only modify the radar signal block (lines 520-537). Don't touch any other section.
+
+---
+
+#### T-06: TP/SL Monitor Cron
+**File:** `backend/src/crons/tpslMonitor.cron.ts` (NEW)
+**What:**
+```typescript
+import cron from 'node-cron';
+import { db } from '../config/db';
+import { signalPerformance } from '../models/market.model';
+import { eq, and, isNotNull, sql } from 'drizzle-orm';
+import { getPriceWithFallback } from '../services/priceService';
+
+async function monitorTpsl(): Promise<void> {
+    // 1. Fetch all active signals with TP/SL set
+    // 2. For each: get current price via getPriceWithFallback
+    // 3. Check TP hit:
+    //    - BUY/STRONG_BUY: currentPrice >= takeProfitPrice → CLOSE with reason 'take_profit'
+    //    - SELL/STRONG_SELL: currentPrice <= takeProfitPrice → CLOSE with reason 'take_profit'
+    // 4. Check SL hit:
+    //    - BUY/STRONG_BUY: currentPrice <= stopLossPrice → CLOSE with reason 'stop_loss'
+    //    - SELL/STRONG_SELL: currentPrice >= stopLossPrice → CLOSE with reason 'stop_loss'
+    // 5. Update: is_active=false, exit_price=currentPrice, realized_pnl=calculated, auto_closed_reason
+    // 6. Invalidate scorecard cache: deleteCache('scorecard:latest')
+}
+
+async function expireOldSignals(): Promise<void> {
+    // Auto-close signals older than 30 days
+    // WHERE is_active=true AND entry_at < NOW() - 30 days
+    // Set auto_closed_reason='time_expiry'
+}
+
+export function startTpslMonitorCron(): void {
+    cron.schedule('*/15 * * * *', async () => {
+        await monitorTpsl();
+        await expireOldSignals();
+    });
+}
+```
+**Guardrails:**
+- LIMIT 50 per batch (same pattern as signalPerformance.cron.ts)
+- Never modify radarSignals table (append-only)
+- Try-catch per signal (one failure doesn't stop batch)
+- Log every close: `[TPSL Monitor] Closed signal #ID for SYMBOL: TP hit at $PRICE (+X.X%)`
+
+---
+
+#### T-07: Server Registration — Register TP/SL Cron
+**File:** `backend/src/server.ts`
+**What:**
+1. Add import: `import { startTpslMonitorCron } from './crons/tpslMonitor.cron';`
+2. Add to crons array (after SignalPerformance): `{ name: 'TpslMonitor', fn: startTpslMonitorCron }`
+**Guardrails:** Only 2 lines added. Nothing else changed.
+
+---
+
+#### T-08: Scorecard API — Return TP/SL + Close Reason
+**File:** `backend/src/controllers/market.controller.ts` (lines 531-616)
+**What:**
+1. In tactical signals type (line 544-553), add: `stopLossPrice: number | null`, `takeProfitPrice: number | null`
+2. In tactical push (lines 563-572), add: `stopLossPrice` and `takeProfitPrice` from DB row
+3. In closed signals type (lines 575-591), add: `autoClosedReason: string | null`
+4. In closed response (line 602), include `autoClosedReason`
+5. Invalidate `scorecard:latest` cache when building response (already cached at 300s — keep as is)
+**Guardrails:** Don't change route. Don't change strategic section. Backward-compatible (new fields are nullable).
+
+---
+
+#### T-09: Frontend Scorecard — Display TP/SL + Close Reason
+**File:** `frontend/src/app/(standard)/scorecard/page.tsx`
+**What:**
+1. Update `TacticalSignal` interface: add `stopLossPrice: number | null`, `takeProfitPrice: number | null`
+2. Update `ClosedSignal` interface: add `autoClosedReason: string | null`
+3. Tactical table: add 2 columns "SL" and "TP" after "Entry $" showing formatted prices
+4. Closed table: add "Reason" column showing badge:
+   - `take_profit` → green badge "TP Hit"
+   - `stop_loss` → red badge "SL Hit"
+   - `time_expiry` → gray badge "Expired"
+   - `null` → gray badge "Reversed" (direction change)
+5. Add helper `closeReasonBadge(reason)` similar to `verdictBadge()`
+**Guardrails:** Dark theme tokens. No new packages. No layout changes. Server component pattern preserved.
+
+---
+
+### EXECUTION ORDER
+
+```
+DEPLOY GROUP 1 (Schema — parallel OK):
+  T-01 (SQL migration) + T-02 (Drizzle model)
+
+DEPLOY GROUP 2 (Core Logic — sequential):
+  T-03 (TP/SL calculator) → T-04 (signalManager update) → T-05 (workflow integration)
+
+DEPLOY GROUP 3 (Monitoring — after core logic):
+  T-06 (TP/SL monitor cron) + T-07 (server registration) — deploy together
+
+DEPLOY GROUP 4 (API + Frontend — after monitoring):
+  T-08 (API update) → T-09 (Frontend update)
+
+T-VERIFY: tsc --noEmit on both backend + frontend, grep for `any` types
+```
+
+### GUARDRAILS (TECH LEAD — MANDATORY)
+
+1. **Zero `any` types** — strict TypeScript
+2. **No new packages** — all infrastructure exists
+3. **radarSignals is append-only** — NEVER update or delete
+4. **Backward compatibility** — old signals without TP/SL must work (NULL handling)
+5. **One active signal per coin** — enforced by signalManager, don't bypass
+6. **P&L formula consistency** — direction-adjusted: `isBearish ? -rawPnl : rawPnl`
+7. **Cache invalidation** — `scorecard:latest` must be invalidated on every auto-close
+8. **Batch processing** — LIMIT 50, try-catch per signal
+9. **Price fetch safety** — if `getPriceWithFallback` returns null, skip that signal
+10. **Default TP/SL fallback** — TP: +15%, SL: -8% if AI doesn't provide S/R levels
+
+---
+
+### ARCHIVED PHASES
+
 ## Active Phase: Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (P0)
 
 **Priority:** P0 — Production scorecard shows duplicate/conflicting signals, empty P&L, zero dedup
