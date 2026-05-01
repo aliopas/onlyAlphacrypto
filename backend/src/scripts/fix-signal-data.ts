@@ -128,7 +128,7 @@ async function fixClosedWithNullPnl(): Promise<number> {
     return Number(result.rowCount);
 }
 
-async function deleteGarbageRows(): Promise<{ badVerdict: number; badEntry: number; orphans: number }> {
+async function deleteGarbageRows(): Promise<{ badVerdict: number; badEntry: number }> {
     const badVerdictResult = await db.execute(sql`
         DELETE FROM signal_performance
         WHERE verdict IS NULL OR verdict NOT IN ('STRONG_BUY','BUY','SELL','STRONG_SELL','NEUTRAL')
@@ -137,14 +137,9 @@ async function deleteGarbageRows(): Promise<{ badVerdict: number; badEntry: numb
         DELETE FROM signal_performance
         WHERE entry_price IS NULL OR entry_price <= 0
     `);
-    const orphanResult = await db.execute(sql`
-        DELETE FROM signal_performance
-        WHERE signal_id NOT IN (SELECT id FROM radar_signals)
-    `);
     return {
         badVerdict: Number(badVerdictResult.rowCount),
         badEntry: Number(badEntryResult.rowCount),
-        orphans: Number(orphanResult.rowCount),
     };
 }
 
@@ -185,12 +180,11 @@ async function smartFix(): Promise<void> {
 
     let totalChanges = 0;
 
-    console.log('\n[STEP 1] Deleting garbage rows (bad verdict, bad entry, orphans)...');
+    console.log('\n[STEP 1] Deleting garbage rows (bad verdict, bad entry)...');
     const deleted = await deleteGarbageRows();
     console.log(`  Bad verdicts deleted: ${deleted.badVerdict}`);
     console.log(`  Bad entries deleted:  ${deleted.badEntry}`);
-    console.log(`  Orphans deleted:      ${deleted.orphans}`);
-    totalChanges += deleted.badVerdict + deleted.badEntry + deleted.orphans;
+    totalChanges += deleted.badVerdict + deleted.badEntry;
 
     console.log('\n[STEP 2] Fixing duplicate active signals (keep latest per coin)...');
     const deduped = await fixDuplicateActives();
