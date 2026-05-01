@@ -31,7 +31,6 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null);
     const [selectedRadarId, setSelectedRadarId] = useState<number | null>(finalDefaultRadarId);
     const [activeMobileTab, setActiveMobileTab] = useState<'wire' | 'stream' | 'chat'>('wire');
-    const hasSignals = validSignals.length > 0;
 
     // Derive selectedCoin early so handlers can reference it
     const activeArticleEarly = initialNews.find(n => n.id === null);
@@ -40,10 +39,10 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const baseCoin = activeItemCoinEarly || coin || 'SOL';
 
     useEffect(() => {
-        if (selectedRadarId === null && hasSignals && !finalDefaultRadarId) {
+        if (selectedRadarId === null && validSignals.length > 0 && !finalDefaultRadarId) {
             setSelectedRadarId(validSignals[0]?.id ?? null);
         }
-    }, [selectedRadarId, hasSignals, finalDefaultRadarId, validSignals]);
+    }, [selectedRadarId, finalDefaultRadarId, validSignals]);
 
     // Pagination state for Radar
     const [signals, setSignals] = useState<RadarSignal[]>(validSignals);
@@ -128,7 +127,6 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
                     onLoadMore={handleLoadMoreRadar}
                     hasMore={hasMoreRadar}
                     isLoadingMore={isLoadingMoreRadar}
-                    hasSignals={hasSignals}
                     onLoadMoreWire={handleLoadMoreWire}
                     hasMoreWire={hasMoreWire}
                     isLoadingMoreWire={isLoadingMoreWire}
