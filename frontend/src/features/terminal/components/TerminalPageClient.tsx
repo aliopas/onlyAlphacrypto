@@ -45,6 +45,12 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
         }
     }, [selectedRadarId, finalDefaultRadarId, validSignals]);
 
+    useEffect(() => {
+        if (validSignals.length === 0 && initialNews.length > 0 && activeTab !== 'WIRE') {
+            setActiveTab('WIRE');
+        }
+    }, [validSignals.length, initialNews.length, activeTab]);
+
     // Pagination state for Radar
     const [signals, setSignals] = useState<RadarSignal[]>(validSignals);
     const [radarOffset, setRadarOffset] = useState(validSignals.length);
@@ -56,6 +62,16 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const [wireOffset, setWireOffset] = useState(initialNews.length);
     const [hasMoreWire, setHasMoreWire] = useState(initialNews.length >= 20);
     const [isLoadingMoreWire, setIsLoadingMoreWire] = useState(false);
+
+    useEffect(() => {
+        if (activeTab !== 'WIRE') return;
+        if (selectedNewsId !== null) return;
+        if (wireNews.length === 0) return;
+        const firstId = wireNews.find(item => item.id != null)?.id;
+        if (typeof firstId === 'number') {
+            setSelectedNewsId(firstId);
+        }
+    }, [activeTab, selectedNewsId, wireNews]);
 
     const handleLoadMoreRadar = async () => {
         if (isLoadingMoreRadar || !hasMoreRadar) return;
