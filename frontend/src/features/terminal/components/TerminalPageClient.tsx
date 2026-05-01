@@ -116,15 +116,21 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
             {/* Left — AI Radar Stream Sidebar (sticky) */}
             <div className={`flex flex-col h-full min-h-0 flex-1 lg:flex-none lg:sticky lg:top-0 lg:self-start ${activeMobileTab === 'wire' ? 'w-full lg:w-[22%] lg:min-w-[280px]' : 'hidden lg:flex lg:w-[22%] lg:min-w-[280px]'}`}>
                 <TerminalWire
+                    news={wireNews}
                     radarSignals={signals}
                     targetedCoin={selectedCoin}
+                    onSelectNews={(id) => { setSelectedNewsId(id); setActiveTab('WIRE'); setActiveMobileTab('stream'); }}
                     onSelectRadar={(id) => { setSelectedRadarId(id); setActiveTab('RADAR'); setActiveMobileTab('stream'); }}
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                     selectedRadarId={selectedRadarId}
+                    selectedNewsId={selectedNewsId}
                     onLoadMore={handleLoadMoreRadar}
                     hasMore={hasMoreRadar}
                     isLoadingMore={isLoadingMoreRadar}
+                    onLoadMoreWire={handleLoadMoreWire}
+                    hasMoreWire={hasMoreWire}
+                    isLoadingMoreWire={isLoadingMoreWire}
                 />
             </div>
 
