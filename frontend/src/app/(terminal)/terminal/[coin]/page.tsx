@@ -114,15 +114,12 @@ export default async function CoinTerminalPage({
     params: Promise<{ coin: string }>;
     searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-    // 1. Fetch generic news
-    const news = await terminalApi.getLatestWire();
-
-    // 2. We can also fetch radar signals to inject them natively as the user requested in the video!
-    const radarSignals = await homeApi.getRadarSignals();
-
     const resolvedParams = await params;
     const resolvedSearchParams = await searchParams;
     const coinSymbol = resolvedParams.coin.toUpperCase();
+
+    const news = await terminalApi.getLatestWire({ coin: coinSymbol });
+    const radarSignals = await homeApi.getRadarSignals();
 
     const radarId = resolvedSearchParams.radarId ? Number(resolvedSearchParams.radarId) : undefined;
     const isAlphaFocus = resolvedSearchParams.alpha === 'true';

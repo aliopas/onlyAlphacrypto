@@ -2,9 +2,11 @@ import { apiClient } from '@/features/shared/api/client';
 import { CoinNews, MasterArticleResponse, TimelineResponse } from './types';
 
 export const terminalApi = {
-    getLatestWire: async (): Promise<CoinNews[]> => {
+    getLatestWire: async (options?: { coin?: string }): Promise<CoinNews[]> => {
         try {
-            const { data } = await apiClient.get<CoinNews[]>('/market/wire');
+            const params: Record<string, string> = {};
+            if (options?.coin) params.coin = options.coin;
+            const { data } = await apiClient.get<CoinNews[]>('/market/wire', { params });
             return data;
         } catch (error) {
             console.error('[API] getLatestWire failed:', error);

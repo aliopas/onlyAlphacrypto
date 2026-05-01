@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { TerminalWire } from '@/features/terminal/components/TerminalWire';
 import { TerminalChat } from '@/features/terminal/components/TerminalChat';
 import { AlphaStream } from '@/features/terminal/components/AlphaStream';
@@ -18,46 +18,90 @@ interface Props {
 }
 
 export function TerminalPageClient({ initialNews, coin, radarSignals = [], initialRadarId, isAlphaFocus }: Props) {
-    const validSignals = radarSignals.filter(r => r.coin);
-    const defaultTab = (initialRadarId ?? null) !== null || isAlphaFocus ? 'RADAR' : 'WIRE';
-    const latestRadarForCoin = validSignals.find(r => r.coin?.toUpperCase() === coin?.toUpperCase());
-    const safeInitialRadarId = initialRadarId != null && validSignals.some(r => r.id === initialRadarId) ? initialRadarId : null;
-    const defaultRadarId = isAlphaFocus
-        ? (safeInitialRadarId ?? latestRadarForCoin?.id ?? null)
-        : safeInitialRadarId;
-    const finalDefaultRadarId = defaultRadarId ?? validSignals[0]?.id ?? null;
+    const coinUpper = coin?.toUpperCase();
 
-    const resolvedDefaultTab = finalDefaultRadarId != null ? 'RADAR' : defaultTab;
+    const allValidSignals = useMemo(
+        () => radarSignals.filter(r => r.coin),
+        [radarSignals]
+    );
+
+    const matchingCoinSignals = useMemo(
+        () => coinUpper
+            ? allValidSignals.filter(r => r.coin?.toUpperCase() === coinUpper)
+            : allValidSignals,
+        [allValidSignals, coinUpper]
+    );
+
+    const firstArticleForCoin = useMemo(() => {
+        if (!coinUpper) return initialNews[0] ?? null;
+        return initialNews.find(n =>
+            n.coin?.toUpperCase() === coinUpper ||
+            n.coinSymbol?.toUpperCase() === coinUpper
+        ) ?? null;
+    }, [initialNews, coinUpper]);
+
+    const initialRadarBelongsToContext = initialRadarId != null
+        ? coinUpper
+            ? matchingCoinSignals.some(r => r.id === initialRadarId)
+            : allValidSignals.some(r => r.id === initialRadarId)
+        : false;
+
+    const safeInitialRadarId = initialRadarBelongsToContext ? initialRadarId : null;
+
+    const finalDefaultRadarId = coinUpper
+        ? safeInitialRadarId ?? matchingCoinSignals[0]?.id ?? null
+        : safeInitialRadarId ?? allValidSignals[0]?.id ?? null;
+
+    const hasCoinArticle = firstArticleForCoin != null;
+    const hasCoinRadar = matchingCoinSignals.length > 0;
+
+    let resolvedDefaultTab: 'WIRE' | 'RADAR';
+    if (coinUpper) {
+        if (isAlphaFocus && hasCoinArticle) {
+            resolvedDefaultTab = 'WIRE';
+        } else if (hasCoinRadar) {
+            resolvedDefaultTab = 'RADAR';
+        } else if (hasCoinArticle) {
+            resolvedDefaultTab = 'WIRE';
+        } else {
+            resolvedDefaultTab = 'WIRE';
+        }
+    } else {
+        resolvedDefaultTab = finalDefaultRadarId != null ? 'RADAR' : 'WIRE';
+    }
+
+    const defaultNewsId = coinUpper
+        ? (firstArticleForCoin?.id ?? null)
+        : (initialNews.find(n => n.id != null)?.id ?? null);
+
     const [activeTab, setActiveTab] = useState<'WIRE' | 'RADAR'>(resolvedDefaultTab);
-    const [selectedNewsId, setSelectedNewsId] = useState<number | null>(null);
+    const [selectedNewsId, setSelectedNewsId] = useState<number | null>(defaultNewsId);
     const [selectedRadarId, setSelectedRadarId] = useState<number | null>(finalDefaultRadarId);
     const [activeMobileTab, setActiveMobileTab] = useState<'wire' | 'stream' | 'chat'>('wire');
 
-    // Derive selectedCoin early so handlers can reference it
-    const activeArticleEarly = initialNews.find(n => n.id === null);
-    const activeRadarEarly = validSignals.find(r => r.id === finalDefaultRadarId);
-    const activeItemCoinEarly = activeRadarEarly?.coin;
-    const baseCoin = activeItemCoinEarly || coin || 'SOL';
+    const baseCoin = coin || 'SOL';
 
     useEffect(() => {
-        if (selectedRadarId === null && validSignals.length > 0 && !finalDefaultRadarId) {
-            setSelectedRadarId(validSignals[0]?.id ?? null);
+        if (selectedRadarId !== null) return;
+        if (!finalDefaultRadarId) {
+            const pool = coinUpper ? matchingCoinSignals : allValidSignals;
+            if (pool.length > 0) {
+                setSelectedRadarId(pool[0]?.id ?? null);
+            }
         }
-    }, [selectedRadarId, finalDefaultRadarId, validSignals]);
+    }, [selectedRadarId, finalDefaultRadarId, coinUpper, matchingCoinSignals, allValidSignals]);
 
     useEffect(() => {
-        if (validSignals.length === 0 && initialNews.length > 0 && activeTab !== 'WIRE') {
+        if (allValidSignals.length === 0 && initialNews.length > 0 && activeTab !== 'WIRE') {
             setActiveTab('WIRE');
         }
-    }, [validSignals.length, initialNews.length, activeTab]);
+    }, [allValidSignals.length, initialNews.length, activeTab]);
 
-    // Pagination state for Radar
-    const [signals, setSignals] = useState<RadarSignal[]>(validSignals);
-    const [radarOffset, setRadarOffset] = useState(validSignals.length);
-    const [hasMoreRadar, setHasMoreRadar] = useState(validSignals.length >= 20);
+    const [signals, setSignals] = useState<RadarSignal[]>(allValidSignals);
+    const [radarOffset, setRadarOffset] = useState(allValidSignals.length);
+    const [hasMoreRadar, setHasMoreRadar] = useState(allValidSignals.length >= 20);
     const [isLoadingMoreRadar, setIsLoadingMoreRadar] = useState(false);
 
-    // Pagination state for Wire
     const [wireNews, setWireNews] = useState<CoinNews[]>(initialNews);
     const [wireOffset, setWireOffset] = useState(initialNews.length);
     const [hasMoreWire, setHasMoreWire] = useState(initialNews.length >= 20);
@@ -67,11 +111,14 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
         if (activeTab !== 'WIRE') return;
         if (selectedNewsId !== null) return;
         if (wireNews.length === 0) return;
-        const firstId = wireNews.find(item => item.id != null)?.id;
+        const pool = coinUpper
+            ? wireNews.filter(n => n.coin?.toUpperCase() === coinUpper || n.coinSymbol?.toUpperCase() === coinUpper)
+            : wireNews;
+        const firstId = pool.find(item => item.id != null)?.id;
         if (typeof firstId === 'number') {
             setSelectedNewsId(firstId);
         }
-    }, [activeTab, selectedNewsId, wireNews]);
+    }, [activeTab, selectedNewsId, wireNews, coinUpper]);
 
     const handleLoadMoreRadar = async () => {
         if (isLoadingMoreRadar || !hasMoreRadar) return;
