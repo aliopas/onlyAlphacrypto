@@ -100,6 +100,39 @@ async function runMigrations(): Promise<void> {
 
             console.log('✅ Alpha focus migration complete');
         }
+
+        const tpslCheck = await client.query(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'signal_performance' AND column_name = 'stop_loss_price'"
+        );
+
+        if (tpslCheck.rows.length > 0) {
+            const emptyTpsl = await client.query(
+                "SELECT COUNT(*) as cnt FROM signal_performance WHERE stop_loss_price IS NULL AND verdict IN ('BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL')"
+            );
+
+            if (Number(emptyTpsl.rows[0].cnt) > 0) {
+                console.log(`📦 Backfilling TP/SL for ${emptyTpsl.rows[0].cnt} signals...`);
+
+                await client.query(`
+                    UPDATE signal_performance
+                    SET
+                        stop_loss_price = CASE
+                            WHEN verdict IN ('BUY', 'STRONG_BUY') THEN entry_price * 0.92
+                            WHEN verdict IN ('SELL', 'STRONG_SELL') THEN entry_price * 1.08
+                            ELSE NULL
+                        END,
+                        take_profit_price = CASE
+                            WHEN verdict IN ('BUY', 'STRONG_BUY') THEN entry_price * 1.15
+                            WHEN verdict IN ('SELL', 'STRONG_SELL') THEN entry_price * 0.85
+                            ELSE NULL
+                        END
+                    WHERE stop_loss_price IS NULL
+                      AND verdict IN ('BUY', 'STRONG_BUY', 'SELL', 'STRONG_SELL')
+                `);
+
+                console.log('✅ TP/SL backfill complete');
+            }
+        }
     } catch (err) {
         console.error('⚠️ Alpha focus migration warning:', err instanceof Error ? err.message : String(err));
     } finally {
