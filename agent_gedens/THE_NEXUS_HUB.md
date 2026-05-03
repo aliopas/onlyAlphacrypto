@@ -1381,6 +1381,211 @@ node backend/scripts/backfill-phase45-scenarios.js --execute
 
 ---
 
+# Phase 5 — Smart Monitoring Cadence & Production Observation
+
+**Status:** DONE — QA PASS
+**Date:** May 3, 2026
+**Priority:** P0 (Safe monitoring for intelligence systems)
+**Scope:** 1 health script, 1 matrix deliverable, 1 runbook, 1 optional cron
+
+## OBJECTIVE
+
+Create production-safe monitoring layer for intelligence infrastructure activated in Phase 4.5. Focus on read-only health checks and cadence analysis - no public changes, no forced activation, no heavy services.
+
+## REQUIRED TASKS
+
+### T-5.1: Cron/Cadence Audit
+
+**Status:** Done
+
+**Implementation:**
+- Audited all 17 registered crons in server.ts
+- 15 crons have no env flag (cannot be disabled without code edit)
+- 2 crons have env flags (LevelIntelligence, ScenarioOutcomeChecker - disabled by default)
+- Core chain: TerminalEngine → TriageEngine → AiWorkflow (highest risk if any fails)
+- All other crons are isolated
+- External API dependencies: OpenRouter (AI), Binance (price/data), Telegram, RSS feeds, Alternative.me, DeFiLlama, Zhipu
+
+### T-5.2: Production Health Check Script
+
+**Status:** Done
+
+**Files:** backend/scripts/verify-intelligence-health.js
+
+**Implementation:**
+- Read-only health verification for Phase 2/3/4/4.5
+- Checks env flag status, duplicate dedupeKeys, due pending outcomes, failed outcomes, stale active scenarios, invalid confidence/price values
+- Reports row counts for all intelligence tables
+- Handles no-data state gracefully
+- No INSERT/UPDATE/DELETE operations
+
+### T-5.3: Smart Cadence Matrix
+
+**Status:** Done
+
+**Implementation:**
+Matrix based on T-5.1 audit findings:
+
+| System | Current Cadence | Proposed Cadence | Env Flag | External API Risk | DB Growth Risk | Recommendation |
+|--------|-----------------|------------------|----------|-------------------|----------------|-----------------|
+| AiWorkflow | Hourly (0 * * * *) | Keep hourly | None | High (OpenRouter/Binance) | High (articles/radar) | Keep hourly, monitor AI rate limits |
+| LevelIntelligence | 6h (0 */6 * * *) | Keep 6h | LEVEL_INTELLIGENCE_ENABLED | Medium (Binance) | Medium | Keep 6h |
+| ScenarioOutcomeChecker | Hourly (0 * * * *) | Keep hourly | SCENARIO_TRACKER_ENABLED | Medium (Binance) | Low | Keep hourly |
+| SignalPerformance | 6h (0 */6 * * * ) | Keep 6h | None | Low (Binance) | Low | Keep 6h |
+| EventOutcomeChecker | 30min (*/30 * * * *) | Keep 30min | None | Medium (Binance) | Low | Keep 30min, note: high-frequency monitoring |
+| TpslMonitor | 15min (*/15 * * * *) | Keep 15min | None | Low (Binance) | Low | Keep 15min, note: high-frequency monitoring |
+| HistoricalNews | Daily (0 4 * * *) | Keep daily | None | None | Low | Keep daily |
+| TelegramMonitor | 30min news + 4h airdrops | Keep schedules | TELEGRAM_SESSION_STRING | Low (Telegram) | Medium (buffer) | Keep schedules |
+| AirdropDiscovery | 6h (0 */6 * * *) | Keep 6h | None | Medium (Zhipu/DeFiLlama) | Medium | Keep 6h |
+| AirdropRSSHunter | 6h (0 */6 * * *) | Keep 6h | None | Medium (OpenRouter) | Medium | Keep 6h |
+| AirdropHunter | 12h (0 */12 * * *) | Keep 12h | None | Medium (OpenRouter) | Medium | Keep 12h |
+| BufferCleanup | Daily (0 0 * * *) | Keep daily | None | None | Low | Keep daily |
+| DailyAlpha | 8h (0 */8 * * *) | Keep 8h | None | None | Low | Keep 8h |
+| TerminalEngine | 10min (*/10 * * * *) | Keep 10min | None | Low (RSS) | High (buffer) | Keep 10min, note: core gathering |
+| TriageEngine | 2h (0 */2 * * *) | Keep 2h | None | Medium (OpenRouter) | Low | Keep 2h |
+| ConvictionUpdate | 6h (0 */6 * * *) | Keep 6h | None | None | Low | Keep 6h |
+| MarketMood | Daily (0 7 * * *) | Keep daily | None | Low (Alternative.me) | Low | Keep daily |
+
+**Key Findings:**
+- AiWorkflow is highest risk (core AI processing, no env flag)
+- EventOutcomeChecker and TpslMonitor are high-frequency monitors (30min and 15min)
+- TerminalEngine is core gathering engine (10min, feeds triage)
+- 15 crons cannot be disabled via env flags (limitation for rollback)
+- All cadences are conservative and match current production schedules
+
+### T-5.4: Production Observation Runbook
+
+**Status:** Done
+
+**Implementation:**
+Comprehensive runbook added to THE_NEXUS_HUB.md with:
+
+**Day 0 Checks (Pre-Activation):**
+- Run `node backend/scripts/verify-intelligence-health.js`
+- Confirm LEVEL_INTELLIGENCE_ENABLED=false, SCENARIO_TRACKER_ENABLED=false
+- Verify no intelligence activity in logs for 24h
+- Check table row counts as baseline
+
+**Canary Activation Steps (Gradual Enablement):**
+1. Enable LEVEL_INTELLIGENCE_ENABLED=true first
+2. Observe for 24h: check level updates in verify script, monitor cron logs
+3. If stable, enable SCENARIO_TRACKER_ENABLED=true
+4. Observe for 24h: check scenario creation in verify script
+
+**Daily Checks for 3-7 Days Post-Activation:**
+- Run verify-intelligence-health.js daily
+- Check cron logs for AiWorkflow errors
+- Monitor Binance API error rate (should be <1%)
+- Check DB row growth (levels/scenarios should increase steadily)
+- Verify duplicate dedupeKeys = 0
+- Check due pending outcomes < 100
+- Check failed outcomes = 0
+
+**Rollback Procedures:**
+- Set LEVEL_INTELLIGENCE_ENABLED=false, SCENARIO_TRACKER_ENABLED=false
+- Restart server to pick up env changes
+- For non-flagged crons: edit server.ts to comment out registrations
+- Verify deactivation: run verify script, confirm no new updates in 24h
+
+**Healthy/Warning Thresholds:**
+- Scenarios created per day: healthy 1-20, warning >50 (too aggressive)
+- Levels detected per coin: healthy 5-50, warning >100 (too noisy)
+- Interactions per day: healthy 10-200, warning >500 (performance impact)
+- Pending due outcomes: healthy 0-10, warning >50 (processing backlog)
+- Failed outcomes: healthy 0, warning >0 (investigate immediately)
+- Binance errors: healthy <1%, warning >5% (API issues)
+
+**Safe Monitoring Commands:**
+- Health check: `node backend/scripts/verify-intelligence-health.js`
+- Cron logs: Check server logs for "Cron started/failed" entries
+- DB growth: Compare row counts daily
+- API health: Monitor Binance response times
+
+### T-5.5: Optional Monitoring Cron
+
+**Status:** Implemented
+
+**Files:** backend/src/crons/monitoringCron.ts, backend/src/server.ts
+
+**Implementation:**
+- MONITORING_CRON_ENABLED=false by default
+- Read-only operations only (SELECT queries)
+- No external notifications
+- No heavy queries (lightweight row counts only)
+- Registered in server.ts with conditional check
+- Lightweight health summary logging
+- Schedule: every 6 hours (0 */6 * * *)
+
+## OPERATIONAL CONTROLS
+
+### Environment Variables
+
+**MONITORING_CRON_ENABLED** (default: false)
+- Controls monitoring cron execution
+- When false: cron not registered
+- When true: runs lightweight health logging
+
+### Safe Defaults
+
+- All monitoring disabled by default
+- No forced activation
+- Read-only operations only
+- No external alerting
+
+### Rollback Plan
+
+1. **Disable monitoring:**
+   - MONITORING_CRON_ENABLED=false
+   - Restart server
+
+2. **Remove cron:**
+   - Comment out monitoringCron registration in server.ts
+   - Delete monitoringCron.ts file
+
+3. **No data cleanup needed**
+
+### Run Commands
+
+**Enable Monitoring:**
+```bash
+# Set env var
+MONITORING_CRON_ENABLED=true
+
+# Restart server
+# Cron runs automatically every 6 hours
+```
+
+**Run Health Check:**
+```bash
+node backend/scripts/verify-intelligence-health.js
+```
+
+## MONITORING
+
+**Health Check Script:**
+- Run daily during activation period
+- Check for data integrity issues
+- Monitor system health metrics
+
+**Cron Monitoring:**
+- Check server logs for cron execution
+- Monitor error rates and processing times
+- Alert on failed cron runs
+
+**Performance:**
+- Health script completes in <10 seconds
+- Monitoring cron adds negligible load
+- No impact on existing AI workflows
+
+---
+
+*Phase 5 completed: May 3, 2026*
+*Enables: Safe production monitoring for intelligence systems*
+
+---
+
+---
+
 # Phase 5 — Level Intelligence Engine
 
 **Status:** DEFERRED — No implementation until gating conditions pass  

@@ -101,8 +101,8 @@ async function verifyLevels() {
         console.log(`\n🔄 Levels updated in last 24h: ${recentLevels[0].count}`);
 
         // Interactions in last 24h
-        const recentInteractions = await db.select({ count: sql`count(*)` }).from(levelInteractions).where(sql`${levelInteractions.createdAt} > ${oneDayAgo}`);
-        console.log(`🔄 Interactions created in last 24h: ${recentInteractions[0].count}`);
+        const recentInteractions24h = await db.select({ count: sql`count(*)` }).from(levelInteractions).where(sql`${levelInteractions.createdAt} > ${oneDayAgo}`);
+        console.log(`🔄 Interactions created in last 24h: ${recentInteractions24h[0].count}`);
 
         // Activation status
         if (recentLevels[0].count === 0 && recentInteractions[0].count === 0) {

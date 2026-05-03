@@ -81,6 +81,9 @@ const envSchema = z.object({
     // Scenario Tracker
     SCENARIO_TRACKER_ENABLED: z.boolean().default(false),
 
+    // Monitoring Cron
+    MONITORING_CRON_ENABLED: z.boolean().default(false),
+
     // Embeddings (pgvector semantic dedup)
     EMBEDDING_PROVIDER: z.enum(['openrouter', 'ollama']).default('openrouter'),
     EMBEDDING_MODEL: z.string().default('openai/text-embedding-3-small'),

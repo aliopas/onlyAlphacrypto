@@ -24,6 +24,7 @@ import { startTpslMonitorCron } from './crons/tpslMonitor.cron';
 import { startEventOutcomeCheckerCron } from './crons/eventOutcomeChecker.cron';
 import { startLevelIntelligenceCron } from './crons/levelIntelligenceCron';
 import { startScenarioOutcomeCheckerCron } from './crons/scenarioOutcomeChecker.cron';
+import { startMonitoringCron } from './crons/monitoringCron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -120,6 +121,18 @@ async function bootstrap(): Promise<void> {
                 }
             }, index * cronStartDelay);
         });
+
+        // Optional monitoring cron
+        if (env.MONITORING_CRON_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startMonitoringCron();
+                    logger.info('[Server] Optional cron started: MonitoringCron');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron MonitoringCron: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, crons.length * cronStartDelay);
+        }
     } catch (error) {
         logger.error('[Server] Failed to start: %s', error instanceof Error ? error.message : String(error));
         process.exit(1);
