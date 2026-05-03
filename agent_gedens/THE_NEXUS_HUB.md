@@ -1072,194 +1072,127 @@ Update scorecard to show Active Market Scenarios, Long-Term Convictions, Complet
 
 ---
 
-# Phase 4 — OHLCV Price Snapshots
+# Phase 4 — Multi-Horizon Scenario Tracker
 
-**Status:** PLANNED — Technically independent but schedule after Phase 1C stable  
-**Date:** May 2, 2026  
-**Priority:** P2 (Enables technical analysis features)  
-**Scope:** 1 new config file, 1 new cron, 1 migration, 3 updates  
+**Status:** DONE — QA PASS  
+**Date:** May 3, 2026  
+**Priority:** P1 (Enables investment vs speculation tracking)  
+**Scope:** 1 SQL migration, 3 new files, 2 modified files  
 
 ## OBJECTIVE
 
-Store OHLCV price snapshots for technical analysis, replacing simple price points with full candle data.
+Track market scenarios across multiple horizons (speculation, swing, investment) with bias-aware outcome classification, dedup prevention, and automated invalidation logic.
 
 ## REQUIRED TASKS
 
-### T-4A-01: Expand price_snapshots Schema
+### T-4A-01: Market Scenarios Migration
 
-**Task ID:** T-4A-01  
-**Phase:** Phase 4A — Expand price_snapshots with OHLCV  
-**Owner:** Senior Developer  
-**Status:** Planned  
+**Task ID:** T-4A-01
+**Phase:** Phase 4A — market_scenarios tables
+**Owner:** Senior Developer
+**Status:** Done
 
-**Objective:**  
-Add OHLCV columns to price_snapshots, keep price = closePrice for compatibility.
+**Objective:**
+Create market_scenarios, scenario_horizon_outcomes, scenario_status_history tables with enums for multi-horizon tracking.
 
-**Files to inspect:**  
-- `backend/src/models/market.model.ts:210-220` — current priceSnapshots table  
+**Migration path:** backend/scripts/migrate-market-scenarios.sql
 
-**Files likely to modify:**  
-- `backend/src/models/market.model.ts`  
-- Migration script  
+**Acceptance criteria:**
+- All tables and enums created
+- Numeric precision correct (numeric(24,12) for prices, numeric(10,4) for percents)
+- Indexes on dedupeKey, status, dueAt, etc.
+- Additive only (no existing tables modified)
 
-**Detailed steps:**  
-1. Add openPrice, highPrice, lowPrice, closePrice, volume, interval columns  
-2. Keep existing price column = closePrice  
-3. Add interval for different timeframes  
+**Testing / verification:**
+- Tables exist with correct schemas
+- Enums include all required values (scenario_status: pending/active/completed/expired/invalidated)
 
-**Acceptance criteria:**  
-- Backward compatible (price = closePrice)  
+### T-4B-01: Scenario Tracker Service
 
-**Testing / verification:**  
-- New snapshots include OHLCV data  
+**Task ID:** T-4B-01
+**Phase:** Phase 4B — scenarioTracker.service.ts
+**Owner:** Senior Developer
+**Status:** Done
 
-**Rollback notes:**  
-- Drop new columns  
+**Objective:**
+Implement scenario creation with dedup, horizon outcomes generation, and status updates.
 
-**Dependencies:**  
-None  
+**Files modified:**
+- backend/src/services/scenarioTracker.service.ts (new)
 
----
+**Acceptance criteria:**
+- createScenario generates dedupeKey correctly and prevents duplicates
+- createHorizonOutcomesForScenario creates 11 outcomes (3 spec + 3 swing + 5 invest) with dueAt from referencePriceAt + duration
+- updateScenarioStatus inserts history row
 
-### T-4B-01: Create backend/src/config/watchlist.ts
+### T-4C-01: Outcome Checker Cron
 
-**Task ID:** T-4B-01  
-**Phase:** Phase 4B — SNAPSHOT_WATCHLIST  
-**Owner:** Senior Developer  
-**Status:** Planned  
+**Task ID:** T-4C-01
+**Phase:** Phase 4C — scenarioOutcomeChecker.cron.ts
+**Owner:** Senior Developer
+**Status:** Done
 
-**Objective:**  
-Create centralized config for coins to snapshot hourly.
+**Objective:**
+Hourly cron to capture outcomes using historical candles from referencePriceAt to dueAt.
 
-**Files to inspect:**  
-None (new file)  
+**Files modified:**
+- backend/src/crons/scenarioOutcomeChecker.cron.ts (new)
+- backend/src/server.ts (cron registration)
 
-**Files likely to modify:**  
-- `backend/src/config/watchlist.ts` (NEW)  
+**Acceptance criteria:**
+- Fetches candles from referencePriceAt to dueAt
+- Bias-aware classification (bullish favors positive change, bearish favors negative)
+- Invalidation logic checks risk zones and invalidationPrice
+- changePercent = ((priceAtHorizon - priceAtStart) / priceAtStart) * 100
 
-**Detailed steps:**  
-1. Export SNAPSHOT_WATCHLIST array of coin symbols  
-2. Include major coins for technical analysis  
+### T-4D-01: Drizzle Model Updates
 
-**Acceptance criteria:**  
-- Configurable list of snapshot coins  
+**Task ID:** T-4D-01
+**Phase:** Phase 4D — market.model.ts updates
+**Owner:** Senior Developer
+**Status:** Done
 
-**Testing / verification:**  
-- Cron uses the watchlist  
+**Objective:**
+Add market_scenarios, scenario_horizon_outcomes, scenario_status_history tables to Drizzle schema.
 
-**Rollback notes:**  
-- Delete the file  
+**Files modified:**
+- backend/src/models/market.model.ts
 
-**Dependencies:**  
-None  
+**Acceptance criteria:**
+- All enums defined (source_type, scenario_type, bias_type, etc.)
+- Numeric precision matches migration
+- Indexes match migration
 
----
+### T-4E-01: Verification Script
 
-### T-4C-01: Create priceSnapshot.cron.ts
+**Task ID:** T-4E-01
+**Phase:** Phase 4E — verify-phase4-scenarios.js
+**Owner:** Senior Developer
+**Status:** Done
 
-**Task ID:** T-4C-01  
-**Phase:** Phase 4C — priceSnapshot.cron.ts  
-**Owner:** Senior Developer  
-**Status:** Planned  
+**Objective:**
+Read-only script to verify scenario data integrity.
 
-**Objective:**  
-Hourly cron to fetch OHLCV data for watchlist coins.
+**Files modified:**
+- backend/scripts/verify-phase4-scenarios.js (new)
 
-**Files to inspect:**  
-- `backend/src/services/binance.service.ts` — for price fetching  
-
-**Files likely to modify:**  
-- `backend/src/crons/priceSnapshot.cron.ts` (NEW)  
-
-**Detailed steps:**  
-1. Redis lock, hourly schedule  
-2. Fetch 1h candles for watchlist coins  
-3. Insert OHLCV data  
-
-**Acceptance criteria:**  
-- Snapshots stored hourly  
-- Rate limit aware  
-
-**Testing / verification:**  
-- Table populated with OHLCV data  
-
-**Rollback notes:**  
-- Delete cron file and registration  
-
-**Dependencies:**  
-- T-4A-01 + T-4B-01  
+**Acceptance criteria:**
+- Checks total scenarios, by status/type/bias
+- Verifies duplicate dedupeKeys
+- Validates reference prices
+- Handles no-data gracefully
 
 ---
 
-### T-4D-01: Migration for price_snapshots Expansion
+## DEFERRED ITEMS
 
-**Task ID:** T-4D-01  
-**Phase:** Phase 4D — Migration  
-**Owner:** Senior Developer  
-**Status:** Planned  
-
-**Objective:**  
-SQL migration for OHLCV columns.
-
-**Files to inspect:**  
-None  
-
-**Files likely to modify:**  
-- Migration script  
-
-**Detailed steps:**  
-1. Add OHLCV columns  
-2. Backfill existing price as closePrice  
-
-**Acceptance criteria:**  
-- Migration runs without errors  
-
-**Testing / verification:**  
-- Schema updated  
-
-**Rollback notes:**  
-- Drop new columns  
-
-**Dependencies:**  
-- T-4A-01  
+- **aiWorkflow scenario integration:** Deferred per Phase 4 plan (env flag SCENARIO_TRACKER_ENABLED exists for future enable)
+- **Phase 3 levelIntelligenceCron.ts:** Known gap/stub - level intelligence does not run automatically (confirmed in QA)
 
 ---
 
-### T-4E-01: Register priceSnapshot Cron
-
-**Task ID:** T-4E-01  
-**Phase:** Phase 4E — Register cron  
-**Owner:** Senior Developer  
-**Status:** Planned  
-
-**Objective:**  
-Register the new cron in server.ts.
-
-**Files to inspect:**  
-- `backend/src/server.ts`  
-
-**Files likely to modify:**  
-- `backend/src/server.ts`  
-
-**Detailed steps:**  
-1. Import and register priceSnapshot cron  
-
-**Acceptance criteria:**  
-- Cron starts on boot  
-
-**Testing / verification:**  
-- Server logs show cron scheduled  
-
-**Rollback notes:**  
-- Remove registration  
-
-**Dependencies:**  
-- T-4C-01  
-
----
-
-*Phase 4 authored: May 2, 2026*  
-*Enables: Technical analysis, level detection, price pattern recognition*
+*Phase 4 completed: May 3, 2026*
+*Enables: Multi-horizon scenario tracking with automated outcomes and invalidation*
 
 ---
 

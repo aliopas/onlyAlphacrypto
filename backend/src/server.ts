@@ -23,6 +23,7 @@ import { startSignalPerformanceCron } from './crons/signalPerformance.cron';
 import { startTpslMonitorCron } from './crons/tpslMonitor.cron';
 import { startEventOutcomeCheckerCron } from './crons/eventOutcomeChecker.cron';
 import { startLevelIntelligenceCron } from './crons/levelIntelligenceCron';
+import { startScenarioOutcomeCheckerCron } from './crons/scenarioOutcomeChecker.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -106,6 +107,7 @@ async function bootstrap(): Promise<void> {
             { name: 'TpslMonitor', fn: startTpslMonitorCron },
             { name: 'EventOutcomeChecker', fn: startEventOutcomeCheckerCron },
             { name: 'LevelIntelligence', fn: startLevelIntelligenceCron },
+            { name: 'ScenarioOutcomeChecker', fn: startScenarioOutcomeCheckerCron },
         ];
 
         crons.forEach((cron, index) => {

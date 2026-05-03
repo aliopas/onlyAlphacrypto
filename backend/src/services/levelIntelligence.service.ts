@@ -183,7 +183,7 @@ function analyzeTouches(candles: CandleData[], levelPrice: number): Array<{ time
 
         if (candle.low <= levelPrice && candle.high >= levelPrice) {
             // Touch
-            const touchType = classifyTouch(candle, nextCandle, levelPrice);
+            const touchType = classifyTouch(candle, nextCandle, levelPrice, candles, i);
             touches.push({
                 timestamp: candle.timestamp,
                 type: touchType.type,
@@ -198,7 +198,7 @@ function analyzeTouches(candles: CandleData[], levelPrice: number): Array<{ time
 
 // ─── Helper: Classify Touch ────────────────────────────────────────────────
 
-function classifyTouch(candle: CandleData, nextCandle: CandleData | undefined, levelPrice: number): { type: 'touch' | 'bounce' | 'break' | 'fakeout'; magnitude?: number } {
+function classifyTouch(candle: CandleData, nextCandle: CandleData | undefined, levelPrice: number, candles: CandleData[], i: number): { type: 'touch' | 'bounce' | 'break' | 'fakeout'; magnitude?: number } {
     if (!nextCandle) {
         return { type: 'touch' };
     }
@@ -310,8 +310,8 @@ export async function saveLevels(levels: LevelData[]): Promise<void> {
                     eq(levelIntelligence.coinSymbol, level.coinSymbol),
                     eq(levelIntelligence.timeframe, level.timeframe),
                     eq(levelIntelligence.levelType, level.levelType),
-                    gte(levelIntelligence.levelPrice, minPrice),
-                    lte(levelIntelligence.levelPrice, maxPrice)
+                    gte(levelIntelligence.levelPrice, minPrice.toString()),
+                    lte(levelIntelligence.levelPrice, maxPrice.toString())
                 ))
                 .limit(1);
 
@@ -323,9 +323,9 @@ export async function saveLevels(levels: LevelData[]): Promise<void> {
                         bounceCount: sql`${levelIntelligence.bounceCount} + ${level.bounceCount}`,
                         breakCount: sql`${levelIntelligence.breakCount} + ${level.breakCount}`,
                         fakeoutCount: sql`${levelIntelligence.fakeoutCount} + ${level.fakeoutCount}`,
-                        avgBouncePercent: level.avgBouncePercent || sql`${levelIntelligence.avgBouncePercent}`,
-                        avgBreakPercent: level.avgBreakPercent || sql`${levelIntelligence.avgBreakPercent}`,
-                        volumeAtLevel: level.volumeAtLevel || sql`${levelIntelligence.volumeAtLevel}`,
+                        avgBouncePercent: level.avgBouncePercent ? level.avgBouncePercent.toString() : sql`${levelIntelligence.avgBouncePercent}`,
+                        avgBreakPercent: level.avgBreakPercent ? level.avgBreakPercent.toString() : sql`${levelIntelligence.avgBreakPercent}`,
+                        volumeAtLevel: level.volumeAtLevel ? level.volumeAtLevel.toString() : sql`${levelIntelligence.volumeAtLevel}`,
                         lastTouchedAt: level.lastTouchedAt || sql`${levelIntelligence.lastTouchedAt}`,
                         confidenceScore: level.confidenceScore,
                         updatedAt: new Date(),
@@ -360,13 +360,13 @@ export async function saveLevels(levels: LevelData[]): Promise<void> {
 
 export async function getLevelsForCoin(coinSymbol: string, timeframe?: '1h' | '4h' | '1d' | '1w'): Promise<LevelData[]> {
     try {
-        let query = db.select().from(levelIntelligence).where(eq(levelIntelligence.coinSymbol, coinSymbol));
+        const conditions = [eq(levelIntelligence.coinSymbol, coinSymbol)];
 
         if (timeframe) {
-            query = query.where(eq(levelIntelligence.timeframe, timeframe));
+            conditions.push(eq(levelIntelligence.timeframe, timeframe));
         }
 
-        const rows = await query;
+        const rows = await db.select().from(levelIntelligence).where(and(...conditions));
 
         return rows.map(row => ({
             coinSymbol: row.coinSymbol,

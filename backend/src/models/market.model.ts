@@ -1,7 +1,7 @@
 import {
     pgTable, serial, varchar, text, timestamp,
     integer, real, json, jsonb, boolean, pgEnum, unique,
-    customType, numeric, index
+    customType, numeric, index, uuid, primaryKey
 } from 'drizzle-orm/pg-core';
 
 const vector = customType<{ data: number[]; driverData: string }>({
@@ -21,6 +21,16 @@ const vector = customType<{ data: number[]; driverData: string }>({
 export const levelTypeEnum = pgEnum('level_type', ['support', 'resistance']);
 export const timeframeEnum = pgEnum('timeframe', ['1h', '4h', '1d', '1w']);
 export const interactionTypeEnum = pgEnum('interaction_type', ['touch', 'bounce', 'break', 'fakeout']);
+
+// ─── MARKET SCENARIOS ENUMS ────────────────────────────────────────────────────
+export const sourceTypeEnum = pgEnum('source_type', ['signal', 'radar', 'manual', 'event']);
+export const scenarioTypeEnum = pgEnum('scenario_type', ['speculation', 'swing', 'investment']);
+export const biasEnum = pgEnum('bias_type', ['bullish', 'bearish', 'neutral']);
+export const scenarioStatusEnum = pgEnum('scenario_status', ['pending', 'active', 'completed', 'expired', 'invalidated']);
+export const horizonTypeEnum = pgEnum('horizon_type', ['1h','4h','24h','3d','7d','14d','30d','90d','180d','365d','730d']);
+export const horizonGroupEnum = pgEnum('horizon_group', ['speculation', 'swing', 'investment']);
+export const outcomeClassificationEnum = pgEnum('outcome_classification', ['favorable', 'unfavorable', 'neutral', 'invalidated', 'insufficient_data']);
+export const outcomeStatusEnum = pgEnum('outcome_status', ['pending', 'captured', 'failed', 'skipped']);
 
 // ─── MARKET INSIGHTS (AI Verdicts per Coin) ───────────────────────────────────
 export const marketInsights = pgTable('market_insights', {
@@ -377,3 +387,75 @@ export const levelInteractions = pgTable('level_interactions', {
     volumeAtTouch: numeric('volume_at_touch', { precision: 24, scale: 12 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+// ─── MARKET SCENARIOS ──────────────────────────────────────────────────────────
+export const marketScenarios = pgTable('market_scenarios', {
+    scenarioId: uuid('scenarioid').primaryKey().defaultRandom(),
+    dedupeKey: varchar('dedupekey', { length: 255 }).notNull(),
+    sourceType: sourceTypeEnum('sourcetype').notNull(),
+    sourceId: varchar('sourceid', { length: 128 }),
+    coinSymbol: varchar('coinsymbol', { length: 32 }).notNull(),
+    scenarioType: scenarioTypeEnum('scenariotype').notNull(),
+    bias: biasEnum('bias').notNull(),
+    eventType: varchar('eventtype', { length: 50 }),
+    eventSeverity: varchar('eventseverity', { length: 20 }),
+    eventScope: varchar('eventscope', { length: 20 }),
+    referencePrice: numeric('referenceprice', { precision: 24, scale: 12 }).notNull(),
+    referencePriceSource: varchar('referencepricesource', { length: 50 }).notNull(),
+    referencePriceAt: timestamp('referencepriceat').notNull(),
+    targetZoneLow: numeric('targetzonelow', { precision: 24, scale: 12 }),
+    targetZoneHigh: numeric('targetzonehigh', { precision: 24, scale: 12 }),
+    riskZoneLow: numeric('riskzonelow', { precision: 24, scale: 12 }),
+    riskZoneHigh: numeric('riskzonehigh', { precision: 24, scale: 12 }),
+    invalidationPrice: numeric('invalidationprice', { precision: 24, scale: 12 }),
+    thesis: text('thesis'),
+    dataContext: jsonb('datacontext'),
+    historicalStatsSnapshot: jsonb('historicalstatssnapshot'),
+    levelContextSnapshot: jsonb('levelcontextsnapshot'),
+    status: scenarioStatusEnum('status').notNull().default('pending'),
+    publicSafeSummary: text('publicsafesummary'),
+    createdAt: timestamp('createdat').defaultNow().notNull(),
+    updatedAt: timestamp('updatedat').defaultNow().notNull(),
+}, (table) => ({
+    sourceIdIdx: index('market_scenarios_sourceid_idx').on(table.sourceId),
+    statusIdx: index('market_scenarios_status_idx').on(table.status),
+    coinSymbolIdx: index('market_scenarios_coinsymbol_idx').on(table.coinSymbol),
+    scenarioTypeIdx: index('market_scenarios_scenariotype_idx').on(table.scenarioType),
+}));
+
+export const scenarioHorizonOutcomes = pgTable('scenario_horizon_outcomes', {
+    scenarioId: uuid('scenarioid').references(() => marketScenarios.scenarioId, { onDelete: 'cascade' }).notNull(),
+    coinSymbol: varchar('coinsymbol', { length: 32 }).notNull(),
+    horizon: horizonTypeEnum('horizon').notNull(),
+    horizonGroup: horizonGroupEnum('horizongroup').notNull(),
+    dueAt: timestamp('dueat').notNull(),
+    priceAtStart: numeric('priceatstart', { precision: 24, scale: 12 }).notNull(),
+    priceAtHorizon: numeric('priceathorizon', { precision: 24, scale: 12 }),
+    changePercent: numeric('changepercent', { precision: 10, scale: 4 }),
+    maxUpsidePercent: numeric('maxupsidepercent', { precision: 10, scale: 4 }),
+    maxDrawdownPercent: numeric('maxdrawdownpercent', { precision: 10, scale: 4 }),
+    timeToPeakMinutes: integer('timetopeakminutes'),
+    timeToBottomMinutes: integer('timetobottomminutes'),
+    outcomeClassification: outcomeClassificationEnum('outcomeclassification'),
+    status: outcomeStatusEnum('status').notNull().default('pending'),
+    capturedAt: timestamp('capturedat'),
+    errorMessage: text('errormessage'),
+    createdAt: timestamp('createdat').defaultNow().notNull(),
+    updatedAt: timestamp('updatedat').defaultNow().notNull(),
+}, (table) => ({
+    primaryKey: primaryKey(table.scenarioId, table.horizon),
+    dueAtIdx: index('scenario_horizon_outcomes_dueat_idx').on(table.dueAt),
+    statusIdx: index('scenario_horizon_outcomes_status_idx').on(table.status),
+    scenarioIdIdx: index('scenario_horizon_outcomes_scenarioid_idx').on(table.scenarioId),
+}));
+
+export const scenarioStatusHistory = pgTable('scenario_status_history', {
+    id: varchar('id', { length: 36 }).primaryKey().$defaultFn(() => crypto.randomUUID()),
+    scenarioId: uuid('scenarioid').references(() => marketScenarios.scenarioId, { onDelete: 'cascade' }),
+    oldStatus: scenarioStatusEnum('oldstatus'),
+    newStatus: scenarioStatusEnum('newstatus').notNull(),
+    changedAt: timestamp('changedat').defaultNow().notNull(),
+    reason: text('reason'),
+}, (table) => ({
+    scenarioIdIdx: index('scenario_status_history_scenarioid_idx').on(table.scenarioId),
+}));
