@@ -1198,6 +1198,189 @@ Read-only script to verify scenario data integrity.
 
 ---
 
+# Phase 4.5 — Activation & Backfill Readiness
+
+**Status:** DONE — QA PASS
+**Date:** May 3, 2026
+**Priority:** P0 (Activates Phase 3/4 infrastructure)
+**Scope:** 4 modified files, 1 new script
+
+## OBJECTIVE
+
+Turn Phase 3/4 passive infrastructure into safely activated production systems with controlled backfill.
+
+## REQUIRED TASKS
+
+### T-4.5A-01: Level Intelligence Cron Activation
+
+**Status:** Done
+
+**Implementation:**
+- Replaced stub with real cron calling levelIntelligence.service.ts
+- Processes MAJOR_COINS = ['BTC', 'ETH', 'SOL', 'ADA', 'LINK', 'DOT', 'AVAX', 'MATIC']
+- Supports timeframes: 1h, 4h, 1d, 1w
+- Configurable via LEVEL_INTELLIGENCE_MAX_COINS (default 8), LEVEL_INTELLIGENCE_TIMEFRAMES
+- Per coin/timeframe try/catch isolation
+- Rate-limited with 100ms delays between requests
+- Logs: start, enabled/disabled, coin count, timeframes, success/failure summary
+
+### T-4.5A-02: Scenario Creation Integration
+
+**Status:** Done
+
+**Implementation:**
+- Added scenario creation to aiWorkflow.cron.ts after coinNewsHistory insert
+- Controlled by SCENARIO_TRACKER_ENABLED (default false)
+- Eligibility: eventSeverity >=3 (MAJOR), price available, sentiment in ['bullish','bearish']
+- Creates speculation scenarios with dedupeKey prevention
+- Maps: event->sourceType, sourceHash->sourceId, symbol->coinSymbol, sentiment->bias
+- Failure wrapped in try/catch, does not break articles/radar/scorecard
+
+### T-4.5A-03: Safe Backfill Script
+
+**Status:** Done
+
+**Files:** backend/scripts/backfill-phase45-scenarios.js
+
+**Implementation:**
+- Dry-run default mode, requires --execute for writes
+- Scope: Last 14 days, MAJOR_COINS, major/high-severity events only
+- Conservative mapping: sentiment->bias, title->thesis, eventType->eventType
+- Logs: scanned, eligible, skipped, created, duplicates
+- Respects dedupeKey, creates speculation scenarios
+
+### T-4.5A-04: Verification Updates
+
+**Status:** Done
+
+**Implementation:**
+- Extended verify-phase3-levels.js: checks levels/interactions updated in last 24h, activation status
+- Extended verify-phase4-scenarios.js: checks scenarios created in last 24h, activation status
+- Added invalid price/confidence checks
+
+## OPERATIONAL CONTROLS
+
+### Environment Variables
+
+**LEVEL_INTELLIGENCE_ENABLED** (default: false)
+- Controls level intelligence cron execution
+- When false: cron logs and exits safely
+- When true: processes levels and interactions
+
+**LEVEL_INTELLIGENCE_MAX_COINS** (default: 8)
+- Limits coins processed per run
+- Prevents excessive API load
+- Major coins: BTC, ETH, SOL, ADA, LINK, DOT, AVAX, MATIC
+
+**LEVEL_INTELLIGENCE_TIMEFRAMES** (default: '1h,4h,1d,1w')
+- Configurable timeframes as comma-separated string
+- Supported: 1h, 4h, 1d, 1w
+
+**SCENARIO_TRACKER_ENABLED** (default: false)
+- Controls automatic scenario creation in aiWorkflow
+- When false: scenario creation skipped safely
+- When true: creates scenarios for eligible MAJOR events
+
+### Safe Defaults
+
+- All activation flags default to false
+- Production starts safely disabled
+- Operators must explicitly enable
+- No broad backfill by default
+
+### Rollback Plan
+
+1. **Disable env flags:**
+   - LEVEL_INTELLIGENCE_ENABLED=false
+   - SCENARIO_TRACKER_ENABLED=false
+
+2. **Stop crons:**
+   - Comment out levelIntelligenceCron registration in server.ts
+   - aiWorkflow continues running normally
+
+3. **Leave tables unused:**
+   - level_intelligence/interactions remain populated
+   - market_scenarios remain populated
+   - No data deletion needed
+
+4. **Verify deactivation:**
+   - Run verification scripts
+   - Confirm no new updates in 24h
+
+### Run Commands
+
+**Enable Level Intelligence:**
+```bash
+# Set env vars
+LEVEL_INTELLIGENCE_ENABLED=true
+LEVEL_INTELLIGENCE_MAX_COINS=8
+LEVEL_INTELLIGENCE_TIMEFRAMES=1h,4h,1d,1w
+
+# Restart server to pick up env changes
+# Cron runs automatically every 6 hours
+```
+
+**Enable Scenario Creation:**
+```bash
+# Set env var
+SCENARIO_TRACKER_ENABLED=true
+
+# Restart server
+# Scenarios created automatically for new MAJOR events
+```
+
+**Run Verification:**
+```bash
+# Level intelligence health
+node backend/scripts/verify-phase3-levels.js
+
+# Scenario tracker health
+node backend/scripts/verify-phase4-scenarios.js
+```
+
+**Safe Backfill:**
+```bash
+# Preview what would be created
+node backend/scripts/backfill-phase45-scenarios.js
+
+# Execute backfill (requires explicit flag)
+node backend/scripts/backfill-phase45-scenarios.js --execute
+```
+
+### Known Limitations
+
+- Level intelligence processes only major coins (no all-Binance scanning)
+- Scenario creation limited to speculation type initially
+- Backfill limited to last 14 days only
+- No AI-generated outcomes (uses real price data only)
+- No target/risk zone invention (conservative mapping)
+
+### Monitoring
+
+**Level Intelligence:**
+- Check cron logs for "LevelIntelligenceCron" entries
+- Verify levels updated in last 24h via verification script
+- Monitor interaction creation rates
+
+**Scenario Creation:**
+- Check aiWorkflow logs for "Created scenario" entries
+- Verify scenarios created in last 24h via verification script
+- Monitor dedupeKey duplicates (should be 0)
+
+**Performance:**
+- Level cron should complete within minutes
+- Scenario creation should not slow aiWorkflow
+- No impact on existing Living Articles/Radar/Scorecard
+
+---
+
+*Phase 4.5 authored: May 3, 2026*
+*Enables: Safe activation of intelligence infrastructure*
+
+---
+
+---
+
 # Phase 5 — Level Intelligence Engine
 
 **Status:** DEFERRED — No implementation until gating conditions pass  

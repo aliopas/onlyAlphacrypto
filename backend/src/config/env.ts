@@ -73,6 +73,14 @@ const envSchema = z.object({
     // Agent Workflow — Coder model via OpenRouter
     OPENROUTER_CODER_MODEL: z.string().default('meta-llama/llama-3-8b-instruct:free'),
 
+    // Level Intelligence Cron
+    LEVEL_INTELLIGENCE_ENABLED: z.boolean().default(false),
+    LEVEL_INTELLIGENCE_MAX_COINS: z.number().default(8),
+    LEVEL_INTELLIGENCE_TIMEFRAMES: z.string().default('1h,4h,1d,1w'),
+
+    // Scenario Tracker
+    SCENARIO_TRACKER_ENABLED: z.boolean().default(false),
+
     // Embeddings (pgvector semantic dedup)
     EMBEDDING_PROVIDER: z.enum(['openrouter', 'ollama']).default('openrouter'),
     EMBEDDING_MODEL: z.string().default('openai/text-embedding-3-small'),

@@ -1,13 +1,13 @@
 # ONLYALPHA — PROJECT STATE
 
-**Last Updated:** May 1, 2026
-**Current Focus:** Phase 23 — TP/SL Auto-Close & Signal Lifecycle (P0)
+**Last Updated:** May 2, 2026
+**Current Focus:** Phase 1 — Event-Price Foundation (BLOCKED — Phase 0.5 completed)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
 2. **Frontend:** Next.js (App Router), Tailwind CSS.
 3. **Data Sources:** Binance, Moralis, RSS feeds, Telegram. (Note: Neon Serverless & Reddit API are strictly DELETED).
-4. **AI Routing:** Uses `AIGateway` (OpenRouter) & `PromptFactory`. 
+4. **AI Routing:** Uses `AIGateway` (OpenRouter) & `PromptFactory`.
    - **Models:** DeepSeek-r1 (Deep Analysis), Gemini 2.5 Flash (Article Writing), GPT-5-nano (SEO/Minor).
 
 ## Key Development Rules
@@ -15,53 +15,71 @@
 2. **Modular Boundaries:** Cache logic -> `CacheManager`. AI calls -> `AIGateway`. Prompts -> `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## Current Mission: Phase 23 — TP/SL Auto-Close & Signal Lifecycle (P0)
+## Current Mission: Phase 1 — Event-Price Foundation
 
-**Status:** PLANNED — Authorized May 1, 2026
-**Key Objective:** Add Stop-Loss / Take-Profit auto-close mechanism to signal system. Currently signals stay active indefinitely until AI reverses direction — trades that hit +10% to +90% profit never close and P&L evaporates. Scorecard Win Rate is artificially destroyed.
+**Status:** BLOCKED — Requires Phase 0.5 to be live 1+ week for multi-horizon data
+**Authorized By:** Tech Lead — May 2, 2026
+**Key Objective:** Expand `coin_news_history` schema with event-price tracking, bridge live events, and implement multi-horizon outcome checker cron.
 
-**Root Cause:**
-- Zero TP/SL mechanism in schema, services, or crons
-- AI already outputs `supportLevels` and `resistanceLevels` (prompt-factory.ts:277-278) but they're completely unused
-- No time-based auto-expiry for stale signals
-- Only closure path is AI direction reversal (unpredictable timing)
-
-**Architecture Changes:**
-- 3 new columns: `stop_loss_price`, `take_profit_price`, `auto_closed_reason` on `signal_performance`
-- New utility: `tpslCalculator.service.ts` — derives TP/SL from S/R levels or default %
-- New cron: `tpslMonitor.cron.ts` — runs every 15 min, auto-closes on TP/SL hit + 30d expiry
-- Signal creation flow enhanced: S/R levels → TP/SL calculator → stored in DB
-- Scorecard API returns TP/SL data + close reason
-- Frontend displays TP/SL columns and close reason badges
-
-**Files Plan (9 tasks):**
-| # | File | Action | Description |
-|---|------|--------|-------------|
-| T-01 | `backend/scripts/migrate-tpsl-columns.sql` | NEW | SQL migration + backfill |
-| T-02 | `backend/src/models/market.model.ts` | MODIFY | 3 new Drizzle columns |
-| T-03 | `backend/src/services/tpslCalculator.service.ts` | NEW | Pure TP/SL calculator from S/R |
-| T-04 | `backend/src/services/signalManager.service.ts` | MODIFY | Store TP/SL on INSERT |
-| T-05 | `backend/src/crons/aiWorkflow.cron.ts` | MODIFY | Pass S/R levels to signal manager |
-| T-06 | `backend/src/crons/tpslMonitor.cron.ts` | NEW | TP/SL monitor + 30d expiry |
-| T-07 | `backend/src/server.ts` | MODIFY | Register new cron |
-| T-08 | `backend/src/controllers/market.controller.ts` | MODIFY | Return TP/SL in API |
-| T-09 | `frontend/src/app/(standard)/scorecard/page.tsx` | MODIFY | Display TP/SL + close reason |
-
-**Default TP/SL (fallback if no S/R from AI):**
-- BUY/STRONG_BUY: TP = +15%, SL = -8%
-- SELL/STRONG_SELL: TP = +15%, SL = -8% (inverse direction)
-
-**Previous:** Phase 22 — Airdrop Pipeline Resurrection (P0 HOTFIX) — ✅ DEPLOYED
+**Previous:** Phase 0.5 — AdSense-Safe Public Presentation (P0) — ✅ COMPLETED
 
 ## Completed Phases
+
+### Phase 3 — Level Intelligence Engine
+**Completed:** May 3, 2026
+**Tasks:** Implementation and QA — All Done
+**New Files:** `levelIntelligence.service.ts`, `levelIntelligenceCron.ts`, `migrate-level-intelligence.sql`, `verify-phase3-levels.js`
+**Modified Files:** `market.model.ts`, `server.ts`, `prompt-factory.ts`, `aiWorkflow.cron.ts`
+**Summary:**
+- Added deterministic technical analysis engine for support/resistance levels
+- 6-hour cron processes major coins across 4 timeframes (1h/4h/1d/1w)
+- Levels stored with confidence scores, interaction tracking, and AI integration
+- AdSense-safe prompt injection with anti-hallucination rules
+- Migration creates level_intelligence and level_interactions tables with crypto-safe precision
+- Verification script provides read-only stats and health checks
+- Backward compatible, non-blocking, no impact on existing features
+
+### Phase 4.5 — Activation & Backfill Readiness
+**Completed:** May 3, 2026 — QA PASS
+**Tasks:** 8/8 Tasks — All Done
+**New Files:** `backend/scripts/backfill-phase45-scenarios.js`
+**Modified Files:** `backend/src/crons/levelIntelligenceCron.ts`, `backend/src/services/levelIntelligence.service.ts`, `backend/src/crons/aiWorkflow.cron.ts`, `backend/src/config/env.ts`, `backend/scripts/verify-phase3-levels.js`, `backend/scripts/verify-phase4-scenarios.js`, `agent_gedens/THE_NEXUS_HUB.md`
+**Summary:**
+- Activated Phase 3 level intelligence cron with env-controlled safe defaults
+- Enabled scenario creation in aiWorkflow behind SCENARIO_TRACKER_ENABLED flag
+- Created safe backfill script for recent eligible scenarios (14 days, major coins only)
+- Extended verification scripts with activation status checks
+- Added comprehensive operational runbook with env controls and rollback procedures
+- All systems default to disabled for safe production deployment
+- TypeScript compilation clean, no any types introduced
+
+### Phase 0.5 — AdSense-Safe Public Presentation (P0)
+**Completed:** May 2, 2026
+**Tasks:** 6 (T-EMERGENCY-1, T-0.5-A through T-0.5-E) — All Done
+**Modified Files:** `disclaimer/page.tsx`, `terms/page.tsx`, `AlphaStream.tsx`, `prompt-factory.ts`
+**Summary:**
+- T-EMERGENCY-1: Verified all 7 missing crons registered in server.ts (system running at full 14/14 capacity)
+- T-0.5-A: Scorecard already compliant (meta tags, labels, verdict/closereason mappings)
+- T-0.5-B: Legal pages language fixed (BUY/SELL → Bullish/Bearish, Signal Scorecard → Market Scenario)
+- T-0.5-C: AlphaStream terminology cleaned (Decoding Signal → Loading Intelligence, Signal Intelligence → Market Intelligence)
+- T-0.5-D: Prompt-factory safe harbor verified + vocabulary reinforcement added (Upside Target Zone, Risk Zone, Reference Price, Market Scenario, Historical Outcome)
+- T-0.5-E: Signal Performance Cron error handling already in place (outer try/catch confirmed)
+
+### Phase 23 — TP/SL Auto-Close & Signal Lifecycle (P0)
+**Completed:** May 2, 2026 (code was deployed earlier, state file updated now)
+**Tasks:** 9 (T-01 through T-09) — All Done, Code Deployed
+**New Files:** `tpslCalculator.service.ts`, `tpslMonitor.cron.ts`, `migrate-tpsl-columns.sql`
+**Modified Files:** `market.model.ts`, `signalManager.service.ts`, `aiWorkflow.cron.ts`, `server.ts`, `market.controller.ts`, `scorecard/page.tsx`
 
 ### Phase 22 — Airdrop Pipeline Resurrection (P0 HOTFIX)
 **Completed:** April 29, 2026
 **Deploy Commit:** `110313b`
 
 ### Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (P0)
-**Started:** April 29, 2026
-**Tasks:** 7 (T-01 through T-07) — Pending Execution
+**Completed:** May 2, 2026 (code was deployed earlier, state file updated now)
+**Tasks:** 7 (T-01 through T-07) — All Done, Code Deployed
+**New Files:** `signalManager.service.ts`, `migrate-signal-active.sql`
+**Modified Files:** `aiWorkflow.cron.ts`, `market.model.ts`
 
 ### Phase 20 — AI Pipeline Quality Fix (P0)
 **Started:** April 27, 2026

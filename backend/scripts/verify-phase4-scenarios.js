@@ -145,6 +145,36 @@ async function verifyScenarios() {
 
         console.log(`📊 Stale Active Scenarios (>30 days): ${staleScenarios[0].count}`);
 
+        // Phase 4.5: Activation checks
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+        // Scenarios created in last 24h
+        const recentScenarios = await db.select({ count: sql`count(*)` }).from(marketScenarios).where(sql`${marketScenarios.createdAt} > ${oneDayAgo}`);
+        console.log(`\n🔄 Scenarios created in last 24h: ${recentScenarios[0].count}`);
+
+        // Outcomes captured in last 24h
+        const recentCapturedOutcomes = await db.select({ count: sql`count(*)` }).from(scenarioHorizonOutcomes).where(and(
+            eq(scenarioHorizonOutcomes.status, 'captured'),
+            sql`${scenarioHorizonOutcomes.updatedAt} > ${oneDayAgo}`
+        ));
+        console.log(`🔄 Outcomes captured in last 24h: ${recentCapturedOutcomes[0].count}`);
+
+        // Activation status
+        if (recentScenarios[0].count === 0) {
+            console.log('\n⚠️  WARNING: Scenario creation appears INACTIVE (no new scenarios in 24h)');
+            console.log('   Check SCENARIO_TRACKER_ENABLED and aiWorkflow execution');
+        } else {
+            console.log('\n✅ Scenario creation appears ACTIVE');
+        }
+
+        // Invalid reference prices
+        const invalidRefPrices = await db.select({ count: sql`count(*)` }).from(marketScenarios).where(sql`referenceprice !~ '^[0-9]+(\.[0-9]+)?$' OR referenceprice::numeric <= 0`);
+        if (invalidRefPrices[0].count > 0) {
+            console.log(`❌ Invalid reference prices: ${invalidRefPrices[0].count}`);
+        } else {
+            console.log('✅ All reference prices are valid positive numerics');
+        }
+
         console.log('\n✨ Verification complete');
     } catch (error) {
         console.error('❌ Verification failed:', error.message);

@@ -76,17 +76,18 @@ export async function fetchCandles(coinSymbol: string, timeframe: '1h' | '4h' | 
     }
 }
 
-// ─── Calculate Levels ───────────────────────────────────────────────────────
+// ─── Calculate Levels and Interactions ──────────────────────────────────────
 
-export function calculateLevels(candles: CandleData[], timeframe: '1h' | '4h' | '1d' | '1w'): LevelData[] {
+export function calculateLevelsAndInteractions(candles: CandleData[], timeframe: '1h' | '4h' | '1d' | '1w', coinSymbol: string): { levels: LevelData[], interactionsByPrice: Map<number, InteractionData[]> } {
     if (candles.length < 10) {
-        return [];
+        return { levels: [], interactionsByPrice: new Map() };
     }
 
     const pivots = findPivotPoints(candles);
     const clusters = clusterLevels(pivots, candles);
 
     const levels: LevelData[] = [];
+    const interactionsByPrice = new Map<number, InteractionData[]>();
 
     for (const cluster of clusters) {
         const levelPrice = cluster.avgPrice;
@@ -97,8 +98,8 @@ export function calculateLevels(candles: CandleData[], timeframe: '1h' | '4h' | 
         const stats = calculateStats(touches, candles, levelPrice);
         const confidenceScore = calculateConfidenceScore(stats, touches.length, timeframe);
 
-        levels.push({
-            coinSymbol: '', // Set by caller
+        const level: LevelData = {
+            coinSymbol,
             levelPrice,
             levelType: cluster.type,
             timeframe,
@@ -112,10 +113,24 @@ export function calculateLevels(candles: CandleData[], timeframe: '1h' | '4h' | 
             lastTouchedAt: new Date(touches[touches.length - 1].timestamp),
             confidenceScore,
             flipped: false, // TODO: implement flip detection
-        });
+        };
+
+        levels.push(level);
+
+        // Collect interactions for this level
+        const interactions: InteractionData[] = touches.map(touch => ({
+            levelId: 0, // Will be set after saving levels
+            candleTimestamp: new Date(touch.timestamp),
+            priceAtTouch: levelPrice,
+            interactionType: touch.type,
+            magnitudePercent: touch.magnitude,
+            volumeAtTouch: touch.volume,
+        }));
+
+        interactionsByPrice.set(levelPrice, interactions);
     }
 
-    return levels;
+    return { levels, interactionsByPrice };
 }
 
 // ─── Helper: Find Pivot Points ─────────────────────────────────────────────
@@ -291,6 +306,27 @@ function getIntervalMs(timeframe: string): number {
         case '1d': return 24 * 60 * 60 * 1000;
         case '1w': return 7 * 24 * 60 * 60 * 1000;
         default: return 60 * 60 * 1000;
+    }
+}
+
+// ─── Save Interactions ─────────────────────────────────────────────────────
+
+export async function saveInteractions(interactions: InteractionData[]): Promise<void> {
+    if (interactions.length === 0) return;
+
+    try {
+        await db.insert(levelInteractions).values(
+            interactions.map(interaction => ({
+                levelId: interaction.levelId,
+                candleTimestamp: new Date(interaction.candleTimestamp),
+                priceAtTouch: interaction.priceAtTouch.toString(),
+                interactionType: interaction.interactionType,
+                magnitudePercent: interaction.magnitudePercent?.toString(),
+                volumeAtTouch: interaction.volumeAtTouch?.toString(),
+            }))
+        );
+    } catch (error) {
+        logger.error('[LevelIntelligence] saveInteractions failed: %s', error instanceof Error ? error.message : String(error));
     }
 }
 

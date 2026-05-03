@@ -93,6 +93,41 @@ async function verifyLevels() {
         console.log(`  Total Breaks: ${stats[0].totalBreaks || 0}`);
         console.log(`  Total Fakeouts: ${stats[0].totalFakeouts || 0}`);
 
+        // Phase 4.5: Activation checks
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+        // Levels updated in last 24h
+        const recentLevels = await db.select({ count: sql`count(*)` }).from(levelIntelligence).where(sql`${levelIntelligence.updatedAt} > ${oneDayAgo}`);
+        console.log(`\n🔄 Levels updated in last 24h: ${recentLevels[0].count}`);
+
+        // Interactions in last 24h
+        const recentInteractions = await db.select({ count: sql`count(*)` }).from(levelInteractions).where(sql`${levelInteractions.createdAt} > ${oneDayAgo}`);
+        console.log(`🔄 Interactions created in last 24h: ${recentInteractions[0].count}`);
+
+        // Activation status
+        if (recentLevels[0].count === 0 && recentInteractions[0].count === 0) {
+            console.log('\n⚠️  WARNING: Level Intelligence appears INACTIVE (no updates in 24h)');
+            console.log('   Check LEVEL_INTELLIGENCE_ENABLED and cron execution');
+        } else {
+            console.log('\n✅ Level Intelligence appears ACTIVE');
+        }
+
+        // Invalid confidence scores
+        const invalidConfidences = await db.select({ count: sql`count(*)` }).from(levelIntelligence).where(sql`${levelIntelligence.confidenceScore} < 0 OR ${levelIntelligence.confidenceScore} > 100`);
+        if (invalidConfidences[0].count > 0) {
+            console.log(`❌ Invalid confidence scores: ${invalidConfidences[0].count}`);
+        } else {
+            console.log('✅ All confidence scores are valid (0-100)');
+        }
+
+        // Null/invalid level prices
+        const invalidPrices = await db.select({ count: sql`count(*)` }).from(levelIntelligence).where(sql`${levelIntelligence.levelPrice} !~ '^[0-9]+(\.[0-9]+)?$' OR ${levelIntelligence.levelPrice}::numeric <= 0`);
+        if (invalidPrices[0].count > 0) {
+            console.log(`❌ Invalid level prices: ${invalidPrices[0].count}`);
+        } else {
+            console.log('✅ All level prices are valid positive numerics');
+        }
+
         console.log('\n✅ Verification Complete');
 
     } catch (error) {

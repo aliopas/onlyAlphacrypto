@@ -22,8 +22,10 @@ import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } fr
 import { decideSignalAction, executeSignalDecision } from '../services/signalManager.service';
 import { calculateTpsl } from '../services/tpslCalculator.service';
 import { getNearbyLevels } from '../services/levelIntelligence.service';
+import { ScenarioTrackerService } from '../services/scenarioTracker.service';
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
+import { env } from '../config/env';
 
 async function markBufferItemConsumed(bufferId: number): Promise<void> {
     await db.update(rawNewsBuffer)
@@ -667,6 +669,50 @@ export async function runAiWorkflow(): Promise<void> {
                     }).onConflictDoNothing();
 
                     console.log(`[AI Workflow] Inserted MAJOR event into coin_news_history for ${symbol}`);
+
+                    // Phase 4.5: Controlled scenario creation
+                    if (env.SCENARIO_TRACKER_ENABLED) {
+                        try {
+                            // Eligibility check
+                            const eligibleSeverities = ['high', 'major'];
+                            const eventSeverityStr = eventSeverity === 5 ? 'high' : eventSeverity === 3 ? 'major' : 'low';
+                            if (!eligibleSeverities.includes(eventSeverityStr)) {
+                                console.log(`[AI Workflow] Skipping scenario creation for ${symbol}: ineligible severity ${eventSeverityStr}`);
+                            } else if (!price?.price) {
+                                console.log(`[AI Workflow] Skipping scenario creation for ${symbol}: no reference price`);
+                            } else if (!['bullish', 'bearish'].includes(analysisResult.sentiment)) {
+                                console.log(`[AI Workflow] Skipping scenario creation for ${symbol}: ineligible bias ${analysisResult.sentiment}`);
+                            } else {
+                                // Create scenario
+                                const scenarioId = await ScenarioTrackerService.createScenario({
+                                    sourceType: 'event',
+                                    sourceId: sourceHash,
+                                    coinSymbol: symbol,
+                                    scenarioType: 'speculation',
+                                    bias: analysisResult.sentiment as 'bullish' | 'bearish',
+                                    eventType: eventType,
+                                    eventSeverity: eventSeverityStr,
+                                    eventScope: eventScope,
+                                    referencePrice: price.price,
+                                    referencePriceSource: 'binance',
+                                    referencePriceAt: item.retrievedAt,
+                                    thesis: analysisResult.analysis.mainDriver,
+                                    publicSafeSummary: analysisResult.signalText,
+                                    // TODO: Add historicalStatsSnapshot and levelContextSnapshot in future phases
+                                });
+
+                                if (scenarioId) {
+                                    console.log(`[AI Workflow] Created scenario ${scenarioId} for ${symbol}`);
+                                } else {
+                                    console.log(`[AI Workflow] Scenario creation returned null for ${symbol}`);
+                                }
+                            }
+                        } catch (scenarioErr) {
+                            console.warn(`[AI Workflow] Scenario creation failed for ${symbol}:`, scenarioErr instanceof Error ? scenarioErr.message : String(scenarioErr));
+                        }
+                    } else {
+                        console.log(`[AI Workflow] Scenario creation disabled for ${symbol}`);
+                    }
                 } catch (insertErr) {
                     console.warn(`[AI Workflow] Failed to insert into coin_news_history for ${symbol}:`, insertErr);
                 }
