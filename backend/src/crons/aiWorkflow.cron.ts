@@ -9,13 +9,15 @@ import { deepseekBreaker, gptNanoBreaker } from '../services/circuitBreaker.serv
 import { callDeepSeekAnalysis, callGptNanoWriter, callGptNanoMinorUpdate, callGptNanoMasterUpdate, extractSection, gateway, deepseekGateway, callWriterStage2A, callWriterStage2B, mergeArticleStages } from '../services/openai.service';
 import type { DeepAnalysisResult } from '../services/openai.service';
 import type { ArticleWriterResult } from '../services/openai.service';
+import { getHistoricalEventStats } from '../services/historicalEventStats.service';
+import { PromptFactory } from '../services/ai/prompt-factory';
 import { AIRateLimitError } from '../services/ai/ai-gateway';
 import { validateFactualGrounding } from '../services/ai/factual-grounding';
 import { auditArticleQuality } from '../services/ai/quality-auditor';
 import { saveMemory } from '../services/coin-memory.service';
 import { isDuplicateByEmbedding } from '../services/similarity.service';
 import { storeEmbedding } from '../services/embedding.service';
-import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates, signalPerformance } from '../models/market.model';
+import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates, signalPerformance, coinNewsHistory } from '../models/market.model';
 import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } from '../services/strategicOutlook.service';
 import { decideSignalAction, executeSignalDecision } from '../services/signalManager.service';
 import { calculateTpsl } from '../services/tpslCalculator.service';
@@ -145,6 +147,14 @@ export async function runAiWorkflow(): Promise<void> {
         const threshold = await getDynamicThreshold();
         console.log(`[AI Workflow] Dynamic threshold: ${threshold}`);
 
+        // Cache for Phase 1 event tracking (per workflow run)
+        let btcPriceCached: number | null = null;
+        let ethPriceCached: number | null = null;
+        let fearGreedCached: number | null = null;
+        let btcPriceFetched = false;
+        let ethPriceFetched = false;
+        let fearGreedFetched = false;
+
         const itemsWithSymbols = await db.select()
             .from(rawNewsBuffer)
             .where(and(
@@ -197,6 +207,23 @@ export async function runAiWorkflow(): Promise<void> {
             const eventType = typeof item.eventType === 'string' ? item.eventType : 'Other';
             const eventSeverity = typeof item.eventSeverity === 'number' ? item.eventSeverity : 1;
             let classification = (typeof item.classification === 'string' && ['MAJOR', 'MINOR', 'NOISE'].includes(item.classification)) ? item.classification : 'MINOR';
+
+            const eventScope = eventType === 'ETF' || eventType === 'Regulatory' ? 'MARKET' : 'COIN';
+
+            // Fetch historical event stats for AI context
+            let historicalStats: string | undefined;
+            try {
+                const stats = await getHistoricalEventStats({
+                    coinSymbol: symbol,
+                    eventType,
+                    eventScope,
+                    sentiment: item.sentimentHint || 'neutral',
+                });
+                historicalStats = new PromptFactory().buildHistoricalStatsContext(stats);
+            } catch (statsErr) {
+                console.warn(`[AI Workflow] Failed to fetch historical stats for ${symbol}:`, statsErr);
+                historicalStats = undefined;
+            }
 
             const existingMaster = await db.select({ id: coinMasterArticles.id })
                 .from(coinMasterArticles)
@@ -308,6 +335,7 @@ export async function runAiWorkflow(): Promise<void> {
                         pattern,
                         price,
                         coinSymbol: symbol,
+                        historicalStats,
                     });
                     deepseekBreaker.recordSuccess();
                 } catch (err) {
@@ -561,6 +589,74 @@ export async function runAiWorkflow(): Promise<void> {
                     });
                 } catch (memErr) {
                     console.error(`[AI Workflow] Failed to save memory for ${symbol}:`, memErr);
+                }
+
+                // Phase 1: Insert MAJOR event into coin_news_history
+                try {
+                    // Cache BTC/ETH/FearGreed (attempt each at most once per run)
+                    if (!btcPriceFetched) {
+                        btcPriceFetched = true;
+                        try {
+                            const btcData = await getPriceWithFallback('BTC');
+                            btcPriceCached = btcData?.price ?? null;
+                        } catch (btcErr) {
+                            console.warn(`[AI Workflow] Failed to fetch BTC price:`, btcErr);
+                            btcPriceCached = null;
+                        }
+                    }
+                    if (!ethPriceFetched) {
+                        ethPriceFetched = true;
+                        try {
+                            const ethData = await getPriceWithFallback('ETH');
+                            ethPriceCached = ethData?.price ?? null;
+                        } catch (ethErr) {
+                            console.warn(`[AI Workflow] Failed to fetch ETH price for ${symbol}:`, ethErr);
+                            ethPriceCached = null;
+                        }
+                    }
+                    if (!fearGreedFetched) {
+                        fearGreedFetched = true;
+                        try {
+                            const response = await fetch('https://api.alternative.me/fng/?limit=1');
+                            if (response.ok) {
+                                const data = await response.json() as { data?: { value: string }[] };
+                                fearGreedCached = data.data && data.data[0] ? parseInt(data.data[0].value, 10) : null;
+                            } else {
+                                fearGreedCached = null;
+                            }
+                        } catch (fgErr) {
+                            console.warn(`[AI Workflow] Failed to fetch Fear & Greed index:`, fgErr);
+                            fearGreedCached = null;
+                        }
+                    }
+
+                    // Compute source hash for dedup (stable content only)
+                    const sourceHashInput = `${symbol}|${item.source}|${item.title}`;
+                    const sourceHash = crypto.createHash('sha256').update(sourceHashInput).digest('hex').slice(0, 64);
+
+                    // Determine event scope (COIN for coin-specific events, MARKET for broader)
+                    const eventScope = eventType === 'ETF' || eventType === 'Regulatory' ? 'MARKET' : 'COIN';
+
+                    // Insert event tracking record
+                    await db.insert(coinNewsHistory).values({
+                        coinSymbol: symbol,
+                        title: item.title,
+                        source: item.source,
+                        publishedAt: item.retrievedAt,
+                        sentiment: analysisResult.sentiment,
+                        eventType: eventType,
+                        eventSeverity: 3, // MAJOR
+                        priceAtTime: price?.price ?? null,
+                        sourceHash: sourceHash,
+                        eventScope: eventScope,
+                        btcPriceAtEvent: btcPriceCached,
+                        ethPriceAtEvent: ethPriceCached,
+                        fearGreedAtEvent: fearGreedCached,
+                    }).onConflictDoNothing();
+
+                    console.log(`[AI Workflow] Inserted MAJOR event into coin_news_history for ${symbol}`);
+                } catch (insertErr) {
+                    console.warn(`[AI Workflow] Failed to insert into coin_news_history for ${symbol}:`, insertErr);
                 }
 
                 // 4i. Redis invalidation (targeted only)

@@ -1,1914 +1,1550 @@
-# THE NEXUS HUB (Agent Handoff & Communication)
+# Phase 1 — Event-Price Foundation
 
-**Rule:** Agents MUST read and update this file to communicate. DO NOT assume a task is done unless stated here.
+**Status:** PLANNED — Ready for immediate execution  
+**Date:** May 2, 2026  
+**Priority:** P0 (Foundation for all temporal intelligence)  
+**Scope:** 1 SQL migration, 1 model update, 2 new files, 2 modified files  
+**Reviewed by:** Lead Architect — APPROVED FOR EXECUTION  
 
----
+## OBJECTIVE
 
-## Active Phase: Phase 23 — TP/SL Auto-Close & Signal Lifecycle (P0)
+Establish the data foundation for all event-price relationship analysis. The current `coin_news_history` table stores events but lacks outcome tracking. Phase 1 adds live event capture, outcome measurement at multiple horizons, and price range analysis.
 
-**Priority:** P0 — Signals hit 10-90% profit but never close, Scorecard Win Rate destroyed
-**Authorized By:** Tech Lead — May 1, 2026
-**Planned By:** Tech Lead — May 1, 2026
-**Total Tasks:** 9 (T-01 through T-09) — Granular Micro-Tasks Ready
+## REQUIRED TASKS
 
-**Core Problem (Production):**
-- Zero stop-loss or take-profit mechanism — signals stay active indefinitely
-- Trades that hit +10% to +90% never close — profit evaporates as market reverses
-- Signals only close when AI reverses direction (could be days/weeks)
-- Scorecard Win Rate and Avg P&L are artificially terrible
-- No time-based auto-expiry — dead signals accumulate
+### T-1A-01: Expand coin_news_history Schema Migration
 
-**AI Already Outputs S/R Levels** (prompt-factory.ts:277-278):
-- `supportLevels: [price, price]`
-- `resistanceLevels: [price, price]`
-- These are PERFECT for deriving TP/SL — just not being used
+**Task ID:** T-1A-01
+**Phase:** Phase 1A — Expand coin_news_history schema
+**Owner:** Senior Developer
+**Status:** Done
 
----
+**Objective:**
+Add 18 new nullable columns to `coin_news_history` for multi-horizon outcome tracking and price analysis. Maintain backward compatibility by keeping all columns nullable.
 
-### PHASE 23 — MICRO-TASKS BREAKDOWN
+**Migration path:** backend/scripts/migrate-coin-news-history-phase1.sql
 
-#### T-01: SQL Migration — Add TP/SL + Auto-Close Columns
-**File:** `backend/scripts/migrate-tpsl-columns.sql` (NEW)
-**What:**
-```sql
-ALTER TABLE signal_performance
-    ADD COLUMN stop_loss_price REAL,
-    ADD COLUMN take_profit_price REAL,
-    ADD COLUMN auto_closed_reason VARCHAR(20);
+**Detailed steps:**
+1. ALTER TABLE coin_news_history ADD COLUMN source_hash varchar(64) nullable
+2. ALTER TABLE coin_news_history ADD COLUMN event_scope varchar(20) nullable
+3. ALTER TABLE coin_news_history ADD COLUMN btc_price_at_event real nullable
+4. ALTER TABLE coin_news_history ADD COLUMN eth_price_at_event real nullable
+5. ALTER TABLE coin_news_history ADD COLUMN fear_greed_at_event integer nullable
+6. ALTER TABLE coin_news_history ADD COLUMN price_1h_after real nullable
+7. ALTER TABLE coin_news_history ADD COLUMN price_4h_after real nullable
+8. ALTER TABLE coin_news_history ADD COLUMN price_24h_after real nullable
+9. ALTER TABLE coin_news_history ADD COLUMN price_3d_after real nullable
+10. ALTER TABLE coin_news_history ADD COLUMN change_1h real nullable
+11. ALTER TABLE coin_news_history ADD COLUMN change_4h real nullable
+12. ALTER TABLE coin_news_history ADD COLUMN change_24h real nullable
+13. ALTER TABLE coin_news_history ADD COLUMN change_3d real nullable
+14. ALTER TABLE coin_news_history ADD COLUMN max_upside_after_event real nullable
+15. ALTER TABLE coin_news_history ADD COLUMN max_drawdown_after_event real nullable
+16. ALTER TABLE coin_news_history ADD COLUMN time_to_peak_hours integer nullable
+17. ALTER TABLE coin_news_history ADD COLUMN time_to_bottom_hours integer nullable
+18. ALTER TABLE coin_news_history ADD COLUMN outcome_classification varchar(30) nullable
+19. CREATE UNIQUE INDEX idx_cnh_sourcehash ON coin_news_history (source_hash) WHERE source_hash IS NOT NULL;
 
-CREATE INDEX idx_signal_perf_tpsl
-    ON signal_performance (is_active, take_profit_price, stop_loss_price)
-    WHERE is_active = true AND (take_profit_price IS NOT NULL OR stop_loss_price IS NOT NULL);
-```
-**Plus backfill:** For each active signal, calculate default TP/SL:
-- BUY/STRONG_BUY: `TP = entry_price * 1.15`, `SL = entry_price * 0.92`
-- SELL/STRONG_SELL: `TP = entry_price * 0.85`, `SL = entry_price * 1.08`
-**Guardrails:** No data deletion. Existing columns untouched. NULL-safe.
+**Acceptance criteria:**
+- All 18 columns added as nullable
+- No existing data loss
+- Index created for exact-content dedup
+- Migration rollback-safe
 
----
+**Testing / verification:**
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_name = 'coin_news_history'
+AND column_name IN (
+  'source_hash',
+  'event_scope',
+  'btc_price_at_event',
+  'eth_price_at_event',
+  'fear_greed_at_event',
+  'price_1h_after',
+  'price_4h_after',
+  'price_24h_after',
+  'price_3d_after',
+  'change_1h',
+  'change_4h',
+  'change_24h',
+  'change_3d',
+  'max_upside_after_event',
+  'max_drawdown_after_event',
+  'time_to_peak_hours',
+  'time_to_bottom_hours',
+  'outcome_classification'
+);
 
-#### T-02: Drizzle Model Update — Add 3 New Columns
-**File:** `backend/src/models/market.model.ts` (lines 117-122)
-**What:** Add after `realizedPnl` (line 120):
-```typescript
-stopLossPrice: real('stop_loss_price'),
-takeProfitPrice: real('take_profit_price'),
-autoClosedReason: varchar('auto_closed_reason', { length: 20 }),
-```
-**Guardrails:** Only add 3 lines. No other schema changes. All existing imports/re-exports untouched.
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE tablename = 'coin_news_history'
+AND indexname = 'idx_cnh_sourcehash';
 
----
+**Rollback notes:**
+- DROP INDEX IF EXISTS idx_cnh_sourcehash;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS outcome_classification;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS time_to_bottom_hours;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS time_to_peak_hours;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS max_drawdown_after_event;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS max_upside_after_event;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS change_3d;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS change_24h;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS change_4h;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS change_1h;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS price_3d_after;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS price_24h_after;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS price_4h_after;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS price_1h_after;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS fear_greed_at_event;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS eth_price_at_event;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS btc_price_at_event;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS event_scope;
+- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS source_hash;
+- No data loss risk
 
-#### T-03: TP/SL Calculator Utility
-**File:** `backend/src/services/tpslCalculator.service.ts` (NEW)
-**What:** Pure function to calculate TP/SL from analysis data:
-```typescript
-interface TpslInput {
-    entryPrice: number;
-    verdict: 'STRONG_BUY' | 'BUY' | 'SELL' | 'STRONG_SELL';
-    supportLevels?: number[];
-    resistanceLevels?: number[];
-}
-
-interface TpslOutput {
-    stopLossPrice: number;
-    takeProfitPrice: number;
-}
-
-export function calculateTpsl(input: TpslInput): TpslOutput
-```
-**Logic:**
-- For BUY/STRONG_BUY:
-  - TP = nearest resistance above entry (from `resistanceLevels`), else `entry * 1.15`
-  - SL = nearest support below entry (from `supportLevels`), else `entry * 0.92`
-- For SELL/STRONG_SELL:
-  - TP = nearest support below entry (from `supportLevels`), else `entry * 0.85`
-  - SL = nearest resistance above entry (from `resistanceLevels`), else `entry * 1.08`
-- If no S/R levels provided → fall back to default percentages
-- Guard: TP and SL must be at least 2% away from entry (prevent instant triggers)
-**Guardrails:** Pure function. No DB calls. No side effects. Fully testable.
-
----
-
-#### T-04: Signal Manager — Store TP/SL on Create
-**File:** `backend/src/services/signalManager.service.ts`
-**What:**
-1. Add optional `tpslData?: { stopLossPrice: number; takeProfitPrice: number }` to `executeSignalDecision` parameters
-2. In the `create` / `close_and_replace` branches (lines 157-189), include `stopLossPrice` and `takeProfitPrice` in the `signalPerformance` INSERT
-3. Add import for `calculateTpsl` from `tpslCalculator.service.ts`
-**Guardrails:** Don't change the `decideSignalAction` function. Don't change upgrade/skip logic. Only touch the INSERT in `executeSignalDecision`.
-
----
-
-#### T-05: AI Workflow — Pass S/R Levels to Signal Manager
-**File:** `backend/src/crons/aiWorkflow.cron.ts` (lines 527-532)
-**What:**
-1. Import `calculateTpsl` from `tpslCalculator.service.ts`
-2. Before calling `executeSignalDecision`, compute TP/SL:
-```typescript
-const tpslData = calculateTpsl({
-    entryPrice: price?.price ?? 0,
-    verdict: analysisResult.verdict,
-    supportLevels: analysisResult.supportLevels,
-    resistanceLevels: analysisResult.resistanceLevels,
-});
-```
-3. Pass `tpslData` as new parameter to `executeSignalDecision`
-**Guardrails:** Only modify the radar signal block (lines 520-537). Don't touch any other section.
+**Dependencies:**
+None (independent schema change)  
 
 ---
 
-#### T-06: TP/SL Monitor Cron
-**File:** `backend/src/crons/tpslMonitor.cron.ts` (NEW)
-**What:**
-```typescript
-import cron from 'node-cron';
-import { db } from '../config/db';
-import { signalPerformance } from '../models/market.model';
-import { eq, and, isNotNull, sql } from 'drizzle-orm';
-import { getPriceWithFallback } from '../services/priceService';
+### T-1A-02: Update Drizzle Model for coin_news_history
 
-async function monitorTpsl(): Promise<void> {
-    // 1. Fetch all active signals with TP/SL set
-    // 2. For each: get current price via getPriceWithFallback
-    // 3. Check TP hit:
-    //    - BUY/STRONG_BUY: currentPrice >= takeProfitPrice → CLOSE with reason 'take_profit'
-    //    - SELL/STRONG_SELL: currentPrice <= takeProfitPrice → CLOSE with reason 'take_profit'
-    // 4. Check SL hit:
-    //    - BUY/STRONG_BUY: currentPrice <= stopLossPrice → CLOSE with reason 'stop_loss'
-    //    - SELL/STRONG_SELL: currentPrice >= stopLossPrice → CLOSE with reason 'stop_loss'
-    // 5. Update: is_active=false, exit_price=currentPrice, realized_pnl=calculated, auto_closed_reason
-    // 6. Invalidate scorecard cache: deleteCache('scorecard:latest')
-}
+**Task ID:** T-1A-02
+**Phase:** Phase 1A — Expand coin_news_history schema
+**Owner:** Senior Developer
+**Status:** Done
 
-async function expireOldSignals(): Promise<void> {
-    // Auto-close signals older than 30 days
-    // WHERE is_active=true AND entry_at < NOW() - 30 days
-    // Set auto_closed_reason='time_expiry'
-}
+**Objective:**
+Update `backend/src/models/market.model.ts` to match the 18 new columns added in migration.
 
-export function startTpslMonitorCron(): void {
-    cron.schedule('*/15 * * * *', async () => {
-        await monitorTpsl();
-        await expireOldSignals();
-    });
-}
-```
-**Guardrails:**
-- LIMIT 50 per batch (same pattern as signalPerformance.cron.ts)
-- Never modify radarSignals table (append-only)
-- Try-catch per signal (one failure doesn't stop batch)
-- Log every close: `[TPSL Monitor] Closed signal #ID for SYMBOL: TP hit at $PRICE (+X.X%)`
+**Files to inspect:**
+- `backend/src/models/market.model.ts:276-295` — current coin_news_history table definition
 
----
+**Files likely to modify:**
+- `backend/src/models/market.model.ts`
 
-#### T-07: Server Registration — Register TP/SL Cron
-**File:** `backend/src/server.ts`
-**What:**
-1. Add import: `import { startTpslMonitorCron } from './crons/tpslMonitor.cron';`
-2. Add to crons array (after SignalPerformance): `{ name: 'TpslMonitor', fn: startTpslMonitorCron }`
-**Guardrails:** Only 2 lines added. Nothing else changed.
+**Detailed steps:**
+1. Add the 18 new columns to the `coinNewsHistory` table definition in `market.model.ts` using camelCase properties mapped to snake_case SQL names:
+   - sourceHash: varchar('source_hash', { length: 64 }).nullable()
+   - eventScope: varchar('event_scope', { length: 20 }).nullable()
+   - btcPriceAtEvent: real('btc_price_at_event').nullable()
+   - ethPriceAtEvent: real('eth_price_at_event').nullable()
+   - fearGreedAtEvent: integer('fear_greed_at_event').nullable()
+   - price1hAfter: real('price_1h_after').nullable()
+   - price4hAfter: real('price_4h_after').nullable()
+   - price24hAfter: real('price_24h_after').nullable()
+   - price3dAfter: real('price_3d_after').nullable()
+   - change1h: real('change_1h').nullable()
+   - change4h: real('change_4h').nullable()
+   - change24h: real('change_24h').nullable()
+   - change3d: real('change_3d').nullable()
+   - maxUpsideAfterEvent: real('max_upside_after_event').nullable()
+   - maxDrawdownAfterEvent: real('max_drawdown_after_event').nullable()
+   - timeToPeakHours: integer('time_to_peak_hours').nullable()
+   - timeToBottomHours: integer('time_to_bottom_hours').nullable()
+   - outcomeClassification: varchar('outcome_classification', { length: 30 }).nullable()
+2. Match exact column names and types from migration
+3. Ensure all are nullable (.nullable())
+4. Verify column order matches migration
 
----
+**Acceptance criteria:**
+- `tsc --noEmit` clean in backend
+- Drizzle schema matches database schema exactly
+- No any types introduced
 
-#### T-08: Scorecard API — Return TP/SL + Close Reason
-**File:** `backend/src/controllers/market.controller.ts` (lines 531-616)
-**What:**
-1. In tactical signals type (line 544-553), add: `stopLossPrice: number | null`, `takeProfitPrice: number | null`
-2. In tactical push (lines 563-572), add: `stopLossPrice` and `takeProfitPrice` from DB row
-3. In closed signals type (lines 575-591), add: `autoClosedReason: string | null`
-4. In closed response (line 602), include `autoClosedReason`
-5. Invalidate `scorecard:latest` cache when building response (already cached at 300s — keep as is)
-**Guardrails:** Don't change route. Don't change strategic section. Backward-compatible (new fields are nullable).
+**Testing / verification:**
+- `cd backend && npx drizzle-kit generate` — should succeed with no errors
+- `cd backend && npx tsc --noEmit` — zero errors
+
+**Rollback notes:**
+- Remove the 18 new column definitions
+- Regenerate Drizzle types
+
+**Dependencies:**
+- T-1A-01 (migration must run first)  
 
 ---
 
-#### T-09: Frontend Scorecard — Display TP/SL + Close Reason
-**File:** `frontend/src/app/(standard)/scorecard/page.tsx`
-**What:**
-1. Update `TacticalSignal` interface: add `stopLossPrice: number | null`, `takeProfitPrice: number | null`
-2. Update `ClosedSignal` interface: add `autoClosedReason: string | null`
-3. Tactical table: add 2 columns "SL" and "TP" after "Entry $" showing formatted prices
-4. Closed table: add "Reason" column showing badge:
-   - `take_profit` → green badge "TP Hit"
-   - `stop_loss` → red badge "SL Hit"
-   - `time_expiry` → gray badge "Expired"
-   - `null` → gray badge "Reversed" (direction change)
-5. Add helper `closeReasonBadge(reason)` similar to `verdictBadge()`
-**Guardrails:** Dark theme tokens. No new packages. No layout changes. Server component pattern preserved.
+### T-1B-01: Live MAJOR Event Bridge in AI Workflow
+
+**Task ID:** T-1B-01
+**Phase:** Phase 1B — Live MAJOR event bridge from aiWorkflow.cron.ts to coin_news_history
+**Owner:** Senior Developer
+**Status:** Done
+
+**Objective:**
+Add live capture of MAJOR events into `coin_news_history` immediately after they trigger AI analysis, including BTC/ETH/FearGreed context.
+
+**Files to inspect:**
+- `backend/src/crons/aiWorkflow.cron.ts:500-550` — current MAJOR event processing block
+- `backend/src/services/binance.service.ts:76-98` — getPriceWithFallback signature
+
+**Files likely to modify:**
+- `backend/src/crons/aiWorkflow.cron.ts`
+
+**Detailed steps:**
+1. After `saveMemory()` call (around line 527), add event INSERT into `coin_news_history`
+2. Fetch BTC/ETH prices once per workflow run (cache in memory)
+3. Fetch FearGreed index once per workflow run
+4. Populate: coinSymbol, title, source, publishedAt, sentiment, eventType, eventSeverity, priceAtTime, sourceHash, eventScope, btcPriceAtEvent, ethPriceAtEvent, fearGreedAtEvent
+5. Set sourceHash for dedup (exact-content only)
+6. Handle duplicate key errors gracefully (skip if sourceHash exists)
+
+**Acceptance criteria:**
+- MAJOR events inserted immediately after memory save
+- BTC/ETH prices cached per run
+- Dedup via sourceHash (not semantic)
+- No blocking errors on duplicate inserts
+
+**Testing / verification:**
+- Trigger MAJOR event, check `coin_news_history` row inserted
+- Verify priceAtTime populated correctly
+- Verify sourceHash, eventScope, btcPriceAtEvent, ethPriceAtEvent, fearGreedAtEvent populated
+
+**Rollback notes:**
+- Remove the INSERT block
+- No data cleanup needed (rows can remain)
+
+**Dependencies:**
+- T-1A-01 + T-1A-02 (schema ready)  
 
 ---
 
-### EXECUTION ORDER
+### T-1C-01: Create eventOutcomeChecker.cron.ts
 
-```
-DEPLOY GROUP 1 (Schema — parallel OK):
-  T-01 (SQL migration) + T-02 (Drizzle model)
+**Task ID:** T-1C-01
+**Phase:** Phase 1C — eventOutcomeChecker.cron.ts
+**Owner:** Senior Developer
+**Status:** Done
 
-DEPLOY GROUP 2 (Core Logic — sequential):
-  T-03 (TP/SL calculator) → T-04 (signalManager update) → T-05 (workflow integration)
+**Objective:**
+New cron job that checks event outcomes at 30-minute intervals, filling price1hAfter/change1h to price3dAfter/change3d, maxUpsideAfterEvent, maxDrawdownAfterEvent, timeToPeakHours, timeToBottomHours, outcomeClassification using price data.
 
-DEPLOY GROUP 3 (Monitoring — after core logic):
-  T-06 (TP/SL monitor cron) + T-07 (server registration) — deploy together
+**Files to inspect:**
+- `backend/src/services/binance.service.ts` — for price fetching
+- `backend/src/services/coin-memory.service.ts` — for outcome classification logic
 
-DEPLOY GROUP 4 (API + Frontend — after monitoring):
-  T-08 (API update) → T-09 (Frontend update)
+**Files likely to modify:**
+- `backend/src/crons/eventOutcomeChecker.cron.ts` (NEW FILE)
 
-T-VERIFY: tsc --noEmit on both backend + frontend, grep for `any` types
-```
+**Detailed steps:**
+1. Create new file with Redis lock
+2. Query `coin_news_history` where price1hAfter IS NULL and publishedAt > 1 hour ago (limit 50)
+3. For each event, fetch price data using `getCoinKlinesRange()` (new function from T-1D-01)
+4. Calculate price1hAfter/change1h to price3dAfter/change3d based on price at horizons
+5. Calculate maxUpsideAfterEvent/maxDrawdownAfterEvent using 1h OHLCV candles only (never use 1D candles)
+6. Calculate timeToPeakHours (hours to max upside), timeToBottomHours (hours to max drawdown)
+7. Classify outcomeClassification (POSITIVE/NEGATIVE/NEUTRAL) based on price movement direction
+8. Update existing 7d fields if missing
+9. Process all horizons (1h/4h/24h/3d/7d) in batches
 
-### GUARDRAILS (TECH LEAD — MANDATORY)
+**Acceptance criteria:**
+- Redis lock prevents duplicate runs
+- maxUpsideAfterEvent/maxDrawdownAfterEvent use 1h candles only
+- Outcome classification matches event sentiment direction
+- Handles missing price data gracefully
 
-1. **Zero `any` types** — strict TypeScript
-2. **No new packages** — all infrastructure exists
-3. **radarSignals is append-only** — NEVER update or delete
-4. **Backward compatibility** — old signals without TP/SL must work (NULL handling)
-5. **One active signal per coin** — enforced by signalManager, don't bypass
-6. **P&L formula consistency** — direction-adjusted: `isBearish ? -rawPnl : rawPnl`
-7. **Cache invalidation** — `scorecard:latest` must be invalidated on every auto-close
-8. **Batch processing** — LIMIT 50, try-catch per signal
-9. **Price fetch safety** — if `getPriceWithFallback` returns null, skip that signal
-10. **Default TP/SL fallback** — TP: +15%, SL: -8% if AI doesn't provide S/R levels
+**Testing / verification:**
+- Check cron logs for successful updates
+- Verify outcome fields populated after 1h
+- SQL: `SELECT price1hAfter, maxUpsideAfterEvent FROM coin_news_history WHERE price1hAfter IS NOT NULL LIMIT 5`
 
----
+**Rollback notes:**
+- Delete the cron file
+- Remove from server.ts registration
+- No data rollback (calculated fields optional)
 
-### ARCHIVED PHASES
-
-## Active Phase: Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (P0)
-
-**Priority:** P0 — Production scorecard shows duplicate/conflicting signals, empty P&L, zero dedup
-**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` — Phase 21 section (lines 1955-2724)
-**Authorized By:** Tech Lead — April 29, 2026
-**Planned By:** Strategic Planner — April 29, 2026
-**Total Tasks:** 7 (T-01 through T-07) — Granular Micro-Tasks Ready
-
-**Core Problem (Production):**
-- 8 BTC signals with conflicting BUY/SELL verdicts at $77,479-$77,809 range
-- 4 LTC SELL signals within $0.26 of each other
-- Win Rate, Avg Return, Best Call all empty (no 7d data yet)
-- Every MAJOR event blindly creates a new signal regardless of existing signals
+**Dependencies:**
+- T-1A-01 + T-1A-02 + T-1D-01 (schema + getCoinKlinesRange)
 
 ---
 
-### Execution Order & Dependency Chain
+### T-1C-02: Register eventOutcomeChecker Cron in server.ts
+
+**Task ID:** T-1C-02  
+**Phase:** Phase 1C — eventOutcomeChecker.cron.ts  
+**Owner:** Senior Developer  
+**Status:** Done  
+
+**Objective:**  
+Register the new eventOutcomeChecker cron in the server startup sequence.
+
+**Files to inspect:**  
+- `backend/src/server.ts:50-70` — current cron registrations  
+
+**Files likely to modify:**  
+- `backend/src/server.ts`  
+
+**Detailed steps:**  
+1. Import `startEventOutcomeCheckerCron` from the new cron file  
+2. Add to the cron startup sequence with 30-minute schedule  
+3. Follow existing pattern (staggered 5s delays)  
+
+**Acceptance criteria:**  
+- Cron registered and starts on server boot  
+- No import errors  
+- Logs show cron scheduled  
+
+**Testing / verification:**  
+- Server logs: "eventOutcomeChecker cron scheduled"  
+- No startup errors  
+
+**Rollback notes:**  
+- Remove the import and registration call  
+- Server starts normally without it  
+
+**Dependencies:**  
+- T-1C-01 (cron file exists)  
+
+---
+
+### T-1D-01: getCoinKlinesRange() in binance.service.ts
+
+**Task ID:** T-1D-01  
+**Phase:** Phase 1D — getCoinKlinesRange() in binance.service.ts  
+**Owner:** Senior Developer  
+**Status:** Done  
+
+**Objective:**  
+Add a new function to fetch historical klines for date ranges, with pagination cap at 1500 candles.
+
+**Files to inspect:**  
+- `backend/src/services/binance.service.ts:100-120` — existing getCoinKlines function  
+
+**Files likely to modify:**  
+- `backend/src/services/binance.service.ts`  
+
+**Detailed steps:**  
+1. Add `getCoinKlinesRange(symbol: string, interval: string, startTime: number, endTime: number)`  
+2. Paginate requests (Binance limit 1000 per call) up to 1500 total  
+3. Return array of OHLCV objects with timestamps  
+4. Handle rate limits and errors gracefully  
+
+**Acceptance criteria:**  
+- Returns historical klines for date range  
+- Pagination handles >1000 candles  
+- Compatible with existing getCoinKlines format  
+
+**Testing / verification:**  
+- Call for BTC 1h candles over 2 days  
+- Verify correct number of candles returned  
+- Handle invalid date ranges  
+
+**Rollback notes:**  
+- Remove the new function  
+- No impact on existing code  
+
+**Dependencies:**  
+None (independent utility function)  
+
+---
+
+### T-1E-01: Phase 1 Verification and Rollback Checklist
+
+**Task ID:** T-1E-01  
+**Phase:** Phase 1 — Verification  
+**Owner:** Senior Developer  
+**Status:** Done  
+
+**Objective:**  
+Comprehensive verification that Phase 1 foundation is working correctly, with rollback procedures.
+
+**Detailed steps:**  
+1. SQL schema verification  
+2. Cron registration check  
+3. Live event insertion test  
+4. Outcome calculation verification  
+5. Price data accuracy checks  
+
+**Acceptance criteria:**  
+- All SQL checks pass  
+- Live MAJOR events populate coin_news_history  
+- Outcome fields fill correctly after horizons  
+- maxUpside/maxDrawdown calculated from 1h candles only  
+
+**Testing / verification:**
+- SQL: Check all 18 columns exist on coin_news_history
+- SQL: Verify partial sourceHash index exists
+- Trigger MAJOR event, verify row inserted
+- Wait 1h+, verify price1hAfter populated
+- Verify maxUpsideAfterEvent/maxDrawdownAfterEvent use 1h OHLCV only  
+
+**Rollback notes:**
+- Migration: Drop 18 columns + index  
+- Cron: Remove eventOutcomeChecker registration + delete file  
+- Workflow: Remove INSERT block from aiWorkflow.cron.ts  
+- Data: No permanent data loss (calculated fields optional)  
+
+**Dependencies:**  
+- All T-1A through T-1D tasks  
+
+---
+
+## WHAT DOES NOT CHANGE
+
+1. **Existing coin_news_history rows** — remain unchanged  
+2. **Semantic dedup** — remains embedding-based in other tables  
+3. **AI workflow for non-MAJOR events** — unchanged  
+4. **Existing crons** — continue running normally  
+5. **No new npm packages**  
+
+---
+
+## FILES SUMMARY
+
+| File | Status | Change |
+|------|--------|--------|
+| `backend/scripts/migrate-coin-news-history-phase1.sql` | 🔴 TODO | New — schema expansion migration |
+| `backend/src/models/market.model.ts` | 🔴 TODO | Add 19 new columns to coinNewsHistory |
+| `backend/src/crons/aiWorkflow.cron.ts` | 🔴 TODO | Add live MAJOR event INSERT after saveMemory |
+| `backend/src/crons/eventOutcomeChecker.cron.ts` | 🔴 TODO | New — 30min outcome checking cron |
+| `backend/src/server.ts` | 🔴 TODO | Register eventOutcomeChecker cron |
+| `backend/src/services/binance.service.ts` | 🔴 TODO | Add getCoinKlinesRange() function |
+
+**Total: 1 new SQL, 1 new cron file, 4 modified files**
+
+---
+
+## PRIORITY ORDER
 
 ```
-DEPLOY GROUP 1 (DB Schema):
-  T-01 (SQL migration) + T-02 (Drizzle model) — parallel OK, deploy together
-
-DEPLOY GROUP 2 (Core Logic):
-  T-03 (signalManager.service.ts) — independent, can deploy alone
-
-DEPLOY GROUP 3 (Pipeline Integration):
-  T-04 (aiWorkflow.cron.ts) + T-05 (signalPerformance.cron.ts) — both depend on T-01+T-02+T-03
-
-DEPLOY GROUP 4 (UI Overhaul):
-  T-06 (scorecard controller) + T-07 (scorecard frontend) — T-07 depends on T-06
+1. T-1A-01 — Migration (blocks everything)
+2. T-1A-02 — Model update (matches migration)
+3. T-1D-01 — Utility function (independent)
+4. T-1B-01 — Workflow bridge (needs schema)
+5. T-1C-01 — New cron (needs schema + utility)
+6. T-1C-02 — Cron registration (needs cron file)
+7. T-1E-01 — Verification (final)
 ```
 
 ---
 
-### Tech Lead Guardrails (MANDATORY)
+## VALIDATION CHECKLIST
 
-1. **`radarSignals` table stays append-only** — never UPDATE or DELETE from it. It's a feed.
-2. **All state management goes through `signalPerformance`** — that's where isActive, upgrades, closes happen.
-3. **One active signal per coin** — enforced at application level, not DB constraint (DB can have multiple if race condition, but decision logic picks the first).
-4. **Signal upgrade does NOT reset entryAt or entryPrice** — the upgrade just changes verdict on the existing row.
-5. **`decideSignalAction()` must be fail-safe** — if price API is down, default to skip, never block the pipeline.
-6. **Zero `any` types** across all new/modified code.
-7. **Backward-compatible** — existing `getScorecardHandler` consumers must not break until T-06/T-07 deploy together.
-8. **SQL migration must include data reconciliation** — Close duplicate signals per coin: keep latest as `is_active = true`, close older ones with `exit_price = next signal's entry_price` and `realized_pnl` calculated by direction.
-
----
-
-### ⚠️ GUARDRAIL CONFLICT FLAGGED
-
-**Guardrail #1 vs nextstep.md Task 3 Code:**
-The nextstep.md blueprint includes an `UPDATE radarSignals` call inside `executeSignalDecision()` (upgrade path). This **VIOLATES** Guardrail #1 ("radarSignals stays append-only"). The Strategic Planner has **removed** the radar update from T-03 below. Only `signalPerformance` gets the verdict upgrade. The radar feed remains untouched.
+| # | Test | Expected Result |
+|---|---|-----------------|
+| 1 | Run migration | All 18 columns added, index created |
+| 2 | Server starts | eventOutcomeChecker cron registered, no errors |
+| 3 | MAJOR event triggers | Row inserted in coin_news_history with priceAtTime, sourceHash, eventScope, btcPriceAtEvent, ethPriceAtEvent, fearGreedAtEvent |
+| 4 | Wait 1 hour | price1hAfter field populated with outcome classification |
+| 5 | Check maxUpsideAfterEvent calculation | Uses 1h OHLCV high - priceAtTime |
+| 6 | Check maxDrawdownAfterEvent calculation | Uses priceAtTime - 1h OHLCV low |
+| 7 | Duplicate MAJOR event | Skipped due to sourceHash dedup |
 
 ---
 
-## 1. Planning Stage — Strategic Planner Breakdown
+## RISK NOTES
+
+1. **Migration size** — 19 columns is significant; test on staging first  
+2. **Rate limits** — getCoinKlinesRange pagination may hit Binance limits  
+3. **Data accuracy** — Ensure priceAtTime is captured at event time, not delayed  
+4. **Backward compatibility** — All new columns nullable, no breaking changes  
 
 ---
 
-### T-01: SQL Migration — Add Lifecycle Columns + Data Reconciliation
+## Planning Correction Log
 
-**File (CREATE):** `backend/scripts/migrate-signal-active.sql`
-**Assigned To:** Senior Developer
-**Status:** 🔴 NEEDS RE-RUN (Updated by Tech Lead — added data reconciliation)
-**Depends On:** None (must run FIRST before any code changes)
-
-**Target:** Create SQL migration to add 4 new columns to `signal_performance` table, create a partial index for active signal lookups, backfill existing rows, AND **reconcile duplicate signals** so each coin has exactly 1 active signal.
-
-**Tech Lead Directive (April 29, 2026):** The original T-01 only did schema changes + backfill. It did NOT fix the existing duplicate data (8 BTC, 4 LTC). This updated version adds a reconciliation step that closes older duplicate signals with correct `exit_price` and `realized_pnl` based on the next signal's entry price.
-
-**Exact SQL to write:**
-
-```sql
--- Phase 21: Multi-Timeframe Signal System
--- Add active/closed tracking to signal_performance
-
-ALTER TABLE signal_performance ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE NOT NULL;
-ALTER TABLE signal_performance ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP;
-ALTER TABLE signal_performance ADD COLUMN IF NOT EXISTS exit_price REAL;
-ALTER TABLE signal_performance ADD COLUMN IF NOT EXISTS realized_pnl REAL;
-
--- Index for finding active signals per coin (partial index — only WHERE is_active = true)
-CREATE INDEX IF NOT EXISTS idx_signal_perf_active ON signal_performance(coin_symbol, is_active) WHERE is_active = true;
-
--- Backfill existing rows: mark all current rows as active first
-UPDATE signal_performance SET is_active = true WHERE is_active IS NULL;
-
--- ============================================================
--- DATA RECONCILIATION: Fix duplicate signals per coin
--- Logic: For each coin with multiple signals, keep the LATEST
--- as active. Close older signals with exit_price = next signal's
--- entry_price and realized_pnl calculated.
---
--- Example: BTC has 8 signals. After this:
---   Signal 1-7: is_active=false, exit_price=next signal's entry, realized_pnl=calculated
---   Signal 8:   is_active=true (the latest stays active)
---
--- P&L direction logic:
---   BUY/STRONG_BUY: pnl = (exit - entry) / entry * 100
---   SELL/STRONG_SELL: pnl = (entry - exit) / entry * 100
--- ============================================================
-
-UPDATE signal_performance sp
-SET
-    is_active = false,
-    exit_price = next_sp.entry_price,
-    closed_at = next_sp.entry_at,
-    realized_pnl = CASE
-        WHEN sp.verdict IN ('BUY', 'STRONG_BUY') THEN
-            ROUND(((next_sp.entry_price - sp.entry_price) / sp.entry_price) * 100, 2)
-        WHEN sp.verdict IN ('SELL', 'STRONG_SELL') THEN
-            ROUND(((sp.entry_price - next_sp.entry_price) / sp.entry_price) * 100, 2)
-        ELSE 0
-    END
-FROM (
-    SELECT
-        sp1.id AS current_id,
-        MIN(sp2.id) AS next_id
-    FROM signal_performance sp1
-    INNER JOIN signal_performance sp2
-        ON sp1.coin_symbol = sp2.coin_symbol
-        AND sp2.id > sp1.id
-    GROUP BY sp1.id
-) AS chain
-INNER JOIN signal_performance next_sp
-    ON next_sp.id = chain.next_id
-WHERE sp.id = chain.current_id;
-
--- VERIFY: Should return 0 rows (no duplicates remaining)
--- SELECT coin_symbol, COUNT(*) FROM signal_performance WHERE is_active = true GROUP BY coin_symbol HAVING COUNT(*) > 1;
-```
-
-**Column details:**
-| Column | Type | Default | Nullable | Purpose |
-|---|---|---|---|---|
-| `is_active` | `BOOLEAN` | `TRUE` | `NOT NULL` | Tracks whether signal is currently active (one per coin) |
-| `closed_at` | `TIMESTAMP` | `NULL` | nullable | Set when signal is closed (direction change) |
-| `exit_price` | `REAL` | `NULL` | nullable | Price at close time |
-| `realized_pnl` | `REAL` | `NULL` | nullable | Final P&L percentage at close |
-
-**Reconciliation logic explained:**
-1. First: all rows get `is_active = true` (backfill)
-2. Then: for every signal that has a NEWER signal for the same coin, it gets closed
-3. `exit_price` = the entry_price of the next signal (represents the actual price when the thesis was superseded)
-4. `closed_at` = the entry_at of the next signal
-5. `realized_pnl` = calculated based on direction (BUY profitable when price went up, SELL profitable when price went down)
-6. The LAST signal per coin has no newer signal → stays `is_active = true`
-
-**How to run:**
-```bash
-psql $DATABASE_URL -f backend/scripts/migrate-signal-active.sql
-```
-
-**Precedent files (existing migrations for reference):**
-- `backend/scripts/migrate-signal-performance.sql` (Phase 18)
-- `backend/scripts/migrate-strategic-outlook.sql` (Phase 15)
-
-**Verification Checklist:**
-- [ ] File created at `backend/scripts/migrate-signal-active.sql`
-- [ ] 4 `ALTER TABLE` statements with `IF NOT EXISTS`
-- [ ] 1 `CREATE INDEX` with partial `WHERE is_active = true`
-- [ ] 1 backfill `UPDATE` statement
-- [ ] 1 reconciliation `UPDATE` statement that closes duplicates
-- [ ] `SELECT coin_symbol, COUNT(*) FROM signal_performance WHERE is_active = true GROUP BY coin_symbol HAVING COUNT(*) > 1` returns **0 rows**
-- [ ] BTC has exactly 1 active signal
-- [ ] LTC has exactly 1 active signal
-- [ ] Closed signals have non-null `exit_price`, `closed_at`, `realized_pnl`
-- [ ] SQL syntax is valid PostgreSQL (no MySQL-isms)
-- [ ] Column names match snake_case convention used by Drizzle
+**Date:** May 2, 2026  
+**Issue:** Blocking inconsistency in T-1A-01 schema plan — listed 27 columns but claimed 19, using old v2 plan instead of final v3.  
+**Correction:** Replaced with final v3 18-column schema as specified by Lead Architect. Removed outcome1h/outcome4h/outcome24h/outcome3d/outcome7d, maxUpside1h/maxDrawdown1h etc., high1h/low1h etc., price1h/price4h/price24h/price3d, majorCoinsImpact, eventHorizon. Added sourceHash (dedup), eventScope, btcPriceAtEvent, ethPriceAtEvent, fearGreedAtEvent, price1hAfter to price3dAfter, change1h to change3d, maxUpsideAfterEvent, maxDrawdownAfterEvent, timeToPeakHours, timeToBottomHours, outcomeClassification.  
+**Impact:** Downstream tasks T-1A-02, T-1B-01, T-1C-01 corrected accordingly. No application code modified.
 
 ---
 
-### T-02: Update Drizzle Model — Add 4 New Columns to `signalPerformance`
-
-**File (MODIFY):** `backend/src/models/market.model.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** None (can be done in parallel with T-01, must deploy together)
-
-**Target:** Add `isActive`, `closedAt`, `exitPrice`, `realizedPnl` columns to the Drizzle `signalPerformance` table definition to match the SQL migration in T-01.
-
-**Exact insertion point — AFTER line 115 (`isWin30d`) and BEFORE line 117 (`createdAt`):**
-
-**BEFORE (lines 96-118):**
-```typescript
-export const signalPerformance = pgTable('signal_performance', {
-    id: serial('id').primaryKey(),
-    signalId: integer('signal_id').references(() => radarSignals.id).notNull(),
-    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
-    verdict: varchar('verdict', { length: 20 }).notNull(),
-    sentiment: varchar('sentiment', { length: 20 }),
-
-    entryPrice: real('entry_price').notNull(),
-    entryAt: timestamp('entry_at').notNull(),
-
-    price24h: real('price_24h'),
-    price7d: real('price_7d'),
-    price30d: real('price_30d'),
-
-    pnl24h: real('pnl_24h'),
-    pnl7d: real('pnl_7d'),
-    pnl30d: real('pnl_30d'),
-
-    isWin7d: boolean('is_win_7d'),
-    isWin30d: boolean('is_win_30d'),
-
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-```
-
-**AFTER (lines 96-122):**
-```typescript
-export const signalPerformance = pgTable('signal_performance', {
-    id: serial('id').primaryKey(),
-    signalId: integer('signal_id').references(() => radarSignals.id).notNull(),
-    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
-    verdict: varchar('verdict', { length: 20 }).notNull(),
-    sentiment: varchar('sentiment', { length: 20 }),
-
-    entryPrice: real('entry_price').notNull(),
-    entryAt: timestamp('entry_at').notNull(),
-
-    price24h: real('price_24h'),
-    price7d: real('price_7d'),
-    price30d: real('price_30d'),
-
-    pnl24h: real('pnl_24h'),
-    pnl7d: real('pnl_7d'),
-    pnl30d: real('pnl_30d'),
-
-    isWin7d: boolean('is_win_7d'),
-    isWin30d: boolean('is_win_30d'),
-
-    isActive:       boolean('is_active').default(true).notNull(),
-    closedAt:       timestamp('closed_at'),
-    exitPrice:      real('exit_price'),
-    realizedPnl:    real('realized_pnl'),
-
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-```
-
-**New columns (4):**
-| Drizzle Name | DB Column | Type | Default | Nullable |
-|---|---|---|---|---|
-| `isActive` | `is_active` | `boolean()` | `true` | `notNull()` |
-| `closedAt` | `closed_at` | `timestamp()` | none | yes |
-| `exitPrice` | `exit_price` | `real()` | none | yes |
-| `realizedPnl` | `realized_pnl` | `real()` | none | yes |
-
-**Important notes:**
-- `boolean` is already imported at line 3 from `drizzle-orm/pg-core` — no new import needed
-- `timestamp` is already imported at line 2 — no new import needed
-- `real` is already imported at line 2 — no new import needed
-- Column ordering: lifecycle columns (isActive, closedAt, exitPrice, realizedPnl) placed after tracking columns (isWin7d, isWin30d) and before createdAt
-- This matches the SQL migration column order from T-01
-
-**Verification Checklist:**
-- [x] 4 new columns added between lines 116-119 (after `isWin30d`, before `createdAt`)
-- [x] `isActive` uses `boolean('is_active').default(true).notNull()`
-- [x] `closedAt` uses `timestamp('closed_at')` — no default, nullable
-- [x] `exitPrice` uses `real('exit_price')` — no default, nullable
-- [x] `realizedPnl` uses `real('realized_pnl')` — no default, nullable
-- [x] No new imports needed (boolean, timestamp, real already imported)
-- [x] DB column names (snake_case) match SQL migration exactly
-- [x] Drizzle column names (camelCase) follow existing convention
-- [x] `tsc --noEmit` clean
-- [x] Zero `any` types
+*Phase 1 authored: May 2, 2026*  
+*Foundation for: All temporal intelligence, event-outcome correlation, price impact analysis*
 
 ---
 
-### T-03: Create `signalManager.service.ts` — Signal Decision Logic Engine
+---
 
-**File (CREATE):** `backend/src/services/signalManager.service.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** T-01 + T-02 (Drizzle model must have isActive column before queries reference it)
+# Phase 2 — Expand Temporal Intelligence
 
-**Target:** Create the core signal decision engine that implements the multi-timeframe signal system. Two exported functions: `decideSignalAction()` (pure decision) and `executeSignalDecision()` (side-effect executor).
+**Status:** PLANNED — Partially executable after Phase 1 schema
+**Date:** May 3, 2026
+**Priority:** P1 (Enables data-rich temporal patterns)
+**Scope:** 1 SQL migration, 1 model update, 1 cron extension, 1 new service, 2 workflow updates, 1 verification checklist
+**Reviewed by:** Lead Architect + Tech Lead/Supreme Reviewer — APPROVED FOR EXECUTION
 
-**Full implementation outline:**
+## OBJECTIVE
 
-**Imports required:**
-```typescript
-import { db } from '../config/db';
-import { radarSignals, signalPerformance } from '../models/market.model';
-import { eq, and, desc } from 'drizzle-orm';
-import { getPriceWithFallback, type PriceResult } from './priceService';
-```
+Enable OnlyAlpha to compare live classified events against historical similar events from coin_news_history, calculate deterministic outcome statistics, and inject DB-grounded context into AI workflows for policy-safe market scenarios.
 
-**Types to define:**
-```typescript
-type SignalDirection = 'bullish' | 'bearish';
-type SignalVerdict = 'STRONG_BUY' | 'BUY' | 'SELL' | 'STRONG_SELL';
+## REQUIRED TASKS
 
-interface SignalDecision {
-    action: 'create' | 'upgrade' | 'close_and_replace' | 'skip';
-    verdict: SignalVerdict;
-    closedSignal?: {
-        id: number;
-        exitPrice: number;
-        realizedPnl: number;
-        closedAt: Date;
-    };
-    reason: string;
-}
-```
+### T-2A-01: 7d Schema Migration and Rollback
 
-**Helper functions (internal, not exported):**
+**Task ID:** T-2A-01
+**Phase:** Phase 2A — 7d schema migration and rollback
+**Owner:** Senior Developer
+**Status:** Done — QA & Security PASS
 
-1. `verdictToDirection(verdict: string): SignalDirection` — returns `'bullish'` for STRONG_BUY/BUY, `'bearish'` for SELL/STRONG_SELL
-2. `isStrongVerdict(verdict: string): boolean` — returns `true` only for STRONG_BUY or STRONG_SELL
-3. `canUpgrade(oldVerdict: string): boolean` — returns `true` only for BUY or SELL (not STRONG_*)
+**Objective:**
+Add 7d support to coin_news_history schema with price_7d_after and change_7d nullable columns, plus safe rollback procedures.
 
-**Export 1: `decideSignalAction(coinSymbol: string, newVerdict: SignalVerdict): Promise<SignalDecision>`**
+**Files allowed:**
+- `backend/scripts/migrate-coin-news-history-phase2.sql` (new migration file)
 
-**Logic flow (MUST follow the Decision Matrix from nextstep.md:2037-2049):**
+**Implementation requirements:**
+1. ALTER TABLE coin_news_history ADD COLUMN price_7d_after real nullable
+2. ALTER TABLE coin_news_history ADD COLUMN change_7d real nullable
+3. Ensure migration is rollback-safe (DROP COLUMN statements in reverse order)
 
-```
-Step 1: Find active signal for coinSymbol
-  → Query: db.select().from(signalPerformance).where(and(eq(signalPerformance.coinSymbol, coinSymbol), eq(signalPerformance.isActive, true))).limit(1)
-  → If no active signal found → return { action: 'create', verdict: newVerdict, reason: '...' }
+**Explicit exclusions:**
+- Do not modify any existing columns or indexes
+- Do not alter outcome_classification (kept based on 3d)
+- No data backfill in migration (handled by eventOutcomeChecker)
 
-Step 2: Determine directions
-  → oldDirection = verdictToDirection(activeSignal.verdict)
-  → newDirection = verdictToDirection(newVerdict)
+**Acceptance criteria:**
+- Migration adds exactly 2 new nullable columns
+- No existing data loss
+- Rollback drops the 2 columns cleanly
 
-Step 3: Same direction check
-  → If oldDirection === newDirection:
-    → If canUpgrade(active.verdict) AND isStrongVerdict(newVerdict):
-      → Fetch price via getPriceWithFallback(coinSymbol)
-      → If price fails OR price.price <= 0 → return { action: 'skip', ... }  ← FAIL-SAFE
-      → Calculate tradePnl: ((price - entryPrice) / entryPrice) * 100, negate for bearish
-      → If tradePnl > 0 → return { action: 'upgrade', verdict: newVerdict, reason: '...' }
-    → Otherwise → return { action: 'skip', verdict: active.verdict, reason: '...' }
+**QA notes:**
+- Test migration on staging DB first
+- Verify column types match Drizzle model expectations
+- Confirm rollback leaves schema identical to pre-migration state
 
-Step 4: Direction changed
-  → Fetch price via getPriceWithFallback(coinSymbol)
-  → If price fails OR price.price <= 0 → return { action: 'skip', ... }  ← FAIL-SAFE
-  → Calculate tradePnl for the closing signal
-  → return { action: 'close_and_replace', verdict: newVerdict, closedSignal: { id, exitPrice, realizedPnl, closedAt }, reason: '...' }
-```
-
-**Export 2: `executeSignalDecision(coinSymbol: string, signalText: string, sentiment: string, impactScore: number, decision: SignalDecision): Promise<number | null>`**
-
-**Logic flow:**
-
-```
-Step 1: Close old signal (if action === 'close_and_replace')
-  → UPDATE signalPerformance SET isActive=false, closedAt, exitPrice, realizedPnl WHERE id = decision.closedSignal.id
-  → console.log with signal close details
-
-Step 2: Upgrade existing signal (if action === 'upgrade')
-  → UPDATE signalPerformance SET verdict=decision.verdict WHERE coinSymbol=coinSymbol AND isActive=true
-  → ⚠️ DO NOT update radarSignals (Guardrail #1 — append-only feed)
-  → console.log with upgrade details
-  → return null (no new radar row created)
-
-Step 3: Skip (if action === 'skip')
-  → console.log with skip reason
-  → return null
-
-Step 4: Create new signal (if action === 'create')
-  → INSERT into radarSignals: { coinSymbol, signalText, sentiment, impactScore, newsId: null }
-  → Get returned ID
-  → Fetch price via getPriceWithFallback(coinSymbol)
-  → If price available AND insertedRadar exists:
-    → INSERT into signalPerformance: { signalId, coinSymbol, verdict, sentiment, entryPrice, entryAt: new Date(), isActive: true }
-    → console.log creation details
-    → return radar ID
-  → return null
-```
-
-**Critical design notes:**
-
-1. **Price fetch fail-safe (Guardrail #5):** EVERY `getPriceWithFallback` call must be guarded. If it returns `null` or `price <= 0`, default to `skip`. Never throw. Never block the pipeline.
-
-2. **No radar UPDATE (Guardrail #1):** The upgrade path only touches `signalPerformance`. The `radarSignals` table is NEVER updated. On upgrade, the old radar row stays as-is — it's a feed, not state.
-
-3. **Entry preservation (Guardrail #4):** Upgrade only changes `verdict`. The `entryAt` and `entryPrice` fields are NEVER touched during upgrade.
-
-4. **Close+Replace closes FIRST, then creates:** The DB operations must be sequential — close the old signal before creating the new one. This prevents a race condition where both are active.
-
-5. **`impactScore` type:** The function parameter is `number`. The caller passes `analysisResult.impactScore` which is a `number` from `DeepAnalysisResult`. No type coercion needed.
-
-6. **`sentiment` type:** The function parameter is `string`. The caller passes `analysisResult.sentiment` which is a `string` ('bullish'|'bearish'|'neutral'). No type coercion needed.
-
-**Precedent for reference:**
-- `backend/src/services/coin-memory.service.ts` — similar pattern of DB operations + console.log
-- `backend/src/services/priceService.ts:76-98` — `getPriceWithFallback(symbol)` returns `Promise<PriceResult | null>`
-
-**Verification Checklist:**
-- [x] File created at `backend/src/services/signalManager.service.ts`
-- [x] Zero `any` types (use `SignalDirection`, `SignalVerdict`, `SignalDecision` interfaces)
-- [x] `PriceResult` imported as type from `./priceService` (line 64-72 of priceService.ts)
-- [x] `decideSignalAction` exported — takes `(coinSymbol: string, newVerdict: SignalVerdict)` returns `Promise<SignalDecision>`
-- [x] `executeSignalDecision` exported — takes `(coinSymbol: string, signalText: string, sentiment: string, impactScore: number, decision: SignalDecision)` returns `Promise<number | null>`
-- [x] Price fetch is fail-safe: null check + `price <= 0` check → defaults to skip
-- [x] `radarSignals` is NEVER updated (Guardrail #1 — only INSERT in create path)
-- [x] Upgrade only changes `verdict` on `signalPerformance` (Guardrail #4 — no entryAt/entryPrice reset)
-- [x] Close sets `isActive=false, closedAt, exitPrice, realizedPnl`
-- [x] `SignalVerdict` is `'STRONG_BUY' | 'BUY' | 'SELL' | 'STRONG_SELL'` — no `NEUTRAL`
-- [x] `SignalDecision.action` is `'create' | 'upgrade' | 'close_and_replace' | 'skip'`
-- [x] Every DB operation has console.log for observability
-- [x] `tsc --noEmit` clean
+**Dependencies:**
+- Phase 1 schema (T-1A-01 + T-1A-02)
 
 ---
 
-### T-04: Integrate Signal Manager into AI Workflow Cron
+### T-2B-01: Drizzle Model Update
 
-**File (MODIFY):** `backend/src/crons/aiWorkflow.cron.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** T-01 + T-02 + T-03
+**Task ID:** T-2B-01
+**Phase:** Phase 2B — Drizzle model update
+**Owner:** Senior Developer
+**Status:** Done — QA & Security PASS
 
-**Target:** Replace the current blind radar signal INSERT block (lines 521-548) with the smart signal management system using `decideSignalAction()` + `executeSignalDecision()`.
+**Objective:**
+Update backend/src/models/market.model.ts to include price7dAfter and change7d fields in coinNewsHistory table definition.
 
-**Sub-task 4A: Add import at top of file (line 19 area, with other service imports)**
+**Files allowed:**
+- `backend/src/models/market.model.ts`
 
-Add after line 19:
-```typescript
-import { decideSignalAction, executeSignalDecision } from '../services/signalManager.service';
-```
+**Implementation requirements:**
+1. Add price7dAfter: real('price_7d_after').nullable()
+2. Add change7d: real('change_7d').nullable()
+3. Map camelCase properties to snake_case SQL columns
+4. Ensure column order matches migration
 
-**Sub-task 4B: Replace lines 519-548 (the 4g radar signal block)**
+**Explicit exclusions:**
+- Do not modify any other columns in coinNewsHistory table
+- No changes to other table definitions
+- No type changes to existing fields
 
-**BEFORE (lines 519-548):**
-```typescript
-                const newsId = null;
+**Acceptance criteria:**
+- `tsc --noEmit` passes in backend
+- Drizzle schema matches database schema after migration
+- No any types introduced
 
-                // 4g. Radar signal for actionable verdicts
-                const actionableVerdicts = ['STRONG_BUY', 'STRONG_SELL', 'BUY', 'SELL'];
-                if (actionableVerdicts.includes(analysisResult.verdict)) {
-                    const insertedRadar = await db.insert(radarSignals).values({
-                        coinSymbol: symbol,
-                        signalText: analysisResult.signalText,
-                        sentiment: analysisResult.sentiment,
-                        impactScore: analysisResult.impactScore,
-                        newsId,
-                    }).returning({ id: radarSignals.id });
+**QA notes:**
+- Run `cd backend && npx drizzle-kit generate` to verify schema generation
+- Check that existing code compiles without changes
 
-                    // 4g-2. Record signal performance (entry price)
-                    try {
-                        const priceResult = await getPriceWithFallback(symbol);
-                        if (priceResult && priceResult.price > 0 && insertedRadar.length > 0) {
-                            await db.insert(signalPerformance).values({
-                                signalId: insertedRadar[0].id,
-                                coinSymbol: symbol,
-                                verdict: analysisResult.verdict,
-                                sentiment: analysisResult.sentiment,
-                                entryPrice: priceResult.price,
-                                entryAt: new Date(),
-                            });
-                        }
-                    } catch (perfErr) {
-                        console.error(`[AI Workflow] Failed to record signal performance for ${symbol}:`, perfErr instanceof Error ? perfErr.message : String(perfErr));
-                    }
-                }
-```
-
-**AFTER:**
-```typescript
-                // 4g. Radar signal for actionable verdicts (with smart signal management)
-                const actionableVerdicts: ReadonlyArray<'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL'> = ['STRONG_BUY', 'STRONG_SELL', 'BUY', 'SELL'];
-                if (actionableVerdicts.includes(analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL')) {
-                    try {
-                        const decision = await decideSignalAction(symbol, analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL');
-                        console.log(`[AI Workflow] Signal decision for ${symbol}: ${decision.action} — ${decision.reason}`);
-
-                        const signalId = await executeSignalDecision(
-                            symbol,
-                            analysisResult.signalText,
-                            analysisResult.sentiment,
-                            analysisResult.impactScore,
-                            decision
-                        );
-                    } catch (sigErr) {
-                        console.error(`[AI Workflow] Signal management failed for ${symbol}:`, sigErr instanceof Error ? sigErr.message : String(sigErr));
-                    }
-                }
-```
-
-**What changed:**
-- **Removed:** Direct `db.insert(radarSignals)` — now handled inside `executeSignalDecision`
-- **Removed:** Direct `db.insert(signalPerformance)` — now handled inside `executeSignalDecision`
-- **Removed:** `const newsId = null;` — no longer needed (passed as `null` inside `executeSignalDecision`)
-- **Added:** `decideSignalAction(symbol, verdict)` call — determines what to do
-- **Added:** `executeSignalDecision(...)` call — executes the decision
-- **Added:** `actionableVerdicts` typed as `ReadonlyArray<'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL'>` (zero `any`)
-- **Added:** Type assertion on `analysisResult.verdict` (because `DeepAnalysisResult.verdict` may be typed as `string`)
-
-**Note:** The `newsId` variable at line 519 is no longer used. It should be REMOVED. The `executeSignalDecision` function hardcodes `newsId: null` internally.
-
-**Variable in scope (verified from reading the file):**
-- `symbol` — coin symbol, string, available from the for loop at line 181
-- `analysisResult.verdict` — the AI verdict string
-- `analysisResult.signalText` — the signal text
-- `analysisResult.sentiment` — the sentiment ('bullish'|'bearish'|'neutral')
-- `analysisResult.impactScore` — the impact score number
-
-**Verification Checklist:**
-- [x] Import added for `decideSignalAction` and `executeSignalDecision` from `'../services/signalManager.service'`
-- [x] Lines 519-548 replaced with new signal management block
-- [x] `const newsId = null;` removed (no longer needed)
-- [x] No direct `db.insert(radarSignals)` remains in this file (except `backfillRadarSignals` function at line 618 which is a one-time utility)
-- [x] No direct `db.insert(signalPerformance)` remains in this file
-- [x] `actionableVerdicts` is properly typed — no `any`
-- [x] `analysisResult.verdict` cast to the narrow verdict type (no `any`)
-- [x] try-catch wraps the entire signal block — failure is non-blocking
-- [x] Error message uses `sigErr instanceof Error ? sigErr.message : String(sigErr)` pattern (no `any`)
-- [x] All other code in the file is UNTOUCHED — article writing, memory save, cache invalidation, etc.
-- [x] `tsc --noEmit` clean
-- [x] Zero `any` types
+**Dependencies:**
+- T-2A-01 (migration must run first)
 
 ---
 
-### T-05: Update Signal Performance Cron — Active-Only P&L Tracking
+### T-2C-01: eventOutcomeChecker 7d Extension
 
-**File (MODIFY):** `backend/src/crons/signalPerformance.cron.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** T-01 + T-02 (signalPerformance model must have `isActive` column)
+**Task ID:** T-2C-01
+**Phase:** Phase 2C — eventOutcomeChecker 7d extension
+**Owner:** Senior Developer
+**Status:** Done — QA & Security PASS
 
-**Target:** Add `isActive = true` filter to all three P&L queries (24h, 7d, 30d) so the cron only processes active signals. Closed signals already have `realizedPnl` and should not be updated.
+**Objective:**
+Extend eventOutcomeChecker.cron.ts to fill 7d fields after publishedAt + 7d, maintaining existing 3d logic unchanged.
 
-**Current file structure (85 lines total):**
-- Lines 1-5: Imports
-- Lines 7-80: `updateSignalPerformance()` function
-  - Lines 10-29: 24h P&L block (`need24h`)
-  - Lines 31-53: 7d P&L block (`need7d`)
-  - Lines 55-77: 30d P&L block (`need30d`)
-- Lines 82-85: `startSignalPerformanceCron()` scheduler
+**Files allowed:**
+- `backend/src/crons/eventOutcomeChecker.cron.ts`
 
-**Sub-task 5A: Add `eq` import if not already present**
+**Implementation requirements:**
+1. Add 7d horizon calculation logic after 3d calculations
+2. Fill price_7d_after and change_7d based on price at publishedAt + 7 days
+3. Keep all existing retry logic (3 attempts) for generateDualNewsOutput
+4. Keep all existing fallback logic for generateLightweightTriage
+5. Keep existing adaptive model routing logic (temperature adjustment)
 
-**BEFORE (line 4):**
-```typescript
-import { eq, isNull, lte, and, sql } from 'drizzle-orm';
-```
-`eq` is already imported — no change needed.
+**Explicit exclusions:**
+- Do not modify outcome_classification (remains 3d-based)
+- No changes to 1h/4h/24h/3d field population logic
+- No new AI calls or service integrations
 
-**Sub-task 5B: Add `isActive = true` filter to `need24h` query (line 10-16)**
+**Acceptance criteria:**
+- 7d fields populated after 7 days from publishedAt
+- Existing 3d outcome logic unchanged
+- Cron continues to run at 30-minute intervals
 
-**BEFORE (lines 10-16):**
-```typescript
-    const need24h = await db.select()
-        .from(signalPerformance)
-        .where(and(
-            isNull(signalPerformance.price24h),
-            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '24 hours'`)
-        ))
-        .limit(50);
-```
+**QA notes:**
+- Verify 7d fields remain null until 7 days pass
+- Test with events >7 days old to confirm population
+- Ensure no regression in existing 3d calculations
 
-**AFTER:**
-```typescript
-    const need24h = await db.select()
-        .from(signalPerformance)
-        .where(and(
-            eq(signalPerformance.isActive, true),
-            isNull(signalPerformance.price24h),
-            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '24 hours'`)
-        ))
-        .limit(50);
-```
-
-**Sub-task 5C: Add `isActive = true` filter to `need7d` query (lines 31-37)**
-
-**BEFORE (lines 31-37):**
-```typescript
-    const need7d = await db.select()
-        .from(signalPerformance)
-        .where(and(
-            isNull(signalPerformance.price7d),
-            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '7 days'`)
-        ))
-        .limit(50);
-```
-
-**AFTER:**
-```typescript
-    const need7d = await db.select()
-        .from(signalPerformance)
-        .where(and(
-            eq(signalPerformance.isActive, true),
-            isNull(signalPerformance.price7d),
-            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '7 days'`)
-        ))
-        .limit(50);
-```
-
-**Sub-task 5D: Add `isActive = true` filter to `need30d` query (lines 55-61)**
-
-**BEFORE (lines 55-61):**
-```typescript
-    const need30d = await db.select()
-        .from(signalPerformance)
-        .where(and(
-            isNull(signalPerformance.price30d),
-            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '30 days'`)
-        ))
-        .limit(50);
-```
-
-**AFTER:**
-```typescript
-    const need30d = await db.select()
-        .from(signalPerformance)
-        .where(and(
-            eq(signalPerformance.isActive, true),
-            isNull(signalPerformance.price30d),
-            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '30 days'`)
-        ))
-        .limit(50);
-```
-
-**What changed:**
-- Each of the 3 queries (need24h, need7d, need30d) now has `eq(signalPerformance.isActive, true)` as the FIRST condition in the `and()` chain
-- This ensures the cron only computes P&L for active signals
-- Closed signals already have `realizedPnl` set by `executeSignalDecision()` and should NOT be updated
-- No other changes to the file — the P&L calculation logic, the for-loops, and the UPDATE statements remain identical
-
-**Verification Checklist:**
-- [x] `eq(signalPerformance.isActive, true)` added to need24h query (line ~12)
-- [x] `eq(signalPerformance.isActive, true)` added to need7d query (line ~33)
-- [x] `eq(signalPerformance.isActive, true)` added to need30d query (line ~57)
-- [x] Each `isActive` filter is the FIRST condition in `and()` chain (before `isNull` and `lte`)
-- [x] No other code changed — P&L calculation logic, for-loops, UPDATEs all untouched
-- [x] No new imports needed (`eq` already imported at line 4)
-- [x] `tsc --noEmit` clean
-- [x] Zero `any` types
+**Dependencies:**
+- T-2A-01 + T-2B-01 (schema ready)
+- T-1C-01 (existing eventOutcomeChecker exists)
 
 ---
 
-### T-06: Rewrite Scorecard Controller — 3-Section Response Architecture
+### T-2D-01: historicalEventStats.service.ts Creation
 
-**File (MODIFY):** `backend/src/controllers/market.controller.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** T-01 + T-02 + T-03 (signalPerformance model and signalManager must be ready)
+**Task ID:** T-2D-01
+**Phase:** Phase 2D — historicalEventStats.service.ts creation
+**Owner:** Senior Developer
+**Status:** Done — QA & Security PASS
 
-**Target:** Completely rewrite `getScorecardHandler()` (lines 531-577) to return a 3-section response architecture: tactical signals (active), strategic stance (from `coinStrategicOutlook`), and closed signals (history with realized P&L).
+**Objective:**
+Create backend/src/services/historicalEventStats.service.ts that deterministically queries coin_news_history and calculates statistics per matching hierarchy.
 
-**Sub-task 6A: Add import for `coinStrategicOutlook`**
+**Files allowed:**
+- `backend/src/services/historicalEventStats.service.ts` (new file)
 
-**Current import at line 8:**
-```typescript
-    signalPerformance
-```
+**Implementation requirements:**
+1. Implement matching hierarchy: A. exact (coinSymbol + eventType + eventScope + sentiment), B. relaxed level 1 (coinSymbol + eventType + eventScope), C. relaxed level 2 (eventType + eventScope + sentiment), D. relaxed level 3 (eventType + eventScope), E. market-wide fallback (eventType only)
+2. Calculate per-horizon sample sizes, median returns, positive/bullish outcome rates, average max upside/drawdown
+3. Assign confidence: 0 (none), 1-2 (very_low), 3-5 (low), 6-15 (medium), 16+ (high); adjust downward for relaxed match level/incomplete data/mixed outcomes
+4. Use query strategy: rows eligible if at least one relevant change field non-null, per-horizon stats skip nulls independently, order by publishedAt DESC, limit 100 rows
+5. Return: matchLevelUsed, sampleSize, horizonSampleSizes, horizonsAvailable, medianReturn per horizon, positive/bullish outcome rate per horizon, averageMaxUpside, averageMaxDrawdown, confidenceLevel, limitations
+6. Never call AI, never invent data
 
-**AFTER (add `coinStrategicOutlook`):**
-```typescript
-    signalPerformance, coinStrategicOutlook
-```
+**Explicit exclusions:**
+- No AI integrations or calls
+- No caching or state management (pure query/service)
+- No external API calls
+- No prompt or workflow logic
 
-**Sub-task 6B: Add import for `getPriceWithFallback` if not already present**
+**Acceptance criteria:**
+- Service exports function that takes event parameters and returns statistics object
+- All calculations deterministic from database data
+- Handles edge cases (no matches, small samples) gracefully
 
-Checking line 13 — `getPriceWithFallback` is already imported:
-```typescript
-import { getPriceWithFallback } from '../services/priceService';
-```
-No change needed.
+**QA notes:**
+- Test with known historical data to verify calculations
+- Verify confidence levels adjust correctly for match levels
+- Ensure limitations field populated when data insufficient
 
-**Sub-task 6C: Replace entire `getScorecardHandler` function (lines 531-577)**
-
-**BEFORE (lines 531-577):**
-```typescript
-export async function getScorecardHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-        const cacheKey = 'scorecard:latest';
-        const cached = await getCache(cacheKey);
-        if (cached) { res.json(cached); return; }
-
-        const signals = await db.select()
-            .from(signalPerformance)
-            .orderBy(desc(signalPerformance.entryAt))
-            .limit(100);
-
-        const withPnl7d = signals.filter(s => s.pnl7d !== null);
-        const wins7d = withPnl7d.filter(s => s.isWin7d === true);
-        const totalSignals = signals.length;
-        const winRate7d = withPnl7d.length > 0
-            ? Math.round((wins7d.length / withPnl7d.length) * 100) : null;
-        const avgReturn7d = withPnl7d.length > 0
-            ? withPnl7d.reduce((sum, s) => sum + (s.pnl7d ?? 0), 0) / withPnl7d.length : null;
-
-        const coinMap = new Map<string, { signals: number; wins: number; totalPnl: number }>();
-        for (const s of withPnl7d) {
-            const existing = coinMap.get(s.coinSymbol) ?? { signals: 0, wins: 0, totalPnl: 0 };
-            existing.signals++;
-            if (s.isWin7d) existing.wins++;
-            existing.totalPnl += s.pnl7d ?? 0;
-            coinMap.set(s.coinSymbol, existing);
-        }
-
-        const bestCall = withPnl7d.length > 0
-            ? withPnl7d.reduce((best, s) => (s.pnl7d ?? 0) > (best.pnl7d ?? -Infinity) ? s : best, withPnl7d[0])
-            : null;
-
-        const response = {
-            overall: {
-                totalSignals,
-                winRate7d,
-                avgReturn7d: avgReturn7d !== null ? parseFloat(avgReturn7d.toFixed(1)) : null,
-                bestCall
-            },
-            recent: signals.slice(0, 20),
-            perCoin: Object.fromEntries(coinMap),
-        };
-
-        await setCache(cacheKey, response, 300);
-        res.json(response);
-    } catch (err) { next(err); }
-}
-```
-
-**AFTER (complete replacement):**
-```typescript
-export async function getScorecardHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
-    try {
-        const cacheKey = 'scorecard:latest';
-        const cached = await getCache(cacheKey);
-        if (cached) { res.json(cached); return; }
-
-        // --- Section 1: Tactical Signals (active, one per coin) ---
-        const activeSignals = await db.select()
-            .from(signalPerformance)
-            .where(eq(signalPerformance.isActive, true))
-            .orderBy(desc(signalPerformance.entryAt))
-            .limit(50);
-
-        const tacticalSignals: Array<{
-            id: number;
-            coinSymbol: string;
-            verdict: string;
-            sentiment: string | null;
-            entryPrice: number;
-            entryAt: Date;
-            unrealizedPnl: number | null;
-            currentPrice: number | null;
-        }> = [];
-
-        for (const row of activeSignals) {
-            const price = await getPriceWithFallback(row.coinSymbol);
-            let unrealizedPnl: number | null = null;
-            if (price && price.price > 0) {
-                const rawPnl = ((price.price - row.entryPrice) / row.entryPrice) * 100;
-                const isBearish = row.verdict === 'SELL' || row.verdict === 'STRONG_SELL';
-                unrealizedPnl = isBearish ? -rawPnl : rawPnl;
-            }
-            tacticalSignals.push({
-                id: row.id,
-                coinSymbol: row.coinSymbol,
-                verdict: row.verdict,
-                sentiment: row.sentiment,
-                entryPrice: row.entryPrice,
-                entryAt: row.entryAt,
-                unrealizedPnl,
-                currentPrice: price?.price ?? null,
-            });
-        }
-
-        // --- Section 2: Closed Signals (with realized P&L) ---
-        const closedSignals = await db.select()
-            .from(signalPerformance)
-            .where(eq(signalPerformance.isActive, false))
-            .orderBy(desc(signalPerformance.closedAt))
-            .limit(30);
-
-        const closedWithPnl = closedSignals.filter(s => s.realizedPnl !== null);
-        const wins = closedWithPnl.filter(s => s.realizedPnl !== null && s.realizedPnl > 0);
-        const totalClosed = closedWithPnl.length;
-        const winRate = totalClosed > 0 ? Math.round((wins.length / totalClosed) * 100) : null;
-        const avgRealizedPnl = totalClosed > 0
-            ? closedWithPnl.reduce((sum, s) => sum + (s.realizedPnl ?? 0), 0) / totalClosed
-            : null;
-        const bestTrade = closedWithPnl.length > 0
-            ? closedWithPnl.reduce((best, s) => ((s.realizedPnl ?? 0) > (best.realizedPnl ?? -Infinity) ? s : best), closedWithPnl[0])
-            : null;
-
-        // --- Section 3: Strategic Stance (from coin_strategic_outlook — Phase 15) ---
-        const strategicStance = await db.select()
-            .from(coinStrategicOutlook)
-            .orderBy(desc(coinStrategicOutlook.updatedAt))
-            .limit(10);
-
-        const response = {
-            tactical: tacticalSignals,
-            strategic: strategicStance,
-            closed: closedSignals.slice(0, 20),
-            overall: {
-                activePositions: tacticalSignals.length,
-                totalClosed,
-                wins: wins.length,
-                winRate,
-                avgRealizedPnl: avgRealizedPnl !== null ? parseFloat(avgRealizedPnl.toFixed(1)) : null,
-                bestTrade,
-            },
-        };
-
-        await setCache(cacheKey, response, 300);
-        res.json(response);
-    } catch (err) { next(err); }
-}
-```
-
-**Key design decisions:**
-
-1. **Response shape change (BREAKING for frontend):** The old response had `{ overall, recent, perCoin }`. The new response has `{ tactical, strategic, closed, overall }`. This is intentionally breaking — T-07 (frontend) must deploy simultaneously.
-
-2. **Win rate is now based on closed signals, not 7d P&L:** Old logic counted wins from `isWin7d` (which requires 7 days to fill). New logic counts wins from `realizedPnl > 0` (available immediately when a signal is closed).
-
-3. **Unrealized P&L computed at query time:** For each active signal, current price is fetched and unrealized P&L is calculated. This is NOT stored in DB (per nextstep.md risk note #3).
-
-4. **`closedAt` ordering for closed signals:** Uses `desc(signalPerformance.closedAt)` — nulls last by default in PostgreSQL, which is correct (rows without closedAt are still active).
-
-5. **`eq` is already imported** at line 11 from `drizzle-orm` — no new import needed.
-
-6. **No `perCoin` breakdown:** Replaced by the per-coin guarantee from the signal manager (one active signal per coin). The old perCoin was based on 7d P&L and was often empty.
-
-**Verification Checklist:**
-- [x] `coinStrategicOutlook` added to the model import at line 8
-- [x] `getScorecardHandler` completely rewritten (lines 531-577)
-- [x] Section 1: Active signals queried with `eq(signalPerformance.isActive, true)`, enriched with unrealized P&L
-- [x] Section 2: Closed signals queried with `eq(signalPerformance.isActive, false)`, ordered by `closedAt`
-- [x] Section 3: Strategic stance queried from `coinStrategicOutlook`
-- [x] Overall stats computed from closed signals (not 7d): winRate, avgRealizedPnl, bestTrade
-- [x] `tacticalSignals` array is explicitly typed — no `any`
-- [x] `tacticalSignals[].currentPrice` is `number | null` (not undefined)
-- [x] `tacticalSignals[].unrealizedPnl` is `number | null` (not undefined)
-- [x] Price fetch fail-safe: if `getPriceWithFallback` returns null, `unrealizedPnl` stays `null`
-- [x] Cache key `scorecard:latest` unchanged (same as before)
-- [x] Cache TTL 300 seconds unchanged
-- [x] All other controller functions untouched (`getRadarSignals`, `getMasterArticle`, etc.)
-- [x] `tsc --noEmit` clean
-- [x] Zero `any` types
+**Dependencies:**
+- T-2A-01 + T-2B-01 + T-2C-01 (7d data available)
 
 ---
 
-### T-07: Rewrite Scorecard Frontend — 4-Section Layout
+### T-2E-01: AI Workflow Integration
 
-**File (MODIFY):** `frontend/src/app/(standard)/scorecard/page.tsx`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** T-06 (new response shape must be deployed first)
+**Task ID:** T-2E-01
+**Phase:** Phase 2E — AI workflow integration
+**Owner:** Senior Developer
+**Status:** Done — QA & Security PASS
 
-**Target:** Complete rewrite of the scorecard page with 4 visual sections: Overall Stats Bar, Tactical Signals (active), Strategic Stance (long-term), and Closed Signals (history).
+**Objective:**
+Integrate historicalEventStats.service.ts into aiWorkflow.cron.ts to call stats service after event classification and inject returned stats into AI prompts.
 
-**Current file:** 227 lines, server component, single `ScorecardPage` function
+**Files allowed:**
+- `backend/src/crons/aiWorkflow.cron.ts`
 
-**New TypeScript interfaces (replace lines 27-54):**
+**Implementation requirements:**
+1. Import historicalEventStats service
+2. Call stats service after event classification (before AI analysis)
+3. Inject returned stats into prompt context
+4. AI must use provided stats only, never invent numbers
+5. If no stats, omit historical comparison section
+6. If low confidence, state "limited historical sample available"
 
-```typescript
-interface TacticalSignal {
-    id: number;
-    coinSymbol: string;
-    verdict: string;
-    sentiment: string | null;
-    entryPrice: number;
-    entryAt: string;
-    unrealizedPnl: number | null;
-    currentPrice: number | null;
-}
+**Explicit exclusions:**
+- No changes to event classification logic
+- No modifications to existing AI model routing
+- No changes to prompt structure beyond stats injection
 
-interface StrategicStance {
-    id: number;
-    coinSymbol: string;
-    marketPhase: string | null;
-    bullRunProbability: number | null;
-    recommendedAction: string | null;
-    updatedAt: string | null;
-}
+**Acceptance criteria:**
+- Stats service called for each classified event
+- AI prompts include historical stats when available
+- No AI hallucinations or invented statistics
 
-interface ClosedSignal {
-    id: number;
-    coinSymbol: string;
-    verdict: string;
-    sentiment: string | null;
-    entryPrice: number;
-    entryAt: string;
-    exitPrice: number | null;
-    realizedPnl: number | null;
-    closedAt: string | null;
-}
+**QA notes:**
+- Verify stats appear in AI prompts for events with historical matches
+- Test behavior when no historical data exists
+- Ensure AI responses reference provided stats accurately
 
-interface OverallStats {
-    activePositions: number;
-    totalClosed: number;
-    wins: number;
-    winRate: number | null;
-    avgRealizedPnl: number | null;
-    bestTrade: ClosedSignal | null;
-}
-
-interface ScorecardData {
-    tactical: TacticalSignal[];
-    strategic: StrategicStance[];
-    closed: ClosedSignal[];
-    overall: OverallStats;
-}
-```
-
-**Keep existing helper functions (lines 56-78) — `pnlClass()`, `pnlFormat()`, `verdictBadge()` — unchanged.**
-
-**Add new helper function for relative time:**
-```typescript
-function timeAgo(dateStr: string): string {
-    const now = Date.now();
-    const date = new Date(dateStr).getTime();
-    const diffMs = now - date;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 30) return `${diffDays}d ago`;
-    return `${Math.floor(diffDays / 30)}mo ago`;
-}
-
-function formatPrice(price: number | null): string {
-    if (price === null) return '—';
-    if (price >= 1) return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
-}
-
-function wyckoffColor(phase: string | null): string {
-    if (!phase) return 'text-[#555]';
-    const green = new Set(['Accumulation', 'Markup']);
-    const red = new Set(['Distribution', 'Markdown']);
-    if (green.has(phase)) return 'text-emerald-400';
-    if (red.has(phase)) return 'text-red-400';
-    return 'text-[#555]';
-}
-
-function durationBetween(start: string, end: string | null): string {
-    if (!end) return '—';
-    const diffMs = new Date(end).getTime() - new Date(start).getTime();
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays > 0) return `${diffDays}d`;
-    return `${diffHours}h`;
-}
-```
-
-**Complete page layout (replace lines 80-227):**
-
-```
-Empty state check:
-  → if (!data || (data.overall.activePositions === 0 && data.overall.totalClosed === 0))
-  → Show "No Signals Tracked Yet" (reuse existing empty state at lines 92-104)
-
-Section 1: Overall Stats Bar (5 stat cards in a grid)
-  → Active Positions | Closed Signals | Win Rate | Avg P&L | Best Trade
-  → Grid: `grid-cols-2 md:grid-cols-5 gap-3`
-  → Same card style: `bg-[#0A0A0A] border border-[#222] rounded-lg p-4`
-  → Best Trade shows: coinSymbol + pnlFormat(bestTrade.realizedPnl)
-
-Section 2: Tactical Signals (Active) — Table
-  → Header: "Tactical Signals"
-  → Subtitle: "Short-term active positions (1-3 days). One signal per coin."
-  → Columns: Coin | Signal | Entry $ | Current $ | Unrealized | Since
-  → Table style: same as existing (overflow-x-auto, border, dark theme)
-  → Coin: `font-mono font-semibold`
-  → Signal: verdict badge (reuse existing verdictBadge function)
-  → Entry $: `formatPrice(row.entryPrice)`
-  → Current $: `formatPrice(row.currentPrice)`
-  → Unrealized: colored with pnlClass, formatted with pnlFormat
-  → Since: `timeAgo(row.entryAt)`
-  → Empty state: "No active signals currently."
-
-Section 3: Strategic Stance (Long-term) — Table
-  → Only render if data.strategic.length > 0
-  → Header: "Strategic Stance"
-  → Subtitle: "Long-term outlook (weeks/months). From AI structural analysis."
-  → Columns: Coin | Wyckoff Phase | Bull Probability | Action
-  → Wyckoff: colored with wyckoffColor function
-  → Bull Prob: show as `${value}%` with a simple inline progress bar (div with width percentage)
-  → Action: `recommendedAction` or "—"
-  → Empty state: hidden (section only renders if strategic.length > 0)
-
-Section 4: Closed Signals (History) — Table
-  → Only render if data.closed.length > 0
-  → Header: "Closed Signals"
-  → Subtitle: "Historical signal performance with realized P&L."
-  → Columns: Coin | Signal | Entry → Exit | P&L | Held | Result
-  → Entry → Exit: `formatPrice(entryPrice) → ${exitPrice ? formatPrice(exitPrice) : '—'}`
-  → P&L: colored with pnlClass, formatted with pnlFormat
-  → Held: `durationBetween(entryAt, closedAt)`
-  → Result: checkmark (✅) for wins, X (❌) for losses
-  → Empty state: hidden (section only renders if closed.length > 0)
-
-NFA Disclaimer (keep existing at lines 213-223)
-```
-
-**Design system rules:**
-- Dark theme: `bg-black` page, `bg-[#0A0A0A]` cards, `border-[#222]` borders
-- Text colors: `text-white` headings, `text-[#666]` labels, `text-[#888]` secondary
-- Font: `font-mono` for numbers/symbols, default for text
-- Tailwind only — no inline styles, no CSS modules
-- Material icons: `material-symbols-outlined` class
-- Responsive: `md:` breakpoints for grid adjustments
-
-**Precedent files (for consistent styling):**
-- `frontend/src/features/home/components/TopMovers.tsx` — dark card + table styling
-- `frontend/src/features/home/components/MarketMoodGauge.tsx` — stat card styling
-- Current scorecard page (lines 108-226) — existing dark theme tokens
-
-**Verification Checklist:**
-- [x] 4 new TypeScript interfaces defined: `TacticalSignal`, `StrategicStance`, `ClosedSignal`, `OverallStats`
-- [x] `ScorecardData` interface matches new backend response shape exactly
-- [x] Zero `any` types across all interfaces and functions
-- [x] Server component (no `'use client'` — same as current)
-- [x] `metadata` export unchanged (lines 8-25)
-- [x] `revalidate = 360` unchanged (line 4)
-- [x] `apiClient.get<ScorecardData>('/market/scorecard')` updated with new type
-- [x] Empty state handles both `!data` and `activePositions === 0 && totalClosed === 0`
-- [x] Section 1: 5 stat cards in responsive grid
-- [x] Section 2: Tactical table with Coin, Signal, Entry, Current, Unrealized, Since columns
-- [x] Section 3: Strategic table with Coin, Wyckoff, Bull Prob, Action columns (conditional render)
-- [x] Section 4: Closed table with Coin, Signal, Entry→Exit, P&L, Held, Result columns (conditional render)
-- [x] NFA disclaimer preserved at bottom
-- [x] `timeAgo()` handles minutes, hours, days, months
-- [x] `formatPrice()` handles null, high prices (2 decimals), low prices (6 decimals)
-- [x] `wyckoffColor()` returns emerald for Accumulation/Markup, red for Distribution/Markdown
-- [x] `durationBetween()` returns days or hours
-- [x] Bull probability shown as `XX%` with visual progress bar
-- [x] Dark theme consistent with existing pages
-- [x] No new imports (all existing Tailwind classes and material icons)
-- [x] `tsc --noEmit` clean (frontend)
+**Dependencies:**
+- T-2D-01 (stats service exists)
+- T-1B-01 (existing AI workflow)
 
 ---
 
-### T-VERIFY: Final Verification (run after all tasks)
+### T-2F-01: Prompt/Policy-Safe Stats Injection
 
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** All T-01 through T-07
+**Task ID:** T-2F-01
+**Phase:** Phase 2F — prompt/policy-safe stats injection
+**Owner:** Senior Developer
+**Status:** Done — QA & Security PASS
 
-**Backend checks:**
-1. ✅ `cd backend && npx tsc --noEmit` — zero errors
-2. ✅ `rg 'any' backend/src/services/signalManager.service.ts` — zero matches (excluding comments)
-3. ✅ `rg 'any' backend/src/crons/aiWorkflow.cron.ts` — zero matches
-4. ✅ `rg 'any' backend/src/crons/signalPerformance.cron.ts` — zero matches
-5. ✅ `rg 'any' backend/src/controllers/market.controller.ts` — zero matches
-6. ✅ Verify `signalPerformance` model has `isActive`, `closedAt`, `exitPrice`, `realizedPnl`
-7. ✅ Verify `radarSignals` is NEVER updated (only INSERT in executeSignalDecision and backfillRadarSignals)
-8. ✅ Verify upgrade path does NOT touch `entryAt` or `entryPrice`
-9. ✅ Verify `decideSignalAction` defaults to skip on price API failure
+**Objective:**
+Update AI prompts to use policy-safe language mapping for historical stats presentation, maintaining AdSense-safe output.
 
-**Frontend checks:**
-10. ✅ `cd frontend && npx tsc --noEmit` — zero errors
-11. ✅ Verify `ScorecardData` interface matches new backend response shape
-12. ✅ Verify all 4 sections render (or conditionally hide when empty)
+**Files allowed:**
+- `backend/src/services/ai/prompt-factory.ts`
 
-**Integration checks:**
-13. ✅ Verify `/market/scorecard` route still works (same path, new response shape)
-14. ✅ Verify `getScorecardHandler` returns `{ tactical, strategic, closed, overall }`
-15. ✅ Verify cache key `scorecard:latest` is cleared on deploy (manual Redis flush or let TTL expire)
+**Implementation requirements:**
+1. Map internal stats to public language: Signal -> Market Scenario, Entry -> Reference Price, TP -> Target Zone, SL -> Risk Zone / Invalidation Zone, P&L -> Historical Outcome, Win Rate -> Outcome Rate, Buy/Sell -> Bullish/Bearish Bias
+2. Format stats injection as policy-safe analysis context
+3. Public language must remain AdSense-safe
 
-**Status:** PLANNING COMPLETE — READY FOR EXECUTION (Senior Developer)
+**Explicit exclusions:**
+- No changes to internal data structures or calculations
+- No modifications to stats service output
+- Backend/internal verdict values remain raw
 
----
+**Acceptance criteria:**
+- AI outputs use policy-safe terminology
+- Historical stats presented as analysis context, not predictions
+- No financial advice framing
 
-## Completed Phases (Archived)
+**QA notes:**
+- Audit AI outputs for policy-safe language
+- Verify mapping table applied consistently
+- Test with various stat confidence levels
 
-### Phase 20 — AI Pipeline Quality Fix: Memory Injection, Minor Update Overhaul & Model Upgrade (P0)
-**Priority:** P0 — Analysis quality is degrading, minor updates are generic filler
-**Total Tasks:** 8 (T-01 through T-08) — All Done, Verified
-**Executor:** Senior Developer
-**Scope:** 5 modified files, 0 new files, 0 new dependencies
-**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` — Phase 20 section (lines 1550-1950)
-
-**Summary:**
-- Fix 1: Coin memory injection — `DeepAnalysisInput` expanded with `coinSymbol` and `recentMemory`, memory fetched before analysis
-- Fix 2: Minor update overhaul — `MinorUpdateInput` expanded with price/timeline context, prompts rewritten for Bloomberg-style updates
-- Fix 3: Model upgrade — Primary analysis model changed from `deepseek-chat` to `deepseek-reasoner`
+**Dependencies:**
+- T-2E-01 (stats injection exists)
+- Existing prompt-factory structure
 
 ---
 
-### 1. Planning Stage (Planner)
+### T-2G-01: Phase 2 Verification Checklist
 
-**Target:** Three targeted fixes to the AI pipeline based on a full codebase audit:
-1. Deep Analysis has no memory — `coin_memory` populated but never read during analysis
-2. Minor updates are generic filler — 1-line prompt, only headline context, cheapest model
-3. Primary analysis model is wrong — `deepseek-chat` (V3 non-thinking) is primary while `deepseek-reasoner` (R1 thinking) is fallback
+**Task ID:** T-2G-01
+**Phase:** Phase 2G — Phase 2 verification checklist
+**Owner:** Senior Developer
+**Status:** Done — QA & Security PASS
 
-**What Needs Doing:**
-- T-01: Fix 3 — Change `DEEPSEEK_MODEL_DIRECT` default from `deepseek-chat` to `deepseek-reasoner` in `env.ts`
-- T-02: Fix 1A — Expand `DeepAnalysisInput` interface + add coin memory section to user prompt in `prompt-factory.ts`
-- T-03: Fix 1B — Fetch `getRecentMemory()` inside `callDeepSeekAnalysis()` and attach to input in `openai.service.ts`
-- T-04: Fix 1C — Add `symbol` to `callDeepSeekAnalysis({...})` call in `aiWorkflow.cron.ts`
-- T-05: Fix 2A — Expand `MinorUpdateInput` + rewrite `buildMinorUpdateMessages()` in `prompt-factory.ts`
-- T-06: Fix 2B — Update `callGptNanoMinorUpdate()` signature to accept `MinorUpdateInput` in `openai.service.ts`
-- T-07: Fix 2C — Fetch timeline + price before calling minor update in `aiWorkflow.cron.ts`
-- T-08: Verify — `tsc --noEmit`, zero `any`, backward compatibility
+**Objective:**
+Create comprehensive verification checklist/script for Phase 2 stats behavior and AI integration.
 
-**Key Constraints (Tech Lead Guardrails):**
-1. **ZERO `any` types** across all modified code
-2. **ZERO new files** — all changes are to existing files
-3. **ZERO new npm packages**
-4. **ZERO route/controller/DB changes** — only env, prompts, service signatures, and workflow call sites
-5. System prompt for deep analysis stays UNCHANGED (it already has excellent JSON structure)
-6. System prompt for article writer stays UNCHANGED
-7. `callGptNanoMinorUpdate()` must continue returning `Promise<string>` (plain text, not JSON)
-8. `callDeepSeekAnalysis()` must continue returning `Promise<DeepAnalysisResult>` (unchanged)
-9. All existing exports and signatures must remain backward-compatible
-10. Keep existing retry logic (3 attempts) for `callDeepSeekAnalysis`
-11. Keep existing fallback logic for `generateLightweightTriage`
-12. Memory section must handle `recentMemory = []` or `undefined` gracefully — show "No prior events recorded for this coin"
-13. Do NOT change the article writer model (`google/gemini-2.5-flash`)
-14. Do NOT change the chat model (`openai/gpt-4.1-mini`)
-15. Do NOT change the SEO model (`openai/gpt-5-nano`) — still used for minor updates
-16. `AIGateway` already strips thinking blocks via `stripThinkingBlocks()` — no change needed for `deepseek-reasoner`
+**Files allowed:**
+- `backend/scripts/verify-phase2-stats.js` (new verification script)
 
-**Verified References (exact line numbers from current codebase):**
-- `backend/src/config/env.ts:37` — `DEEPSEEK_MODEL_DIRECT: z.string().default('deepseek-chat')` ← change to `'deepseek-reasoner'`
-- `backend/src/services/ai/prompt-factory.ts:31-36` — `DeepAnalysisInput` interface ← add `coinSymbol` + `recentMemory`
-- `backend/src/services/ai/prompt-factory.ts:44-47` — `MinorUpdateInput` interface ← expand with 4 new fields
-- `backend/src/services/ai/prompt-factory.ts:225-328` — `buildDeepAnalysisMessages()` ← add memory section to user prompt (after line 326, before closing)
-- `backend/src/services/ai/prompt-factory.ts:508-519` — `buildMinorUpdateMessages()` ← rewrite system + user prompts
-- `backend/src/services/openai.service.ts:390-416` — `callDeepSeekAnalysis(input: DeepAnalysisInput, ...)` ← fetch memory before line 394
-- `backend/src/services/openai.service.ts:667-677` — `callGptNanoMinorUpdate(newsTitle: string, existingHeadline: string)` ← change to accept `MinorUpdateInput`
-- `backend/src/crons/aiWorkflow.cron.ts:278-294` — `callDeepSeekAnalysis({headline, intelligence, pattern, price})` ← add `symbol`
-- `backend/src/crons/aiWorkflow.cron.ts:233` — `callGptNanoMinorUpdate(item.title, existingHeadline)` ← replace with expanded call
-- `backend/src/services/coin-memory.service.ts:22-24` — `getRecentMemory(coinSymbol, limit=5)` ← already exists, no changes needed
-- `backend/src/services/priceService.ts:76-98` — `getPriceWithFallback(symbol)` ← already exists, no changes needed
-- `backend/src/models/market.model.ts:157-170` — `coinMemory` table columns (eventType, eventSummary, priceAtEvent, verdict, confidenceScore, riskVerdict, keyDrivers, redFlags)
+**Implementation requirements:**
+1. SQL checks for 7d column existence and population
+2. Test historicalEventStats service with sample events
+3. Verify AI workflow integration and prompt injection
+4. Validate policy-safe language mapping
+5. Check confidence level calculations
 
-**Status:** PLANNING COMPLETE — READY FOR EXECUTION
+**Explicit exclusions:**
+- No modifications to application code
+- Pure verification/testing script
+- No deployment or runtime changes
+
+**Acceptance criteria:**
+- Script runs without errors on staging environment
+- All checks pass for Phase 2 functionality
+- Provides clear pass/fail results
+
+**QA notes:**
+- Run script after Phase 2 deployment
+- Use for regression testing in future updates
+- Include sample data for consistent testing
+
+**Dependencies:**
+- All T-2A through T-2F tasks
 
 ---
 
-### 2. Execution Stage (Senior Developer)
+### T-2H-01: Optional Index Migration
 
-> **EXECUTION ORDER:** T-01 → T-02 → T-03 → T-04 → T-05 → T-06 → T-07 → T-08
->
-> **DEPENDENCY CHAIN:**
-> - T-01 is independent (1-line env change)
-> - T-02, T-03, T-04 are sequential (Fix 1 — prompt-factory → openai.service → workflow)
-> - T-05, T-06, T-07 are sequential (Fix 2 — prompt-factory → openai.service → workflow)
-> - T-08 is final verification
+**Task ID:** T-2H-01
+**Phase:** Phase 2H — optional index migration
+**Owner:** Senior Developer
+**Status:** Planned
 
----
+**Objective:**
+Determine if separate index migration needed for 7d query performance, and implement if required.
 
-#### T-01: Change Primary Analysis Model to DeepSeek Reasoner (Fix 3)
-**File (MODIFY):** `backend/src/config/env.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** None
+**Files allowed:**
+- `backend/scripts/migrate-coin-news-history-phase2-index.sql` (new if needed)
 
-**Target:** Change the default DeepSeek direct model from `deepseek-chat` (V3, non-thinking) to `deepseek-reasoner` (R1, thinking mode). This immediately upgrades analysis quality since the thinking model is already mapped to `deepseek-v4-flash` thinking mode under the hood.
+**Implementation requirements:**
+1. Analyze query patterns in historicalEventStats.service.ts
+2. Determine if additional indexes needed beyond Phase 1 index
+3. Create migration script if performance optimization required
 
-**Exact change at line 37:**
+**Explicit exclusions:**
+- Only create if determined necessary after analysis
+- No forced index creation without justification
+- Maintain backward compatibility
 
-**BEFORE:**
-```typescript
-DEEPSEEK_MODEL_DIRECT: z.string().default('deepseek-chat'),
-```
+**Acceptance criteria:**
+- If created: index improves query performance for 7d stats
+- If skipped: documented reasoning for no additional indexes
+- No negative impact on existing queries
 
-**AFTER:**
-```typescript
-DEEPSEEK_MODEL_DIRECT: z.string().default('deepseek-reasoner'),
-```
+**QA notes:**
+- Performance test queries before/after index creation
+- Monitor database performance post-deployment
+- Rollback plan includes index removal
 
-**Why this is safe:**
-- `deepseek-reasoner` currently works and maps to v4-flash thinking mode under the hood
-- Same cost as `deepseek-chat` (both map to same underlying model)
-- `AIGateway.stripThinkingBlocks()` at `ai-gateway.ts:35-39` already strips thinking tokens from response
-- No other code changes needed — model name flows through existing routing
-
-**Verification Checklist:**
-- Only line 37 modified in `env.ts`
-- No other env vars changed
-- `tsc --noEmit` clean
-- Zero `any` types (no new code)
+**Dependencies:**
+- T-2D-01 (to analyze query patterns)
 
 ---
 
-#### T-02: Add Coin Memory to Deep Analysis Prompt (Fix 1A — Prompt Factory)
-**File (MODIFY):** `backend/src/services/ai/prompt-factory.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** None
+## VALIDATION CHECKLIST
 
-**Target:** Expand the `DeepAnalysisInput` interface to include `coinSymbol` and `recentMemory`, and add a new "RECENT EVENTS FOR THIS COIN" section to the user prompt in `buildDeepAnalysisMessages()`.
-
-**Sub-task 2A: Expand `DeepAnalysisInput` interface (lines 31-36)**
-
-**BEFORE (lines 31-36):**
-```typescript
-export interface DeepAnalysisInput {
-    headline: string;
-    intelligence: CoinIntelligence | null;
-    pattern: TemporalPattern | null;
-    price: PriceResult | null;
-}
-```
-
-**AFTER:**
-```typescript
-export interface DeepAnalysisInput {
-    headline: string;
-    intelligence: CoinIntelligence | null;
-    pattern: TemporalPattern | null;
-    price: PriceResult | null;
-    coinSymbol: string;
-    recentMemory?: ReadonlyArray<{
-        eventType: string;
-        eventSummary: string;
-        priceAtEvent: number | null;
-        verdict: string | null;
-        confidenceScore: number | null;
-        riskVerdict: string | null;
-        keyDrivers: string[] | null;
-        redFlags: string[] | null;
-        createdAt: Date;
-    }>;
-}
-```
-
-**Notes:**
-- `coinSymbol` is required (not optional) — the caller always has the symbol
-- `recentMemory` is optional — coins with no history will have `undefined` or empty array
-- Use `ReadonlyArray` instead of raw `Array` for immutability
-- All inner fields are nullable because the DB columns are nullable (matches `coinMemory` table schema at `market.model.ts:157-170`)
-
-**Sub-task 2B: Add memory section to user prompt in `buildDeepAnalysisMessages()`**
-
-Insert a new section in the user message (inside the template literal), AFTER the `--- HISTORICAL PATTERN ---` section and BEFORE the final analysis instruction. The developer must read the current file to find the exact insertion point (the user message template literal spans lines 305-326 approximately).
-
-**New section to insert:**
-```
---- RECENT EVENTS FOR THIS COIN ---
-${input.recentMemory && input.recentMemory.length > 0
-    ? input.recentMemory.map((m, i) =>
-        `${i + 1}. [${m.createdAt.toISOString().split('T')[0]}] ${m.eventType}: ${m.eventSummary} | Price: $${m.priceAtEvent ?? 'N/A'} | Verdict: ${m.verdict ?? 'N/A'} | Confidence: ${m.confidenceScore ?? 'N/A'}${m.redFlags && m.redFlags.length > 0 ? ` | Red Flags: ${m.redFlags.join(', ')}` : ''}${m.keyDrivers && m.keyDrivers.length > 0 ? ` | Drivers: ${m.keyDrivers.join(', ')}` : ''}`
-    ).join('\n')
-    : 'No prior events recorded for this coin.'}
-```
-
-**Rules for the memory section:**
-- Must NOT be injected as system prompt (system prompt stays unchanged per guardrail)
-- Must use `input.recentMemory` (from the interface, not a DB call)
-- Must handle empty/undefined memory gracefully — show "No prior events recorded for this coin."
-- Keep each event on one line for readability
-- Include: date, eventType, summary, price, verdict, confidence, red flags, key drivers
-- Date format: ISO date only (YYYY-MM-DD), not full timestamp
-
-**Verification Checklist:**
-- `DeepAnalysisInput` now has `coinSymbol: string` (required) and `recentMemory` (optional)
-- `recentMemory` uses `ReadonlyArray` with properly typed inner fields
-- User prompt has new "RECENT EVENTS FOR THIS COIN" section
-- Empty memory handled gracefully (no crash, shows "No prior events")
-- System prompt unchanged
-- `tsc --noEmit` clean
-- Zero `any` types
+| # | Test | Expected Result |
+|---|---|-----------------|
+| 1 | Migration runs | price_7d_after and change_7d columns added |
+| 2 | Drizzle generate | Schema updates without errors |
+| 3 | eventOutcomeChecker | Populates 7d fields after 7 days |
+| 4 | historicalEventStats service | Returns accurate statistics for sample events |
+| 5 | AI workflow | Calls stats service and injects into prompts |
+| 6 | AI output | Uses policy-safe language for historical stats |
+| 7 | Verification script | All Phase 2 checks pass |
 
 ---
 
-#### T-03: Fetch Memory Inside callDeepSeekAnalysis (Fix 1B — OpenAI Service)
-**File (MODIFY):** `backend/src/services/openai.service.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** T-02 (DeepAnalysisInput must have `coinSymbol` and `recentMemory` fields)
-
-**Target:** Inside `callDeepSeekAnalysis()`, fetch recent memory using `getRecentMemory()` and attach it to the input object BEFORE building messages.
-
-**Add import at top of file (with existing imports):**
-```typescript
-import { getRecentMemory } from './coin-memory.service';
-```
-
-**Modify `callDeepSeekAnalysis()` at line 390-394:**
-
-**BEFORE (lines 390-394 approximately):**
-```typescript
-export async function callDeepSeekAnalysis(input: DeepAnalysisInput, attempt: number = 1): Promise<DeepAnalysisResult> {
-    // ... existing code ...
-    const messages = prompts.buildDeepAnalysisMessages(input);
-    // ... rest of function ...
-```
-
-**AFTER:**
-```typescript
-export async function callDeepSeekAnalysis(input: DeepAnalysisInput, attempt: number = 1): Promise<DeepAnalysisResult> {
-    // ... existing code ...
-    const memory = await getRecentMemory(input.coinSymbol, 5);
-    const enrichedInput: DeepAnalysisInput = {
-        ...input,
-        recentMemory: memory.length > 0 ? memory : undefined,
-    };
-    const messages = prompts.buildDeepAnalysisMessages(enrichedInput);
-    // ... rest of function uses `enrichedInput` only if needed, but `messages` is what matters ...
-```
-
-**Important notes:**
-- `getRecentMemory` returns an array of full `coinMemory` rows. The field names may not exactly match the `recentMemory` interface in `DeepAnalysisInput` — the developer MUST verify the column names from `market.model.ts:157-170` match the interface fields defined in T-02. If column names differ (e.g., snake_case vs camelCase), a mapping step is required.
-- The `enrichedInput` preserves all original fields via spread, then overlays `recentMemory`.
-- If `getRecentMemory` fails or returns empty, we set `recentMemory` to `undefined` (triggers the "No prior events" message in the prompt).
-- Do NOT add try-catch around `getRecentMemory` here — the existing outer try-catch in `callDeepSeekAnalysis()` will handle failures. If memory fetch fails, the analysis should still proceed without memory (fail-safe).
-- Actually, wrapping in try-catch IS safer — if memory DB is down, we don't want to block analysis. Add a try-catch that falls back to `undefined` on error.
-
-**Safer approach:**
-```typescript
-let recentMemory: DeepAnalysisInput['recentMemory'];
-try {
-    const memory = await getRecentMemory(input.coinSymbol, 5);
-    recentMemory = memory.length > 0 ? memory as unknown as NonNullable<DeepAnalysisInput['recentMemory']>[number][] : undefined;
-} catch {
-    recentMemory = undefined;
-}
-const enrichedInput: DeepAnalysisInput = { ...input, recentMemory };
-```
-
-**IMPORTANT:** The developer must verify that the return type of `getRecentMemory` is compatible with the `recentMemory` field in `DeepAnalysisInput`. If the `coinMemory` table uses different field names or types, a mapping step is required. Check `market.model.ts:157-170` for column definitions and compare with the interface in T-02.
-
-**Verification Checklist:**
-- `getRecentMemory` imported from `coin-memory.service`
-- Memory fetched BEFORE `buildDeepAnalysisMessages()` call
-- Fail-safe: if memory fetch fails, analysis continues without memory
-- `enrichedInput` passed to `buildDeepAnalysisMessages()` (not original `input`)
-- Existing retry logic unchanged
-- Existing fallback logic unchanged
-- `tsc --noEmit` clean
-- Zero `any` types (avoid `as unknown as` — use proper mapping if needed)
+*Phase 2 authored: May 2, 2026*  
+*Depends on: Phase 1 data accumulation for meaningful statistics*
 
 ---
 
-#### T-04: Pass Symbol to callDeepSeekAnalysis in Workflow (Fix 1C — Cron)
-**File (MODIFY):** `backend/src/crons/aiWorkflow.cron.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** T-02 (DeepAnalysisInput must have `coinSymbol` field)
+---
 
-**Target:** Add `symbol` to the input object passed to `callDeepSeekAnalysis()` at line ~278.
+# Phase 3 — Multi-Horizon Scenario Tracker
 
-**Exact change at lines 278-294:**
+**Status:** PLANNED — After Phase 1 stable  
+**Date:** May 2, 2026  
+**Priority:** P1 (Enables investment vs speculation tracking)  
+**Scope:** 4 model updates, 3 cron updates, 1 scorecard update  
 
-**BEFORE (lines 278-294 approximately):**
-```typescript
-analysisResult = await callDeepSeekAnalysis({
-    headline: item.title,
-    intelligence,
-    pattern,
-    price,
-});
-```
+## OBJECTIVE
 
-**AFTER:**
-```typescript
-analysisResult = await callDeepSeekAnalysis({
-    headline: item.title,
-    intelligence,
-    pattern,
-    price,
-    coinSymbol: symbol,
-});
-```
+Separate short-term signals (speculation/swing) from long-term convictions (investment). Add horizon-based expiry and tracking.
 
-**Note:** `symbol` is already available in scope at this point — it's the coin symbol being processed in the current loop iteration. The developer should verify this by reading the surrounding code context.
+## REQUIRED TASKS
 
-**Verification Checklist:**
-- Only the `callDeepSeekAnalysis({...})` call is modified
-- `symbol` is a string in the current scope (verify by reading code)
-- No other changes to the workflow
-- `tsc --noEmit` clean
-- Zero `any` types
+### T-3A-01: Add horizon Column to signal_performance
+
+**Task ID:** T-3A-01  
+**Phase:** Phase 3A — Horizon column on signal_performance  
+**Owner:** Senior Developer  
+**Status:** Planned  
+
+**Objective:**  
+Add nullable horizon column to distinguish speculation (7d), swing (90d), investment (ongoing).
+
+**Files to inspect:**  
+- `backend/src/models/market.model.ts:180-200` — signalPerformance table  
+
+**Files likely to modify:**  
+- `backend/src/models/market.model.ts`  
+- Migration script  
+
+**Detailed steps:**  
+1. Add `horizon` column (VARCHAR, nullable)  
+2. Migration with backfill logic  
+
+**Acceptance criteria:**  
+- Schema updated without breaking existing rows  
+
+**Testing / verification:**  
+- New signals get horizon assigned  
+
+**Rollback notes:**  
+- Drop horizon column  
+
+**Dependencies:**  
+None  
 
 ---
 
-#### T-05: Overhaul Minor Update Prompts (Fix 2A — Prompt Factory)
-**File (MODIFY):** `backend/src/services/ai/prompt-factory.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** None (independent of Fix 1)
+### T-3B-01: AI Horizon Classification in Deep Analysis
 
-**Target:** Expand `MinorUpdateInput` interface and completely rewrite `buildMinorUpdateMessages()` to produce data-rich, Bloomberg-style timeline updates instead of generic filler.
+**Task ID:** T-3B-01  
+**Phase:** Phase 3B — AI horizon classification  
+**Owner:** Prompt Engineer  
+**Status:** Planned  
 
-**Sub-task 5A: Expand `MinorUpdateInput` interface (lines 44-47)**
+**Objective:**  
+Update deep analysis JSON schema to include horizon classification.
 
-**BEFORE (lines 44-47):**
-```typescript
-export interface MinorUpdateInput {
-    newsTitle: string;
-    existingHeadline: string;
-}
-```
+**Files to inspect:**  
+- `backend/src/services/ai/prompt-factory.ts:100-150` — deep analysis prompt  
 
-**AFTER:**
-```typescript
-export interface MinorUpdateInput {
-    newsTitle: string;
-    existingHeadline: string;
-    coinSymbol: string;
-    currentPrice: number | null;
-    priceChange24h: number | null;
-    recentTimeline: ReadonlyArray<{
-        updateText: string;
-        createdAt: Date;
-        severity: string;
-    }>;
-}
-```
+**Files likely to modify:**  
+- `backend/src/services/ai/prompt-factory.ts`  
 
-**Sub-task 5B: Rewrite `buildMinorUpdateMessages()` (lines 508-519)**
+**Detailed steps:**  
+1. Add horizon field to JSON schema  
+2. Update system prompt for horizon reasoning  
 
-**BEFORE (current — minimal prompt):**
-The current implementation has a 1-line system prompt and a user prompt that only uses `newsTitle` and `existingHeadline`.
+**Acceptance criteria:**  
+- AI classifies signals by timeframe appropriately  
 
-**AFTER — New system prompt:**
-```
-You are OnlyAlpha's senior market analyst writing a living article timeline update.
-You receive a new development and context about the coin's current state.
-Write a concise, data-rich timeline update (2-3 paragraphs).
-Rules:
-- Include specific numbers (price, percentages, timeframes) when available.
-- Reference the coin's current price and 24h change if provided.
-- If this is a continuation of a recent trend, say so explicitly.
-- Do NOT repeat what was already said in the existing story — add new information only.
-- Tone: factual, analytical, Bloomberg-style.
-- Output: plain text, 150-400 words. No JSON. No headers.
-```
+**Testing / verification:**  
+- Analysis output includes horizon field  
 
-**AFTER — New user prompt:**
-```
-New Development: ${input.newsTitle}
-Coin: ${input.coinSymbol}
-Current Price: ${input.currentPrice !== null ? `$${input.currentPrice.toLocaleString()}` : 'N/A'}${input.priceChange24h !== null ? ` (24h change: ${input.priceChange24h > 0 ? '+' : ''}${input.priceChange24h.toFixed(2)}%)` : ''}
+**Rollback notes:**  
+- Remove horizon from schema  
 
-Existing Story: ${input.existingHeadline}
-
-Recent Timeline Updates (last 3):
-${input.recentTimeline.length > 0
-    ? input.recentTimeline.map((t, i) =>
-        `${i + 1}. [${t.createdAt.toISOString().split('T')[0]}] (${t.severity}) ${t.updateText.slice(0, 200)}`
-    ).join('\n')
-    : 'No prior timeline updates for this article.'}
-
-Write a 2-3 paragraph timeline update that incorporates the new development into the ongoing story. Include the current price context if available. Do not repeat what was already covered in the existing story or recent timeline.
-```
-
-**Key design decisions:**
-- Output is PLAIN TEXT (not JSON) — matches existing `callGptNanoMinorUpdate()` which uses `chatRaw()` not `chat()`
-- 150-400 words — enough for substance, not a full article
-- Handles missing data gracefully (price N/A, no prior timeline)
-- `recentTimeline` limited to last 3 updates by the caller (not the prompt)
-- No JSON enforcement needed — plain text output
-
-**Verification Checklist:**
-- `MinorUpdateInput` expanded with 4 new fields (coinSymbol, currentPrice, priceChange24h, recentTimeline)
-- `recentTimeline` uses `ReadonlyArray`
-- System prompt is Bloomberg-style, factual tone
-- User prompt includes price context, coin symbol, existing story, recent timeline
-- Handles missing data (null price, empty timeline) gracefully
-- Output spec: plain text, 150-400 words, no JSON
-- `tsc --noEmit` clean
-- Zero `any` types
+**Dependencies:**  
+None  
 
 ---
 
-#### T-06: Update callGptNanoMinorUpdate Signature (Fix 2B — OpenAI Service)
-**File (MODIFY):** `backend/src/services/openai.service.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** T-05 (MinorUpdateInput interface must be expanded)
+### T-3C-01: Horizon-Aware Signal Creation
 
-**Target:** Change `callGptNanoMinorUpdate()` to accept `MinorUpdateInput` instead of two separate strings.
+**Task ID:** T-3C-01  
+**Phase:** Phase 3C — Horizon-aware signal creation  
+**Owner:** Senior Developer  
+**Status:** Planned  
 
-**Add import at top (with existing imports from prompt-factory):**
-```typescript
-import type { MinorUpdateInput } from './ai/prompt-factory';
-```
+**Objective:**  
+Route investment signals to coin_strategic_outlook, speculation to signal_performance.
 
-**Check if `MinorUpdateInput` is already imported — it may not be since `callGptNanoMinorUpdate` currently constructs the object inline.**
+**Files to inspect:**  
+- `backend/src/crons/aiWorkflow.cron.ts:520-540` — signal creation logic  
 
-**Exact change at lines 667-677:**
+**Files likely to modify:**  
+- `backend/src/crons/aiWorkflow.cron.ts`  
 
-**BEFORE:**
-```typescript
-export async function callGptNanoMinorUpdate(newsTitle: string, existingHeadline: string): Promise<string> {
-    const messages = prompts.buildMinorUpdateMessages({ newsTitle, existingHeadline });
-    // ... rest of function
-```
+**Detailed steps:**  
+1. Check horizon from analysis result  
+2. Investment horizon → INSERT coin_strategic_outlook  
+3. Speculation/swing → existing signal_performance logic  
 
-**AFTER:**
-```typescript
-export async function callGptNanoMinorUpdate(input: MinorUpdateInput): Promise<string> {
-    const messages = prompts.buildMinorUpdateMessages(input);
-    // ... rest of function
-```
+**Acceptance criteria:**  
+- Signals routed correctly by horizon  
 
-**CRITICAL — Backward compatibility:**
-This is a **breaking signature change**. Every caller of `callGptNanoMinorUpdate()` must be updated. The ONLY caller is `aiWorkflow.cron.ts:233` — which is updated in T-07. If there are other callers, they must also be updated. The developer should search the codebase for all usages of `callGptNanoMinorUpdate` before making this change.
+**Testing / verification:**  
+- Investment signals appear in strategic_outlook  
 
-**Verification Checklist:**
-- `MinorUpdateInput` imported from prompt-factory
-- Function signature changed from `(newsTitle: string, existingHeadline: string)` to `(input: MinorUpdateInput)`
-- Return type unchanged: `Promise<string>`
-- Internal body passes `input` directly to `buildMinorUpdateMessages(input)`
-- Model routing unchanged (still uses `gateway` + `env.SEO_MODEL`)
-- `chatRaw()` call unchanged (plain text, not JSON)
-- `stripSectionTags()` call unchanged
-- `tsc --noEmit` clean
-- Zero `any` types
+**Rollback notes:**  
+- Revert routing logic  
+
+**Dependencies:**  
+- T-3A-01 + T-3B-01  
 
 ---
 
-#### T-07: Expand Minor Update Caller in Workflow (Fix 2C — Cron)
-**File (MODIFY):** `backend/src/crons/aiWorkflow.cron.ts`
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** T-06 (callGptNanoMinorUpdate signature changed)
+### T-3D-01: Horizon-Based Auto-Expiry
 
-**Target:** Before calling `callGptNanoMinorUpdate`, fetch recent timeline entries and current price, then pass the expanded `MinorUpdateInput` object.
+**Task ID:** T-3D-01  
+**Phase:** Phase 3D — Horizon-based expiry in tpslMonitor  
+**Owner:** Senior Developer  
+**Status:** Planned  
 
-**Check required imports:**
-- `coinTimelineUpdates` from `../models/market.model` — verify this is imported (used elsewhere in the file)
-- `desc` from `drizzle-orm` — verify this is imported
-- `getPriceWithFallback` from `../services/priceService` — verify this is imported (used at line ~270)
+**Objective:**  
+Auto-close signals based on horizon: speculation (7d), swing (90d).
 
-**Exact change at line ~233:**
+**Files to inspect:**  
+- `backend/src/crons/tpslMonitor.cron.ts` — current TP/SL logic  
 
-**BEFORE (inside the MINOR classification block):**
-```typescript
-const updateText = await callGptNanoMinorUpdate(item.title, existingHeadline);
-```
+**Files likely to modify:**  
+- `backend/src/crons/tpslMonitor.cron.ts`  
 
-**AFTER:**
-```typescript
-const recentTimelineRows = await db.select({
-    updateText: coinTimelineUpdates.updateText,
-    createdAt: coinTimelineUpdates.createdAt,
-    severity: coinTimelineUpdates.severity,
-})
-    .from(coinTimelineUpdates)
-    .where(eq(coinTimelineUpdates.masterArticleId, master[0].id))
-    .orderBy(desc(coinTimelineUpdates.createdAt))
-    .limit(3);
+**Detailed steps:**  
+1. Add horizon-based expiry checks  
+2. Close expired signals with reason  
 
-const updatePrice = await getPriceWithFallback(symbol);
+**Acceptance criteria:**  
+- Signals expire at appropriate horizons  
 
-const updateText = await callGptNanoMinorUpdate({
-    newsTitle: item.title,
-    existingHeadline: existingHeadline,
-    coinSymbol: symbol,
-    currentPrice: updatePrice?.price ?? null,
-    priceChange24h: updatePrice?.change24h ?? null,
-    recentTimeline: recentTimelineRows.map(r => ({
-        updateText: r.updateText,
-        createdAt: r.createdAt,
-        severity: r.severity,
-    })),
-});
-```
+**Testing / verification:**  
+- Old signals auto-closed  
 
-**Important notes:**
-- `master[0].id` is the master article ID — verify this variable is in scope at line 233 (it should be, from the `master` query earlier in the MINOR block)
-- `symbol` is the coin symbol — verify it's in scope
-- The `recentTimelineRows` query fetches the last 3 timeline updates for this master article — provides context about what was already written
-- `getPriceWithFallback` is already imported and used elsewhere in this file — no new import needed
-- The `coinTimelineUpdates` table may use `masterArticleId` or `master_article_id` — developer must verify the Drizzle column name from the model definition
-- If `coinTimelineUpdates` is not imported, add it to the existing model import line
-- The existing `existingHeadline` variable (from `master[0].headline`) is preserved — it's used in the new input object
+**Rollback notes:**  
+- Remove expiry logic  
 
-**Also add required imports if missing (at the top of the file):**
-- Verify `coinTimelineUpdates` is imported from `'../models/market.model'`
-- Verify `desc` is imported from `'drizzle-orm'`
-
-**Verification Checklist:**
-- `recentTimelineRows` fetched from `coinTimelineUpdates` with `LIMIT 3`
-- `updatePrice` fetched via `getPriceWithFallback`
-- `callGptNanoMinorUpdate` now receives `MinorUpdateInput` object (not two strings)
-- All 6 fields populated: newsTitle, existingHeadline, coinSymbol, currentPrice, priceChange24h, recentTimeline
-- Null-safe: `updatePrice?.price ?? null`, `updatePrice?.change24h ?? null`
-- Empty timeline handled (map of empty array = empty array, prompt handles it)
-- `tsc --noEmit` clean
-- Zero `any` types
+**Dependencies:**  
+- T-3A-01  
 
 ---
 
-#### T-08: Final Verification
-**Assigned To:** Senior Developer
-**Status:** ✅ Done
-**Depends On:** All previous tasks (T-01 through T-07)
+### T-3E-01: Investment Thesis Tracking
 
-**Target:** Verify the complete implementation works correctly.
+**Task ID:** T-3E-01  
+**Phase:** Phase 3E — Investment thesis on coin_strategic_outlook  
+**Owner:** Senior Developer  
+**Status:** Planned  
 
-**Verification Checklist (Developer self-check):**
-1. Run `tsc --noEmit` in `backend/` — zero errors
-2. Search for `any` in all 4 modified files — zero matches (excluding comments)
-3. Verify `DEEPSEEK_MODEL_DIRECT` default is `'deepseek-reasoner'` (not `'deepseek-chat'`)
-4. Verify `DeepAnalysisInput` has `coinSymbol: string` and `recentMemory?`
-5. Verify `callDeepSeekAnalysis()` fetches memory before building messages
-6. Verify `aiWorkflow.cron.ts:278` passes `coinSymbol: symbol` to analysis
-7. Verify `MinorUpdateInput` has all 6 fields
-8. Verify `buildMinorUpdateMessages()` uses new system + user prompts with price/timeline context
-9. Verify `callGptNanoMinorUpdate()` accepts `MinorUpdateInput` (not two strings)
-10. Verify `aiWorkflow.cron.ts:233` fetches timeline + price before calling minor update
-11. Verify all existing exports are backward-compatible (except `callGptNanoMinorUpdate` which has no external callers)
-12. Verify `callDeepSeekAnalysis` still returns `Promise<DeepAnalysisResult>`
-13. Verify `callGptNanoMinorUpdate` still returns `Promise<string>`
-14. Verify no new files created
-15. Verify no new npm packages installed
+**Objective:**  
+Add thesis tracking columns to coin_strategic_outlook.
 
----
+**Files to inspect:**  
+- `backend/src/models/market.model.ts:230-250` — coinStrategicOutlook table  
 
-### 3. QA & Security Stage (QA Hunter)
+**Files likely to modify:**  
+- `backend/src/models/market.model.ts`  
 
-> **Status:** ✅ PASS — All 8 tasks + bonus file audited. Phase approved for deployment.
+**Detailed steps:**  
+1. Add thesis tracking columns  
+2. Update migration  
 
-**QA Verdict:** PASS
-**Audited By:** QA Hunter
-**Audit Date:** April 27, 2026
+**Acceptance criteria:**  
+- Investment theses tracked with outcomes  
 
-**Audit Results:**
-- T-01: ✅ PASS — `DEEPSEEK_MODEL_DIRECT` default changed to `deepseek-reasoner` at env.ts:37
-- T-02: ✅ PASS — `DeepAnalysisInput` expanded with `coinSymbol` + `recentMemory`, memory section in user prompt
-- T-03: ✅ PASS — Memory fetched with fail-safe try-catch, field mapping via explicit casts (Drizzle `json` → `string[]` justification)
-- T-04: ✅ PASS — `coinSymbol: symbol` passed to `callDeepSeekAnalysis` at aiWorkflow.cron.ts:308
-- T-05: ✅ PASS — `MinorUpdateInput` expanded with 4 fields, Bloomberg-style prompts, null-safe
-- T-06: ✅ PASS — Signature changed to `MinorUpdateInput`, return type unchanged, all callers verified
-- T-07: ✅ PASS — Timeline rows fetched (LIMIT 3), price fetched, null-safe mapping
-- T-08: ✅ PASS — `tsc --noEmit` clean, zero `any` types (only in English prompt strings), all exports backward-compatible
-- Bonus: ✅ PASS — `repair-incomplete-articles.ts:139` correctly passes `coinSymbol: symbol`
+**Testing / verification:**  
+- Thesis entries have outcome fields  
 
-**Security:** No SQL injection (Drizzle ORM), no secrets exposed, no PII leaks, prompt data from trusted AI pipeline only.
+**Rollback notes:**  
+- Drop thesis columns  
 
-**Advisory (non-blocking):** Memory mapping at openai.service.ts:398 uses `Record<string, unknown>` + `as` casts. Functionally correct (Drizzle `json` columns return `unknown`), but consider using the Drizzle inferred type directly for stricter compile-time safety in a future pass.
+**Dependencies:**  
+None  
 
 ---
 
-### 4. Deployment Stage (Release Manager)
+### T-3F-01: 90d P&L Tracking for Swing Signals
 
-> **Status:** ✅ READY FOR DEPLOYMENT
+**Task ID:** T-3F-01  
+**Phase:** Phase 3F — 90d P&L tracking  
+**Owner:** Senior Developer  
+**Status:** Planned  
+
+**Objective:**  
+Extend signalPerformance cron to track 90d P&L for swing signals.
+
+**Files to inspect:**  
+- `backend/src/crons/signalPerformance.cron.ts:80-100` — current 30d logic  
+
+**Files likely to modify:**  
+- `backend/src/crons/signalPerformance.cron.ts`  
+
+**Detailed steps:**  
+1. Add 90d P&L calculation block  
+2. Only for swing horizon signals  
+
+**Acceptance criteria:**  
+- Swing signals get 90d tracking  
+
+**Testing / verification:**  
+- 90d fields populated for swing signals  
+
+**Rollback notes:**  
+- Remove 90d calculation  
+
+**Dependencies:**  
+- T-3A-01  
 
 ---
 
-### 4. Deployment Stage (Release Manager)
+### T-3G-01: Scorecard 3-Section Layout
 
-> **Status:** Ready for Deployment after QA pass.
+**Task ID:** T-3G-01  
+**Phase:** Phase 3G — Scorecard 3-section display  
+**Owner:** Senior Developer  
+**Status:** Planned  
+
+**Objective:**  
+Update scorecard to show Active Market Scenarios, Long-Term Convictions, Completed Scenarios.
+
+**Files to inspect:**  
+- `frontend/src/app/(standard)/scorecard/page.tsx` — current layout  
+
+**Files likely to modify:**  
+- `frontend/src/app/(standard)/scorecard/page.tsx`  
+
+**Detailed steps:**  
+1. Restructure into 3 sections  
+2. Pull from both signal_performance and coin_strategic_outlook  
+
+**Acceptance criteria:**  
+- Scorecard shows separated sections  
+
+**Testing / verification:**  
+- All sections render correctly  
+
+**Rollback notes:**  
+- Revert to single table layout  
+
+**Dependencies:**  
+- T-3A-01 + T-3C-01 + T-3E-01  
 
 ---
 
-## Completed Phases (Archived)
+*Phase 3 authored: May 2, 2026*  
+*Enables: Clear separation of short-term trading vs long-term investing*
 
-### Phase 20 — AI Pipeline Quality Fix: Memory Injection, Minor Update Overhaul & Model Upgrade (P0)
-**Priority:** P0 — Analysis quality is degrading, minor updates are generic filler
-**Total Tasks:** 8 (T-01 through T-08) — All Done, Verified
-**Executor:** Senior Developer
-**Scope:** 5 modified files, 0 new files, 0 new dependencies
-**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep.md` — Phase 20 section (lines 1550-1950)
+---
 
-**Summary:**
-- Fix 1: Coin memory injection — `DeepAnalysisInput` expanded with `coinSymbol` and `recentMemory`, memory fetched before analysis
-- Fix 2: Minor update overhaul — `MinorUpdateInput` expanded with price/timeline context, prompts rewritten for Bloomberg-style updates
-- Fix 3: Model upgrade — Primary analysis model changed from `deepseek-chat` to `deepseek-reasoner`
+---
 
-**Modified Files:**
-1. `backend/src/config/env.ts` — Model default changed
-2. `backend/src/services/ai/prompt-factory.ts` — Interfaces expanded, prompts rewritten
-3. `backend/src/services/openai.service.ts` — Memory fetch logic added, signature updated
-4. `backend/src/crons/aiWorkflow.cron.ts` — Call sites updated with new fields
-5. `backend/src/scripts/repair-incomplete-articles.ts` — Fixed to pass `coinSymbol`
+# Phase 4 — OHLCV Price Snapshots
 
-### Phase 19 — AdSense Legal Pages + Footer (P0)
-**Tasks:** 12 (T-01 through T-12) — All Done, QA Passed
+**Status:** PLANNED — Technically independent but schedule after Phase 1C stable  
+**Date:** May 2, 2026  
+**Priority:** P2 (Enables technical analysis features)  
+**Scope:** 1 new config file, 1 new cron, 1 migration, 3 updates  
 
-### Phase 18 — Signal P&L Tracker / Scorecard (P2)
-**Tasks:** 8 (T-01 through T-08) — All Done, QA Passed
+## OBJECTIVE
 
-### Phase 17 — Telegram Pipeline Feed + Z.ai Airdrop Enrichment (P2)
-**Tasks:** 7 (T-01 through T-07) — All Done, QA Passed
+Store OHLCV price snapshots for technical analysis, replacing simple price points with full candle data.
 
-### Phase 16 — Airdrop Feature: Pipeline Fix & UX Empty States (P0)
-**Tasks:** 9 (T-01 through T-09) — Deploy 1 Complete
+## REQUIRED TASKS
 
-### Phase 15 — Strategic Intelligence Layer
-**Tasks:** 5 (T-01 through T-05) — All Done, QA Passed
+### T-4A-01: Expand price_snapshots Schema
+
+**Task ID:** T-4A-01  
+**Phase:** Phase 4A — Expand price_snapshots with OHLCV  
+**Owner:** Senior Developer  
+**Status:** Planned  
+
+**Objective:**  
+Add OHLCV columns to price_snapshots, keep price = closePrice for compatibility.
+
+**Files to inspect:**  
+- `backend/src/models/market.model.ts:210-220` — current priceSnapshots table  
+
+**Files likely to modify:**  
+- `backend/src/models/market.model.ts`  
+- Migration script  
+
+**Detailed steps:**  
+1. Add openPrice, highPrice, lowPrice, closePrice, volume, interval columns  
+2. Keep existing price column = closePrice  
+3. Add interval for different timeframes  
+
+**Acceptance criteria:**  
+- Backward compatible (price = closePrice)  
+
+**Testing / verification:**  
+- New snapshots include OHLCV data  
+
+**Rollback notes:**  
+- Drop new columns  
+
+**Dependencies:**  
+None  
+
+---
+
+### T-4B-01: Create backend/src/config/watchlist.ts
+
+**Task ID:** T-4B-01  
+**Phase:** Phase 4B — SNAPSHOT_WATCHLIST  
+**Owner:** Senior Developer  
+**Status:** Planned  
+
+**Objective:**  
+Create centralized config for coins to snapshot hourly.
+
+**Files to inspect:**  
+None (new file)  
+
+**Files likely to modify:**  
+- `backend/src/config/watchlist.ts` (NEW)  
+
+**Detailed steps:**  
+1. Export SNAPSHOT_WATCHLIST array of coin symbols  
+2. Include major coins for technical analysis  
+
+**Acceptance criteria:**  
+- Configurable list of snapshot coins  
+
+**Testing / verification:**  
+- Cron uses the watchlist  
+
+**Rollback notes:**  
+- Delete the file  
+
+**Dependencies:**  
+None  
+
+---
+
+### T-4C-01: Create priceSnapshot.cron.ts
+
+**Task ID:** T-4C-01  
+**Phase:** Phase 4C — priceSnapshot.cron.ts  
+**Owner:** Senior Developer  
+**Status:** Planned  
+
+**Objective:**  
+Hourly cron to fetch OHLCV data for watchlist coins.
+
+**Files to inspect:**  
+- `backend/src/services/binance.service.ts` — for price fetching  
+
+**Files likely to modify:**  
+- `backend/src/crons/priceSnapshot.cron.ts` (NEW)  
+
+**Detailed steps:**  
+1. Redis lock, hourly schedule  
+2. Fetch 1h candles for watchlist coins  
+3. Insert OHLCV data  
+
+**Acceptance criteria:**  
+- Snapshots stored hourly  
+- Rate limit aware  
+
+**Testing / verification:**  
+- Table populated with OHLCV data  
+
+**Rollback notes:**  
+- Delete cron file and registration  
+
+**Dependencies:**  
+- T-4A-01 + T-4B-01  
+
+---
+
+### T-4D-01: Migration for price_snapshots Expansion
+
+**Task ID:** T-4D-01  
+**Phase:** Phase 4D — Migration  
+**Owner:** Senior Developer  
+**Status:** Planned  
+
+**Objective:**  
+SQL migration for OHLCV columns.
+
+**Files to inspect:**  
+None  
+
+**Files likely to modify:**  
+- Migration script  
+
+**Detailed steps:**  
+1. Add OHLCV columns  
+2. Backfill existing price as closePrice  
+
+**Acceptance criteria:**  
+- Migration runs without errors  
+
+**Testing / verification:**  
+- Schema updated  
+
+**Rollback notes:**  
+- Drop new columns  
+
+**Dependencies:**  
+- T-4A-01  
+
+---
+
+### T-4E-01: Register priceSnapshot Cron
+
+**Task ID:** T-4E-01  
+**Phase:** Phase 4E — Register cron  
+**Owner:** Senior Developer  
+**Status:** Planned  
+
+**Objective:**  
+Register the new cron in server.ts.
+
+**Files to inspect:**  
+- `backend/src/server.ts`  
+
+**Files likely to modify:**  
+- `backend/src/server.ts`  
+
+**Detailed steps:**  
+1. Import and register priceSnapshot cron  
+
+**Acceptance criteria:**  
+- Cron starts on boot  
+
+**Testing / verification:**  
+- Server logs show cron scheduled  
+
+**Rollback notes:**  
+- Remove registration  
+
+**Dependencies:**  
+- T-4C-01  
+
+---
+
+*Phase 4 authored: May 2, 2026*  
+*Enables: Technical analysis, level detection, price pattern recognition*
+
+---
+
+---
+
+# Phase 5 — Level Intelligence Engine
+
+**Status:** DEFERRED — No implementation until gating conditions pass  
+**Date:** May 2, 2026  
+
+## GATING CONDITIONS
+
+**Must pass ALL before implementation:**
+
+1. **Phase 1 Complete:** coin_news_history has outcome data for >1000 events  
+2. **Phase 4 Complete:** price_snapshots has OHLCV data for >30 days  
+3. **SQL Query:** `SELECT COUNT(*) FROM coin_news_history WHERE outcome7d IS NOT NULL` > 1000  
+4. **SQL Query:** `SELECT COUNT(*) FROM price_snapshots WHERE interval = '1h'` > 10000  
+
+## PREREQUISITES
+
+- Historical price data available  
+- Sufficient event-outcome correlations  
+- Level detection algorithms defined  
+
+## FUTURE DETERMINISTIC ALGORITHMS
+
+### Pivot Detection
+- Identify swing highs/lows using zigzag algorithm  
+- Filter by volume and price movement significance  
+
+### Swing High/Low Clustering
+- Group nearby swing points  
+- Calculate support/resistance strength  
+
+### Level Clustering
+- Merge overlapping levels  
+- Weight by touch frequency and volume  
+
+### Touch/Bounce/Break/Fakeout Detection
+- Track price interaction with levels  
+- Classify reaction types  
+
+### Support/Resistance Flip Detection
+- Monitor level breaches  
+- Update level classifications  
+
+## IMPLEMENTATION STATUS
+
+**No implementation tasks created yet.**  
+**Phase remains in planning until gates pass.**  
+**Estimated gate pass date: 2-3 weeks after Phase 1 deployment.**
+
+---
+
+---
+
+# Phase 5b — Smart Monitoring Cadence
+
+**Status:** PLANNED  
+**Date:** May 2, 2026  
+
+## CADENCE PLAN
+
+### Every 5 Minutes
+**Jobs:** Real-time price monitoring, urgent alerts  
+**Why:** Critical price movements, flash crashes  
+**Cost/Freshness Tradeoff:** High cost, maximum freshness  
+**Redis Lock:** Required (prevent overlap)  
+**API Load:** High (multiple exchanges)  
+
+### Every 15 Minutes
+**Jobs:** News triage, sentiment analysis  
+**Why:** News velocity requires frequent checking  
+**Cost/Freshness Tradeoff:** Medium cost, good freshness  
+**Redis Lock:** Required  
+**API Load:** Medium  
+
+### Every 30 Minutes
+**Jobs:** Event outcome checking, signal updates  
+**Why:** Balance between timeliness and resource usage  
+**Cost/Freshness Tradeoff:** Low cost, acceptable freshness  
+**Redis Lock:** Required  
+**API Load:** Low  
+
+### Hourly
+**Jobs:** Price snapshots, technical analysis updates  
+**Why:** Hourly candles are standard timeframe  
+**Cost/Freshness Tradeoff:** Low cost, sufficient freshness  
+**Redis Lock:** Required  
+**API Load:** Low  
+
+### Daily
+**Jobs:** Deep analytics, strategic updates  
+**Why:** Daily summaries, trend analysis  
+**Cost/Freshness Tradeoff:** Very low cost, periodic freshness  
+**Redis Lock:** Not critical (can run sequentially)  
+**API Load:** Very low  
+
+### Weekly
+**Jobs:** Maintenance, cleanup, long-term analytics  
+**Why:** Weekly cycles for cleanup and reporting  
+**Cost/Freshness Tradeoff:** Minimal cost, maintenance-focused  
+**Redis Lock:** Not required  
+**API Load:** Minimal  
+
+---
+
+---
+
+# Phase 6 — AI Cost Reduction
+
+**Status:** PLANNED  
+**Date:** May 2, 2026  
+
+## DETERMINISTIC PARTS NEEDING NO AI
+
+- Price movement calculations (arithmetic only)  
+- Volume analysis (statistical formulas)  
+- Time-based expiry (date math)  
+- Simple classification rules (if-then logic)  
+
+## DEEPSEEK DIRECT USAGE
+
+- Primary analysis (already using deepseek-reasoner)  
+- Cost-effective reasoning for complex decisions  
+
+## Z.AI / GLM WEB_SEARCH USAGE
+
+- Fallback for web search when Tavily fails  
+- Cost comparison vs other providers  
+
+## OPENROUTER USAGE REMAINING NECESSARY
+
+- Specialty models (code, math, specific domains)  
+- When DeepSeek doesn't fit requirements  
+
+## CACHING OPPORTUNITIES
+
+- Temporal pattern results (cache per event type + coin)  
+- Level calculation results (cache per timeframe)  
+- Workflow context (cache conversation state)  
+
+## BATCHING OPPORTUNITIES
+
+- Multiple similar analyses in single request  
+- Bulk outcome classifications  
+
+## AVOIDING HUGE JSON RE-SENDS
+
+- Reference IDs instead of full objects  
+- Delta updates for changing data  
+
+---
+
+---
+
+# Phase 7 — Public Language / Google-Safe Presentation
+
+**Status:** PLANNED  
+**Date:** May 2, 2026  
+
+## PHASE 0.5 COMPLETED WORK
+
+- Scorecard terminology sanitized  
+- Disclaimer language strengthened  
+- Internal verdict values remain raw  
+
+## REMAINING AUDIT TASKS
+
+### Radar Terminology
+- Replace "signals" with "insights" in public UI  
+- Change "BUY/SELL" to "Bullish/Bearish Outlook"  
+
+### Article Prompt Terminology
+- Update AI prompts to use policy-safe language  
+- Avoid financial advice framing  
+
+### Meta Title/Description Rules
+- Remove price predictions from SEO text  
+- Focus on analysis and information  
+
+### Internal vs Public Wording Mapping
+| Internal | Public |
+|----------|--------|
+| BUY | Bullish |
+| SELL | Bearish |
+| Signal | Insight |
+| Prediction | Analysis |
+
+## RULE
+
+**Backend/internal verdict values can remain raw.**  
+**Public UI must be mapped to policy-safe labels.**
+
+---
+
+---
+
+# Phase 8 — Migration Strategy
+
+**Status:** PLANNED  
+**Date:** May 2, 2026  
+
+## PER-PHASE MIGRATION
+
+### Phase 1
+- **Parallel:** Yes (adds columns, doesn't change logic)  
+- **Replace Old:** No (extends existing tables)  
+- **Rollback:** Drop columns + index  
+- **Backfill:** None (new data only)  
+- **Testing:** 1 week smoke test  
+- **Risks:** Large migration, monitor DB performance  
+- **Safety:** Nullable columns, no breaking changes  
+
+### Phase 2
+- **Parallel:** Yes (expands interfaces, backward compatible)  
+- **Replace Old:** Partial (enhanced temporal logic)  
+- **Rollback:** Revert interface changes  
+- **Backfill:** None  
+- **Testing:** Unit tests for new calculations  
+- **Risks:** AI prompt changes may affect analysis quality  
+- **Safety:** Gradual rollout with monitoring  
+
+### Phase 3
+- **Parallel:** Yes (adds horizon routing)  
+- **Replace Old:** No (extends signal system)  
+- **Rollback:** Remove horizon logic  
+- **Backfill:** Classify existing signals  
+- **Testing:** Signal routing verification  
+- **Risks:** UI changes require frontend deploy  
+- **Safety:** Backward compatible schema changes  
+
+### Phase 4
+- **Parallel:** Yes (new snapshots don't affect existing)  
+- **Replace Old:** No (price_snapshots is new feature)  
+- **Rollback:** Drop OHLCV columns  
+- **Backfill:** None  
+- **Testing:** Cron execution monitoring  
+- **Risks:** Binance rate limits  
+- **Safety:** Independent feature  
+
+### Phase 5
+- **Parallel:** Yes (deterministic algorithms)  
+- **Replace Old:** No (new analysis layer)  
+- **Rollback:** Remove level detection  
+- **Backfill:** None  
+- **Testing:** Algorithm accuracy validation  
+- **Risks:** False signals from level detection  
+- **Safety:** Gating conditions prevent premature deployment  
+
+---
+
+---
+
+# Top 10 Recommended Improvements
+
+| Rank | Improvement | Phase | Impact | Difficulty | Risk | Expected Value | Why | Owner |
+|------|-------------|-------|--------|------------|------|----------------|-----|-------|
+| 1 | Multi-horizon temporal patterns | 2 | 9 | 6 | 3 | High | Enables data-rich analysis context | Prompt Engineer |
+| 2 | Level intelligence engine | 5 | 10 | 8 | 5 | Very High | Automated support/resistance detection | Senior Developer |
+| 3 | Investment vs speculation separation | 3 | 8 | 5 | 4 | High | Clear strategy differentiation | Senior Developer |
+| 4 | OHLCV price snapshots | 4 | 7 | 4 | 2 | Medium | Technical analysis foundation | Senior Developer |
+| 5 | AI cost optimization | 6 | 6 | 7 | 3 | Medium | Reduces operational costs | Prompt Engineer |
+| 6 | Smart monitoring cadence | 5b | 5 | 3 | 1 | Low | Optimizes resource usage | Senior Developer |
+| 7 | Event-price outcome foundation | 1 | 9 | 6 | 4 | High | Core data for all temporal intelligence | Senior Developer |
+| 8 | Public language audit | 7 | 4 | 2 | 1 | Low | AdSense compliance | Prompt Engineer |
+| 9 | Migration strategy documentation | 8 | 3 | 1 | 1 | Very Low | Operational safety | Senior Developer |
+| 10 | Deferred phase gating | 5 | 2 | 1 | 1 | Very Low | Prevents premature implementation | Lead Architect |
+
+---
+
+---
+
+# Top 10 Questions / Unknowns
+
+| Rank | Question | Why Matters | Options | Recommendation | Cost/Risk | Product Owner Input |
+|------|----------|-------------|---------|----------------|-----------|-------------------|
+| 1 | Should Phase 5 algorithms be AI-assisted or purely deterministic? | Affects accuracy vs cost | Pure deterministic, Hybrid AI+deter, Full AI | Pure deterministic first | Low cost/low risk | Yes |
+| 2 | Which coins for Phase 4 snapshots? | Coverage vs API limits | Top 50 market cap, Top 100, Custom watchlist | Top 50 market cap | Medium cost | Yes |
+| 3 | How to handle conflicting signals in Phase 3? | User experience impact | Suppress conflicts, Show all with warnings, Merge into single | Show all with warnings | Low risk | Yes |
+| 4 | Phase 2 fallback matching quality impact? | Analysis accuracy | Test on sample data, Monitor A/B, Rollback if quality drops | Test extensively first | Medium risk | No |
+| 5 | Should Phase 1 outcomes be user-visible? | Transparency vs complexity | Hide internally, Show as analysis context, Full public disclosure | Show as analysis context | Low risk | Yes |
+| 6 | Migration rollback procedures sufficient? | Operational safety | Add more rollback tests, Trust current plan, Add automated rollback | Trust current plan | Low risk | No |
+| 7 | Phase 6 caching strategy effectiveness? | Cost reduction potential | Measure cache hit rates, Adjust TTLs, Abandon if <50% hit | Measure first | Low cost | No |
+| 8 | Public language mapping completeness? | AdSense approval risk | Audit all UI text, Sample check, Full compliance review | Full compliance review | High cost | Yes |
+| 9 | Phase 5b cadence optimization impact? | Resource savings | Monitor current usage, Implement gradually, Full optimization | Implement gradually | Low risk | No |
+| 10 | Should Phase 3 investment theses have TP/SL? | Strategy completeness | No (ongoing), Yes (with wide targets), Optional | Optional | Medium complexity | Yes |

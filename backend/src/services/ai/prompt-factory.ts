@@ -3,6 +3,7 @@ type ChatCompletionMessageParam = OpenAI.ChatCompletionMessageParam;
 import type { CoinIntelligence } from '../coinIntelligence.service';
 import type { TemporalPattern } from '../temporalIntelligence.service';
 import type { PriceResult } from '../priceService';
+import type { HistoricalStatsOutput } from '../historicalEventStats.service';
 
 
 
@@ -34,6 +35,7 @@ export interface DeepAnalysisInput {
     pattern: TemporalPattern | null;
     price: PriceResult | null;
     coinSymbol: string;
+    historicalStats?: string;
     recentMemory?: ReadonlyArray<{
         eventType: string;
         eventSummary: string;
@@ -351,6 +353,9 @@ ${input.intelligence ? JSON.stringify({
 --- HISTORICAL PATTERN ---
 ${input.pattern ? JSON.stringify(input.pattern) : 'No historical pattern available'}
 
+--- HISTORICAL EVENT STATS ---
+${input.historicalStats ?? 'No historical event stats available'}
+
 --- RECENT EVENTS FOR THIS COIN ---
 ${input.recentMemory && input.recentMemory.length > 0
     ? input.recentMemory.map((m, i) =>
@@ -406,7 +411,7 @@ Use supportLevels and resistanceLevels from the input. Reference the current pri
 Use analysis.riskNote honestly. Add context about downside scenarios, liquidation risks, or regulatory overhang. Be specific about what could go wrong. Write 3-4 substantive sentences.
 
 [BOTTOM LINE]
-Provide a data-driven synthesis of the overall market assessment. Summarize the key data points and trend indicators. Format: "Current on-chain metrics and social sentiment indicate a [sentiment direction] trend, supported by a [confidenceScore]% trend strength index." Write 2-3 substantive sentences using phrases like "data suggests", "analysis indicates", "metrics point to". NEVER use BUY, SELL, HOLD, or any imperative action words. Describe the state of the market, not a decision to make.
+Provide a data-driven synthesis of the overall market assessment. Summarize the key data points and trend indicators. Format: "Current on-chain metrics and social sentiment indicate a [sentiment direction] trend, supported by a [confidenceScore]% trend strength index." Write 2-3 substantive sentences using phrases like "data suggests", "analysis indicates", "metrics point to". NEVER use BUY, SELL, HOLD, or any imperative action words. Use policy-safe terminology: Upside Target Zone, Risk Zone, Reference Price, Market Scenario, Historical Outcome. Never use: Buy, Sell, Take Profit, Stop Loss, Entry. Describe the state of the market, not a decision to make.
 
 CRITICAL RULES:
 - ALL 7 tags MUST appear in the output. Missing even ONE tag will cause the output to be REJECTED.
@@ -486,6 +491,7 @@ CRITICAL RULES:
 - Tone consistent with provided headline + hook context.
 - Bloomberg meets Reddit tone.
 - No vague language, no financial advice. NEVER use BUY, SELL, HOLD in any section text.
+- Use policy-safe terminology: Upside Target Zone, Risk Zone, Reference Price, Market Scenario, Historical Outcome. Never use: Buy, Sell, Take Profit, Stop Loss, Entry.
 - Sentiment in BOTTOM LINE must map from input JSON verdict (BUY→Bullish, SELL→Bearish, NEUTRAL→Neutral).
 - Output ONLY the JSON object. No preamble. No text outside JSON.
 `;
@@ -572,6 +578,52 @@ ${input.recentTimeline.length > 0
 Write a 2-3 paragraph timeline update that incorporates the new development into the ongoing story. Include the current price context if available. Do not repeat what was already covered in the existing story or recent timeline.`
             }
         ];
+    }
+
+    buildHistoricalStatsContext(stats: HistoricalStatsOutput): string {
+        if (stats.sampleSize === 0) {
+            return `These statistics come from OnlyAlpha database records. AI must use only the provided statistics. AI must not invent historical returns, outcome rates, sample sizes, price levels, or performance claims.
+
+No historical data available for this market scenario.`;
+        }
+
+        let context = `These statistics come from OnlyAlpha database records. AI must use only the provided statistics. AI must not invent historical returns, outcome rates, sample sizes, price levels, or performance claims.
+
+Historical event statistics (sample size: ${stats.sampleSize})`;
+
+        if (stats.confidenceLevel === 'very_low' || stats.confidenceLevel === 'low') {
+            context += ` - limited historical sample`;
+        }
+
+        context += `:\n`;
+
+        const horizons = ['1h', '4h', '24h', '3d', '7d'] as const;
+        horizons.forEach(horizon => {
+            const hStats = stats.horizonStats[horizon];
+            if (hStats.available) {
+                const median = hStats.medianReturn !== null ? `${hStats.medianReturn >= 0 ? '+' : ''}${hStats.medianReturn.toFixed(2)}%` : 'N/A';
+                const bullish = hStats.bullishRate !== null ? `${hStats.bullishRate.toFixed(1)}%` : 'N/A';
+                context += `- ${horizon}: Median historical outcome ${median}, bullish bias rate ${bullish} (n=${hStats.sampleSize})\n`;
+            }
+        });
+
+        if (stats.averageMaxUpside !== null || stats.averageMaxDrawdown !== null) {
+            context += `Aggregate extremes: `;
+            if (stats.averageMaxUpside !== null) {
+                context += `Average max upside ${stats.averageMaxUpside.toFixed(2)}%`;
+            }
+            if (stats.averageMaxDrawdown !== null) {
+                if (stats.averageMaxUpside !== null) context += `, `;
+                context += `Average max drawdown ${stats.averageMaxDrawdown.toFixed(2)}%`;
+            }
+            context += `\n`;
+        }
+
+        if (stats.limitations.length > 0) {
+            context += `Limitations: ${stats.limitations.join('; ')}\n`;
+        }
+
+        return context;
     }
 
 }

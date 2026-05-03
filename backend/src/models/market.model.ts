@@ -201,10 +201,31 @@ export const coinNewsHistory = pgTable('coin_news_history', {
     eventType:     varchar('event_type', { length: 50 }),
     eventSeverity: integer('event_severity').default(1),
     priceAtTime:   real('price_at_time'),
-    price7dAfter:  real('price_7d_after'),
-    priceChange7d: real('price_change_7d'),
     isRugPull:     boolean('is_rug_pull').default(false).notNull(),
     fetchedAt:     timestamp('fetched_at').defaultNow().notNull(),
+
+    // New columns for Phase 1 event-price outcome tracking
+    sourceHash: varchar('source_hash', { length: 64 }),
+    eventScope: varchar('event_scope', { length: 20 }),
+    btcPriceAtEvent: real('btc_price_at_event'),
+    ethPriceAtEvent: real('eth_price_at_event'),
+    fearGreedAtEvent: integer('fear_greed_at_event'),
+    price1hAfter: real('price_1h_after'),
+    price4hAfter: real('price_4h_after'),
+    price24hAfter: real('price_24h_after'),
+    price3dAfter: real('price_3d_after'),
+    change1h: real('change_1h'),
+    change4h: real('change_4h'),
+    change24h: real('change_24h'),
+    change3d: real('change_3d'),
+    price7dAfter: real('price_7d_after'),
+    change7d: real('change_7d'),
+    priceChange7d: real('price_change_7d'),
+    maxUpsideAfterEvent: real('max_upside_after_event'),
+    maxDrawdownAfterEvent: real('max_drawdown_after_event'),
+    timeToPeakHours: integer('time_to_peak_hours'),
+    timeToBottomHours: integer('time_to_bottom_hours'),
+    outcomeClassification: varchar('outcome_classification', { length: 30 }),
 }, (table) => {
     return {
         unq: unique('coin_news_history_unq').on(table.coinSymbol, table.title, table.publishedAt)
