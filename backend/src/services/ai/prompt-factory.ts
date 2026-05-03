@@ -47,6 +47,16 @@ export interface DeepAnalysisInput {
         redFlags: string[] | null;
         createdAt: Date;
     }>;
+    nearPriceLevels?: ReadonlyArray<{
+        levelPrice: number;
+        levelType: 'support' | 'resistance';
+        confidenceScore: number;
+        timeframe: string;
+        touchCount: number;
+        bounceCount: number;
+        breakCount: number;
+        lastTouchedAt?: Date;
+    }>;
 }
 
 export interface MasterUpdateInput {
@@ -257,6 +267,7 @@ Rules:
                 role: 'system',
                 content: `You are a crypto data analyst. Your output feeds a downstream writing engine.
 DO NOT write articles. DO NOT write prose. Output STRICT JSON only.
+ANTI-HALLUCINATION: Only reference provided data. For levels: if nearPriceLevels provided and at least one has confidenceScore > 50, include levelContext for the strongest level. If no valid levels, omit levelContext field entirely. Never invent levels or statistics.
 
 {
   "sentiment":       "bullish|bearish|neutral",
@@ -269,7 +280,8 @@ DO NOT write articles. DO NOT write prose. Output STRICT JSON only.
     "mainDriver":       "<1 sentence — core reason this matters>",
     "priceImplication": "<1 sentence — what this means for price>",
     "temporalContext":  "<If historical pattern provided: summarize the statistical outcome. Format: 'Based on [N] similar [eventType] events for [symbol], bullish rate was [X]%, avg 7d return was [Y]%. Most recent case: [headline, date, outcome].' If no pattern: use domain knowledge to reference 1 specific comparable historical event with numbers. MAX 2 sentences.>",
-    "riskNote":         "<1 sentence — biggest risk or red flag>"
+    "riskNote":         "<1 sentence — biggest risk or red flag>",
+    "levelContext":     "<If valid levels exist: 'Price near [support/resistance] level at $[levelPrice] ([timeframe], [confidenceScore]% confidence, [touchCount] touches, [bounceCount] bounces).'. Use strongest level only.>"
   },
   "keyFacts": [
     "<fact with specific number>",

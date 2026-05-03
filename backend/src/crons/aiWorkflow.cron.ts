@@ -21,6 +21,7 @@ import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimeline
 import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } from '../services/strategicOutlook.service';
 import { decideSignalAction, executeSignalDecision } from '../services/signalManager.service';
 import { calculateTpsl } from '../services/tpslCalculator.service';
+import { getNearbyLevels } from '../services/levelIntelligence.service';
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 
@@ -321,6 +322,16 @@ export async function runAiWorkflow(): Promise<void> {
 
                 const price = await getPriceWithFallback(symbol);
 
+                // 4c. Fetch nearby levels (non-blocking)
+                let nearPriceLevels;
+                try {
+                    if (price?.price) {
+                        nearPriceLevels = await getNearbyLevels(symbol, price.price, 5);
+                    }
+                } catch (error) {
+                    console.warn(`[AI Workflow] Failed to fetch levels for ${symbol}: ${error instanceof Error ? error.message : String(error)}`);
+                }
+
                 // 4d. DeepSeek Analysis (circuit breaker)
                 if (deepseekBreaker.isOpen()) {
                     console.warn(`[AI Workflow] DeepSeek circuit open — skipping ${symbol}`);
@@ -336,6 +347,7 @@ export async function runAiWorkflow(): Promise<void> {
                         price,
                         coinSymbol: symbol,
                         historicalStats,
+                        nearPriceLevels,
                     });
                     deepseekBreaker.recordSuccess();
                 } catch (err) {

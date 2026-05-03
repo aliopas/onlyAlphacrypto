@@ -1,7 +1,7 @@
 import {
     pgTable, serial, varchar, text, timestamp,
     integer, real, json, jsonb, boolean, pgEnum, unique,
-    customType
+    customType, numeric, index
 } from 'drizzle-orm/pg-core';
 
 const vector = customType<{ data: number[]; driverData: string }>({
@@ -16,6 +16,11 @@ const vector = customType<{ data: number[]; driverData: string }>({
         return str.slice(1, -1).split(',').map(Number);
     },
 });
+
+// ─── LEVEL INTELLIGENCE ENUMS ──────────────────────────────────────────────────
+export const levelTypeEnum = pgEnum('level_type', ['support', 'resistance']);
+export const timeframeEnum = pgEnum('timeframe', ['1h', '4h', '1d', '1w']);
+export const interactionTypeEnum = pgEnum('interaction_type', ['touch', 'bounce', 'break', 'fakeout']);
 
 // ─── MARKET INSIGHTS (AI Verdicts per Coin) ───────────────────────────────────
 export const marketInsights = pgTable('market_insights', {
@@ -332,5 +337,43 @@ export const smartEventResponses = pgTable('smart_event_responses', {
     watchLevels: json('watch_levels'),
     timeHorizon: varchar('time_horizon', { length: 10 }),
     isActive: boolean('is_active').default(true).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ─── LEVEL INTELLIGENCE (Technical Support/Resistance Levels) ──────────────────
+export const levelIntelligence = pgTable('level_intelligence', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    levelPrice: numeric('level_price', { precision: 24, scale: 12 }).notNull(),
+    levelType: levelTypeEnum('level_type').notNull(),
+    timeframe: timeframeEnum('timeframe').notNull(),
+    touchCount: integer('touch_count').default(0).notNull(),
+    bounceCount: integer('bounce_count').default(0).notNull(),
+    breakCount: integer('break_count').default(0).notNull(),
+    fakeoutCount: integer('fakeout_count').default(0).notNull(),
+    avgBouncePercent: numeric('avg_bounce_percent', { precision: 24, scale: 12 }),
+    avgBreakPercent: numeric('avg_break_percent', { precision: 24, scale: 12 }),
+    volumeAtLevel: numeric('volume_at_level', { precision: 24, scale: 12 }),
+    lastTouchedAt: timestamp('last_touched_at'),
+    confidenceScore: integer('confidence_score').default(0).notNull(),
+    flipped: boolean('flipped').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => {
+    return {
+        coinSymbolTimeframeIdx: index('level_intelligence_coin_symbol_timeframe_idx').on(table.coinSymbol, table.timeframe),
+        levelPriceCoinSymbolTimeframeIdx: index('level_intelligence_level_price_coin_symbol_timeframe_idx').on(table.levelPrice, table.coinSymbol, table.timeframe),
+    };
+});
+
+// ─── LEVEL INTERACTIONS (Audit Trail for Level Touches) ────────────────────────
+export const levelInteractions = pgTable('level_interactions', {
+    id: serial('id').primaryKey(),
+    levelId: integer('level_id').references(() => levelIntelligence.id).notNull(),
+    candleTimestamp: timestamp('candle_timestamp').notNull(),
+    priceAtTouch: numeric('price_at_touch', { precision: 24, scale: 12 }).notNull(),
+    interactionType: interactionTypeEnum('interaction_type').notNull(),
+    magnitudePercent: numeric('magnitude_percent', { precision: 24, scale: 12 }),
+    volumeAtTouch: numeric('volume_at_touch', { precision: 24, scale: 12 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
