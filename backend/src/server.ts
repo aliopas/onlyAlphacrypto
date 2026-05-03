@@ -21,6 +21,7 @@ import { startTelegramMonitorCron } from './crons/telegramMonitor.cron';
 import { startAirdropDiscoveryCron } from './crons/airdropDiscovery.cron';
 import { startSignalPerformanceCron } from './crons/signalPerformance.cron';
 import { startTpslMonitorCron } from './crons/tpslMonitor.cron';
+import { startEventOutcomeCheckerCron } from './crons/eventOutcomeChecker.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -102,6 +103,7 @@ async function bootstrap(): Promise<void> {
             { name: 'TelegramMonitor', fn: startTelegramMonitorCron },
             { name: 'SignalPerformance', fn: startSignalPerformanceCron },
             { name: 'TpslMonitor', fn: startTpslMonitorCron },
+            { name: 'EventOutcomeChecker', fn: startEventOutcomeCheckerCron },
         ];
 
         crons.forEach((cron, index) => {
