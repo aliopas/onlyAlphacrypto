@@ -15,10 +15,10 @@ export const metadata: Metadata = {
     default: 'OnlyAlpha — AI-Powered Crypto Intelligence',
     template: '%s | OnlyAlpha',
   },
-  description: 'Real-time AI market analysis, airdrop tracking and on-chain intelligence for serious traders.',
+  description: 'Real-time AI market analysis, airdrop tracking and on-chain intelligence for crypto market participants.',
   keywords: [
     'crypto intelligence',
-    'AI trading',
+    'AI market analysis',
     'airdrop tracking',
     'on-chain analysis',
     'cryptocurrency',
@@ -53,7 +53,7 @@ export const metadata: Metadata = {
     url: SITE_URL,
     siteName: 'OnlyAlpha',
     title: 'OnlyAlpha — AI-Powered Crypto Intelligence',
-    description: 'Real-time AI market analysis, airdrop tracking and on-chain intelligence for serious traders.',
+    description: 'Real-time AI market analysis, airdrop tracking and on-chain intelligence for crypto market participants.',
     images: [
       {
         url: '/opengraph-image.png',
@@ -66,7 +66,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'OnlyAlpha — AI-Powered Crypto Intelligence',
-    description: 'Real-time AI market analysis, airdrop tracking and on-chain intelligence for serious traders.',
+    description: 'Real-time AI market analysis, airdrop tracking and on-chain intelligence for crypto market participants.',
     images: ['/opengraph-image.png'],
   },
 };
@@ -105,7 +105,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               name: 'OnlyAlpha',
               url: SITE_URL,
               logo: `${SITE_URL}/icon`,
-              description: 'AI-Powered Crypto Intelligence — Real-time AI market analysis, airdrop tracking and on-chain intelligence for serious traders.',
+              description: 'AI-Powered Crypto Intelligence — Real-time AI market analysis, airdrop tracking and on-chain intelligence for crypto market participants.',
             }),
           }}
         />

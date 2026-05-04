@@ -12,7 +12,7 @@ export default async function Image({ params }: { params: Promise<{ coin: string
   const symbol = coin.toUpperCase();
 
   let headline = `${symbol} — AI-Powered Analysis`;
-  let subtitle = 'Real-time market intelligence and trading signals';
+  let subtitle = 'Real-time market intelligence and scenario analysis';
 
   try {
     const { masterArticle } = await terminalApi.getMasterArticle(symbol);

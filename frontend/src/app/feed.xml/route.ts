@@ -37,7 +37,7 @@ export async function GET() {
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>OnlyAlpha — AI Crypto Intelligence</title>
-    <description>Real-time AI market analysis, intelligence reports, and on-chain insights for serious crypto traders.</description>
+    <description>Real-time AI market analysis, intelligence reports, and on-chain insights for crypto market participants.</description>
     <link>${SITE_URL}</link>
     <atom:link href="${SITE_URL}/feed.xml" rel="self" type="application/rss+xml" />
     <language>en-us</language>

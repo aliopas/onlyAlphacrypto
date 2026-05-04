@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'About OnlyAlpha',
-  description: 'Learn about OnlyAlpha — AI-powered crypto intelligence for traders and investors.',
+  description: 'Learn about OnlyAlpha — AI-powered crypto intelligence for market participants.',
 };
 
 export default function AboutPage() {
