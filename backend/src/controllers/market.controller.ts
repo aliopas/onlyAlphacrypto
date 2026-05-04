@@ -150,6 +150,7 @@ export async function getRadarSignals(req: Request, res: Response, next: NextFun
             coin: s.coin_symbol as string,
             signalText: s.signal_text as string,
             signal: s.signal_text as string,
+            scenarioSummary: s.signal_text as string,
             sentiment: s.sentiment as string | null,
             impactScore: s.impact_score as number | null,
             newsId: s.news_id as number | null,
@@ -569,11 +570,15 @@ export async function getScorecardHandler(req: Request, res: Response, next: Nex
                 verdict: row.verdict,
                 sentiment: row.sentiment,
                 entryPrice: row.entryPrice,
+                referencePrice: row.entryPrice,
                 entryAt: row.entryAt,
                 unrealizedPnl,
+                unrealizedDrift: unrealizedPnl,
                 currentPrice: price?.price ?? null,
                 stopLossPrice: row.stopLossPrice,
+                riskZonePrice: row.stopLossPrice,
                 takeProfitPrice: row.takeProfitPrice,
+                targetZonePrice: row.takeProfitPrice,
             });
         }
 
@@ -603,15 +608,19 @@ export async function getScorecardHandler(req: Request, res: Response, next: Nex
 
         const response = {
             tactical: tacticalSignals,
-            strategic: strategicStance,
+            strategic: strategicStance.map(s => ({ ...s, marketStance: s.recommendedAction })),
             closed: closedSignals.slice(0, 20),
             overall: {
                 activePositions: tacticalSignals.length,
+                activeScenarios: tacticalSignals.length,
                 totalClosed,
                 wins: wins.length,
                 winRate,
+                outcomeRate: winRate,
                 avgRealizedPnl: avgRealizedPnl !== null ? parseFloat(avgRealizedPnl.toFixed(1)) : null,
+                avgScenarioOutcome: avgRealizedPnl !== null ? parseFloat(avgRealizedPnl.toFixed(1)) : null,
                 bestTrade,
+                bestOutcome: bestTrade,
             },
         };
 
