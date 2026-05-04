@@ -785,13 +785,13 @@ function buildFallbackArticle(analysisJson: string): ArticleWriterResult {
         `[WHY IT MATTERS] ${String(a?.priceImplication || 'This development has significant implications for ' + coin + ' market participants.')} Monitoring the situation closely for further developments is recommended.`,
         `[HISTORY REPEATS?] ${String(a?.temporalContext || 'Historical patterns for ' + coin + ' suggest monitoring similar past events for potential price trajectories.')}`,
         `[PRICE PICTURE] ${supports.length > 0 ? 'Key support levels at ' + supports.join(', ') + '.' : ''} ${resists.length > 0 ? 'Resistance levels at ' + resists.join(', ') + '.' : ''} Current sentiment reads ${sentiment}.`,
-        `[RISK CHECK] ${String(a?.riskNote || 'Standard risk management practices are advised.')} Always consider position sizing and stop-loss strategies in volatile market conditions.`,
+        `[RISK CHECK] ${String(a?.riskNote || 'Standard risk management practices are advised.')} Always consider risk management and downside protection considerations in volatile market conditions.`,
         `[BOTTOM LINE] Current on-chain metrics and social sentiment indicate a ${sentimentDirection} trend, supported by a ${confidence}% trend strength index. ${String(a?.mainDriver || 'Market data should be monitored for evolving conditions.')}`,
     ].join('\n\n');
 
     return {
-        headline: `${coin} Market Analysis — ${sentiment.toUpperCase()} Signal Detected`,
-        hook: `${coin} is showing ${sentiment} signals with a ${sentimentDirection} sentiment reading at ${confidence}% trend strength.`,
+        headline: `${coin} Market Analysis — Market Scenario Identified`,
+        hook: `${coin} is showing ${sentiment} patterns with a ${sentimentDirection} sentiment reading at ${confidence}% trend strength.`,
         fullArticle,
         metaTitle: `${coin} Analysis | OnlyAlpha`,
         metaDescription: `${coin} market analysis: ${sentimentDirection} sentiment at ${confidence}% trend strength. Read the analysis on OnlyAlpha.`,

@@ -74,7 +74,7 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
                 const [radarItem] = await db.select().from(radarSignals).where(eq(radarSignals.id, articleId)).limit(1);
                 if (radarItem) {
                     baseArticleTime = radarItem.createdAt;
-                    contextText += `[PRIMARY FOCUS - AI SIGNAL]: ${radarItem.signalText}\nSentiment: ${radarItem.sentiment}\n`;
+                    contextText += `[PRIMARY FOCUS - AI SCENARIO]: ${radarItem.signalText}\nSentiment: ${radarItem.sentiment}\n`;
                     if (radarItem.newsId) {
                         const [sourceNews] = await db.select().from(coinNews).where(eq(coinNews.id, radarItem.newsId)).limit(1);
                         if (sourceNews) {
