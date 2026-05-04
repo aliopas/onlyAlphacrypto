@@ -1,11 +1,18 @@
 # Phase 2 — Full Event Impact Engine
 
-**Status:** PLANNED — Ready for execution after Phase 1 code tasks complete
+**Status:** ✅ COMPLETE — Code committed (4ae0af4), QA PASSED WITH NOTES (68/68)
 **Date:** May 4, 2026
 **Priority:** P1 (Transforms passive data collection into active intelligence engine)
 **Scope:** 1 new service, 1 new API endpoint, 2 modified files (prompts + workflow), 1 new env flag, 1 optional migration, 1 documentation update, 1 QA checklist
-**Prerequisites:** Phase 6A (complete) + Phase 6B (complete) + Phase 1 (code tasks pending)
+**Prerequisites:** Phase 6A (complete) + Phase 6B (complete) + Phase 1 (complete)
 **Authorized By:** Strategic Planner — May 4, 2026
+**Commit:** `4ae0af4 feat: add Phase 2 event impact stats engine behind feature flag`
+**QA Result:** 68/68 PASS — APPROVE WITH NOTES
+**Notes:**
+- Classification confidence function exists but not fully wired into workflow; documented TODO, acceptable.
+- Minor duplicate `eventScope` computation in aiWorkflow.cron.ts (lines 241, 703); different scopes, harmless — documented for future cleanup.
+- Runtime stats injection disabled by feature flag (`EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` defaults `false`).
+- Do not enable flag until DB coverage/performance check.
 
 ## OBJECTIVE
 
@@ -1125,18 +1132,18 @@ Comprehensive QA checklist for validating all Phase 2 deliverables.
 
 | File | Status | Change |
 |------|--------|--------|
-| `backend/src/services/historicalEventComparison.service.ts` | 🔴 TODO | New — historical comparison service |
-| `backend/src/controllers/market.controller.ts` | 🔴 TODO | Add getEventImpactStatsHandler |
-| `backend/src/routes/market.routes.ts` | 🔴 TODO | Add /event-impact-stats route |
-| `backend/src/services/ai/prompt-factory.ts` | 🔴 TODO | Extend taxonomy + add buildEventImpactContext |
-| `backend/src/crons/aiWorkflow.cron.ts` | 🔴 TODO | Extend TRIGGER_TYPE_MAP + selectTone + stats injection |
-| `backend/src/services/openai.service.ts` | 🔴 TODO | Add confidence to TriageResult |
-| `backend/src/models/market.model.ts` | 🔴 TODO | Add classificationConfidence column |
-| `backend/scripts/migrate-event-impacts-v2.sql` | 🔴 TODO | New — ALTER TABLE for confidence column |
-| `backend/src/services/eventImpactPersistence.service.ts` | 🔴 TODO | Add updateEventImpactConfidence function |
-| `backend/src/config/env.ts` | 🔴 TODO | Add EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED flag |
-| `agent_gedens/PROJECT_STATE.md` | 🔴 TODO | Phase 2 status update |
-| `agent_gedens/AGENT_LOGS.md` | 🔴 TODO | Phase 2 log entries |
+| `backend/src/services/historicalEventComparison.service.ts` | ✅ Done | New — historical comparison service |
+| `backend/src/controllers/market.controller.ts` | ✅ Done | Add getEventImpactStatsHandler |
+| `backend/src/routes/market.routes.ts` | ✅ Done | Add /event-impact-stats route |
+| `backend/src/services/ai/prompt-factory.ts` | ✅ Done | Extend taxonomy + add buildEventImpactContext |
+| `backend/src/crons/aiWorkflow.cron.ts` | ✅ Done | Extend TRIGGER_TYPE_MAP + selectTone + stats injection |
+| `backend/src/services/openai.service.ts` | ✅ Done | Add confidence to TriageResult |
+| `backend/src/models/market.model.ts` | ✅ Done | Add classificationConfidence column |
+| `backend/scripts/migrate-event-impacts-v2.sql` | ✅ Done | New — ALTER TABLE for confidence column |
+| `backend/src/services/eventImpactPersistence.service.ts` | ✅ Done | Add updateEventImpactConfidence function |
+| `backend/src/config/env.ts` | ✅ Done | Add EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED flag |
+| `agent_gedens/PROJECT_STATE.md` | ✅ Done | Phase 2 status update |
+| `agent_gedens/AGENT_LOGS.md` | ✅ Done | Phase 2 log entries |
 
 **Total: 2 new files, 8 modified files, 2 documentation updates**
 
@@ -1170,12 +1177,13 @@ Comprehensive QA checklist for validating all Phase 2 deliverables.
 
 # Phase 1 — Minimum Data Foundation (Activate Event Impact Engine)
 
-**Status:** IN PROGRESS — Code tasks (T-1.2, T-1.3, T-1.4) pending execution; Documentation tasks (T-1.1, T-1.5, T-1.6, T-1.7) COMPLETED
+**Status:** ✅ COMPLETE — Code committed (f206e39, 886bea9), QA PASSED
 **Date:** May 4, 2026
 **Priority:** P1 (Activates Phase 6A+6B deliverables in production)
 **Scope:** 2 new crons, 2 new env flags, 1 server.ts registration, 1 runbook, 1 QA checklist
 **Prerequisites:** Phase 6A (complete) + Phase 6B (complete) — both pushed
 **Authorized By:** Strategic Planner — May 4, 2026
+**Commits:** `f206e39` (initial), `886bea9` (QA re-review fixes)
 
 ## OBJECTIVE
 
@@ -2526,11 +2534,11 @@ Comprehensive QA checklist for validating all Phase 1 deliverables before produc
 
 # Phase 6B — Event Impact Persistence
 
-**Status:** PLANNED — Ready for execution after Phase 6A QA PASS  
-**Date:** May 4, 2026  
-**Priority:** P1 (Persists Phase 6A analysis into dedicated parallel tables)  
-**Scope:** 2 migrations, 2 Drizzle models, 1 persistence service, 1 backfill script, 2 env flags, 1 documentation update, 1 QA checklist  
-**Reviewed by:** Strategic Planner — APPROVED FOR PLANNING  
+**Status:** ✅ COMPLETED — Pushed (6a3c9f4)
+**Date:** May 4, 2026
+**Priority:** P1 (Persists Phase 6A analysis into dedicated parallel tables)
+**Scope:** 2 migrations, 2 Drizzle models, 1 persistence service, 1 backfill script, 2 env flags, 1 documentation update, 1 QA checklist
+**Reviewed by:** Strategic Planner — APPROVED FOR PLANNING
 
 ## OBJECTIVE
 
@@ -3736,11 +3744,11 @@ Prepare comprehensive QA checklist for Phase 6A implementation.
 
 # Phase 1 — Event-Price Foundation
 
-**Status:** PLANNED — Ready for immediate execution  
-**Date:** May 2, 2026  
-**Priority:** P0 (Foundation for all temporal intelligence)  
-**Scope:** 1 SQL migration, 1 model update, 2 new files, 2 modified files  
-**Reviewed by:** Lead Architect — APPROVED FOR EXECUTION  
+**Status:** ✅ COMPLETE — Committed (f206e39, 886bea9)
+**Date:** May 2, 2026
+**Priority:** P0 (Foundation for all temporal intelligence)
+**Scope:** 1 SQL migration, 1 model update, 2 new files, 2 modified files
+**Reviewed by:** Lead Architect — APPROVED FOR EXECUTION
 
 ## OBJECTIVE
 

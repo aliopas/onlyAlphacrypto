@@ -1,7 +1,7 @@
 # ONLYALPHA — PROJECT STATE
 
-**Last Updated:** May 4, 2026
-**Current Focus:** Phase 2 — Full Event Impact Engine (PLANNED — docs complete, awaiting Phase 1 code completion)
+**Last Updated:** May 4, 2026 (State Reconciliation)
+**Current Focus:** Phase 7 — Public Language / Google-Safe Presentation (NEXT PRIORITY)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,23 +15,64 @@
 2. **Modular Boundaries:** Cache logic -> `CacheManager`. AI calls -> `AIGateway`. Prompts -> `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## Current Mission: Phase 2 — Full Event Impact Engine
+## Current Mission: Phase 7 — Public Language / Google-Safe Presentation
 
-**Status:** PLANNED — Docs complete, awaiting Phase 1 code completion
-**Authorized By:** Strategic Planner — May 4, 2026
-**Key Objective:** Transform Event Impact from passive data collection into an active intelligence engine. Historical event comparison service, admin stats API endpoint, extended event taxonomy (macro/personality/whale types), AI workflow stats injection (behind flag), classification confidence scoring.
-**Plan Path:** `agent_gedens/THE_NEXUS_HUB.md` — Phase 2 section
-**Task Count:** 8 (T-2.1 through T-2.8)
-**Scope:** 2 new files, 8 modified files, 2 documentation updates, 1 new env flag, 1 optional migration
-**Prerequisites:** Phase 6A (complete) + Phase 6B (complete) + Phase 1 (code tasks pending)
+**Status:** NEXT PRIORITY — PLANNING/AUDIT REQUIRED
+**Key Objective:** Identify and replace public-facing BUY/SELL/Signal/Entry/TP/SL/P&L labels with AdSense-policy-safe terminology.
+**Plan Path:** To be created by Strategic Planner
+**Suggested Task:** T-7A-01 — Public Language Audit and Replacement Map
+**Scope:**
+- Identify public-facing risky terms (BUY, SELL, STRONG_BUY, STRONG_SELL, Signal, Entry, Take Profit, Stop Loss, P&L, Win Rate, Trade).
+- Map them to policy-safe terms.
+- Do not change routes or SEO URLs.
+- Do not change database enums yet.
+- Prepare micro-tasks for frontend/backend prompt cleanup.
+**Note:** This is an AUDIT/PLANNING phase first — do not start implementation without a plan.
 
-**Previous:** Phase 1 — Minimum Data Foundation (IN PROGRESS — docs complete, code pending)
+## Phase Overview (All Phases)
+
+| Phase | Description | Status | Commit |
+|---|---|---|---|
+| Phase 1 | Event-Price Foundation | ✅ COMPLETE / QA PASSED | f206e39, 886bea9 |
+| Phase 2 | Full Event Impact Engine | ✅ COMPLETE / QA PASSED WITH NOTES | 4ae0af4 |
+| Phase 3 | Multi-Horizon Scenario Tracker | ⚠️ PARTIAL / NEEDS RECONCILIATION | 58ecebd (partial) |
+| Phase 4 | OHLCV Price Snapshots | ⬜ NOT COMPLETE / PARTIAL FOUNDATION | — |
+| Phase 5 | Level Intelligence Engine | ⚠️ PARTIAL FOUNDATION EXISTS | adac61e (partial) |
+| Phase 6 | AI Cost Reduction | ⚠️ PARTIAL FOUNDATION EXISTS | — |
+| Phase 7 | Public Language / Google-Safe | 🔴 NEXT PRIORITY | — |
+| Phase 8 | Migration Strategy | ⬜ NOT STARTED | — |
+
+### Phase Notes
+- **Phase 2:** Runtime stats injection disabled by feature flag (`EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` default `false`). Classification confidence function exists but not fully wired into workflow (documented TODO). No blockers from QA.
+- **Phase 3:** `scenarioTracker.service.ts` and related schema exist from commit 58ecebd. Not confirmed complete under current roadmap. Needs reconciliation.
+- **Phase 5:** `levelIntelligence.service.ts` exists from commit adac61e. Not fully integrated into public scenario/article generation.
+- **Phase 6:** `ai-gateway.ts`, `cache-manager.ts`, routing/cache exists. Full cost reduction plan not complete.
 
 ## Completed Phases
 
+### Phase 2 — Full Event Impact Engine
+**Status:** COMPLETE — Code committed, QA PASSED WITH NOTES
+**Commit:** 4ae0af4
+**Tasks:** 8 (T-2.1 through T-2.8) — All Done
+**QA Result:** 68/68 PASS — APPROVE WITH NOTES
+**New Files:** `historicalEventComparison.service.ts`, `migrate-event-impacts-v2.sql`
+**Modified Files:** `market.controller.ts`, `market.routes.ts`, `prompt-factory.ts`, `aiWorkflow.cron.ts`, `openai.service.ts`, `market.model.ts`, `eventImpactPersistence.service.ts`, `env.ts`
+**Summary:**
+- Historical event comparison service (queries event_impacts + outcomes for similar past events, returns statistical summaries)
+- Event impact stats API endpoint (GET /api/market/event-impact-stats, authMiddleware protected)
+- Extended event taxonomy (8 new types: Fed_Rate, CPI, Geopolitical, Influencer_Statement, Executive_Change, Large_Transfer, Token_Unlock, Exchange_Netflow)
+- AI workflow stats injection (behind EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED=false flag)
+- Classification confidence field (optional on TriageResult, stored in event_impacts)
+- Feature flag added to env.ts (default false)
+**Known Notes:**
+- Confidence persistence function exists but full workflow wiring is TODO and accepted for Phase 2.
+- Minor duplicate `eventScope` computation in aiWorkflow.cron.ts (lines 241, 703) — different scopes, harmless.
+- Do not enable flag until DB coverage/performance check.
+
 ### Phase 1 — Minimum Data Foundation (Activation)
-**Status:** IN PROGRESS — Code tasks (T-1.2, T-1.3, T-1.4) pending; Docs tasks (T-1.1, T-1.5, T-1.6, T-1.7) ✅ COMPLETED
-**Tasks:** 7 (T-1.1 through T-1.7) — 4 Docs Complete, 3 Code Pending
+**Status:** COMPLETE — QA PASSED
+**Commits:** f206e39 (initial), 886bea9 (QA re-review fixes)
+**Tasks:** 7 (T-1.1 through T-1.7) — All Done
 **New Files:** `backend/src/crons/eventImpactSync.cron.ts`, `backend/src/crons/eventImpactOutcomeChecker.cron.ts`
 **Modified Files:** `backend/src/config/env.ts` (+2 flags), `backend/src/server.ts` (+2 conditional registrations)
 **Summary:**
