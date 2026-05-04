@@ -549,11 +549,15 @@ export async function getScorecardHandler(req: Request, res: Response, next: Nex
             verdict: string;
             sentiment: string | null;
             entryPrice: number;
+            referencePrice: number;
             entryAt: Date;
             unrealizedPnl: number | null;
+            unrealizedDrift: number | null;
             currentPrice: number | null;
             stopLossPrice: number | null;
+            riskZonePrice: number | null;
             takeProfitPrice: number | null;
+            targetZonePrice: number | null;
         }> = [];
 
         for (const row of activeSignals) {
