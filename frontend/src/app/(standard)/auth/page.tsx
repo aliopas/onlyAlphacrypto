@@ -56,7 +56,7 @@ export default function AuthPage() {
                         {isLogin ? 'Welcome Back' : 'Join OnlyAlpha'}
                     </h1>
                     <p className="text-muted-foreground text-center mb-8 text-sm">
-                        {isLogin ? 'Login to access your AI signals and airdrops.' : 'Create an account to track airdrops and view AI market analysis.'}
+                        {isLogin ? 'Login to access your AI market scenarios and airdrops.' : 'Create an account to track airdrops and view AI market analysis.'}
                     </p>
 
                     <form onSubmit={handleSubmit} className="w-full space-y-4">

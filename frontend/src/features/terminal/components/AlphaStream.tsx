@@ -203,7 +203,7 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
 
                 {displayDate && (
                     <span className="text-xs font-mono text-[#666] ml-auto">
-                        Signal acquired at {new Date(displayDate).toLocaleTimeString()}
+                        Detected at {new Date(displayDate).toLocaleTimeString()}
                     </span>
                 )}
             </div>

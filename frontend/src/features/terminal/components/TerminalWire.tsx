@@ -37,7 +37,7 @@ export function TerminalWire({
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
                 {radarSignals.length === 0 && (
                     <div className="flex items-center justify-center p-4 h-full text-[#555] text-xs font-mono text-center">
-                        No radar signals found for {targetedCoin ? `$${targetedCoin.toUpperCase()}` : 'this selection'}.
+                        No market scenarios found for {targetedCoin ? `$${targetedCoin.toUpperCase()}` : 'this selection'}.
                     </div>
                 )}
 

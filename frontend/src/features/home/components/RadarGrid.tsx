@@ -71,7 +71,7 @@ export function RadarGrid({ signals: initialSignals }: Props) {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {signals.length === 0 && (
                     <div className="col-span-full bg-[#0A0A0A] border border-[#333] p-12 text-center">
-                        <p className="text-[#555] font-mono text-[12px] uppercase tracking-widest">No signals yet. Engine processing…</p>
+                        <p className="text-[#555] font-mono text-[12px] uppercase tracking-widest">No scenarios yet. Engine processing…</p>
                     </div>
                 )}
                 {signals.map((s, i) => {
@@ -111,7 +111,7 @@ export function RadarGrid({ signals: initialSignals }: Props) {
                         disabled={isLoading}
                         className="px-8 py-2 bg-[#0A0A0A] border border-[#333] text-[#888] hover:border-[#555] hover:text-white transition-all text-[11px] font-mono uppercase tracking-[0.2em] disabled:opacity-50"
                     >
-                        {isLoading ? 'Processing...' : 'Load More Signals +'}
+                        {isLoading ? 'Processing...' : 'Load More Scenarios +'}
                     </button>
                 </div>
             )}

@@ -24,7 +24,7 @@ export function PreferencesPanel({ preferences, onUpdate }: Props) {
 
     const options = [
         { key: 'airdropDeadlineAlerts' as const, label: 'Airdrop Alerts', sub: 'Real-time snapshot detection' },
-        { key: 'breakingNewsAlerts' as const, label: 'AI Signals', sub: 'Sentiment & Volume spikes' },
+        { key: 'breakingNewsAlerts' as const, label: 'AI Scenarios', sub: 'Sentiment & Volume spikes' },
         { key: 'alphaFocusAlerts' as const, label: 'Alpha Focus', sub: 'Daily top-ranked pick alerts' },
         { key: 'emailAlerts' as const, label: 'Newsletter', sub: 'Weekly ecosystem alpha' },
     ];
