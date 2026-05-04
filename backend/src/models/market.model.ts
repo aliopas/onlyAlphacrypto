@@ -1,7 +1,7 @@
 import {
     pgTable, serial, varchar, text, timestamp,
     integer, real, json, jsonb, boolean, pgEnum, unique,
-    customType, numeric, index, uuid, primaryKey
+    customType, numeric, index, uuid, primaryKey, uniqueIndex
 } from 'drizzle-orm/pg-core';
 
 const vector = customType<{ data: number[]; driverData: string }>({
@@ -458,4 +458,53 @@ export const scenarioStatusHistory = pgTable('scenario_status_history', {
     reason: text('reason'),
 }, (table) => ({
     scenarioIdIdx: index('scenario_status_history_scenarioid_idx').on(table.scenarioId),
+}));
+
+// ─── EVENT IMPACTS (Phase 6B — Persistent Event Impact Data) ────────────────────
+export const eventImpacts = pgTable('event_impacts', {
+    id: serial('id').primaryKey(),
+    sourceTable: varchar('source_table', { length: 50 }).notNull().default('coin_news_history'),
+    sourceId: integer('source_id').references(() => coinNewsHistory.id, { onDelete: 'set null' }),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    eventType: varchar('event_type', { length: 50 }),
+    eventSeverity: integer('event_severity'),
+    eventScope: varchar('event_scope', { length: 20 }),
+    publishedAt: timestamp('published_at').notNull(),
+    priceAtEvent: real('price_at_event'),
+    priceSource: varchar('price_source', { length: 20 }).notNull().default('binance'),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+    sourceIdIdx: uniqueIndex('idx_event_impacts_source_id').on(table.sourceId),
+    coinSymbolIdx: index('idx_event_impacts_coin_symbol').on(table.coinSymbol),
+    eventTypeIdx: index('idx_event_impacts_event_type').on(table.eventType),
+    statusIdx: index('idx_event_impacts_status').on(table.status),
+    publishedAtIdx: index('idx_event_impacts_published_at').on(table.publishedAt),
+}));
+
+// ─── EVENT IMPACT OUTCOMES (Phase 6B — Per-Horizon Outcome Data) ────────────────
+export const eventImpactOutcomes = pgTable('event_impact_outcomes', {
+    id: serial('id').primaryKey(),
+    eventImpactId: integer('event_impact_id').references(() => eventImpacts.id, { onDelete: 'cascade' }).notNull(),
+    horizon: varchar('horizon', { length: 10 }).notNull(),
+    horizonHours: integer('horizon_hours').notNull(),
+    dueAt: timestamp('due_at').notNull(),
+    checkedAt: timestamp('checked_at'),
+    priceAtHorizon: real('price_at_horizon'),
+    changePercent: real('change_percent'),
+    maxUpsidePercent: real('max_upside_percent'),
+    maxDrawdownPercent: real('max_drawdown_percent'),
+    timeToPeakHours: integer('time_to_peak_hours'),
+    timeToBottomHours: integer('time_to_bottom_hours'),
+    outcomeClassification: varchar('outcome_classification', { length: 30 }),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+    uniqueHorizonIdx: uniqueIndex('idx_event_impact_outcomes_unique').on(table.eventImpactId, table.horizon),
+    statusIdx: index('idx_event_impact_outcomes_status').on(table.status),
+    dueAtIdx: index('idx_event_impact_outcomes_due_at').on(table.dueAt),
+    eventImpactIdIdx: index('idx_event_impact_outcomes_event_impact_id').on(table.eventImpactId),
 }));

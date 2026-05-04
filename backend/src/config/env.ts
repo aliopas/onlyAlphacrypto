@@ -81,6 +81,12 @@ const envSchema = z.object({
     // Scenario Tracker
     SCENARIO_TRACKER_ENABLED: z.boolean().default(false),
 
+    // Event Impact Engine
+    EVENT_IMPACT_ENGINE_ENABLED: z.boolean().default(false),
+    EVENT_IMPACT_PERSISTENCE_ENABLED: z.boolean().default(false),
+    EVENT_IMPACT_BACKFILL_ENABLED: z.boolean().default(false),
+    EVENT_IMPACT_BACKFILL_DRY_RUN: z.boolean().default(true),
+
     // Monitoring Cron
     MONITORING_CRON_ENABLED: z.boolean().default(false),
 

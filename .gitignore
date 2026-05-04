@@ -48,3 +48,10 @@ Thumbs.db
 
 # Windows Reserved Files
 nul
+
+# Playwright MCP artifacts
+.playwright-mcp/
+
+# Screenshots (but allow frontend public images)
+*.png
+!frontend/public/**/*.png

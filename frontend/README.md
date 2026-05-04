@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OnlyAlpha — Frontend
+
+AI-Native Crypto Intelligence Platform — Next.js 16 client application.
+
+## Tech Stack
+
+| Technology | Version | Purpose |
+|---|---|---|
+| Next.js 16 (App Router) | v16.1+ | Server Components + ISR revalidation |
+| React 19 | v19.2+ | Concurrent features + Server Actions |
+| Tailwind CSS 4 | v4+ | Utility-first styling |
+| Framer Motion | v12.35+ | Animations for Terminal and Radar |
+| Lightweight Charts (TradingView) | v4.1+ | Financial charts with candlestick support |
+| Lucide React | v0.577+ | Icon library |
+| date-fns | v4.1+ | Date formatting |
+| tailwind-merge | v3.5+ | Class name conflict resolution |
+
+## Pages
+
+| Route | Description |
+|---|---|
+| `/` | Dashboard — Alpha Radar, Market Mood, Top Movers, Airdrop Watchlist |
+| `/terminal` | Terminal landing |
+| `/terminal/[coin]` | Coin terminal — Chat, Chart, Wire Feed, Deep Dive |
+| `/terminal/[coin]/alpha` | Living Article view |
+| `/archive` | Article archive (paginated, year/month grouping) |
+| `/scorecard` | Signal P&L scorecard — Win rates + per-signal breakdown |
+| `/airdrops` | Airdrop listing with AI risk badges |
+| `/airdrops/[id]` | Airdrop detail + task tracker |
+| `/auth` | Login / Register |
+| `/settings` | Billing, Wallets, API Keys, Preferences |
+| `/about` | About OnlyAlpha |
+| `/contact` | Contact information |
+| `/privacy` | Privacy policy (GDPR/CCPA) |
+| `/terms` | Terms of service |
+| `/disclaimer` | Legal disclaimer (NFA) |
+
+## Feature Architecture
+
+All features follow a consistent structure under `src/features/`:
+
+```
+features/
+├── shared/       ← Footer, CookieBanner, Sidebar, TickerBar, ErrorBoundary
+├── home/         ← Dashboard widgets
+├── terminal/     ← Terminal page components + hooks
+├── settings/     ← User settings panels
+├── airdrop/      ← Airdrop pages
+└── archive/      ← Article archive
+```
+
+Each feature directory contains:
+- `api.ts` — Type-safe API client functions
+- `types.ts` — TypeScript interfaces
+- `components/` — React components
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+```
 
-## Learn More
+## Deployment
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Deployed via **Netlify** — see root `netlify.toml` for configuration.

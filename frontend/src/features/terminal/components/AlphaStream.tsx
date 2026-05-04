@@ -132,7 +132,7 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
             <div className="flex-1 flex flex-col p-8 xl:p-12 relative items-center justify-center">
                 <div className="animate-pulse flex flex-col items-center">
                     <div className="w-12 h-12 border-2 border-[#333] border-t-emerald-500 rounded-full animate-spin mb-4" />
-                    <span className="text-[#888] font-mono text-sm">Decoding Signal...</span>
+                    <span className="text-[#888] font-mono text-sm">Loading Intelligence...</span>
                 </div>
             </div>
         );
@@ -277,7 +277,7 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
                                 <div className="mb-4">
                                     <div className="flex items-center gap-3 mb-3">
                                         <span className="material-symbols-outlined text-amber-500 text-[18px]">radar</span>
-                                        <span className="text-xs font-mono tracking-widest text-amber-500 uppercase">Signal Intelligence</span>
+                                        <span className="text-xs font-mono tracking-widest text-amber-500 uppercase">Market Intelligence</span>
                                     </div>
                                     <p className="text-white leading-relaxed text-[15px] font-medium">
                                         {radarSignal.signal}

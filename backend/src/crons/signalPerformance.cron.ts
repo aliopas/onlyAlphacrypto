@@ -5,7 +5,8 @@ import { eq, isNull, lte, and, sql } from 'drizzle-orm';
 import { getPriceWithFallback } from '../services/priceService';
 
 async function updateSignalPerformance(): Promise<void> {
-    console.log('[SignalPerf] Update run started');
+    try {
+        console.log('[SignalPerf] Update run started');
 
     const need24h = await db.select()
         .from(signalPerformance)
@@ -80,6 +81,9 @@ async function updateSignalPerformance(): Promise<void> {
     }
 
     console.log(`[SignalPerf] Updated: ${need24h.length} (24h), ${need7d.length} (7d), ${need30d.length} (30d)`);
+    } catch (err) {
+        console.error('[SignalPerf] Update run failed:', err instanceof Error ? err.message : String(err));
+    }
 }
 
 export function startSignalPerformanceCron(): void {

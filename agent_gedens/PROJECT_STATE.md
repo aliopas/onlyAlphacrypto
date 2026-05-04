@@ -1,7 +1,7 @@
 # ONLYALPHA — PROJECT STATE
 
-**Last Updated:** May 2, 2026
-**Current Focus:** Phase 1 — Event-Price Foundation (BLOCKED — Phase 0.5 completed)
+**Last Updated:** May 4, 2026
+**Current Focus:** Phase 6B — Event Impact Persistence (PLANNED — awaiting execution)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,43 +15,44 @@
 2. **Modular Boundaries:** Cache logic -> `CacheManager`. AI calls -> `AIGateway`. Prompts -> `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## Current Mission: Phase 1 — Event-Price Foundation
+## Current Mission: Phase 6B — Event Impact Persistence
 
-**Status:** BLOCKED — Requires Phase 0.5 to be live 1+ week for multi-horizon data
-**Authorized By:** Tech Lead — May 2, 2026
-**Key Objective:** Expand `coin_news_history` schema with event-price tracking, bridge live events, and implement multi-horizon outcome checker cron.
+**Status:** PLANNED — Ready for execution after Phase 6A QA PASS
+**Authorized By:** Strategic Planner — May 4, 2026
+**Key Objective:** Create persistence layer for Event Impact Engine. Store calculated event impact data in two dedicated parallel tables (event_impacts, event_impact_outcomes). Do not modify existing tables.
+**Plan Path:** `agent_gedens/THE_NEXUS_HUB.md` — Phase 6B section
+**Task Count:** 7 (T-6B.1 through T-6B.7)
+**Scope:** 2 migrations, 1 Drizzle model update, 1 persistence service, 1 backfill script, 3 env flags, 1 doc update, 1 QA checklist
 
-**Previous:** Phase 0.5 — AdSense-Safe Public Presentation (P0) — ✅ COMPLETED
+**Previous:** Phase 6A — Event Impact Analysis Engine — ✅ COMPLETED (QA PASS)
 
 ## Completed Phases
 
-### Phase 3 — Level Intelligence Engine
-**Completed:** May 3, 2026
-**Tasks:** Implementation and QA — All Done
-**New Files:** `levelIntelligence.service.ts`, `levelIntelligenceCron.ts`, `migrate-level-intelligence.sql`, `verify-phase3-levels.js`
-**Modified Files:** `market.model.ts`, `server.ts`, `prompt-factory.ts`, `aiWorkflow.cron.ts`
+### Phase 6B — Event Impact Persistence
+**Status:** PLANNED — Ready for execution
+**Tasks:** 7 (T-6B.1 through T-6B.7) — All Pending
+**Planned Files:** `backend/scripts/migrate-event-impacts.sql`, `backend/src/services/eventImpactPersistence.service.ts`, `backend/scripts/backfill-event-impacts.js`
+**Modified Files:** `backend/src/models/market.model.ts`, `backend/src/config/env.ts`, `agent_gedens/THE_NEXUS_HUB.md`
 **Summary:**
-- Added deterministic technical analysis engine for support/resistance levels
-- 6-hour cron processes major coins across 4 timeframes (1h/4h/1d/1w)
-- Levels stored with confidence scores, interaction tracking, and AI integration
-- AdSense-safe prompt injection with anti-hallucination rules
-- Migration creates level_intelligence and level_interactions tables with crypto-safe precision
-- Verification script provides read-only stats and health checks
-- Backward compatible, non-blocking, no impact on existing features
+- Creates event_impacts table (1 row per source event, normalized from coin_news_history)
+- Creates event_impact_outcomes table (5 rows per event, one per horizon: 1h/4h/24h/3d/7d)
+- Persistence service bridges coin_news_history → new tables (read-only source, write-only target)
+- Backfill script with dry-run mode (default) and feature flags (all default disabled)
+- 3 new env flags: EVENT_IMPACT_PERSISTENCE_ENABLED, EVENT_IMPACT_BACKFILL_ENABLED, EVENT_IMPACT_BACKFILL_DRY_RUN
+- Zero modifications to existing tables, UI, AI workflows, or crons
 
-### Phase 4.5 — Activation & Backfill Readiness
+### Phase 6A — Event Impact Analysis Engine
 **Completed:** May 3, 2026 — QA PASS
-**Tasks:** 8/8 Tasks — All Done
-**New Files:** `backend/scripts/backfill-phase45-scenarios.js`
-**Modified Files:** `backend/src/crons/levelIntelligenceCron.ts`, `backend/src/services/levelIntelligence.service.ts`, `backend/src/crons/aiWorkflow.cron.ts`, `backend/src/config/env.ts`, `backend/scripts/verify-phase3-levels.js`, `backend/scripts/verify-phase4-scenarios.js`, `agent_gedens/THE_NEXUS_HUB.md`
+**Tasks:** 7 (T-6A.1 through T-6A.7) — All Done
+**New Files:** `backend/src/services/eventImpactAnalysis.service.ts`, `backend/scripts/analyze-event-impact.js`
+**Modified Files:** `backend/src/config/env.ts`, `agent_gedens/THE_NEXUS_HUB.md`
 **Summary:**
-- Activated Phase 3 level intelligence cron with env-controlled safe defaults
-- Enabled scenario creation in aiWorkflow behind SCENARIO_TRACKER_ENABLED flag
-- Created safe backfill script for recent eligible scenarios (14 days, major coins only)
-- Extended verification scripts with activation status checks
-- Added comprehensive operational runbook with env controls and rollback procedures
-- All systems default to disabled for safe production deployment
-- TypeScript compilation clean, no any types introduced
+- Created read-only event impact analysis service with deterministic statistics from coin_news_history
+- Calculates per-horizon sample sizes, median returns, positive/bullish outcome rates, average max upside/drawdown
+- Manual analysis script with env flag control (EVENT_IMPACT_ENGINE_ENABLED, default false)
+- Policy-safe terminology guidelines defined for historical analysis framing
+- Comprehensive QA checklist and documentation updates
+- No database writes, no external APIs, no AI integrations — pure data analysis
 
 ### Phase 0.5 — AdSense-Safe Public Presentation (P0)
 **Completed:** May 2, 2026

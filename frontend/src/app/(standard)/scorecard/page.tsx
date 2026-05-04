@@ -6,18 +6,18 @@ export const revalidate = 360;
 const SITE_URL = 'https://onlyalphacrypto.com';
 
 export const metadata: Metadata = {
-    title: 'Signal Scorecard — Track Record',
-    description: 'Transparent performance tracking of every AI signal OnlyAlpha publishes. Win rate, average return, and per-coin breakdown.',
+    title: 'Market Intelligence Scorecard — OnlyAlpha',
+    description: 'Data-driven market scenario tracking. Historical outcomes, reference prices, and pattern analysis for cryptocurrency markets.',
     openGraph: {
-        title: 'Signal Scorecard — OnlyAlpha',
-        description: 'Track the profit and loss performance of every AI signal. Transparent track record per coin.',
+        title: 'Market Intelligence Scorecard — OnlyAlpha',
+        description: 'Data-driven market scenario tracking with historical outcomes and pattern analysis per coin.',
         url: `${SITE_URL}/scorecard`,
         type: 'website',
     },
     twitter: {
         card: 'summary_large_image',
-        title: 'Signal Scorecard — OnlyAlpha',
-        description: 'Track the profit and loss performance of every AI signal. Transparent track record per coin.',
+        title: 'Market Intelligence Scorecard — OnlyAlpha',
+        description: 'Data-driven market scenario tracking with historical outcomes and pattern analysis per coin.',
     },
     alternates: {
         canonical: `${SITE_URL}/scorecard`,
@@ -108,13 +108,24 @@ function closeReasonBadge(reason: string | null): string {
     return map[reason ?? ''] ?? 'bg-[#222] text-[#888]';
 }
 
+function verdictLabel(verdict: string): string {
+    const map: Record<string, string> = {
+        STRONG_BUY: 'Strong Bullish',
+        BUY: 'Bullish',
+        SELL: 'Bearish',
+        STRONG_SELL: 'Strong Bearish',
+        NEUTRAL: 'Neutral',
+    };
+    return map[verdict] ?? verdict.replace('_', ' ');
+}
+
 function closeReasonLabel(reason: string | null): string {
     const map: Record<string, string> = {
-        take_profit: 'TP Hit',
-        stop_loss: 'SL Hit',
-        time_expiry: 'Expired',
+        take_profit: 'Target Reached',
+        stop_loss: 'Risk Zone Breached',
+        time_expiry: 'Horizon Expired',
     };
-    return map[reason ?? ''] ?? 'Reversed';
+    return map[reason ?? ''] ?? 'Thesis Reversed';
 }
 
 function timeAgo(dateStr: string): string {
@@ -172,9 +183,9 @@ export default async function ScorecardPage() {
                     <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-[#0A0A0A] border border-[#222] flex items-center justify-center">
                         <span className="material-symbols-outlined text-3xl text-[var(--color-primary)]">leaderboard</span>
                     </div>
-                    <h1 className="text-xl font-semibold text-white mb-3">No Signals Tracked Yet</h1>
+                    <h1 className="text-xl font-semibold text-white mb-3">No Scenarios Tracked Yet</h1>
                     <p className="text-sm text-[#666] leading-relaxed">
-                        Check back after the first AI signal is published. The scorecard will populate automatically as signals are recorded and tracked over time.
+                        Check back after the first AI market scenario is published. The scorecard will populate automatically as scenarios are recorded and tracked over time.
                     </p>
                 </div>
             </div>
@@ -185,33 +196,33 @@ export default async function ScorecardPage() {
         <div className="min-h-screen bg-black text-white">
             <div className="max-w-6xl mx-auto px-4 py-8 md:py-12">
                 <div className="mb-8">
-                    <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Signal Scorecard</h1>
-                    <p className="text-sm text-[#666] mt-1">Transparent performance tracking of every AI signal.</p>
+                    <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Market Intelligence Scorecard</h1>
+                    <p className="text-sm text-[#666] mt-1">Data-driven market scenario tracking with historical outcomes.</p>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                        <div className="text-xs text-[#666] mb-1">Active Positions</div>
+                        <div className="text-xs text-[#666] mb-1">Active Scenarios</div>
                         <div className="text-2xl font-mono font-bold">{data.overall.activePositions}</div>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                        <div className="text-xs text-[#666] mb-1">Closed Signals</div>
+                        <div className="text-xs text-[#666] mb-1">Completed Scenarios</div>
                         <div className="text-2xl font-mono font-bold">{data.overall.totalClosed}</div>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                        <div className="text-xs text-[#666] mb-1">Win Rate</div>
+                        <div className="text-xs text-[#666] mb-1">Outcome Rate</div>
                         <div className="text-2xl font-mono font-bold">
                             {data.overall.winRate !== null ? `${data.overall.winRate}%` : '—'}
                         </div>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                        <div className="text-xs text-[#666] mb-1">Avg P&L</div>
+                        <div className="text-xs text-[#666] mb-1">Avg Outcome</div>
                         <div className={`text-2xl font-mono font-bold ${pnlClass(data.overall.avgRealizedPnl)}`}>
                             {data.overall.avgRealizedPnl !== null ? pnlFormat(data.overall.avgRealizedPnl) : '—'}
                         </div>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                        <div className="text-xs text-[#666] mb-1">Best Trade</div>
+                        <div className="text-xs text-[#666] mb-1">Best Outcome</div>
                         <div className="text-lg font-mono font-bold">
                             {data.overall.bestTrade ? (
                                 <span className={pnlClass(data.overall.bestTrade.realizedPnl)}>
@@ -223,19 +234,19 @@ export default async function ScorecardPage() {
                 </div>
 
                 <div className="mb-8">
-                    <h2 className="text-lg font-semibold mb-4">Tactical Signals</h2>
-                    <p className="text-xs text-[#666] mb-4">Short-term active positions (1-3 days). One signal per coin.</p>
+                    <h2 className="text-lg font-semibold mb-4">Active Market Scenarios</h2>
+                    <p className="text-xs text-[#666] mb-4">Short-term active scenarios (1-3 days). One scenario per coin.</p>
                     <div className="overflow-x-auto border border-[#222] rounded-lg">
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="bg-[#111] text-[#666] text-xs uppercase tracking-wider">
                                     <th className="text-left px-4 py-3 font-medium">Coin</th>
-                                    <th className="text-left px-4 py-3 font-medium">Signal</th>
-                                    <th className="text-right px-4 py-3 font-medium">Entry $</th>
-                                    <th className="text-right px-4 py-3 font-medium">SL</th>
-                                    <th className="text-right px-4 py-3 font-medium">TP</th>
+                                    <th className="text-left px-4 py-3 font-medium">Bias</th>
+                                    <th className="text-right px-4 py-3 font-medium">Reference $</th>
+                                    <th className="text-right px-4 py-3 font-medium">Risk Zone</th>
+                                    <th className="text-right px-4 py-3 font-medium">Target Zone</th>
                                     <th className="text-right px-4 py-3 font-medium">Current $</th>
-                                    <th className="text-right px-4 py-3 font-medium">Unrealized</th>
+                                    <th className="text-right px-4 py-3 font-medium">Drift</th>
                                     <th className="text-right px-4 py-3 font-medium">Since</th>
                                 </tr>
                             </thead>
@@ -243,7 +254,7 @@ export default async function ScorecardPage() {
                                 {data.tactical.length === 0 ? (
                                     <tr>
                                         <td colSpan={8} className="px-4 py-8 text-center text-[#666]">
-                                            No active signals currently.
+                                            No active scenarios currently.
                                         </td>
                                     </tr>
                                 ) : (
@@ -255,7 +266,7 @@ export default async function ScorecardPage() {
                                             <td className="px-4 py-3 font-mono font-semibold">{row.coinSymbol}</td>
                                             <td className="px-4 py-3">
                                                 <span className={`text-xs px-2 py-0.5 rounded font-mono ${verdictBadge(row.verdict)}`}>
-                                                    {row.verdict.replace('_', ' ')}
+                                                    {verdictLabel(row.verdict)}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 text-right font-mono">{formatPrice(row.entryPrice)}</td>
@@ -322,23 +333,23 @@ export default async function ScorecardPage() {
 
                 {data.closed.length > 0 && (
                     <div className="mb-8">
-                        <h2 className="text-lg font-semibold mb-4">Closed Signals</h2>
-                        <p className="text-xs text-[#666] mb-4">Historical signal performance with realized P&L.</p>
+                        <h2 className="text-lg font-semibold mb-4">Completed Scenarios</h2>
+                        <p className="text-xs text-[#666] mb-4">Historical scenario performance with realized outcomes.</p>
                         <div className="overflow-x-auto border border-[#222] rounded-lg">
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="bg-[#111] text-[#666] text-xs uppercase tracking-wider">
                                         <th className="text-left px-4 py-3 font-medium">Coin</th>
-                                        <th className="text-left px-4 py-3 font-medium">Signal</th>
-                                        <th className="text-left px-4 py-3 font-medium">Entry → Exit</th>
-                                        <th className="text-right px-4 py-3 font-medium">P&L</th>
+                                        <th className="text-left px-4 py-3 font-medium">Bias</th>
+                                        <th className="text-left px-4 py-3 font-medium">Ref → Exit</th>
+                                        <th className="text-right px-4 py-3 font-medium">Outcome</th>
                                         <th className="text-right px-4 py-3 font-medium">Held</th>
                                         <th className="text-center px-4 py-3 font-medium">Reason</th>
                                         <th className="text-center px-4 py-3 font-medium">Result</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {data.closed.map((row, index) => (
+                                    {                                    data.closed.map((row, index) => (
                                         <tr
                                             key={row.id}
                                             className={`border-t border-[#222] ${index % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'}`}
@@ -346,7 +357,7 @@ export default async function ScorecardPage() {
                                             <td className="px-4 py-3 font-mono font-semibold">{row.coinSymbol}</td>
                                             <td className="px-4 py-3">
                                                 <span className={`text-xs px-2 py-0.5 rounded font-mono ${verdictBadge(row.verdict)}`}>
-                                                    {row.verdict.replace('_', ' ')}
+                                                    {verdictLabel(row.verdict)}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 font-mono text-[#888]">
@@ -376,7 +387,7 @@ export default async function ScorecardPage() {
                         <div>
                             <h4 className="text-[11px] font-mono uppercase tracking-widest text-[#555] mb-2">Disclaimer</h4>
                             <p className="text-[11px] text-[#555] leading-relaxed">
-                                Past performance does <span className="text-[#888]">not</span> guarantee future results. All signals are <span className="text-[#888]">AI-generated</span> and should not be the sole basis for investment decisions. OnlyAlpha is <span className="text-[#888]">not</span> a registered financial advisor. Always <span className="text-[#888]">do your own research (DYOR)</span>. <span className="text-[#888]">NFA — Not Financial Advice.</span>
+                                Past performance does <span className="text-[#888]">not</span> guarantee future results. All market scenarios are <span className="text-[#888]">AI-generated</span> and should not be the sole basis for investment decisions. OnlyAlpha is <span className="text-[#888]">not</span> a registered financial advisor. Always <span className="text-[#888]">do your own research (DYOR)</span>. <span className="text-[#888]">NFA — Not Financial Advice.</span>
                             </p>
                         </div>
                     </div>

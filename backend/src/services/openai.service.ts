@@ -377,8 +377,10 @@ export async function validateAirdropFromArticle(
     }
 
     const messages = prompts.buildAirdropFromArticleMessages(articleContext);
-    const result = await gateway.chat<AirdropArticleValidationResult>({
-        model: env.DEEPSEEK_MODEL,
+    const targetGateway = deepseekGateway || gateway;
+    const targetModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.DEEPSEEK_MODEL;
+    const result = await targetGateway.chat<AirdropArticleValidationResult>({
+        model: targetModel,
         temperature: 0.2,
         responseFormat: { type: 'json_object' },
         messages,

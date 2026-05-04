@@ -5,11 +5,22 @@
   Multi-agent AI system that transforms market chaos into actionable signals.
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-20%2B-339933?logo=node.js&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white" alt="Next.js" />
+  <img src="https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white" alt="Express" />
+  <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Redis-Optional-DC382D?logo=redis&logoColor=white" alt="Redis" />
+  <img src="https://img.shields.io/badge/Zero_any_Types-Enforced-22C55E" alt="Zero any Types" />
+</p>
+
 ---
 
 ## Table of Contents
 
 - [Philosophy](#philosophy)
+- [Screenshots](#screenshots)
 - [System Architecture](#system-architecture)
 - [Intelligence Pipeline](#intelligence-pipeline)
 - [Tech Stack](#tech-stack)
@@ -25,8 +36,11 @@
 - [Environment Variables](#environment-variables)
 - [Installation](#installation)
 - [Folder Structure](#folder-structure)
+- [Deployment Architecture](#deployment-architecture)
 - [Cost Optimization](#cost-optimization)
 - [Code Quality](#code-quality)
+- [Contributing](#contributing)
+- [License](#license)
 - [Changelog](#changelog)
 
 ---
@@ -52,6 +66,25 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 - **Incremental Conviction** — algorithmic score (0-100) with zero AI cost, decaying toward neutral over time
 - **Strategic Outlook** — forward-looking intelligence with short/long-term price targets, invalidation levels, and recommended actions
 - **Signal P&L** — every radar signal is tracked at 24h/7d/30d with win rates to measure real alpha
+
+---
+
+## Screenshots
+
+<p align="center">
+  <strong>Dashboard — Alpha Radar + Market Mood + Top Movers</strong><br>
+  <img src="homepage-full.png" alt="OnlyAlpha Dashboard" width="800" />
+</p>
+
+<p align="center">
+  <strong>Signal P&L Scorecard — Win Rates + Multi-Timeframe Tracking</strong><br>
+  <img src="scorecard-full.png" alt="OnlyAlpha Scorecard" width="800" />
+</p>
+
+<p align="center">
+  <strong>Airdrop Intelligence — AI Risk Assessment + Task Tracking</strong><br>
+  <img src="airdrops-full-page.png" alt="OnlyAlpha Airdrops" width="800" />
+</p>
 
 ---
 
@@ -88,12 +121,13 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 │  └───────────┘   └────────────┘   │                          │     │
 │                                   │  openai.service.ts       │     │
 │  ┌──────────────────────────┐     │  ├─ generateLightweight  │     │
-│  │     CRON JOBS (12 active)│────▶│  │    Triage()           │     │
+│  │     CRON JOBS (13 active)│────▶│  │    Triage()           │     │
 │  │  AiWorkflow       hourly │     │  ├─ PromptFactory        │     │
 │  │  TerminalEngine  */10min │     │  ├─ QualityAuditor       │     │
 │  │  TelegramMonitor */30min │     │  ├─ FactualGrounding     │     │
 │  │  SignalPerformance */6h  │     │  ├─ StrategicOutlook     │     │
-│  │  AirdropRSS       */6h   │     │  └─ AgentWorkflow        │     │
+│  │  AirdropRSS       */6h   │     │  ├─ SignalManager        │     │
+│  │  AirdropDiscovery */6h   │  │  └─ SignalManager        │     │
 │  │  AirdropHunter    */12h  │     └─────────────────────────┘     │
 │  └──────────────────────────┘                                      │
 │  Bootstrap Scripts:                                                 │
@@ -261,7 +295,6 @@ raw_news_buffer (processed=true, relevanceScore >= threshold)
 | rss-parser | v3.13+ | Direct RSS feed parsing (zero-cost news ingestion) |
 | request-ip | v3.3+ | Client IP extraction for rate limiting and security |
 | axios | v1.13+ | HTTP client for external API calls |
-| @langchain/langgraph | v1.2+ | Agent workflow orchestration (LangGraph StateGraph) for planner/coder/QA loops |
 | telegram (gram.js) | v2.26+ | Telegram MTProto client for direct channel scraping |
 
 ### Frontend
@@ -283,7 +316,7 @@ raw_news_buffer (processed=true, relevanceScore >= threshold)
 |---|---|---|
 | OpenRouter | Primary AI Gateway | Unified access to GPT-5-nano, GPT-4.1-mini, and DeepSeek (fallback) |
 | DeepSeek Direct | Primary Analysis Engine | Used directly for analysis, triage, and article writing when key is set |
-| GLM / Zhipu AI | Web Search + Agent Workflow | Planner + QA models for agent workflow; web_search tool for airdrop enrichment |
+| GLM / Zhipu AI | Web Search + Airdrop Enrichment | `web_search` tool for airdrop context enrichment |
 | OpenAI SDK | HTTP Client (v6.25+) | Compatible with all gateways (OpenRouter, DeepSeek, GLM) |
 | Telegram MTProto | Channel Monitoring | Direct channel scraping for news + airdrop signals (gram.js) |
 | Moralis | On-chain Data | Wallet and token tracking on-chain |
@@ -325,16 +358,10 @@ const writerGateway = new AIGateway({
     baseURL: 'https://openrouter.ai/api/v1',
 });
 
-// GLM/Zhipu — agent workflow (planner + coder + QA)
+// GLM/Zhipu — web search enrichment for airdrops
 const glmGateway = createGLMGateway({
     apiKey: env.GLM_API_KEY,
     baseURL: env.GLM_BASE_URL,  // https://open.bigmodel.cn/api/paas/v4
-});
-
-// Explicit OpenRouter factory (used by agent workflow coder node)
-const openRouterCoder = createOpenRouterGateway({
-    apiKey: env.OPENROUTER_API_KEY,
-    baseURL: 'https://openrouter.ai/api/v1',
 });
 ```
 
@@ -364,42 +391,8 @@ const openRouterCoder = createOpenRouterGateway({
 | Chat | OpenRouter | `gpt-4.1-mini` |
 | Quality Audit | DeepSeek Direct | `deepseek-chat` |
 | Embeddings | OpenRouter or Ollama | `text-embedding-3-small` / `nomic-embed-text` |
-| Agent Planner | GLM/Zhipu | `glm-4-plus` (`GLM_PLANNER_MODEL`) |
-| Agent QA | GLM/Zhipu | `glm-4-plus` (`GLM_QA_MODEL`) |
-| Agent Coder | OpenRouter | `meta-llama/llama-3-8b-instruct:free` (`OPENROUTER_CODER_MODEL`) |
 
 > **Isolated Backend Architecture:** All AI calls are handled exclusively via backend endpoints. The frontend never calls any AI service directly — no API keys, no SDKs, no client-side AI logic.
-
-### AgentWorkflow — LangGraph-Based Code Generation
-
-`services/ai/agent-workflow.ts`
-
-An iterative planner → coder → QA agent loop built on `@langchain/langgraph`:
-
-```
-Feature Request
-      │
-      ▼
-  ┌─ Planner (GLM/Zhipu) ─────────────────────────┐
-  │  Analyzes feature request → generates plan     │
-  └────────────────────┬───────────────────────────┘
-                       ▼
-  ┌─ Coder (OpenRouter) ──────────────────────────┐
-  │  Receives plan + feature request → writes code │
-  └────────────────────┬───────────────────────────┘
-                       ▼
-  ┌─ QA (GLM/Zhipu) ──────────────────────────────┐
-  │  Reviews generated code against plan           │
-  │  PASSED → return output                        │
-  │  FAILED → feedback → back to Coder (max 3x)    │
-  └────────────────────┬───────────────────────────┘
-                       ▼
-  Final Output: { plan, generatedCode, qaResult, iterationsUsed }
-```
-
-- Max 3 iterations per node, 6-second retry delay between attempts
-- Self-correcting: QA feedback is fed back to the Coder node automatically
-- Used for automated feature implementation tasks
 
 ### PromptFactory — Centralized Prompt Templates
 
@@ -534,6 +527,7 @@ const crons = [
     { name: 'AiWorkflow', fn: startAiWorkflowCron },
     { name: 'AirdropHunter', fn: startAirdropHunterCron },
     { name: 'AirdropRSSHunter', fn: startAirdropRSSCron },
+    { name: 'AirdropDiscovery', fn: startAirdropDiscoveryCron },
     { name: 'DailyAlpha', fn: startDailyAlphaCron },
     { name: 'HistoricalNews', fn: startHistoricalNewsCron },
     { name: 'MarketMood', fn: startMarketMoodCron },
@@ -559,6 +553,7 @@ crons.forEach((cron, index) => {
 | **ConvictionUpdate** | `0 */6 * * *` (every 6h) | `convictionUpdate.cron.ts` | Recalculates conviction scores with incremental delta + time decay |
 | **SignalPerformance** | `0 */6 * * *` (every 6h) | `signalPerformance.cron.ts` | Tracks P&L of radar signals at 24h/7d/30d intervals, calculates win rates |
 | **AirdropRSSHunter** | `0 */6 * * *` (every 6h) | `airdropRssHunter.cron.ts` | RSS-based airdrop discovery with Redis dedup + AI validation + GLM enrichment |
+| **AirdropDiscovery** | `0 */6 * * *` (every 6h) | `airdropDiscovery.cron.ts` | DeFiLlama + GLM/Z.ai web search discovery pipeline for airdrop projects |
 | **AirdropHunter** | `0 */12 * * *` (every 12h) | `airdropHunter.cron.ts` | Airdrop routine sync |
 | **DailyAlpha** | `0 6 * * *` (06:00 UTC) | `dailyAlpha.cron.ts` | Selects the strongest coin as "Alpha of the Day" (composite scoring) |
 | **MarketMood** | `0 7 * * *` (07:00 UTC) | `marketMood.cron.ts` | Blends external Fear & Greed with internal radar signals |
@@ -963,7 +958,7 @@ All variables are validated at startup via Zod (`config/env.ts`). The server **r
 | `JWT_SECRET` | `min(32)` | Min 32 characters |
 | `OPENROUTER_API_KEY` | `min(10)` | OpenRouter API key |
 | `MORALIS_API_KEY` | `min(1)` | Moralis API key for on-chain data |
-| `GLM_API_KEY` | `min(1)` | GLM/Zhipu AI API key (used for agent workflow + web search) |
+| `GLM_API_KEY` | `min(1)` | GLM/Zhipu AI API key (used for web search enrichment) |
 
 ### Optional
 
@@ -996,9 +991,6 @@ All variables are validated at startup via Zod (`config/env.ts`). The server **r
 | `TELEGRAM_API_HASH` | `''` | Telegram MTProto API hash (required for Telegram monitoring) |
 | `TELEGRAM_SESSION_STRING` | `''` | Telegram session string (required for Telegram monitoring) |
 | `GLM_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` | GLM API endpoint |
-| `GLM_PLANNER_MODEL` | `glm-4-plus` | Planner agent model for LangGraph workflow |
-| `GLM_QA_MODEL` | `glm-4-plus` | QA agent model for LangGraph workflow |
-| `OPENROUTER_CODER_MODEL` | `meta-llama/llama-3-8b-instruct:free` | Coder model for LangGraph agent workflow |
 
 ---
 
@@ -1089,7 +1081,7 @@ OnlyAlpha/
 │   │   │   ├── env.ts             ← Zod-validated env schema (server won't start if invalid)
 │   │   │   └── redis.ts           ← ioredis (lazy connect) + getCache/setCache/deleteCache
 │   │   │
-│   │   ├── crons/                 ← 12 scheduled task files (all active)
+│   │   ├── crons/                 ← 13 scheduled task files (all active)
 │   │   │   ├── aiWorkflow.cron.ts       ← Central intelligence pipeline (hourly)
 │   │   │   ├── triageEngine.cron.ts     ← Phase 1B: news classification (every 2h)
 │   │   │   ├── terminalEngine.cron.ts   ← Phase 1A: RSS gathering (every 10min)
@@ -1097,22 +1089,23 @@ OnlyAlpha/
 │   │   │   ├── convictionUpdate.cron.ts ← Incremental conviction scoring (every 6h)
 │   │   │   ├── signalPerformance.cron.ts← Signal P&L tracking (every 6h)
 │   │   │   ├── airdropRssHunter.cron.ts ← RSS-based airdrop discovery (every 6h)
+│   │   │   ├── airdropDiscovery.cron.ts ← DeFiLlama + Z.ai airdrop discovery (every 6h)
 │   │   │   ├── airdropHunter.cron.ts    ← Airdrop routine sync (every 12h)
 │   │   │   ├── marketMood.cron.ts       ← Composite Fear & Greed (07:00 UTC)
 │   │   │   ├── dailyAlpha.cron.ts       ← Daily spotlight selection (06:00 UTC)
 │   │   │   ├── historicalNews.cron.ts   ← Historical backfill (04:00 UTC)
 │   │   │   └── bufferCleanup.cron.ts    ← TTL cleanup (midnight)
 │   │   │
-│   │   ├── services/              ← 29 service files (23 top-level + 6 in ai/)
-│   │   │   ├── ai/                ← AI infrastructure layer (6 files)
+│   │   ├── services/              ← 30 service files (24 top-level + 5 in ai/)
+│   │   │   ├── ai/                ← AI infrastructure layer (5 files)
 │   │   │   │   ├── ai-gateway.ts        ← Multi-provider routing + streaming + timeout
-│   │   │   │   ├── agent-workflow.ts    ← LangGraph planner/coder/QA agent loop
 │   │   │   │   ├── cache-manager.ts     ← LRU in-memory cache (1h TTL, 1000 max)
 │   │   │   │   ├── prompt-factory.ts    ← All prompts centralized
 │   │   │   │   ├── quality-auditor.ts   ← Cross-model review (DeepSeek audits writer)
 │   │   │   │   └── factual-grounding.ts ← Hallucination filter (±50% price sanity)
 │   │   │   │
 │   │   │   ├── openai.service.ts        ← AI orchestration (triage/analysis/write/chat)
+│   │   │   ├── signalManager.service.ts ← Multi-timeframe signal management (upgrade/close/replace)
 │   │   │   ├── embedding.service.ts     ← pgvector embeddings generation + storage
 │   │   │   ├── similarity.service.ts    ← Dedup coordinator (embedding + keyword fallback)
 │   │   │   ├── conviction.service.ts    ← Algorithmic scoring engine
@@ -1125,6 +1118,7 @@ OnlyAlpha/
 │   │   │   ├── binance.service.ts       ← Market data + Fear & Greed
 │   │   │   ├── binanceHistory.service.ts← Historical price data
 │   │   │   ├── dexscreener.service.ts   ← DEX trending + liquidity
+│   │   │   ├── defillama.service.ts     ← DeFi protocol data (TVL, token info)
 │   │   │   ├── cryptopanic.service.ts   ← News aggregation (available, not wired)
 │   │   │   ├── rssNews.service.ts       ← RSS feed aggregator (4 sources, primary)
 │   │   │   ├── tavily.service.ts        ← Emergency web search (available, not wired)
@@ -1168,16 +1162,17 @@ OnlyAlpha/
 │   │   │   ├── user.routes.ts
 │   │   │   └── airdrop.routes.ts
 │   │   │
-│   │   ├── scripts/               ← Maintenance scripts
-│   │   │   ├── clean-duplicate-radars.ts   ← Deduplicate radar signals
-│   │   │   ├── repair-incomplete-articles.ts ← Auto-repair broken master articles
-│   │   │   ├── repair-meta-tags.ts         ← Auto-repair poor/generic meta titles
-│   │   │   ├── seed-historical-conviction.ts ← Historical conviction backfill
-│   │   │   ├── seed-master-articles.ts      ← Master article seeding
-│   │   │   ├── purge-data.ts                ← Clear all data
-│   │   │   ├── migrate-signal-performance.sql  ← signal_performance table migration
-│   │   │   ├── migrate-strategic-outlook.sql    ← strategic outlook tables migration
-│   │   │   └── migrate-airdrop-pipeline-runs.sql ← airdrop_pipeline_runs table migration
+│   │   ├── scripts/               ← Maintenance & migration scripts
+│   │   │   ├── clean-duplicate-radars.ts      ← Deduplicate radar signals
+│   │   │   ├── repair-incomplete-articles.ts  ← Auto-repair broken master articles
+│   │   │   ├── repair-meta-tags.ts            ← Auto-repair poor/generic meta titles
+│   │   │   ├── seed-historical-conviction.ts  ← Historical conviction backfill
+│   │   │   ├── seed-master-articles.ts       ← Master article seeding
+│   │   │   ├── purge-data.ts                  ← Clear all data
+│   │   │   ├── backfill-radar-from-news.ts    ← Radar signal backfill from published news
+│   │   │   ├── backfill-radar-now.ts          ← Live radar signal backfill
+│   │   │   ├── backfill-signal-performance.ts ← Signal P&L historical backfill
+│   │   │   └── reset-signal-performance.ts    ← Reset signal performance data
 │   │   │
 │   │   ├── utils/                 ← Utility modules (2 files)
 │   │   │   ├── logger.ts           ← Winston structured logging
@@ -1192,29 +1187,42 @@ OnlyAlpha/
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── app/                   ← Next.js App Router (10 page routes + 1 loading)
-│   │   │   ├── page.tsx                       ← Home / Dashboard
-│   │   │   ├── layout.tsx                     ← Root layout (Sidebar + TickerBar)
-│   │   │   ├── auth/page.tsx                  ← Login / Register
-│   │   │   ├── settings/page.tsx              ← Billing & Preferences
-│   │   │   ├── terminal/page.tsx              ← Terminal landing
-│   │   │   ├── terminal/[coin]/page.tsx       ← Coin terminal detail
-│   │   │   ├── terminal/[coin]/alpha/page.tsx ← Living Article view
-│   │   │   ├── airdrops/page.tsx              ← Airdrop listing
-│   │   │   ├── airdrops/[id]/page.tsx         ← Airdrop detail + tasks
-│   │   │   ├── archive/page.tsx               ← Article archive (year/month grouping)
-│   │   │   ├── archive/loading.tsx            ← Archive loading skeleton
-│   │   │   └── scorecard/page.tsx             ← Signal P&L scorecard
+│   │   ├── app/                   ← Next.js App Router (2 route groups, 15 page routes)
+│   │   │   ├── (standard)/            ← Standard layout (Sidebar + TickerBar + Footer)
+│   │   │   │   ├── page.tsx                  ← Home / Dashboard
+│   │   │   │   ├── auth/page.tsx             ← Login / Register
+│   │   │   │   ├── settings/page.tsx         ← Billing & Preferences
+│   │   │   │   ├── airdrops/page.tsx         ← Airdrop listing
+│   │   │   │   ├── airdrops/[id]/page.tsx    ← Airdrop detail + tasks
+│   │   │   │   ├── archive/page.tsx          ← Article archive (year/month grouping)
+│   │   │   │   ├── archive/loading.tsx       ← Archive loading skeleton
+│   │   │   │   ├── scorecard/page.tsx        ← Signal P&L scorecard
+│   │   │   │   ├── about/page.tsx            ← About OnlyAlpha
+│   │   │   │   ├── contact/page.tsx          ← Contact information
+│   │   │   │   ├── privacy/page.tsx          ← Privacy policy (GDPR/CCPA)
+│   │   │   │   ├── terms/page.tsx            ← Terms of service
+│   │   │   │   └── disclaimer/page.tsx       ← Legal disclaimer (NFA)
+│   │   │   │
+│   │   │   ├── (terminal)/           ← Terminal layout (full-screen, no Sidebar)
+│   │   │   │   ├── terminal/page.tsx         ← Terminal landing
+│   │   │   │   ├── terminal/[coin]/page.tsx  ← Coin terminal detail
+│   │   │   │   └── terminal/[coin]/alpha/page.tsx ← Living Article view
+│   │   │   │
+│   │   │   ├── layout.tsx                  ← Root layout (global providers)
+│   │   │   └── not-found.tsx               ← Custom 404 page
 │   │   │
-│   │   ├── features/              ← Feature-scoped modules (45 files)
-│   │   │   ├── shared/            ← TickerBar, Sidebar, SectionHeader, API client, ErrorBoundary
-│   │   │   ├── home/              ← RadarGrid, AlphaFocus, MarketMood, TopMovers,
-│   │   │   │                       AirdropWatchlist + api.ts + types.ts
-│   │   │   ├── terminal/          ← Chat, Wire, Chart, LivingArticle, Timeline, AlphaStream,
+│   │   ├── features/              ← Feature-scoped modules (50 files)
+│   │   │   ├── shared/            ← Footer, CookieBanner, TickerBar, Sidebar,
+│   │   │   │                       SectionHeader, ErrorBoundary + api/client.ts
+│   │   │   ├── home/              ← RadarGrid, AlphaFocusCard, MarketMoodGauge,
+│   │   │   │                       TopMovers, AirdropWatchlist + api.ts + types.ts
+│   │   │   ├── terminal/          ← TerminalChat, TerminalWire, TerminalChart,
+│   │   │   │                       LivingArticle, TimelineFeed, AlphaStream,
 │   │   │   │                       AlphaSnapshot, DeepDiveSection, DeepDiveSkeleton,
-│   │   │   │                       TerminalPageClient, MobileNav + hooks + api.ts + types.ts
+│   │   │   │                       TerminalPageClient, TerminalMobileNav
+│   │   │   │                       + hooks/ + api.ts + types.ts
 │   │   │   ├── settings/          ← PricingCards, WalletManager, ApiKeyManager,
-│   │   │   │                       PreferencesPanel, OgBadge + api.ts + types.ts + index.ts
+│   │   │   │                       PreferencesPanel, OgBadge + api.ts + types.ts
 │   │   │   ├── airdrop/           ← TaskList, AirdropsPageClient, AirdropDetailClient,
 │   │   │   │                       AiReportStructured, FarmingStreak + api.ts + types.ts
 │   │   │   └── archive/           ← ArchivePageClient + api.ts + types.ts
@@ -1272,7 +1280,6 @@ Four-tier strategy to minimize AI spend while maximizing intelligence quality:
 | Strategic Outlook | Only triggers on MAJOR events with impact >= 70 + structural criteria |
 | Conviction Score | Zero AI calls — pure algorithm |
 | Fallback Article Generation | Template-based fallback if all 3 AI attempts fail — no article lost |
-| Free Agent Coder | OpenRouter free-tier model (`llama-3-8b-instruct`) for agent workflow coder node |
 
 ---
 
@@ -1300,7 +1307,122 @@ Four-tier strategy to minimize AI spend while maximizing intelligence quality:
 
 ---
 
+## Deployment Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                     Netlify CDN                      │
+│              (Frontend — Next.js 16)                 │
+│         ISR + Static Export + Edge Functions         │
+└──────────────────────┬──────────────────────────────┘
+                       │  API Proxy (/api/*)
+┌──────────────────────▼──────────────────────────────┐
+│              Backend Server (Node.js 20)             │
+│          Express 5 + 13 Cron Jobs + SSE             │
+│                                                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
+│  │  PostgreSQL  │  │    Redis     │  │  AI APIs  │ │
+│  │  pgvector    │  │  (optional)  │  │  Multi-   │ │
+│  │  25 tables   │  │  Cache+Lock  │  │  Provider │ │
+│  └──────────────┘  └──────────────┘  └───────────┘ │
+└─────────────────────────────────────────────────────┘
+```
+
+### Frontend (Netlify)
+- **Deploy:** `netlify.toml` configures build + `@netlify/plugin-nextjs`
+- **ISR:** Living Articles use `revalidatePath()` with webhook secret for on-demand revalidation
+- **SEO:** Custom `sitemap.ts`, `robots.ts`, and `not-found.tsx`
+- **Legal:** 5 AdSense-compliant pages (Privacy, Terms, About, Contact, Disclaimer) + Cookie Consent Banner
+
+### Backend (Node.js)
+- **Entry:** `server.ts` — Express 5 with sequential cron boot (5s stagger)
+- **Graceful Shutdown:** `SIGTERM`/`SIGINT` → close DB pool + Redis + stop crons
+- **Health:** `GET /api/market/health` returns DB connection status + timestamp
+- **Concurrency:** In-memory `isRunning` flags + Redis mutex locks (AiWorkflow) prevent double-execution
+
+### Monitoring & Diagnostics
+- **Structured Logging:** Winston (debug/info/warn/error) with timestamp + level
+- **Pipeline Diagnostics:** `test-airdrop-pipeline.ts` — 7-section health check (ENV, RSS, DeFiLlama, GLM, Redis, DB, Cron)
+- **Bootstrap Repairs:** Auto-repair scripts run on startup (guarded by `migration_flags` table):
+  - Radar deduplication
+  - Incomplete article repair
+  - Meta tag quality repair
+
+---
+
+## Contributing
+
+1. **Fork** the repository
+2. **Create a feature branch:** `git checkout -b feature/your-feature`
+3. **Write code** following the project standards:
+   - Zero `any` types — use `unknown`, generics, or specific interfaces
+   - Routes → Controllers → Services (never skip layers)
+   - All prompts go in `services/ai/prompt-factory.ts`
+   - All AI calls go through `services/ai/ai-gateway.ts`
+   - All caching goes through `services/ai/cache-manager.ts`
+4. **Verify:** `cd backend && npx tsc --noEmit` — must be clean
+5. **Commit** with descriptive messages
+6. **Open a Pull Request**
+
+### Code Standards
+| Rule | Enforcement |
+|---|---|
+| Zero `any` types | `strict: true` + manual review |
+| No prompt strings in services | Centralized in `prompt-factory.ts` |
+| No direct AI SDK calls | Must go through `AIGateway` |
+| No circular imports | Isolated module boundaries |
+| No `console.log` | Winston logger only |
+| Backward compatibility | Existing exports must not break |
+
+---
+
+## License
+
+This project is **proprietary**. All rights reserved.
+
+---
+
 ## Changelog
+
+### Phase 22 — Airdrop Pipeline Resurrection (Apr 29, 2026)
+- Fixed 3 critical failures that killed airdrop discovery for 2+ days
+- Switched GLM web search from `glm-5-turbo` (timeout) to `glm-4.5-air` with `web_search` tool on coding endpoint
+- Registered `startAirdropDiscoveryCron` in `server.ts` (was imported but never started)
+- Relaxed `buildAirdropFromArticleMessages` and `buildAirdropValidationMessages` prompts for generous acceptance
+- Created `test-airdrop-pipeline.ts` diagnostic tool (7-section health check)
+- Expected throughput: 2-7 new projects/day (was 0)
+
+### Phase 21 — Multi-Timeframe Signal System & Scorecard Overhaul (Apr 29, 2026)
+- Planned: Smart signal management (upgrade/close/replace logic per coin)
+- New `signalManager.service.ts` for multi-timeframe signal lifecycle
+- SQL migration with data reconciliation for existing duplicate signals
+- Scorecard UI overhaul with proper dedup and win rate calculation
+
+### Phase 20 — AI Pipeline Quality Fix (Apr 27, 2026)
+- Coin memory injection into deep analysis prompts for richer context
+- Minor update overhaul with price data and timeline context
+- Model inversion fix across the pipeline
+- Memory fail-safe with try-catch, null-safe price mapping
+
+### Phase 19 — AdSense Legal Pages + Footer (Apr 26, 2026)
+- 5 new legal pages: Privacy, Terms, About, Contact, Disclaimer
+- New `Footer.tsx` component (site-wide, 5 links + dynamic year)
+- New `CookieBanner.tsx` (GDPR/CCPA compliant, localStorage persistence)
+- Conditional AdSense script injection in root layout
+- NFA disclaimer added to terminal and scorecard pages
+- Sitemap updated with 5 legal page entries
+
+### Phase 18 — Signal P&L Tracker / Scorecard (Apr 25, 2026)
+- New `signal_performance` table with 24h/7d/30d P&L tracking
+- New `signalPerformance.cron.ts` (every 6h)
+- New `/scorecard` page with aggregate win rates and per-signal breakdown
+- Radar signal entries linked to published news articles
+
+### Phase 17 — Telegram Pipeline + Z.ai Airdrop Enrichment (Apr 25, 2026)
+- New `telegram.service.ts` — MTProto channel scraping (4 news + 3 airdrop channels)
+- New `telegramMonitor.cron.ts` — Automated monitoring (*/30min news, */4h airdrops)
+- New `zhipuWebSearch.service.ts` — GLM/Zhipu web search + airdrop context enrichment
+- Built-in spam filter (8 patterns) blocking pump signals and scams
 
 ### Phase 16 — Airdrop Pipeline Fix & UX Empty States (Apr 25, 2026)
 - Replaced dead CoinMarketCap RSS with 5 verified sources (The Block, Decrypt, CoinDesk, CoinTelegraph, BeInCrypto)
