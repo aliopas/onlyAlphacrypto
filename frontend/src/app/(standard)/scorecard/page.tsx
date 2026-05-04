@@ -30,11 +30,15 @@ interface TacticalSignal {
     verdict: string;
     sentiment: string | null;
     entryPrice: number;
+    referencePrice?: number;
     entryAt: string;
     unrealizedPnl: number | null;
+    unrealizedDrift?: number | null;
     currentPrice: number | null;
     stopLossPrice: number | null;
+    riskZonePrice?: number | null;
     takeProfitPrice: number | null;
+    targetZonePrice?: number | null;
 }
 
 interface StrategicStance {
@@ -43,6 +47,7 @@ interface StrategicStance {
     marketPhase: string | null;
     bullRunProbability: number | null;
     recommendedAction: string | null;
+    marketStance?: string | null;
     updatedAt: string | null;
 }
 
@@ -61,11 +66,15 @@ interface ClosedSignal {
 
 interface OverallStats {
     activePositions: number;
+    activeScenarios?: number;
     totalClosed: number;
     wins: number;
     winRate: number | null;
+    outcomeRate?: number | null;
     avgRealizedPnl: number | null;
+    avgScenarioOutcome?: number | null;
     bestTrade: ClosedSignal | null;
+    bestOutcome?: ClosedSignal | null;
 }
 
 interface ScorecardData {
@@ -203,7 +212,7 @@ export default async function ScorecardPage() {
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                         <div className="text-xs text-[#666] mb-1">Active Scenarios</div>
-                        <div className="text-2xl font-mono font-bold">{data.overall.activePositions}</div>
+                        <div className="text-2xl font-mono font-bold">{data.overall.activeScenarios ?? data.overall.activePositions}</div>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                         <div className="text-xs text-[#666] mb-1">Completed Scenarios</div>
@@ -212,23 +221,26 @@ export default async function ScorecardPage() {
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                         <div className="text-xs text-[#666] mb-1">Outcome Rate</div>
                         <div className="text-2xl font-mono font-bold">
-                            {data.overall.winRate !== null ? `${data.overall.winRate}%` : '—'}
+                            {(data.overall.outcomeRate ?? data.overall.winRate) !== null ? `${data.overall.outcomeRate ?? data.overall.winRate}%` : '—'}
                         </div>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
-                        <div className="text-xs text-[#666] mb-1">Avg Outcome</div>
-                        <div className={`text-2xl font-mono font-bold ${pnlClass(data.overall.avgRealizedPnl)}`}>
-                            {data.overall.avgRealizedPnl !== null ? pnlFormat(data.overall.avgRealizedPnl) : '—'}
+                        <div className="text-xs text-[#666] mb-1">Avg Scenario Outcome</div>
+                        <div className={`text-2xl font-mono font-bold ${pnlClass(data.overall.avgScenarioOutcome ?? data.overall.avgRealizedPnl)}`}>
+                            {(data.overall.avgScenarioOutcome ?? data.overall.avgRealizedPnl) !== null ? pnlFormat(data.overall.avgScenarioOutcome ?? data.overall.avgRealizedPnl) : '—'}
                         </div>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                         <div className="text-xs text-[#666] mb-1">Best Outcome</div>
                         <div className="text-lg font-mono font-bold">
-                            {data.overall.bestTrade ? (
-                                <span className={pnlClass(data.overall.bestTrade.realizedPnl)}>
-                                    {data.overall.bestTrade.coinSymbol} {pnlFormat(data.overall.bestTrade.realizedPnl)}
-                                </span>
-                            ) : '—'}
+                            {(() => {
+                                const best = data.overall.bestOutcome ?? data.overall.bestTrade;
+                                return best ? (
+                                    <span className={pnlClass(best.realizedPnl)}>
+                                        {best.coinSymbol} {pnlFormat(best.realizedPnl)}
+                                    </span>
+                                ) : '—';
+                            })()}
                         </div>
                     </div>
                 </div>
@@ -242,10 +254,10 @@ export default async function ScorecardPage() {
                                 <tr className="bg-[#111] text-[#666] text-xs uppercase tracking-wider">
                                     <th className="text-left px-4 py-3 font-medium">Coin</th>
                                     <th className="text-left px-4 py-3 font-medium">Bias</th>
-                                    <th className="text-right px-4 py-3 font-medium">Reference $</th>
+                                    <th className="text-right px-4 py-3 font-medium">Reference Price</th>
                                     <th className="text-right px-4 py-3 font-medium">Risk Zone</th>
                                     <th className="text-right px-4 py-3 font-medium">Target Zone</th>
-                                    <th className="text-right px-4 py-3 font-medium">Current $</th>
+                                    <th className="text-right px-4 py-3 font-medium">Current Price</th>
                                     <th className="text-right px-4 py-3 font-medium">Drift</th>
                                     <th className="text-right px-4 py-3 font-medium">Since</th>
                                 </tr>
@@ -269,11 +281,11 @@ export default async function ScorecardPage() {
                                                     {verdictLabel(row.verdict)}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3 text-right font-mono">{formatPrice(row.entryPrice)}</td>
-                                            <td className="px-4 py-3 text-right font-mono text-[#666]">{formatPrice(row.stopLossPrice)}</td>
-                                            <td className="px-4 py-3 text-right font-mono text-[#666]">{formatPrice(row.takeProfitPrice)}</td>
-                                            <td className="px-4 py-3 text-right font-mono">{formatPrice(row.currentPrice)}</td>
-                                            <td className={`px-4 py-3 text-right font-mono ${pnlClass(row.unrealizedPnl)}`}>{pnlFormat(row.unrealizedPnl)}</td>
+                                             <td className="px-4 py-3 text-right font-mono">{formatPrice(row.referencePrice ?? row.entryPrice)}</td>
+                                             <td className="px-4 py-3 text-right font-mono text-[#666]">{formatPrice(row.riskZonePrice ?? row.stopLossPrice)}</td>
+                                             <td className="px-4 py-3 text-right font-mono text-[#666]">{formatPrice(row.targetZonePrice ?? row.takeProfitPrice)}</td>
+                                             <td className="px-4 py-3 text-right font-mono">{formatPrice(row.currentPrice)}</td>
+                                             <td className={`px-4 py-3 text-right font-mono ${pnlClass(row.unrealizedDrift ?? row.unrealizedPnl)}`}>{pnlFormat(row.unrealizedDrift ?? row.unrealizedPnl)}</td>
                                             <td className="px-4 py-3 text-right font-mono text-[#888]">{timeAgo(row.entryAt)}</td>
                                         </tr>
                                     ))
@@ -294,7 +306,7 @@ export default async function ScorecardPage() {
                                         <th className="text-left px-4 py-3 font-medium">Coin</th>
                                         <th className="text-left px-4 py-3 font-medium">Wyckoff Phase</th>
                                         <th className="text-left px-4 py-3 font-medium">Bull Probability</th>
-                                        <th className="text-left px-4 py-3 font-medium">Action</th>
+                                        <th className="text-left px-4 py-3 font-medium">Market Stance</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -322,7 +334,7 @@ export default async function ScorecardPage() {
                                                     </div>
                                                 ) : '—'}
                                             </td>
-                                            <td className="px-4 py-3 text-[#888]">{row.recommendedAction || '—'}</td>
+                                             <td className="px-4 py-3 text-[#888]">{(row.marketStance ?? row.recommendedAction) || '—'}</td>
                                         </tr>
                                     ))}
                                 </tbody>
