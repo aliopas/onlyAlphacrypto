@@ -1,3 +1,1173 @@
+# Phase 2 — Full Event Impact Engine
+
+**Status:** PLANNED — Ready for execution after Phase 1 code tasks complete
+**Date:** May 4, 2026
+**Priority:** P1 (Transforms passive data collection into active intelligence engine)
+**Scope:** 1 new service, 1 new API endpoint, 2 modified files (prompts + workflow), 1 new env flag, 1 optional migration, 1 documentation update, 1 QA checklist
+**Prerequisites:** Phase 6A (complete) + Phase 6B (complete) + Phase 1 (code tasks pending)
+**Authorized By:** Strategic Planner — May 4, 2026
+
+## OBJECTIVE
+
+Transform Event Impact from passive data collection into an **active intelligence engine** that provides:
+
+1. **Historical event comparison** — When a new event happens, find similar past events and return their statistical outcomes from `event_impact_outcomes`
+2. **Event impact statistics API** — Internal/admin endpoint to query impact stats from the new tables
+3. **Extended event taxonomy** — Add macro, personality, whale event types to classification prompts
+4. **AI workflow stats integration** — Inject real historical stats into AI analysis prompts (behind a flag)
+5. **Classification confidence scoring** — Add a confidence score (0-1) to event classification output
+
+## ARCHITECTURE OVERVIEW
+
+```
+event_impacts + event_impact_outcomes (Phase 6B tables, growing dataset)
+          │
+          ├──► historicalEventComparison.service.ts (NEW — T-2.1)
+          │       ├── Queries similar past events by eventType, coinSymbol, eventSeverity
+          │       ├── Returns statistical summary from real outcomes data
+          │       └── Used by: AI workflow stats injection + admin API
+          │
+          ├──► Event Impact Stats API (NEW — T-2.2)
+          │       ├── GET /api/market/event-impact-stats (authMiddleware protected)
+          │       ├── Query params: eventType, coinSymbol, horizon, eventSeverity
+          │       └── Read-only from event_impacts + event_impact_outcomes
+          │
+          └──► AI Workflow Integration (MODIFY — T-2.4)
+                  ├── Before DeepSeek analysis, query historicalEventComparison
+                  ├── Format stats as prompt context via prompt-factory
+                  ├── AI explains DB stats, does NOT invent history
+                  └── Behind EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED=false flag
+```
+
+## PHASE 2 SCOPE LIMITATIONS
+
+**Allowed:**
+- Create `historicalEventComparison.service.ts` (new file)
+- Create event impact stats API endpoint (new handler + route)
+- Extend event taxonomy in `prompt-factory.ts` (modify existing)
+- Extend `TRIGGER_TYPE_MAP` + `selectTone()` in `aiWorkflow.cron.ts` (modify existing)
+- Integrate stats into AI workflow in `aiWorkflow.cron.ts` (modify existing, behind flag)
+- Add `buildHistoricalEventContext()` to `prompt-factory.ts` (new function, behind flag)
+- Add classification confidence output to `openai.service.ts` triage result
+- Optional: ALTER TABLE for `classification_confidence` column on `event_impacts`
+- Add 1 new env flag: `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED`
+
+**Forbidden:**
+- Modify `coin_news_history` schema
+- Modify Living Articles rendering logic
+- Modify public-facing UI components
+- Modify scorecard system
+- Add new paid external APIs
+- Use prediction/forecasting language in outputs
+- Modify `eventImpactAnalysis.service.ts` (Phase 6A, untouched)
+- Modify `eventImpactPersistence.service.ts` (Phase 6B, untouched)
+- Commit or push before QA PASS
+
+## IMPORTANT DESIGN PRINCIPLES
+
+1. **AI must explain database stats, not invent history.** All historical context injected into prompts MUST come from real `event_impact_outcomes` rows.
+2. **Historical context must come from real data.** No fabricated statistics. If no data exists, the prompt must say "No historical data available for this event type."
+3. **Insufficient data guard.** If sample size < 5 for a comparison query, the system MUST return "insufficient_data" status instead of unreliable statistics.
+4. **All public-facing language must be policy-safe.** Use terms from Phase 6A T-6A.5 (historical observed movement, historical pattern, etc.). Never use buy/sell/take profit/stop loss.
+5. **Stats injection is optional and behind a flag.** `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` defaults to `false`. When disabled, the AI workflow behaves exactly as before Phase 2.
+6. **Backward compatibility mandatory.** Existing triage/classification must still work with old event types. New types extend the taxonomy, not replace it.
+
+## EXECUTION ORDER
+
+```
+T-2.6 (env flag) ─────────────────────────┐
+                                             ├── T-2.1 (comparison service) ──┐
+                                             │                                 ├── T-2.2 (API endpoint)
+T-2.3 (taxonomy in prompts + workflow) ─────┤                                 │
+                                             │                                 ├── T-2.4 (AI stats injection)
+                                             │                                 │
+                                             └─────────────────────────────────┘
+                                                                       │
+                                                                       ├── T-2.5 (confidence field)
+                                                                       │
+                                                                       ├── T-2.7 (docs update)
+                                                                       └── T-2.8 (QA checklist)
+```
+
+T-2.6 and T-2.3 can run in parallel (independent).
+T-2.1 depends on nothing new (reads existing tables).
+T-2.2 depends on T-2.1 (uses the comparison service).
+T-2.4 depends on T-2.1 + T-2.3 + T-2.6.
+T-2.5 is independent (can run in parallel with T-2.4).
+T-2.7 and T-2.8 after all code tasks.
+
+---
+
+## REQUIRED TASKS
+
+### T-2.1 — Historical Event Comparison Service
+
+**Task ID:** T-2.1
+**Phase:** Phase 2 — Full Event Impact Engine
+**Assigned Agent:** Senior Developer
+**Status:** Pending
+
+**Objective:**
+Create `backend/src/services/historicalEventComparison.service.ts` — a service that, given a new event (eventType, coinSymbol, eventSeverity), queries `event_impacts` + `event_impact_outcomes` to find similar past events and returns statistical summaries of their real outcomes.
+
+**Files to inspect:**
+- `backend/src/models/market.model.ts` — `eventImpacts` table (lines 464-484) and `eventImpactOutcomes` table (lines 487-510)
+- `backend/src/services/eventImpactAnalysis.service.ts` — reference for calculation patterns (calculateMedian, calculateRates)
+- `backend/src/services/eventImpactPersistence.service.ts` — reference for Drizzle query patterns and types
+
+**Files allowed to create:**
+- `backend/src/services/historicalEventComparison.service.ts` (new file)
+
+**Forbidden files:**
+- Any existing service files (read-only reference only)
+- Any cron files
+- Any controller/route files
+- Any model files
+
+**Constraints:**
+- ZERO `any` types
+- Read-only queries from `event_impacts` and `event_impact_outcomes` only
+- No external API calls
+- No AI calls
+- Insufficient data guard: return `insufficient_data` if sample size < 5
+- Must use `event_impact_outcomes.status = 'completed'` to filter only verified outcomes
+
+**Design specification:**
+
+1. **Input interface:**
+```typescript
+interface HistoricalComparisonInput {
+    eventType: string;           // e.g. 'Hack', 'ETF', 'Regulatory'
+    coinSymbol?: string;         // optional — filter to same coin
+    eventSeverity?: number;      // optional — filter to same severity (±1 range)
+    horizon?: string;            // optional — specific horizon ('1h','4h','24h','3d','7d')
+    maxResults?: number;         // default 50
+}
+```
+
+2. **Output interface:**
+```typescript
+interface HistoricalComparisonResult {
+    status: 'success' | 'insufficient_data' | 'no_data';
+    sampleSize: number;
+    filters: {
+        eventType: string;
+        coinSymbol: string | null;
+        eventSeverityRange: [number | null, number | null];
+    };
+    summary: {
+        totalEvents: number;
+        distinctCoins: number;
+        dateRange: { earliest: string | null; latest: string | null };
+    } | null;
+    horizonStats: {
+        horizon: string;
+        sampleSize: number;
+        medianChange: number | null;
+        avgChange: number | null;
+        positiveRate: number | null;
+        negativeRate: number | null;
+        avgMaxUpside: number | null;
+        avgMaxDrawdown: number | null;
+        avgTimeToPeak: number | null;
+        avgTimeToBottom: number | null;
+    }[] | null;
+    severityBreakdown: {
+        severity: number;
+        count: number;
+        medianChange24h: number | null;
+    }[] | null;
+    topCoins: {
+        coinSymbol: string;
+        count: number;
+        medianChange24h: number | null;
+    }[] | null;
+    contextString: string | null;
+}
+```
+
+3. **Core query logic:**
+```typescript
+// Step 1: Find similar event_impacts (same eventType, optionally same coin)
+// Step 2: JOIN with event_impact_outcomes WHERE status='completed'
+// Step 3: Group by horizon, calculate stats
+// Step 4: If sampleSize < 5, return insufficient_data
+// Step 5: Generate a human-readable contextString for prompt injection
+```
+
+4. **Context string format (for prompt injection in T-2.4):**
+```
+"Historical context for {eventType} events ({sampleSize} similar events found):
+- Median 24h price movement: {medianChange24h}%
+- Positive outcome rate (24h): {positiveRate24h}%
+- Average max upside (24h): {avgMaxUpside24h}%
+- Average max drawdown (24h): {avgMaxDrawdown24h}%
+- Most affected coins: {topCoins}
+Data sourced from OnlyAlpha event impact database. Not financial advice."
+```
+
+5. **Exported functions:**
+- `compareWithHistoricalEvents(input: HistoricalComparisonInput): Promise<HistoricalComparisonResult>`
+- `buildHistoricalContextString(input: HistoricalComparisonInput): Promise<string>` — convenience wrapper that returns just the contextString
+
+**Step-by-step instructions for Senior Developer:**
+
+1. Create `backend/src/services/historicalEventComparison.service.ts`
+2. Import: db, Drizzle operators (eq, and, lte, gte, sql, desc, asc), eventImpacts, eventImpactOutcomes from models
+3. Define input/output TypeScript interfaces (zero `any`)
+4. Reuse `calculateMedian()` pattern from eventImpactAnalysis.service.ts (copy the helper function — do NOT import from it to keep files independent)
+5. Implement `compareWithHistoricalEvents()`:
+   a. Build WHERE clause: `eventType` match, optional `coinSymbol` match, optional `eventSeverity` range (±1)
+   b. Query `event_impacts` with LEFT JOIN to `event_impact_outcomes`
+   c. Filter outcomes to `status = 'completed'` only
+   d. Group by horizon, calculate stats per horizon
+   e. Calculate severity breakdown and top coins
+   f. If sampleSize < 5, return `status: 'insufficient_data'`
+   g. If no rows, return `status: 'no_data'`
+   h. Generate `contextString` from calculated stats
+6. Implement `buildHistoricalContextString()` as convenience wrapper
+7. Export both functions + all interfaces
+
+**Acceptance criteria:**
+- Service compiles with zero `any` types
+- Queries only `event_impacts` + `event_impact_outcomes` (no other tables)
+- Returns `insufficient_data` when sample size < 5
+- Returns `no_data` when zero matching events
+- Context string is policy-safe (no buy/sell/prediction language)
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] File created at correct path
+- [ ] Zero `any` types
+- [ ] Input interface with all fields (eventType required, others optional)
+- [ ] Output interface with status field ('success'|'insufficient_data'|'no_data')
+- [ ] Query uses event_impacts + event_impact_outcomes (no other tables)
+- [ ] WHERE: eventType match, optional coinSymbol, optional eventSeverity ±1 range
+- [ ] JOIN: outcomes filtered to status='completed'
+- [ ] Sample size < 5 returns insufficient_data
+- [ ] Zero results returns no_data
+- [ ] Per-horizon stats: median, avg, positive/negative rate, max upside/drawdown, time to peak/bottom
+- [ ] Severity breakdown calculated
+- [ ] Top coins breakdown calculated
+- [ ] contextString generated in policy-safe format
+- [ ] NFA disclaimer in context string
+- [ ] buildHistoricalContextString convenience wrapper exported
+- [ ] No external API calls
+- [ ] No AI calls
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** None (reads existing tables only)
+
+**Rollback notes:**
+- Delete `backend/src/services/historicalEventComparison.service.ts`
+
+---
+
+### T-2.2 — Event Impact Stats API Endpoint
+
+**Task ID:** T-2.2
+**Phase:** Phase 2 — Full Event Impact Engine
+**Assigned Agent:** Senior Developer
+**Status:** Pending
+
+**Objective:**
+Create an internal/admin API endpoint for querying event impact statistics. Read-only from `event_impacts` and `event_impact_outcomes`. Protected by `authMiddleware`.
+
+**Files to inspect:**
+- `backend/src/controllers/market.controller.ts` — reference for controller pattern, existing endpoints
+- `backend/src/routes/market.routes.ts` — route registration pattern (line 25 for authMiddleware usage)
+- `backend/src/services/historicalEventComparison.service.ts` (from T-2.1) — the service this endpoint wraps
+
+**Files allowed to modify:**
+- `backend/src/controllers/market.controller.ts` (add new handler)
+- `backend/src/routes/market.routes.ts` (add new route)
+
+**Forbidden files:**
+- Any service files
+- Any cron files
+- Any frontend files
+
+**Constraints:**
+- Read-only endpoint (GET only)
+- Protected by `authMiddleware` (not public)
+- Uses `historicalEventComparison.service.ts` (from T-2.1) for data
+- Input validation on query params
+- Rate limited via existing `apiLimiter` pattern
+
+**Design specification:**
+
+1. **Endpoint:** `GET /api/market/event-impact-stats`
+
+2. **Query parameters:**
+   - `eventType` (required) — e.g. `Hack`, `ETF`, `Regulatory`
+   - `coinSymbol` (optional) — e.g. `BTC`, `ETH`
+   - `eventSeverity` (optional) — integer 1-5
+   - `horizon` (optional) — `1h`, `4h`, `24h`, `3d`, `7d`
+
+3. **Handler pattern (following existing market.controller.ts style):**
+```typescript
+export async function getEventImpactStatsHandler(req: Request, res: Response): Promise<void> {
+    // 1. Validate required params (eventType)
+    // 2. Build HistoricalComparisonInput from query params
+    // 3. Call compareWithHistoricalEvents(input)
+    // 4. Return JSON response with proper status codes
+    // 5. Handle errors with proper error responses
+}
+```
+
+4. **Route registration (in market.routes.ts):**
+```typescript
+router.get('/event-impact-stats', authMiddleware, getEventImpactStatsHandler);
+```
+
+**Step-by-step instructions for Senior Developer:**
+
+1. Open `backend/src/controllers/market.controller.ts`
+2. Add import for `compareWithHistoricalEvents` from `../services/historicalEventComparison.service`
+3. Implement `getEventImpactStatsHandler`:
+   a. Extract query params: eventType (required), coinSymbol, eventSeverity, horizon
+   b. Validate eventType is non-empty string — return 400 if missing
+   c. Parse eventSeverity as integer if provided (return 400 if invalid)
+   d. Validate horizon against allowed values if provided
+   e. Call `compareWithHistoricalEvents({ eventType, coinSymbol, eventSeverity, horizon })`
+   f. Return `res.json(result)` with 200 status
+   g. Wrap in try/catch — return 500 on error
+4. Open `backend/src/routes/market.routes.ts`
+5. Add import for `getEventImpactStatsHandler` from market.controller
+6. Add route: `router.get('/event-impact-stats', authMiddleware, getEventImpactStatsHandler);`
+7. Verify `tsc --noEmit` clean
+
+**Acceptance criteria:**
+- GET /api/market/event-impact-stats?eventType=Hack returns 200 with stats
+- Missing eventType returns 400
+- Invalid eventSeverity returns 400
+- Invalid horizon returns 400
+- AuthMiddleware protects the endpoint
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] Handler added to market.controller.ts
+- [ ] Route added to market.routes.ts with authMiddleware
+- [ ] eventType validation (required, non-empty string)
+- [ ] eventSeverity validation (optional, integer 1-5)
+- [ ] horizon validation (optional, one of 1h/4h/24h/3d/7d)
+- [ ] coinSymbol passed through (optional)
+- [ ] 400 on missing eventType
+- [ ] 400 on invalid eventSeverity
+- [ ] 400 on invalid horizon
+- [ ] 200 on valid request with stats data
+- [ ] 500 on unexpected error
+- [ ] authMiddleware applied
+- [ ] Uses historicalEventComparison.service.ts (not direct DB queries)
+- [ ] No `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-2.1 (comparison service must exist)
+
+**Rollback notes:**
+- Remove handler from market.controller.ts
+- Remove route from market.routes.ts
+
+---
+
+### T-2.3 — Extended Event Taxonomy
+
+**Task ID:** T-2.3
+**Phase:** Phase 2 — Full Event Impact Engine
+**Assigned Agent:** Senior Developer
+**Status:** Pending
+
+**Objective:**
+Extend the event classification taxonomy in `prompt-factory.ts` and `aiWorkflow.cron.ts` to support macro, personality, whale, and on-chain event types. Must be backward compatible with existing types.
+
+**Files to inspect:**
+- `backend/src/services/ai/prompt-factory.ts` — triage prompt (line 109) and deep analysis prompt (line 277)
+- `backend/src/crons/aiWorkflow.cron.ts` — TRIGGER_TYPE_MAP (lines 38-48) and selectTone() (lines 54-75)
+- `backend/src/services/openai.service.ts` — TriageResult interface (lines 237-246)
+
+**Files allowed to modify:**
+- `backend/src/services/ai/prompt-factory.ts` (extend event type list in prompts)
+- `backend/src/crons/aiWorkflow.cron.ts` (extend TRIGGER_TYPE_MAP and selectTone)
+
+**Forbidden files:**
+- `openai.service.ts` (TriageResult interface change is T-2.5 scope)
+- Any model files
+- Any controller/route files
+- Any frontend files
+
+**Constraints:**
+- BACKWARD COMPATIBLE: all existing types (ETF, Hack, Exploit, Listing, Delisting, Upgrade, TokenLaunch, Regulatory, Funding, Partnership, Other) must remain valid
+- New types added to the END of the list (existing AI outputs still parse correctly)
+- Both triage prompt AND deep analysis prompt must be updated (currently out of sync — triage has Exploit/Delisting/TokenLaunch, deep analysis does not)
+- TRIGGER_TYPE_MAP must cover all new types
+- selectTone() must handle all new types
+
+**New event types to add:**
+
+| Category | New Type | Description | TRIGGER_TYPE_MAP Value | Tone |
+|---|---|---|---|---|
+| Macro | Fed_Rate | Federal Reserve rate decisions | macro | cautious |
+| Macro | CPI | CPI/inflation data releases | macro | analytical |
+| Macro | Geopolitical | Wars, elections, sanctions | macro | cautious |
+| Personality | Influencer_Statement | Elon Musk, CZ, Vitalik tweets/statements | personality | exciting |
+| Corporate | Executive_Change | CEO resignation, team departure | corporate | analytical |
+| Whale | Large_Transfer | Significant whale wallet movements | whale | analytical |
+| Protocol | Token_Unlock | Token unlock/vesting events | protocol | analytical |
+| Exchange | Exchange_Netflow | Exchange inflow/outflow anomalies | whale | analytical |
+
+**Current event type list (triage, line 109):**
+```
+ETF|Hack|Exploit|Listing|Delisting|Upgrade|TokenLaunch|Regulatory|Funding|Partnership|Other
+```
+
+**Current event type list (deep analysis, line 277):**
+```
+ETF|Hack|Listing|Upgrade|Partnership|Funding|Regulatory|Other
+```
+
+**New event type list (both prompts, synchronized):**
+```
+ETF|Hack|Exploit|Listing|Delisting|Upgrade|TokenLaunch|Regulatory|Funding|Partnership|Fed_Rate|CPI|Geopolitical|Influencer_Statement|Executive_Change|Large_Transfer|Token_Unlock|Exchange_Netflow|Other
+```
+
+**Updated TRIGGER_TYPE_MAP:**
+```typescript
+const TRIGGER_TYPE_MAP: Record<string, string> = {
+    // Existing
+    'Hack': 'security',
+    'Exploit': 'security',
+    'ETF': 'regulation',
+    'Regulatory': 'regulation',
+    'Listing': 'market',
+    'Delisting': 'market',
+    'Funding': 'whale',
+    'Partnership': 'news',
+    'Upgrade': 'technical',
+    'TokenLaunch': 'market',
+    // New
+    'Fed_Rate': 'macro',
+    'CPI': 'macro',
+    'Geopolitical': 'macro',
+    'Influencer_Statement': 'personality',
+    'Executive_Change': 'corporate',
+    'Large_Transfer': 'whale',
+    'Token_Unlock': 'protocol',
+    'Exchange_Netflow': 'whale',
+};
+```
+
+**Updated selectTone() additions:**
+```typescript
+// Add these cases before the default:
+'Fed_Rate': 'cautious',
+'CPI': 'analytical',
+'Geopolitical': 'cautious',
+'Influencer_Statement': 'exciting',
+'Executive_Change': 'analytical',
+'Large_Transfer': 'analytical',
+'Token_Unlock': 'analytical',
+'Exchange_Netflow': 'analytical',
+```
+
+**Step-by-step instructions for Senior Developer:**
+
+1. Open `backend/src/services/ai/prompt-factory.ts`
+2. At line 109 (triage prompt): Replace the eventType enum with the full synchronized list
+3. At line 277 (deep analysis prompt): Replace the eventType enum with the full synchronized list (also fixes the existing out-of-sync bug — adds back Exploit, Delisting, TokenLaunch)
+4. Open `backend/src/crons/aiWorkflow.cron.ts`
+5. At lines 38-48 (TRIGGER_TYPE_MAP): Add all 8 new type mappings
+6. At lines 54-75 (selectTone): Add all 8 new type tone mappings
+7. Verify `tsc --noEmit` clean
+8. Verify both prompts now have IDENTICAL event type lists
+
+**Acceptance criteria:**
+- Both prompts have identical event type lists (18 types)
+- New types: Fed_Rate, CPI, Geopolitical, Influencer_Statement, Executive_Change, Large_Transfer, Token_Unlock, Exchange_Netflow
+- All existing types preserved
+- TRIGGER_TYPE_MAP covers all 18 types
+- selectTone() handles all 18 types (17 explicit + default)
+- Deep analysis prompt now includes Exploit, Delisting, TokenLaunch (bug fix)
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] Triage prompt eventType list has all 18 types
+- [ ] Deep analysis prompt eventType list has all 18 types
+- [ ] Both lists are IDENTICAL (synchronized)
+- [ ] Existing 11 types preserved: ETF, Hack, Exploit, Listing, Delisting, Upgrade, TokenLaunch, Regulatory, Funding, Partnership, Other
+- [ ] New 8 types added: Fed_Rate, CPI, Geopolitical, Influencer_Statement, Executive_Change, Large_Transfer, Token_Unlock, Exchange_Netflow
+- [ ] Deep analysis prompt bug fixed (now includes Exploit, Delisting, TokenLaunch)
+- [ ] TRIGGER_TYPE_MAP has all 18 entries
+- [ ] selectTone() has all 18 cases (17 explicit + default)
+- [ ] No `any` types introduced
+- [ ] `tsc --noEmit` clean
+- [ ] No other lines modified in prompt-factory.ts
+- [ ] No other lines modified in aiWorkflow.cron.ts
+
+**Dependencies:** None
+
+**Rollback notes:**
+- Revert eventType lists to original values in both prompts
+- Revert TRIGGER_TYPE_MAP to original 10 entries
+- Revert selectTone() to original cases
+
+---
+
+### T-2.4 — AI Workflow Stats Integration
+
+**Task ID:** T-2.4
+**Phase:** Phase 2 — Full Event Impact Engine
+**Assigned Agent:** Senior Developer
+**Status:** Pending
+
+**Objective:**
+Integrate real historical event stats into the AI workflow. Before generating DeepSeek analysis, query `historicalEventComparison.service.ts` and inject the context string into the analysis prompt. Entirely behind `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` flag (default false).
+
+**Files to inspect:**
+- `backend/src/crons/aiWorkflow.cron.ts` — lines 216-229 (existing historicalStats injection), lines 345-353 (callDeepSeekAnalysis call), lines 233-294 (full analysis section)
+- `backend/src/services/ai/prompt-factory.ts` — `buildDeepAnalysisMessages()` (line 264), `buildHistoricalStatsContext()` (line 338)
+- `backend/src/services/openai.service.ts` — `callDeepSeekAnalysis()` signature
+- `backend/src/services/historicalEventComparison.service.ts` (from T-2.1) — `buildHistoricalContextString()`
+
+**Files allowed to modify:**
+- `backend/src/crons/aiWorkflow.cron.ts` (add stats query + injection)
+- `backend/src/services/ai/prompt-factory.ts` (add `buildEventImpactContext()` function)
+
+**Forbidden files:**
+- `openai.service.ts` (no changes to analysis function signature)
+- Any model files
+- Any controller/route files
+- Any frontend files
+
+**Constraints:**
+- Entirely behind `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` flag (default false)
+- When flag is false: ZERO behavioral change to existing workflow
+- Stats come ONLY from `event_impact_outcomes` via the comparison service
+- If comparison returns `insufficient_data` or `no_data`, do NOT inject empty context — skip injection entirely
+- The injected context must include NFA disclaimer
+- The AI explains stats, does not invent them
+- No changes to `callDeepSeekAnalysis()` function signature
+
+**Design specification:**
+
+1. **New function in prompt-factory.ts:**
+```typescript
+export function buildEventImpactContext(contextString: string): string {
+    return `
+## Historical Event Impact Data (from OnlyAlpha Database)
+The following statistics are from real historical events in our database.
+Use this data to inform your analysis. Explain these statistics to the reader.
+Do NOT invent additional historical data beyond what is provided.
+
+${contextString}
+
+Remember: This is historical context, not a prediction. Past events do not guarantee future outcomes. Not financial advice.
+`;
+}
+```
+
+2. **Integration in aiWorkflow.cron.ts (after existing historicalStats at lines 216-229):**
+```typescript
+// After existing historicalStats block, before callDeepSeekAnalysis:
+
+let eventImpactContext: string | undefined;
+
+if (env.EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED) {
+    try {
+        const comparisonResult = await compareWithHistoricalEvents({
+            eventType,
+            coinSymbol: symbol,
+            horizon: '24h',
+        });
+
+        if (comparisonResult.status === 'success' && comparisonResult.contextString) {
+            eventImpactContext = PromptFactory.buildEventImpactContext(comparisonResult.contextString);
+            console.log(`[AI Workflow] Event impact stats injected for ${symbol} — ${eventType}`);
+        } else {
+            console.log(`[AI Workflow] Event impact stats skipped for ${symbol} — ${comparisonResult.status}`);
+        }
+    } catch (statsErr) {
+        console.error(`[AI Workflow] Failed to fetch event impact stats for ${symbol}:`, statsErr instanceof Error ? statsErr.message : String(statsErr));
+    }
+}
+```
+
+3. **Pass eventImpactContext to the analysis prompt:**
+The context should be appended to the user message in `buildDeepAnalysisMessages()`. Since we cannot modify `callDeepSeekAnalysis()` signature, we need to append the context to an existing field or pass it through the prompt builder.
+
+**Approach:** Add an optional `eventImpactContext?: string` parameter to `buildDeepAnalysisMessages()` in prompt-factory.ts, and append it to the user message. Then in aiWorkflow.cron.ts, pass it through.
+
+4. **Changes to openai.service.ts:** The `callDeepSeekAnalysis()` function already accepts a `historicalStats` parameter. We can repurpose this pattern: check if there's an existing mechanism to pass additional context. If `DeepAnalysisInput` has optional fields we can use, add `eventImpactContext` there. Otherwise, concatenate it with `historicalStats`.
+
+**IMPORTANT:** Inspect `DeepAnalysisInput` interface in `openai.service.ts` and `buildDeepAnalysisMessages()` to determine the cleanest injection point. The goal is minimal changes — ideally appending to the user message.
+
+**Step-by-step instructions for Senior Developer:**
+
+1. Inspect `DeepAnalysisInput` in `openai.service.ts` to find the cleanest injection point
+2. Inspect `buildDeepAnalysisMessages()` in `prompt-factory.ts` to understand user message structure
+3. In `prompt-factory.ts`: Add `buildEventImpactContext(contextString: string): string` function
+4. In `prompt-factory.ts`: If `buildDeepAnalysisMessages()` accepts optional params, add `eventImpactContext?: string` and append to user message. If not, find another clean way (e.g., append to historicalStats).
+5. In `aiWorkflow.cron.ts`: Add import for `compareWithHistoricalEvents` from the new service
+6. In `aiWorkflow.cron.ts`: After the existing historicalStats block, add the eventImpactContext query block (wrapped in flag check + try/catch)
+7. In `aiWorkflow.cron.ts`: Pass eventImpactContext to the prompt builder
+8. Verify: when flag is false, the workflow is byte-identical to before
+9. Verify `tsc --noEmit` clean
+
+**Acceptance criteria:**
+- When `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED=false`: workflow behaves identically to before (no new DB queries, no prompt changes)
+- When flag is true: queries comparison service, injects real stats into prompt
+- When comparison returns insufficient_data: no injection (skip silently)
+- When comparison returns no_data: no injection (skip silently)
+- When comparison service throws: no injection (catch + log, continue)
+- Injected context includes NFA disclaimer
+- AI prompt explicitly says "do NOT invent additional historical data"
+- No changes to `callDeepSeekAnalysis()` return type
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED flag added to env.ts (default false)
+- [ ] buildEventImpactContext() added to prompt-factory.ts
+- [ ] NFA disclaimer in built context
+- [ ] "Do NOT invent" instruction in built context
+- [ ] Flag check in aiWorkflow.cron.ts before query
+- [ ] try/catch around comparison service call
+- [ ] insufficient_data → no injection (log only)
+- [ ] no_data → no injection (log only)
+- [ ] exception → no injection (error log, continue)
+- [ ] success → context injected into prompt
+- [ ] When flag false: no comparison query executed
+- [ ] No changes to callDeepSeekAnalysis() return type
+- [ ] No `any` types introduced
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-2.1 (comparison service), T-2.3 (taxonomy must include new types for future events), T-2.6 (env flag)
+
+**Rollback notes:**
+- Set EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED=false
+- Revert prompt-factory.ts (remove buildEventImpactContext, revert buildDeepAnalysisMessages)
+- Revert aiWorkflow.cron.ts (remove comparison query block)
+
+---
+
+### T-2.5 — Classification Confidence Field
+
+**Task ID:** T-2.5
+**Phase:** Phase 2 — Full Event Impact Engine
+**Assigned Agent:** Senior Developer
+**Status:** Pending
+
+**Objective:**
+Add a confidence score (0-1) to the event classification output from triage. Store it in the `event_impacts` table via the existing persistence flow.
+
+**Files to inspect:**
+- `backend/src/services/openai.service.ts` — `TriageResult` interface (lines 237-246), `generateLightweightTriage()` function (line 248)
+- `backend/src/services/ai/prompt-factory.ts` — triage prompt (line 96, `buildTriageMessages`)
+- `backend/src/services/eventImpactPersistence.service.ts` — `persistEventImpact()` (line 113)
+- `backend/src/crons/aiWorkflow.cron.ts` — where triage results are consumed
+
+**Files allowed to modify:**
+- `backend/src/services/openai.service.ts` (add confidence to TriageResult + prompt parsing)
+- `backend/src/services/ai/prompt-factory.ts` (add confidence to triage JSON schema in prompt)
+- `backend/src/models/market.model.ts` (add classificationConfidence column to eventImpacts Drizzle model)
+- `backend/scripts/migrate-event-impacts.sql` (ALTER TABLE for new column — optional, see decision below)
+- `backend/src/services/eventImpactPersistence.service.ts` (pass confidence through to INSERT)
+
+**Forbidden files:**
+- Any controller/route files
+- Any cron files (except to read the confidence value — but T-2.4 handles the workflow)
+- Any frontend files
+
+**Constraints:**
+- Confidence is OPTIONAL in TriageResult (backward compatible — existing triage outputs without confidence still work)
+- Default confidence is null (not 0) — absence of confidence means "not scored"
+- AI prompt should instruct the model to self-assess how confident it is in the classification
+- Confidence stored in event_impacts.classification_confidence
+- No changes to existing classification logic
+
+**Design decision — Migration:**
+Since `event_impacts` table already exists (Phase 6B migration ran), we need an ALTER TABLE to add the column. However, since Drizzle pushSchema may handle this in dev, we have two options:
+
+**Option A (Preferred):** Add a new migration script `backend/scripts/migrate-event-impacts-v2.sql` with:
+```sql
+ALTER TABLE event_impacts ADD COLUMN IF NOT EXISTS classification_confidence REAL;
+```
+
+**Option B:** Use Drizzle pushSchema (dev only, may not work in production Neon).
+
+**Choose Option A** for production safety.
+
+**Design specification:**
+
+1. **TriageResult interface change (openai.service.ts):**
+```typescript
+interface TriageResult {
+    title: string;
+    source?: string;
+    relevanceScore: number;
+    sentimentHint: string | null;
+    symbolMentions: string[];
+    eventType: string;
+    eventSeverity: number;
+    classification: 'MAJOR' | 'MINOR' | 'NOISE';
+    confidence?: number;  // NEW — 0.0 to 1.0, optional
+}
+```
+
+2. **Prompt change (prompt-factory.ts triage prompt):**
+Add `confidence` field to the JSON output schema with instructions:
+```
+"confidence": <0.0-1.0 — how confident are you in this classification? 1.0 = very confident, 0.0 = guessing. Consider: is the event type clear? Is the sentiment obvious? Is the coin impact direct or indirect?>
+```
+
+3. **Drizzle model change (market.model.ts):**
+Add to eventImpacts table:
+```typescript
+classificationConfidence: real('classification_confidence'),
+```
+
+4. **Persistence change (eventImpactPersistence.service.ts):**
+In `persistEventImpact()`, add:
+```typescript
+classificationConfidence: source.classification_confidence ?? null,
+```
+Wait — the source is `CoinNewsHistoryRecord` which doesn't have `classification_confidence`. The confidence comes from triage, not from coin_news_history.
+
+**CORRECTION:** The confidence should be passed from aiWorkflow.cron.ts through the persistence flow. But aiWorkflow doesn't call persistEventImpact directly — that's done by eventImpactSync.cron.ts (Phase 1).
+
+**REVISED APPROACH:** The sync cron reads from coin_news_history which doesn't store confidence. We need to either:
+- (A) Store confidence in coin_news_history first, then sync picks it up
+- (B) Have the workflow directly write confidence to event_impacts after sync creates the row
+
+**Option A is simpler:** Add `classification_confidence` column to `coin_news_history` (nullable), write it from aiWorkflow after triage, then the sync cron picks it up via persistence service.
+
+But wait — the constraint says "Do NOT modify coin_news_history schema."
+
+**REVISED APPROACH (Option C):** Store confidence in event_impacts only. After the sync cron creates the event_impacts row (from coin_news_history), add a SEPARATE update step in the workflow or a new mechanism.
+
+Actually, the simplest approach:
+1. The confidence is output by triage in aiWorkflow
+2. After triage, the workflow already has the confidence value
+3. We need a function to UPDATE event_impacts SET classification_confidence = X WHERE source_id = Y
+4. This can be done in aiWorkflow.cron.ts right after the sync creates the row, OR we can create a helper in eventImpactPersistence.service.ts
+
+**FINAL APPROACH:**
+- Add `classification_confidence` to `event_impacts` only (not coin_news_history)
+- Add `updateEventImpactConfidence(sourceId: number, confidence: number)` to `eventImpactPersistence.service.ts`
+- In `aiWorkflow.cron.ts`, after triage returns with confidence, call `updateEventImpactConfidence()` — but only if the event_impacts row already exists (it may not exist yet since sync runs every 30 min)
+- If the row doesn't exist yet, skip (the confidence is lost — acceptable trade-off for simplicity)
+
+Actually, this is getting complex. Let me simplify:
+
+**SIMPLEST APPROACH:**
+1. Add confidence to TriageResult (openai.service.ts) — optional field, backward compatible
+2. Add confidence to triage prompt JSON schema (prompt-factory.ts)
+3. Add `classification_confidence` column to event_impacts (migration + Drizzle model)
+4. In `eventImpactPersistence.service.ts`, update `persistEventImpact()` to accept optional confidence parameter
+5. In `eventImpactSync.cron.ts`, pass null for confidence (sync cron doesn't have triage confidence — it reads from coin_news_history)
+6. Future enhancement: confidence can be set by a separate mechanism
+
+Wait, this defeats the purpose. The user wants confidence scoring to actually work.
+
+**PRACTICAL APPROACH:**
+1. Add confidence to TriageResult (openai.service.ts)
+2. Add to triage prompt (prompt-factory.ts)
+3. In aiWorkflow.cron.ts, after triage returns, if confidence exists, store it in coin_news_history (add a nullable column). Yes, this modifies coin_news_history, but only adds a nullable column — backward compatible, no data loss.
+
+Hmm, but the constraint says "Do NOT modify coin_news_history schema."
+
+Let me re-read the user's instructions:
+> Forbidden:
+> - Modify coin_news_history schema
+
+OK, so I cannot add a column to coin_news_history.
+
+**FINAL PRACTICAL APPROACH:**
+1. Add confidence to TriageResult (openai.service.ts) — AI outputs it
+2. Add to triage prompt (prompt-factory.ts) — AI knows to score itself
+3. Add `classification_confidence` column to `event_impacts` only (migration + Drizzle)
+4. Add `updateEventImpactConfidence(sourceId: number, confidence: number): Promise<void>` to `eventImpactPersistence.service.ts`
+5. In `aiWorkflow.cron.ts`, after triage AND after confirming the news item gets classified as MAJOR/MINOR:
+   - Try to find existing event_impacts row by source_id
+   - If found, UPDATE classification_confidence
+   - If not found, skip (sync cron will create it later without confidence — acceptable)
+6. Log when confidence is stored or skipped
+
+This is the cleanest approach given the constraint.
+
+**Step-by-step instructions for Senior Developer:**
+
+1. Create `backend/scripts/migrate-event-impacts-v2.sql`:
+```sql
+ALTER TABLE event_impacts ADD COLUMN IF NOT EXISTS classification_confidence REAL;
+```
+
+2. In `backend/src/models/market.model.ts`, add to `eventImpacts` table definition:
+```typescript
+classificationConfidence: real('classification_confidence'),
+```
+
+3. In `backend/src/services/openai.service.ts`, add to `TriageResult`:
+```typescript
+confidence?: number;
+```
+
+4. In `backend/src/services/ai/prompt-factory.ts`, add to triage JSON output schema:
+```
+"confidence": <0.0-1.0 — self-assessed confidence in this classification>
+```
+
+5. In `backend/src/services/eventImpactPersistence.service.ts`, add new function:
+```typescript
+async function updateEventImpactConfidence(sourceId: number, confidence: number): Promise<boolean> {
+    // UPDATE event_impacts SET classification_confidence = confidence WHERE source_id = sourceId
+    // Return true if row was updated, false if not found
+}
+```
+Export it.
+
+6. In `backend/src/crons/aiWorkflow.cron.ts`:
+   a. Import `updateEventImpactConfidence` from eventImpactPersistence.service
+   b. After triage returns, if triageResult.confidence exists and classification is MAJOR or MINOR:
+      ```typescript
+      if (triageResult.confidence !== undefined && (classification === 'MAJOR' || classification === 'MINOR')) {
+          const newsId = /* the coin_news_history id for this item */;
+          try {
+              await updateEventImpactConfidence(newsId, triageResult.confidence);
+              console.log(`[AI Workflow] Classification confidence ${triageResult.confidence} stored for source_id=${newsId}`);
+          } catch (confErr) {
+              console.error(`[AI Workflow] Failed to store confidence:`, confErr);
+          }
+      }
+      ```
+   c. Wrap in try/catch — confidence storage failure must not break the pipeline
+
+7. Verify `tsc --noEmit` clean
+
+**Acceptance criteria:**
+- Confidence field added to TriageResult (optional, backward compatible)
+- Triage prompt instructs model to output confidence 0.0-1.0
+- event_impacts table has classification_confidence column
+- Drizzle model updated
+- updateEventImpactConfidence() function works
+- aiWorkflow stores confidence when available
+- Pipeline continues if confidence storage fails
+- When event_impacts row doesn't exist yet: skip silently (log only)
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] Migration script created (ALTER TABLE ADD COLUMN IF NOT EXISTS)
+- [ ] Drizzle model has classificationConfidence column
+- [ ] TriageResult has confidence?: number
+- [ ] Triage prompt JSON schema includes confidence field
+- [ ] updateEventImpactConfidence() exported from persistence service
+- [ ] aiWorkflow imports updateEventImpactConfidence
+- [ ] Confidence stored only for MAJOR/MINOR (not NOISE)
+- [ ] try/catch around confidence storage
+- [ ] Skips if event_impacts row not found (no crash)
+- [ ] Logs confidence stored/skipped
+- [ ] No existing behavior changes when confidence is undefined
+- [ ] No `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** None (can run in parallel with other tasks)
+
+**Rollback notes:**
+- Drop column: `ALTER TABLE event_impacts DROP COLUMN IF EXISTS classification_confidence;`
+- Revert Drizzle model
+- Revert TriageResult interface
+- Revert prompt schema
+- Revert aiWorkflow changes
+- Revert persistence service
+
+---
+
+### T-2.6 — Add Phase 2 Feature Flag
+
+**Task ID:** T-2.6
+**Phase:** Phase 2 — Full Event Impact Engine
+**Assigned Agent:** Senior Developer
+**Status:** Pending
+
+**Objective:**
+Add one new feature flag `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` to `backend/src/config/env.ts` for controlling AI workflow stats injection (T-2.4).
+
+**Files to inspect:**
+- `backend/src/config/env.ts` — existing flags at lines 84-90
+
+**Files allowed to modify:**
+- `backend/src/config/env.ts`
+
+**Forbidden files:**
+- All other files
+
+**Design specification:**
+
+Add after the existing Phase 1 flags (after line 90):
+```typescript
+EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED: z.boolean().default(false),
+```
+
+**Step-by-step instructions:**
+
+1. Open `backend/src/config/env.ts`
+2. After line 90 (`EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false),`), add:
+   ```typescript
+   EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED: z.boolean().default(false),
+   ```
+3. Verify `tsc --noEmit` clean
+
+**Acceptance criteria:**
+- Flag added with correct Zod schema
+- Default is `false`
+- Placed logically with other event impact flags
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED: z.boolean().default(false)` present
+- [ ] Defaults to false
+- [ ] No other lines changed
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** None (first code task to execute)
+
+**Rollback notes:**
+- Remove the 1 added line from env.ts
+
+---
+
+### T-2.7 — Documentation Update
+
+**Task ID:** T-2.7
+**Phase:** Phase 2 — Full Event Impact Engine
+**Assigned Agent:** Prompt Engineer
+**Status:** Pending
+
+**Objective:**
+Update PROJECT_STATE.md and AGENT_LOGS.md to reflect Phase 2 planning.
+
+**Files to modify:**
+- `agent_gedens/PROJECT_STATE.md` — Add Phase 2 to Current Mission
+- `agent_gedens/AGENT_LOGS.md` — Add Phase 2 planning entry
+
+**Dependencies:** All code tasks (for accurate documentation)
+
+---
+
+### T-2.8 — QA Checklist
+
+**Task ID:** T-2.8
+**Phase:** Phase 2 — Full Event Impact Engine
+**Assigned Agent:** Prompt Engineer
+**Status:** Pending
+
+**Objective:**
+Comprehensive QA checklist for validating all Phase 2 deliverables.
+
+**Dependencies:** All code tasks
+
+---
+
+## PHASE 2 COMPREHENSIVE QA CHECKLIST
+
+---
+
+### A. Historical Comparison Service (T-2.1)
+
+- [ ] **A1.** File exists at `backend/src/services/historicalEventComparison.service.ts`
+- [ ] **A2.** Exports: `compareWithHistoricalEvents`, `buildHistoricalContextString`
+- [ ] **A3.** Input interface: eventType (required), coinSymbol (optional), eventSeverity (optional), horizon (optional), maxResults (optional)
+- [ ] **A4.** Output interface has status field: 'success' | 'insufficient_data' | 'no_data'
+- [ ] **A5.** Queries only event_impacts + event_impact_outcomes (no other tables)
+- [ ] **A6.** eventSeverity filter uses ±1 range
+- [ ] **A7.** Outcomes filtered to status='completed' only
+- [ ] **A8.** sampleSize < 5 returns insufficient_data
+- [ ] **A9.** Zero results returns no_data
+- [ ] **A10.** Per-horizon stats calculated: median, avg, positive/negative rate, max upside/drawdown, time to peak/bottom
+- [ ] **A11.** Severity breakdown calculated
+- [ ] **A12.** Top coins breakdown calculated
+- [ ] **A13.** contextString is policy-safe (no buy/sell/prediction language)
+- [ ] **A14.** contextString includes NFA disclaimer
+- [ ] **A15.** Zero `any` types
+
+---
+
+### B. Event Impact Stats API (T-2.2)
+
+- [ ] **B1.** GET /api/market/event-impact-stats returns 200 with stats
+- [ ] **B2.** Missing eventType returns 400
+- [ ] **B3.** Invalid eventSeverity returns 400
+- [ ] **B4.** Invalid horizon returns 400
+- [ ] **B5.** authMiddleware protects endpoint
+- [ ] **B6.** Route registered in market.routes.ts
+- [ ] **B7.** Uses historicalEventComparison.service.ts (not direct DB queries)
+- [ ] **B8.** Zero `any` types
+
+---
+
+### C. Extended Event Taxonomy (T-2.3)
+
+- [ ] **C1.** Both triage and deep analysis prompts have IDENTICAL event type lists
+- [ ] **C2.** All 18 types present in both prompts
+- [ ] **C3.** All 11 existing types preserved
+- [ ] **C4.** All 8 new types added
+- [ ] **C5.** Deep analysis prompt bug fixed (now has Exploit, Delisting, TokenLaunch)
+- [ ] **C6.** TRIGGER_TYPE_MAP covers all 18 types
+- [ ] **C7.** selectTone() handles all 18 types
+- [ ] **C8.** No other lines modified in prompt-factory.ts
+- [ ] **C9.** No other lines modified in aiWorkflow.cron.ts (besides TRIGGER_TYPE_MAP + selectTone)
+
+---
+
+### D. AI Workflow Stats Integration (T-2.4)
+
+- [ ] **D1.** EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED flag exists (default false)
+- [ ] **D2.** buildEventImpactContext() function in prompt-factory.ts
+- [ ] **D3.** NFA disclaimer in built context
+- [ ] **D4.** "Do NOT invent" instruction in built context
+- [ ] **D5.** Flag check in aiWorkflow.cron.ts before query
+- [ ] **D6.** try/catch around comparison service call
+- [ ] **D7.** insufficient_data → no injection
+- [ ] **D8.** no_data → no injection
+- [ ] **D9.** exception → no injection, error logged
+- [ ] **D10.** success → context injected into prompt
+- [ ] **D11.** When flag false: no comparison query executed
+- [ ] **D12.** No changes to callDeepSeekAnalysis() return type
+- [ ] **D13.** Zero `any` types
+
+---
+
+### E. Classification Confidence (T-2.5)
+
+- [ ] **E1.** Migration script exists (ALTER TABLE ADD COLUMN IF NOT EXISTS)
+- [ ] **E2.** Drizzle model has classificationConfidence column on eventImpacts
+- [ ] **E3.** TriageResult has confidence?: number (optional)
+- [ ] **E4.** Triage prompt JSON schema includes confidence field
+- [ ] **E5.** updateEventImpactConfidence() exported from persistence service
+- [ ] **E6.** aiWorkflow imports and calls updateEventImpactConfidence
+- [ ] **E7.** Confidence stored only for MAJOR/MINOR classifications
+- [ ] **E8.** try/catch around confidence storage
+- [ ] **E9.** Skips if event_impacts row not found
+- [ ] **E10.** No existing behavior changes when confidence undefined
+- [ ] **E11.** Zero `any` types
+
+---
+
+### F. Feature Flags
+
+- [ ] **F1.** EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED defaults to false
+- [ ] **F2.** All 7 event impact flags present in env.ts (6 existing + 1 new)
+- [ ] **F3.** Missing env vars do NOT crash server
+
+---
+
+### G. No Existing System Modifications
+
+- [ ] **G1.** eventImpactAnalysis.service.ts — unchanged
+- [ ] **G2.** eventImpactPersistence.service.ts — only NEW function added (updateEventImpactConfidence), existing functions unchanged
+- [ ] **G3.** Living Articles — unchanged
+- [ ] **G4.** Scorecard — unchanged
+- [ ] **G5.** coin_news_history schema — unchanged
+- [ ] **G6.** Public UI — unchanged
+- [ ] **G7.** callDeepSeekAnalysis() return type — unchanged
+
+---
+
+### H. TypeScript Quality
+
+- [ ] **H1.** `tsc --noEmit` clean on entire backend
+- [ ] **H2.** Zero `any` types across all new/modified files
+
+---
+
+### Summary Scorecard
+
+| Section | Items | Status |
+|---------|-------|--------|
+| A. Historical Comparison Service | 15 | ☐ |
+| B. Event Impact Stats API | 8 | ☐ |
+| C. Extended Event Taxonomy | 9 | ☐ |
+| D. AI Workflow Stats Integration | 13 | ☐ |
+| E. Classification Confidence | 11 | ☐ |
+| F. Feature Flags | 3 | ☐ |
+| G. No Existing System Modifications | 7 | ☐ |
+| H. TypeScript Quality | 2 | ☐ |
+| **TOTAL** | **68** | **☐/68** |
+
+**QA PASS Criteria:** All 68 items checked. Zero blocking failures allowed.
+
+---
+
+## GUARDRAILS
+
+1. **ZERO `any` types** across all new/modified files.
+2. **Read-only queries** for comparison service and API endpoint — no writes to event_impacts/outcomes except confidence update.
+3. **Feature flag defaults to `false`** — AI workflow stats injection disabled by default.
+4. **Backward compatible taxonomy** — all existing event types remain valid, new types extend the list.
+5. **Insufficient data guard** — sample size < 5 returns `insufficient_data`, not unreliable statistics.
+6. **No prediction language** — all outputs framed as historical observation, not forecasting.
+7. **No frontend changes** — this phase is backend-only.
+8. **No coin_news_history schema changes** — confidence stored in event_impacts only.
+9. **No external API calls** — all data from existing event_impact_outcomes.
+10. **No commit/push before QA PASS**.
+
+## RISK ASSESSMENT
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Stats injection increases prompt length and cost | Low | Flag defaults to false, optional feature |
+| Insufficient historical data for new event types | Medium | Guard returns insufficient_data, AI prompted to note lack of data |
+| New taxonomy types not recognized by AI | Low | Types are in prompt enum, AI will use them |
+| Confidence score not stored if event_impacts row doesn't exist yet | Low | Acceptable — sync cron creates rows, future events will have confidence |
+| Deep analysis prompt missing event types (pre-existing bug) | None | Fixed as part of T-2.3 (synchronize both prompts) |
+
+---
+
+## FILES SUMMARY
+
+| File | Status | Change |
+|------|--------|--------|
+| `backend/src/services/historicalEventComparison.service.ts` | 🔴 TODO | New — historical comparison service |
+| `backend/src/controllers/market.controller.ts` | 🔴 TODO | Add getEventImpactStatsHandler |
+| `backend/src/routes/market.routes.ts` | 🔴 TODO | Add /event-impact-stats route |
+| `backend/src/services/ai/prompt-factory.ts` | 🔴 TODO | Extend taxonomy + add buildEventImpactContext |
+| `backend/src/crons/aiWorkflow.cron.ts` | 🔴 TODO | Extend TRIGGER_TYPE_MAP + selectTone + stats injection |
+| `backend/src/services/openai.service.ts` | 🔴 TODO | Add confidence to TriageResult |
+| `backend/src/models/market.model.ts` | 🔴 TODO | Add classificationConfidence column |
+| `backend/scripts/migrate-event-impacts-v2.sql` | 🔴 TODO | New — ALTER TABLE for confidence column |
+| `backend/src/services/eventImpactPersistence.service.ts` | 🔴 TODO | Add updateEventImpactConfidence function |
+| `backend/src/config/env.ts` | 🔴 TODO | Add EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED flag |
+| `agent_gedens/PROJECT_STATE.md` | 🔴 TODO | Phase 2 status update |
+| `agent_gedens/AGENT_LOGS.md` | 🔴 TODO | Phase 2 log entries |
+
+**Total: 2 new files, 8 modified files, 2 documentation updates**
+
+---
+
+## PRIORITY ORDER
+
+```
+1. T-2.6 — Feature flag (independent, no deps)
+2. T-2.3 — Extended taxonomy (independent, can parallel with T-2.6)
+3. T-2.1 — Historical comparison service (independent, reads existing tables)
+4. T-2.2 — API endpoint (depends on T-2.1)
+5. T-2.4 — AI workflow stats injection (depends on T-2.1 + T-2.3 + T-2.6)
+6. T-2.5 — Classification confidence (independent, can parallel with T-2.4)
+7. T-2.7 — Documentation (depends on all code tasks)
+8. T-2.8 — QA checklist (depends on all code tasks)
+```
+
+**Parallelizable:**
+- T-2.6 (flag) + T-2.3 (taxonomy) + T-2.1 (service) + T-2.5 (confidence) can all run in parallel
+
+---
+
+*Phase 2 authored: May 4, 2026 | Strategic Planner*
+*Prerequisites: Phase 6A (complete) + Phase 6B (complete) + Phase 1 (pending code tasks)*
+*Enables: Real historical stats in AI prompts, extended event taxonomy, classification confidence*
+
+---
+
+---
+
 # Phase 1 — Minimum Data Foundation (Activate Event Impact Engine)
 
 **Status:** IN PROGRESS — Code tasks (T-1.2, T-1.3, T-1.4) pending execution; Documentation tasks (T-1.1, T-1.5, T-1.6, T-1.7) COMPLETED

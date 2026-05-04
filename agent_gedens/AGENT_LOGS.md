@@ -2,6 +2,16 @@
 
 **Last Updated:** May 4, 2026
 
+## Phase 2 — Full Event Impact Engine
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|---|
+| May 4, 2026 | P2-PLAN | PLANNED | Strategic Planner | — | 8 micro-tasks defined (T-2.1 through T-2.8). Transforms passive data collection into active intelligence engine. T-2.1: historicalEventComparison.service.ts (queries event_impacts+outcomes for similar past events, returns statistical summaries, generates context string). T-2.2: GET /api/market/event-impact-stats endpoint (authMiddleware, read-only). T-2.3: Extended event taxonomy (8 new types: Fed_Rate, CPI, Geopolitical, Influencer_Statement, Executive_Change, Large_Transfer, Token_Unlock, Exchange_Netflow — fixes pre-existing sync bug between triage+deep analysis prompts). T-2.4: AI workflow stats injection (behind EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED=false flag, injects real DB stats into DeepSeek prompt, AI explains stats not invents them). T-2.5: Classification confidence (0-1 score on TriageResult, stored in event_impacts.classification_confidence via updateEventImpactConfidence()). T-2.6: Feature flag. T-2.7+T-2.8: Docs+QA. Key design decisions: confidence stored in event_impacts NOT coin_news_history (respects schema freeze constraint), insufficient data guard (sample<5 → insufficient_data), contextString includes NFA disclaimer, all public language policy-safe. PROJECT_STATE.md updated. THE_NEXUS_HUB.md updated with full Phase 2 plan. |
+| May 4, 2026 | T-2.7 | ✅ COMPLETED | Prompt Engineer | — | Documentation updated in PROJECT_STATE.md and AGENT_LOGS.md. Phase 2 status updated to PLANNED — docs complete, awaiting Phase 1 code completion. Removed duplicate entry from Completed Phases. |
+| May 4, 2026 | T-2.8 | ✅ COMPLETED | Prompt Engineer | — | Comprehensive QA checklist prepared and embedded in THE_NEXUS_HUB.md. 68 items across 8 sections (A-H): A. Historical Comparison Service (15 items), B. Event Impact Stats API (8), C. Extended Event Taxonomy (9), D. AI Workflow Stats Integration (13), E. Classification Confidence (11), F. Feature Flags (3), G. No Existing System Modifications (7), H. TypeScript Quality (2). Covers migration safety, endpoint auth, stats correctness, insufficient_data behavior, taxonomy sync, prompt injection behind flag, policy-safe language, no public UI changes, no new external APIs, zero `any` types. QA PASS criteria: all 68 items checked, zero blocking failures. |
+
+---
+
 ## Phase 1 — Minimum Data Foundation (Activation)
 
 | Date | Task ID | Verdict | Executor | Reviewer | Notes |

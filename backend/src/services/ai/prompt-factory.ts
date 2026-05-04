@@ -36,6 +36,7 @@ export interface DeepAnalysisInput {
     price: PriceResult | null;
     coinSymbol: string;
     historicalStats?: string;
+    eventImpactContext?: string;
     recentMemory?: ReadonlyArray<{
         eventType: string;
         eventSummary: string;
@@ -106,9 +107,10 @@ Per item:
   "relevanceScore": <0-100>,
   "sentimentHint": "bullish|bearish|neutral",
   "symbolMentions": ["BTC", "ETH"],
-  "eventType": "<ETF|Hack|Exploit|Listing|Delisting|Upgrade|TokenLaunch|Regulatory|Funding|Partnership|Other>",
+  "eventType": "<ETF|Hack|Exploit|Listing|Delisting|Upgrade|TokenLaunch|Regulatory|Funding|Partnership|Fed_Rate|CPI|Geopolitical|Influencer_Statement|Executive_Change|Large_Transfer|Token_Unlock|Exchange_Netflow|Other>",
   "eventSeverity": <1|2|3>,
-  "classification": "MAJOR|MINOR|NOISE"
+  "classification": "MAJOR|MINOR|NOISE",
+  "confidence": <0.0-1.0 — how confident are you in this classification? 1.0 = very confident, 0.0 = guessing. Consider: is the event type clear? Is the sentiment obvious? Is the coin impact direct or indirect?>
 }
 
 Classification rules:
@@ -274,7 +276,7 @@ ANTI-HALLUCINATION: Only reference provided data. For levels: if nearPriceLevels
   "impactScore":     <0-100>,
   "isBreaking":      <true if: Hack|Exploit|SEC|Listing|ETF|TokenLaunch|Mainnet>,
   "coinSymbol":      "<TICKER>",
-  "eventType":       "<ETF|Hack|Listing|Upgrade|Partnership|Funding|Regulatory|Other>",
+   "eventType":       "<ETF|Hack|Exploit|Listing|Delisting|Upgrade|TokenLaunch|Regulatory|Funding|Partnership|Fed_Rate|CPI|Geopolitical|Influencer_Statement|Executive_Change|Large_Transfer|Token_Unlock|Exchange_Netflow|Other>",
   "eventSeverity":   <1|2|3>,
   "analysis": {
     "mainDriver":       "<1 sentence — core reason this matters>",
@@ -367,6 +369,9 @@ ${input.pattern ? JSON.stringify(input.pattern) : 'No historical pattern availab
 
 --- HISTORICAL EVENT STATS ---
 ${input.historicalStats ?? 'No historical event stats available'}
+
+--- HISTORICAL EVENT IMPACT DATA ---
+${input.eventImpactContext ?? 'No historical event impact data available'}
 
 --- RECENT EVENTS FOR THIS COIN ---
 ${input.recentMemory && input.recentMemory.length > 0
@@ -636,6 +641,19 @@ Historical event statistics (sample size: ${stats.sampleSize})`;
         }
 
         return context;
+    }
+
+    buildEventImpactContext(contextString: string): string {
+        return `
+## Historical Event Impact Data (from OnlyAlpha Database)
+The following statistics are from real historical events in our database.
+Use this data to inform your analysis. Explain these statistics to the reader.
+Do NOT invent additional historical data beyond what is provided.
+
+${contextString}
+
+Remember: This is historical context, not a prediction. Past events do not guarantee future outcomes. Not financial advice.
+`;
     }
 
 }

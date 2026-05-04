@@ -10,9 +10,12 @@ import { callDeepSeekAnalysis, callGptNanoWriter, callGptNanoMinorUpdate, callGp
 import type { DeepAnalysisResult } from '../services/openai.service';
 import type { ArticleWriterResult } from '../services/openai.service';
 import { getHistoricalEventStats } from '../services/historicalEventStats.service';
+import { compareWithHistoricalEvents } from '../services/historicalEventComparison.service';
+import { updateEventImpactConfidence } from '../services/eventImpactPersistence.service';
 import { PromptFactory } from '../services/ai/prompt-factory';
 import { AIRateLimitError } from '../services/ai/ai-gateway';
 import { validateFactualGrounding } from '../services/ai/factual-grounding';
+import { env } from '../config/env';
 import { auditArticleQuality } from '../services/ai/quality-auditor';
 import { saveMemory } from '../services/coin-memory.service';
 import { isDuplicateByEmbedding } from '../services/similarity.service';
@@ -25,7 +28,6 @@ import { getNearbyLevels } from '../services/levelIntelligence.service';
 import { ScenarioTrackerService } from '../services/scenarioTracker.service';
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
-import { env } from '../config/env';
 
 async function markBufferItemConsumed(bufferId: number): Promise<void> {
     await db.update(rawNewsBuffer)
@@ -45,6 +47,15 @@ const TRIGGER_TYPE_MAP: Record<string, string> = {
     'Funding': 'whale',
     'Partnership': 'news',
     'Upgrade': 'technical',
+    'TokenLaunch': 'market',
+    'Fed_Rate': 'macro',
+    'CPI': 'macro',
+    'Geopolitical': 'macro',
+    'Influencer_Statement': 'personality',
+    'Executive_Change': 'corporate',
+    'Large_Transfer': 'whale',
+    'Token_Unlock': 'protocol',
+    'Exchange_Netflow': 'whale',
 };
 
 function generateSlug(name: string): string {
@@ -68,6 +79,22 @@ function selectTone(eventType: string): string {
         case 'Delisting':
             return 'solemn';
         case 'Upgrade':
+            return 'analytical';
+        case 'Fed_Rate':
+            return 'cautious';
+        case 'CPI':
+            return 'analytical';
+        case 'Geopolitical':
+            return 'cautious';
+        case 'Influencer_Statement':
+            return 'exciting';
+        case 'Executive_Change':
+            return 'analytical';
+        case 'Large_Transfer':
+            return 'analytical';
+        case 'Token_Unlock':
+            return 'analytical';
+        case 'Exchange_Netflow':
             return 'analytical';
         default:
             return 'professional';
@@ -228,6 +255,29 @@ export async function runAiWorkflow(): Promise<void> {
                 historicalStats = undefined;
             }
 
+            // Fetch event impact stats for AI context (behind flag)
+            let eventImpactContext: string | undefined;
+            if (env.EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED) {
+                try {
+                    const comparisonResult = await compareWithHistoricalEvents({
+                        eventType,
+                        coinSymbol: symbol,
+                        horizon: '24h',
+                    });
+
+                    if (comparisonResult.status === 'success' && comparisonResult.contextString) {
+                        eventImpactContext = new PromptFactory().buildEventImpactContext(comparisonResult.contextString);
+                        console.log(`[AI Workflow] Event impact stats injected for ${symbol} — ${eventType}`);
+                    } else {
+                        console.log(`[AI Workflow] Event impact stats skipped for ${symbol} — ${comparisonResult.status}`);
+                    }
+                } catch (statsErr) {
+                    console.error(`[AI Workflow] Failed to fetch event impact stats for ${symbol}:`, statsErr instanceof Error ? statsErr.message : String(statsErr));
+                }
+            }
+
+            // TODO: Store classification confidence if available (requires triage result with confidence)
+
             const existingMaster = await db.select({ id: coinMasterArticles.id })
                 .from(coinMasterArticles)
                 .where(eq(coinMasterArticles.coinSymbol, symbol))
@@ -349,6 +399,7 @@ export async function runAiWorkflow(): Promise<void> {
                         price,
                         coinSymbol: symbol,
                         historicalStats,
+                        eventImpactContext,
                         nearPriceLevels,
                     });
                     deepseekBreaker.recordSuccess();

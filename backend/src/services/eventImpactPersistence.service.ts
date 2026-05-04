@@ -201,6 +201,25 @@ async function persistEventImpactOutcomes(eventImpactId: number, source: CoinNew
     }
 }
 
+async function updateEventImpactConfidence(sourceId: number, confidence: number): Promise<boolean> {
+    if (!env.EVENT_IMPACT_PERSISTENCE_ENABLED) {
+        return false;
+    }
+
+    try {
+        const result = await db
+            .update(eventImpacts)
+            .set({ classificationConfidence: confidence })
+            .where(eq(eventImpacts.sourceId, sourceId));
+
+        const affectedRows = result.rowCount ?? 0;
+        return affectedRows > 0;
+    } catch (error) {
+        console.error(`[EventImpactPersistence] Failed to update confidence for source_id=${sourceId}:`, error instanceof Error ? error.message : String(error));
+        return false;
+    }
+}
+
 async function persistBatchFromCoinNewsHistory(limit: number, offset: number): Promise<BatchSummary> {
     const summary: BatchSummary = { processed: 0, created: 0, skipped: 0, errors: 0 };
 
@@ -282,6 +301,7 @@ export {
     persistBatchFromCoinNewsHistory,
     getEventImpactBySourceId,
     getOutcomesForEventImpact,
+    updateEventImpactConfidence,
 };
 
 export type {

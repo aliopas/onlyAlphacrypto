@@ -12,6 +12,7 @@ import { desc, eq, gte, and, asc, sql } from 'drizzle-orm';
 import { getLivePrices, getTopMovers } from '../services/binance.service';
 import { getPriceWithFallback } from '../services/priceService';
 import { AppError } from '../middleware/errorHandler';
+import { compareWithHistoricalEvents } from '../services/historicalEventComparison.service';
 
 export async function getCoinInsight(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -643,6 +644,43 @@ export async function forceSeed(req: Request, res: Response, next: NextFunction)
 
         console.log('--- Force Seed Complete ---');
         res.json({ success: true, message: 'All crons executed successfully.' });
+    } catch (err) {
+        next(err);
+    }
+}
+
+export async function getEventImpactStatsHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const { eventType, coinSymbol, eventSeverity, horizon } = req.query;
+
+        if (!eventType || typeof eventType !== 'string' || eventType.trim() === '') {
+            res.status(400).json({ error: 'eventType is required and must be a non-empty string' });
+            return;
+        }
+
+        let parsedSeverity: number | undefined;
+        if (eventSeverity !== undefined) {
+            const sev = parseInt(String(eventSeverity), 10);
+            if (isNaN(sev) || sev < 1 || sev > 5) {
+                res.status(400).json({ error: 'eventSeverity must be an integer between 1 and 5' });
+                return;
+            }
+            parsedSeverity = sev;
+        }
+
+        if (horizon !== undefined && !['1h', '4h', '24h', '3d', '7d'].includes(String(horizon))) {
+            res.status(400).json({ error: 'horizon must be one of: 1h, 4h, 24h, 3d, 7d' });
+            return;
+        }
+
+        const result = await compareWithHistoricalEvents({
+            eventType: eventType.trim(),
+            coinSymbol: coinSymbol ? String(coinSymbol).trim() : undefined,
+            eventSeverity: parsedSeverity,
+            horizon: horizon ? String(horizon) : undefined,
+        });
+
+        res.json(result);
     } catch (err) {
         next(err);
     }

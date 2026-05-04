@@ -472,6 +472,7 @@ export const eventImpacts = pgTable('event_impacts', {
     publishedAt: timestamp('published_at').notNull(),
     priceAtEvent: real('price_at_event'),
     priceSource: varchar('price_source', { length: 20 }).notNull().default('binance'),
+    classificationConfidence: real('classification_confidence'),
     status: varchar('status', { length: 20 }).notNull().default('pending'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),

@@ -1,7 +1,7 @@
 # ONLYALPHA — PROJECT STATE
 
 **Last Updated:** May 4, 2026
-**Current Focus:** Phase 1 — Minimum Data Foundation (IN PROGRESS — docs complete, code pending)
+**Current Focus:** Phase 2 — Full Event Impact Engine (PLANNED — docs complete, awaiting Phase 1 code completion)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,18 +15,17 @@
 2. **Modular Boundaries:** Cache logic -> `CacheManager`. AI calls -> `AIGateway`. Prompts -> `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## Current Mission: Phase 1 — Minimum Data Foundation
+## Current Mission: Phase 2 — Full Event Impact Engine
 
-**Status:** IN PROGRESS — Code tasks (T-1.2, T-1.3, T-1.4) pending; Docs tasks (T-1.1, T-1.5, T-1.6, T-1.7) COMPLETED
+**Status:** PLANNED — Docs complete, awaiting Phase 1 code completion
 **Authorized By:** Strategic Planner — May 4, 2026
-**Key Objective:** Activate the Event Impact Engine in production. Wire sync cron (reads coin_news_history → creates event_impacts), wire outcome checker cron (fills event_impact_outcomes with real Binance price data), enable feature flags in controlled rollout.
-**Plan Path:** `agent_gedens/THE_NEXUS_HUB.md` — Phase 1 section
-**Task Count:** 7 (T-1.1 through T-1.7)
-**Scope:** 2 new crons, 2 new env flags, 1 server.ts registration update, 1 migration plan, 1 runbook, 1 QA checklist
-**Architecture Decision:** Option D (separate sync cron) — does NOT modify any existing crons or services
-**Prerequisites:** Phase 6A (✅ complete) + Phase 6B (✅ complete) — both pushed
+**Key Objective:** Transform Event Impact from passive data collection into an active intelligence engine. Historical event comparison service, admin stats API endpoint, extended event taxonomy (macro/personality/whale types), AI workflow stats injection (behind flag), classification confidence scoring.
+**Plan Path:** `agent_gedens/THE_NEXUS_HUB.md` — Phase 2 section
+**Task Count:** 8 (T-2.1 through T-2.8)
+**Scope:** 2 new files, 8 modified files, 2 documentation updates, 1 new env flag, 1 optional migration
+**Prerequisites:** Phase 6A (complete) + Phase 6B (complete) + Phase 1 (code tasks pending)
 
-**Previous:** Phase 6B — Event Impact Persistence — ✅ COMPLETED
+**Previous:** Phase 1 — Minimum Data Foundation (IN PROGRESS — docs complete, code pending)
 
 ## Completed Phases
 

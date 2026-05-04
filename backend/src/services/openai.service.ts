@@ -243,6 +243,7 @@ interface TriageResult {
     eventType: string;
     eventSeverity: number;
     classification: 'MAJOR' | 'MINOR' | 'NOISE';
+    confidence?: number;
 }
 
 export async function generateLightweightTriage(

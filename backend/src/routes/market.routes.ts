@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCoinInsight, getAlphaFocus, getRadarSignals, getMarketMood, getLatestWire, getWireById, getTopMoversController, getAssetCount, forceSeed, getMasterArticle, getMasterArticleCoins, getTimeline, getArchiveArticles, getStrategicOutlookHandler, getScorecardHandler } from '../controllers/market.controller';
+import { getCoinInsight, getAlphaFocus, getRadarSignals, getMarketMood, getLatestWire, getWireById, getTopMoversController, getAssetCount, forceSeed, getMasterArticle, getMasterArticleCoins, getTimeline, getArchiveArticles, getStrategicOutlookHandler, getScorecardHandler, getEventImpactStatsHandler } from '../controllers/market.controller';
 import { apiLimiter } from '../middleware/rateLimit.middleware';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { optionalAuth } from '../middleware/auth.middleware';
@@ -23,5 +23,8 @@ router.get('/timeline/:symbol', apiLimiter, optionalAuth, getTimeline);
 
 // Dev/Admin tool to force-seed the database
 router.post('/force-seed', authMiddleware, forceSeed);
+
+// Event impact stats (internal/admin only)
+router.get('/event-impact-stats', authMiddleware, getEventImpactStatsHandler);
 
 export default router;
