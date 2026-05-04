@@ -365,7 +365,7 @@ Record these decisions in HUB:
 
 # Phase 7B — Implementation
 
-**Status:** 🟡 IMPLEMENTATION — T-7B-01/02/03/04 Committed, T-7B-05 Review Complete, T-7B-05-01/02 Added, T-7B-06 Pending
+**Status:** 🟡 IMPLEMENTATION — T-7B-01/02/03/04 Committed, T-7B-05-01 Done, T-7B-05-02 Pending, T-7B-06 Pending
 **Date:** May 4, 2026
 **Priority:** P0 (AdSense policy compliance implementation)
 **Scope:** 6 implementation microtasks (T-7B-01 through T-7B-06) + 2 API safe alias subtasks (T-7B-05-01/02), targeted code changes, no migrations
@@ -560,7 +560,10 @@ Review whether public API response field names such as activePositions, bestTrad
 
 ### T-7B-05-01 — Backend Safe Alias Implementation
 **Owner:** Senior Developer
-**Status:** Pending
+**Status:** ✅ DONE / QA PASS WITH NOTES / COMMITTED / commit 32478f6
+
+Note: tsc validation was blocked by local environment issue; static QA review passed with no type-risk concerns.
+File changed: backend/src/controllers/market.controller.ts
 
 **Goal:**
 Add policy-safe alias fields to public API responses while preserving backward compatibility.
