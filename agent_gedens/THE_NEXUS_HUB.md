@@ -1,9 +1,9 @@
 # Phase 7 — Public Language / Google-Safe Presentation
 
-**Status:** 🟡 IMPLEMENTATION — T-7A-01 Completed, Phase 7B Microtasks Created
+**Status:** 🟡 IMPLEMENTATION — Phase 7B In Progress (T-7B-01→04 Committed, T-7B-05 Review Complete, T-7B-05-01/02 Added, T-7B-06 Pending)
 **Date:** May 4, 2026
 **Priority:** P0 (AdSense policy compliance, Google-safe public presentation)
-**Scope:** T-7A-01 audit complete, Phase 7B implementation microtasks defined
+**Scope:** T-7A-01 audit complete, Phase 7B implementation in progress, API safe alias tasks added
 **Prerequisites:** None (independent audit phase)
 **Authorized By:** Strategic Planner — May 4, 2026
 **Depends On:** Phase 0.5 (partial compliance already done)
@@ -363,23 +363,12 @@ Record these decisions in HUB:
 
 4. Legal pages cleanup should be separate and may require product/legal wording review.
 
-## IMPLEMENTATION ORDER
-
-Recommended order:
-
-1. T-7B-01 — backend article/chat high-risk wording
-2. T-7B-04 — SEO/meta/OG high-visibility wording
-3. T-7B-02 — frontend label cleanup
-4. T-7B-03 — legal/disclaimer cleanup after product review
-5. T-7B-05 — API field mapping review, deferred
-6. T-7B-06 — QA verification
-
 # Phase 7B — Implementation
 
-**Status:** 🟡 READY — Microtasks Defined, Ready for Assignment
+**Status:** 🟡 IMPLEMENTATION — T-7B-01/02/03/04 Committed, T-7B-05 Review Complete, T-7B-05-01/02 Added, T-7B-06 Pending
 **Date:** May 4, 2026
 **Priority:** P0 (AdSense policy compliance implementation)
-**Scope:** 6 implementation microtasks (T-7B-01 through T-7B-06), targeted code changes, no migrations
+**Scope:** 6 implementation microtasks (T-7B-01 through T-7B-06) + 2 API safe alias subtasks (T-7B-05-01/02), targeted code changes, no migrations
 **Prerequisites:** T-7A-01 complete
 **Authorized By:** Strategic Planner — May 4, 2026
 **Depends On:** Phase 7A (audit complete)
@@ -413,7 +402,7 @@ Implement the Google-safe presentation changes identified in the T-7A-01 audit. 
 
 ### T-7B-01 — Backend Article Template Policy-Safe Wording Cleanup
 **Owner:** Senior Developer
-**Status:** Pending
+**Status:** ✅ DONE / QA PASS / COMMITTED / commit 3933f44
 
 **Goal:**
 Remove HIGH-risk public article/chat wording from backend-generated content without changing schemas or API contracts.
@@ -446,7 +435,7 @@ Remove HIGH-risk public article/chat wording from backend-generated content with
 
 ### T-7B-04 — SEO / Meta / OG Language Cleanup
 **Owner:** Senior Developer
-**Status:** Pending
+**Status:** ✅ DONE / QA PASS / COMMITTED / commit 251f5f5
 
 **Goal:**
 Remove public SEO/meta/OG trading-signal wording.
@@ -481,7 +470,7 @@ Remove public SEO/meta/OG trading-signal wording.
 
 ### T-7B-02 — Frontend Public Label Cleanup
 **Owner:** Senior Developer
-**Status:** Pending
+**Status:** ✅ DONE / QA PASS / COMMITTED / commit 1c31da9
 
 **Goal:**
 Replace public-facing "signal/signals" UI wording with "scenario/scenarios" where appropriate.
@@ -519,7 +508,7 @@ Replace public-facing "signal/signals" UI wording with "scenario/scenarios" wher
 
 ### T-7B-03 — Legal / Disclaimer Terminology Cleanup
 **Owner:** Product Visionary + Senior Developer
-**Status:** Pending / Requires Product Review
+**Status:** ✅ DONE / QA PASS / COMMITTED / commit 1b1d406
 
 **Goal:**
 Replace public legal-page "signals" terminology with "scenarios" while preserving legal meaning.
@@ -545,7 +534,7 @@ Replace public legal-page "signals" terminology with "scenarios" while preservin
 
 ### T-7B-05 — API Presentation Field Mapping Review
 **Owner:** System Architect
-**Status:** Deferred
+**Status:** ✅ REVIEW COMPLETE / no code / recommendation accepted
 
 **Goal:**
 Review whether public API response field names such as activePositions, bestTrade, unrealizedPnl, recommendedAction should be presentation-mapped.
@@ -565,9 +554,75 @@ Review whether public API response field names such as activePositions, bestTrad
 - Compatibility-safe mapping strategy documented
 - Decision whether to version API or add parallel safe aliases
 
+**Review outcome:**
+- Recommendation: add safe aliases while keeping original fields for backward compatibility.
+- Subtasks T-7B-05-01 (backend) and T-7B-05-02 (frontend) created.
+
+### T-7B-05-01 — Backend Safe Alias Implementation
+**Owner:** Senior Developer
+**Status:** Pending
+
+**Goal:**
+Add policy-safe alias fields to public API responses while preserving backward compatibility.
+
+**Allowed files:**
+- backend/src/controllers/market.controller.ts
+
+**Allowed changes:**
+- Add safe aliases alongside existing fields.
+- Do not remove old fields.
+- Do not change route paths.
+- Do not change database queries unless needed only to map existing values.
+- Do not change DB models.
+
+**Target mappings:**
+- activePositions → activeScenarios
+- bestTrade → bestOutcome
+- unrealizedPnl → unrealizedDrift
+- avgRealizedPnl → avgScenarioOutcome
+- winRate → outcomeRate
+- entryPrice → referencePrice
+- stopLossPrice → riskZonePrice
+- takeProfitPrice → targetZonePrice
+- recommendedAction → marketStance
+- signal → scenarioSummary (where returned by radar endpoint if applicable in market.controller.ts)
+
+**Important:**
+Existing old fields must remain in response for backward compatibility.
+
+**Forbidden:**
+- Do not remove or rename existing fields.
+- Do not modify frontend.
+- Do not modify DB models.
+- Do not create migrations.
+- Do not modify routes.
+- Do not enable flags.
+- Do not change auth behavior.
+- Do not change business logic.
+
+**Acceptance criteria:**
+- Existing response fields still present.
+- Safe alias fields present.
+- No frontend changes required.
+- TypeScript passes.
+- No route/API breaking changes.
+
+### T-7B-05-02 — Frontend Safe Alias Adoption
+**Owner:** Senior Developer
+**Status:** Deferred until T-7B-05-01 QA PASS
+
+**Goal:**
+Update frontend to consume safe alias fields where available.
+
+**Allowed files:**
+- To be defined after T-7B-05-01 QA.
+
+**Forbidden:**
+- Do not start until T-7B-05-01 is QA passed and committed.
+
 ### T-7B-06 — Phase 7 QA Verification
 **Owner:** QA & Security Hunter
-**Status:** Pending after T-7B-01/02/03/04
+**Status:** Pending after T-7B-05-01/02
 
 **Goal:**
 Verify public language cleanup after implementation tasks.
@@ -587,6 +642,12 @@ Verify public language cleanup after implementation tasks.
 - Routes and SEO URLs unchanged
 - No DB schema changes
 - No migrations
+
+## IMPLEMENTATION ORDER
+
+1. T-7B-05-01 — Backend Safe Alias Implementation
+2. T-7B-05-02 — Frontend Safe Alias Adoption
+3. T-7B-06 — Final Phase 7 QA
 
 ---
 
@@ -608,271 +669,10 @@ Verify public language cleanup after implementation tasks.
 **Authorized By:** Strategic Planner — May 4, 2026
 **Commit:** `4ae0af4 feat: add Phase 2 event impact stats engine behind feature flag`
 **QA Result:** 68/68 PASS — APPROVE WITH NOTES
-**Notes:**
-- Classification confidence function exists but not fully wired into workflow; documented TODO, acceptable.
-- Minor duplicate `eventScope` computation in aiWorkflow.cron.ts (lines 241, 703); different scopes, harmless — documented for future cleanup.
-- Runtime stats injection disabled by feature flag (`EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` defaults `false`).
-- Do not enable flag until DB coverage/performance check.
-
-## OBJECTIVE
-
-Transform Event Impact from passive data collection into an **active intelligence engine** that provides:
-
-1. **Historical event comparison** — When a new event happens, find similar past events and return their statistical outcomes from `event_impact_outcomes`
-2. **Event impact statistics API** — Internal/admin endpoint to query impact stats from the new tables
-3. **Extended event taxonomy** — Add macro, personality, whale event types to classification prompts
-4. **AI workflow stats integration** — Inject real historical stats into AI analysis prompts (behind a flag)
-5. **Classification confidence scoring** — Add a confidence score (0-1) to event classification output
-
-## ARCHITECTURE OVERVIEW
-
-```
-event_impacts + event_impact_outcomes (Phase 6B tables, growing dataset)
-          │
-          ├──► historicalEventComparison.service.ts (NEW — T-2.1)
-          │       ├── Queries similar past events by eventType, coinSymbol, eventSeverity
-          │       ├── Returns statistical summary from real outcomes data
-          │       └── Used by: AI workflow stats injection + admin API
-          │
-          ├──► Event Impact Stats API (NEW — T-2.2)
-          │       ├── GET /api/market/event-impact-stats (authMiddleware protected)
-          │       ├── Query params: eventType, coinSymbol, horizon, eventSeverity
-          │       └── Read-only from event_impacts + event_impact_outcomes
-          │
-          └──► AI Workflow Integration (MODIFY — T-2.4)
-                  ├── Before DeepSeek analysis, query historicalEventComparison
-                  ├── Format stats as prompt context via prompt-factory
-                  ├── AI explains DB stats, does NOT invent history
-                  └── Behind EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED=false flag
-```
-
-## PHASE 2 SCOPE LIMITATIONS
-
-**Allowed:**
-- Create `historicalEventComparison.service.ts` (new file)
-- Create event impact stats API endpoint (new handler + route)
-- Extend event taxonomy in `prompt-factory.ts` (modify existing)
-- Extend `TRIGGER_TYPE_MAP` + `selectTone()` in `aiWorkflow.cron.ts` (modify existing)
-- Integrate stats into AI workflow in `aiWorkflow.cron.ts` (modify existing, behind flag)
-- Add `buildHistoricalEventContext()` to `prompt-factory.ts` (new function, behind flag)
-- Add classification confidence output to `openai.service.ts` triage result
-- Optional: ALTER TABLE for `classification_confidence` column on `event_impacts`
-- Add 1 new env flag: `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED`
-
-**Forbidden:**
-- Modify `coin_news_history` schema
-- Modify Living Articles rendering logic
-- Modify public-facing UI components
-- Modify scorecard system
-- Add new paid external APIs
-- Use prediction/forecasting language in outputs
-- Modify `eventImpactAnalysis.service.ts` (Phase 6A, untouched)
-- Modify `eventImpactPersistence.service.ts` (Phase 6B, untouched)
-- Commit or push before QA PASS
-
-## IMPORTANT DESIGN PRINCIPLES
-
-1. **AI must explain database stats, not invent history.** All historical context injected into prompts MUST come from real `event_impact_outcomes` rows.
-2. **Historical context must come from real data.** No fabricated statistics. If no data exists, the prompt must say "No historical data available for this event type."
-3. **Insufficient data guard.** If sample size < 5 for a comparison query, the system MUST return "insufficient_data" status instead of unreliable statistics.
-4. **All public-facing language must be policy-safe.** Use terms from Phase 6A T-6A.5 (historical observed movement, historical pattern, etc.). Never use buy/sell/take profit/stop loss.
-5. **Stats injection is optional and behind a flag.** `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` defaults to `false`. When disabled, the AI workflow behaves exactly as before Phase 2.
-6. **Backward compatibility mandatory.** Existing triage/classification must still work with old event types. New types extend the taxonomy, not replace it.
-
-## EXECUTION ORDER
-
-```
-T-2.6 (env flag) ─────────────────────────┐
-                                             ├── T-2.1 (comparison service) ──┐
-                                             │                                 ├── T-2.2 (API endpoint)
-T-2.3 (taxonomy in prompts + workflow) ─────┤                                 │
-                                             │                                 ├── T-2.4 (AI stats injection)
-                                             │                                 │
-                                             └─────────────────────────────────┘
-                                                                       │
-                                                                       ├── T-2.5 (confidence field)
-                                                                       │
-                                                                       ├── T-2.7 (docs update)
-                                                                       └── T-2.8 (QA checklist)
-```
-
-T-2.6 and T-2.3 can run in parallel (independent).
-T-2.1 depends on nothing new (reads existing tables).
-T-2.2 depends on T-2.1 (uses the comparison service).
-T-2.4 depends on T-2.1 + T-2.3 + T-2.6.
-T-2.5 is independent (can run in parallel with T-2.4).
-T-2.7 and T-2.8 after all code tasks.
 
 ---
-
-## REQUIRED TASKS
 
 ### T-2.1 — Historical Event Comparison Service
-
-**Task ID:** T-2.1
-**Phase:** Phase 2 — Full Event Impact Engine
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Create `backend/src/services/historicalEventComparison.service.ts` — a service that, given a new event (eventType, coinSymbol, eventSeverity), queries `event_impacts` + `event_impact_outcomes` to find similar past events and returns statistical summaries of their real outcomes.
-
-**Files to inspect:**
-- `backend/src/models/market.model.ts` — `eventImpacts` table (lines 464-484) and `eventImpactOutcomes` table (lines 487-510)
-- `backend/src/services/eventImpactAnalysis.service.ts` — reference for calculation patterns (calculateMedian, calculateRates)
-- `backend/src/services/eventImpactPersistence.service.ts` — reference for Drizzle query patterns and types
-
-**Files allowed to create:**
-- `backend/src/services/historicalEventComparison.service.ts` (new file)
-
-**Forbidden files:**
-- Any existing service files (read-only reference only)
-- Any cron files
-- Any controller/route files
-- Any model files
-
-**Constraints:**
-- ZERO `any` types
-- Read-only queries from `event_impacts` and `event_impact_outcomes` only
-- No external API calls
-- No AI calls
-- Insufficient data guard: return `insufficient_data` if sample size < 5
-- Must use `event_impact_outcomes.status = 'completed'` to filter only verified outcomes
-
-**Design specification:**
-
-1. **Input interface:**
-```typescript
-interface HistoricalComparisonInput {
-    eventType: string;           // e.g. 'Hack', 'ETF', 'Regulatory'
-    coinSymbol?: string;         // optional — filter to same coin
-    eventSeverity?: number;      // optional — filter to same severity (±1 range)
-    horizon?: string;            // optional — specific horizon ('1h','4h','24h','3d','7d')
-    maxResults?: number;         // default 50
-}
-```
-
-2. **Output interface:**
-```typescript
-interface HistoricalComparisonResult {
-    status: 'success' | 'insufficient_data' | 'no_data';
-    sampleSize: number;
-    filters: {
-        eventType: string;
-        coinSymbol: string | null;
-        eventSeverityRange: [number | null, number | null];
-    };
-    summary: {
-        totalEvents: number;
-        distinctCoins: number;
-        dateRange: { earliest: string | null; latest: string | null };
-    } | null;
-    horizonStats: {
-        horizon: string;
-        sampleSize: number;
-        medianChange: number | null;
-        avgChange: number | null;
-        positiveRate: number | null;
-        negativeRate: number | null;
-        avgMaxUpside: number | null;
-        avgMaxDrawdown: number | null;
-        avgTimeToPeak: number | null;
-        avgTimeToBottom: number | null;
-    }[] | null;
-    severityBreakdown: {
-        severity: number;
-        count: number;
-        medianChange24h: number | null;
-    }[] | null;
-    topCoins: {
-        coinSymbol: string;
-        count: number;
-        medianChange24h: number | null;
-    }[] | null;
-    contextString: string | null;
-}
-```
-
-3. **Core query logic:**
-```typescript
-// Step 1: Find similar event_impacts (same eventType, optionally same coin)
-// Step 2: JOIN with event_impact_outcomes WHERE status='completed'
-// Step 3: Group by horizon, calculate stats
-// Step 4: If sampleSize < 5, return insufficient_data
-// Step 5: Generate a human-readable contextString for prompt injection
-```
-
-4. **Context string format (for prompt injection in T-2.4):**
-```
-"Historical context for {eventType} events ({sampleSize} similar events found):
-- Median 24h price movement: {medianChange24h}%
-- Positive outcome rate (24h): {positiveRate24h}%
-- Average max upside (24h): {avgMaxUpside24h}%
-- Average max drawdown (24h): {avgMaxDrawdown24h}%
-- Most affected coins: {topCoins}
-Data sourced from OnlyAlpha event impact database. Not financial advice."
-```
-
-5. **Exported functions:**
-- `compareWithHistoricalEvents(input: HistoricalComparisonInput): Promise<HistoricalComparisonResult>`
-- `buildHistoricalContextString(input: HistoricalComparisonInput): Promise<string>` — convenience wrapper that returns just the contextString
-
-**Step-by-step instructions for Senior Developer:**
-
-1. Create `backend/src/services/historicalEventComparison.service.ts`
-2. Import: db, Drizzle operators (eq, and, lte, gte, sql, desc, asc), eventImpacts, eventImpactOutcomes from models
-3. Define input/output TypeScript interfaces (zero `any`)
-4. Reuse `calculateMedian()` pattern from eventImpactAnalysis.service.ts (copy the helper function — do NOT import from it to keep files independent)
-5. Implement `compareWithHistoricalEvents()`:
-   a. Build WHERE clause: `eventType` match, optional `coinSymbol` match, optional `eventSeverity` range (±1)
-   b. Query `event_impacts` with LEFT JOIN to `event_impact_outcomes`
-   c. Filter outcomes to `status = 'completed'` only
-   d. Group by horizon, calculate stats per horizon
-   e. Calculate severity breakdown and top coins
-   f. If sampleSize < 5, return `status: 'insufficient_data'`
-   g. If no rows, return `status: 'no_data'`
-   h. Generate `contextString` from calculated stats
-6. Implement `buildHistoricalContextString()` as convenience wrapper
-7. Export both functions + all interfaces
-
-**Acceptance criteria:**
-- Service compiles with zero `any` types
-- Queries only `event_impacts` + `event_impact_outcomes` (no other tables)
-- Returns `insufficient_data` when sample size < 5
-- Returns `no_data` when zero matching events
-- Context string is policy-safe (no buy/sell/prediction language)
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] File created at correct path
-- [ ] Zero `any` types
-- [ ] Input interface with all fields (eventType required, others optional)
-- [ ] Output interface with status field ('success'|'insufficient_data'|'no_data')
-- [ ] Query uses event_impacts + event_impact_outcomes (no other tables)
-- [ ] WHERE: eventType match, optional coinSymbol, optional eventSeverity ±1 range
-- [ ] JOIN: outcomes filtered to status='completed'
-- [ ] Sample size < 5 returns insufficient_data
-- [ ] Zero results returns no_data
-- [ ] Per-horizon stats: median, avg, positive/negative rate, max upside/drawdown, time to peak/bottom
-- [ ] Severity breakdown calculated
-- [ ] Top coins breakdown calculated
-- [ ] contextString generated in policy-safe format
-- [ ] NFA disclaimer in context string
-- [ ] buildHistoricalContextString convenience wrapper exported
-- [ ] No external API calls
-- [ ] No AI calls
-- [ ] `tsc --noEmit` clean
-
-**Dependencies:** None (reads existing tables only)
-
-**Rollback notes:**
-- Delete `backend/src/services/historicalEventComparison.service.ts`
-
----
-
-### T-2.2 — Event Impact Stats API Endpoint
-
-**Task ID:** T-2.2
 **Phase:** Phase 2 — Full Event Impact Engine
 **Assigned Agent:** Senior Developer
 **Status:** Pending
