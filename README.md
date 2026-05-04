@@ -55,6 +55,8 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 [ACT]    →  Living Articles + Conviction Scores + Alpha Radar + Strategic Outlook
 ```
 
+**The core principle: AI = analyst, not oracle.**
+
 **The problem:**
 - 99% of crypto news is noise with zero actionable value
 - Traders waste hours reading repetitive articles about the same event
@@ -90,6 +92,71 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 
 ## System Architecture
 
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                      FRONTEND (Next.js 16 App Router)                │
+│                                                                      │
+│  /                  /terminal/[coin]    /settings    /airdrops       │
+│  Home (Dashboard)   Alpha Terminal      Billing       Hunter         │
+│                                                                      │
+│  /archive           /scorecard          (Dynamic AI coins)           │
+│  Article Archive    Signal P&L          /terminal/[coin]             │
+│                                                                      │
+│  ┌──────────┐  ┌──────────────┐  ┌──────────┐  ┌────────────┐      │
+│  │MarketMood│  │Living Article│  │ Pro Chat │  │ Airdrop    │      │
+│  │AlphaFocus│  │ Wire Feed    │  │ Context  │  │ TaskTracker│      │
+│  │RadarGrid │  │ TimelineFeed │  │ Streaming│  │ Wallet Mgr │      │
+│  │TopMovers │  │ AlphaStream  │  │          │  │            │      │
+│  └──────────┘  └──────────────┘  └──────────┘  └────────────┘      │
+└────────────────────────┬─────────────────────────────────────────────┘
+                          │  REST API (JSON) + SSE (Chat Stream)
+┌────────────────────────▼─────────────────────────────────────────────┐
+│                      BACKEND (Express 5 + TypeScript)                │
+│                                                                      │
+│  ┌────────────────────────────────────────────────────────────┐     │
+│  │                    MIDDLEWARE STACK                         │     │
+│  │  Helmet → CORS → JSON (10KB) → URL-Encoded → Time         │     │
+│  └────────────────────────────────────────────────────────────┘     │
+│                                                                      │
+│  ┌───────────┐   ┌────────────┐   ┌─────────────────────────┐     │
+│  │  Routes   │──▶│Controllers │──▶│       Services          │     │
+│  └───────────┘   └────────────┘   │                          │     │
+│                                   │  openai.service.ts       │     │
+│  ┌──────────────────────────┐     │  ├─ generateLightweight  │     │
+│  │     CRON JOBS (14 active)│────▶│  │    Triage()           │     │
+│  │  AiWorkflow       hourly │     │  ├─ PromptFactory        │     │
+│  │  TerminalEngine  */10min │     │  ├─ QualityAuditor       │     │
+│  │  AirdropRSS       */6h   │     │  ├─ StrategicOutlook     │     │
+│  │  SignalPerformance */6h  │     │  └─ SignalManager        │     │
+│  │  AirdropDiscovery */6h   │  │  └─ SignalManager        │     │
+│  │  AirdropHunter    */12h  │     └─────────────────────────┘     │
+│  │  TelegramMonitor */30min │                                     │
+│  │  ConvictionUpdate */6h   │                                     │
+│  │  DailyAlpha       06:00  │                                     │
+│  │  MarketMood       07:00  │                                     │
+│  │  HistoricalNews   04:00  │                                     │
+│  │  BufferCleanup    00:00  │                                     │
+│  └──────────────────────────┘                                     │
+│  Bootstrap Scripts:                                                 │
+│  ├─ Radar Cleanup (dedup)                                           │
+│  ├─ Article Repair (incomplete)                                     │
+│  └─ Meta Tag Repair (poor/generic meta titles + descriptions)       │
+└──────────┬───────────────────┬──────────────────┬────────────────────┘
+            │                   │                  │
+     ┌──────▼──────┐   ┌───────▼───────┐  ┌───────▼───────┐
+     │ PostgreSQL  │   │    Redis      │  │ External APIs │
+     │ (Native pg) │   │              │  │               │
+     │  pgvector   │   │  Cache Layer │  │  OpenRouter   │
+     │  25 tables  │   │  Mutex Locks │  │  DeepSeek Dir │
+     │  Drizzle    │   │  Cron State  │  │  GLM/Zhipu AI │
+     │  Schema     │   │  Rate Limits │  │  Telegram     │
+     └─────────────┘   └──────────────┘  │  Binance      │
+                                         │  Moralis      │
+                                         │  DexScreener  │
+                                         │  Tavily/CoinCap│
+                                         │  Alternative.me│
+                                         │  Birdeye      │
+                                         └───────────────┘
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │                      FRONTEND (Next.js 16 App Router)                │
@@ -167,10 +234,10 @@ This is the core of the system — how raw news becomes actionable intelligence.
 │  Decrypt ─────────────────────────────────────┤     │
 │  The Block ───────────────────────────────────┤     │
 └──────────────────────────────────────────────┤     │
-                                                ▼     │
-  SHA-256 hash per headline ──▶ Dedup Check ──▶ raw_news_buffer (TTL: 48h)
-                                          │
-                                    Already exists? → SKIP
+                                                 ▼     │
+   SHA-256 hash per headline ──▶ Dedup Check ──▶ raw_news_buffer (TTL: 48h)
+                                           │
+                                     Already exists? → SKIP
 ```
 
 The gathering engine fetches from **4 direct RSS feeds** (CoinDesk, Cointelegraph, Decrypt, The Block) using `rss-parser`. Each headline gets a SHA-256 hash for exact dedup against both `coin_news` and `raw_news_buffer` before any database write.
@@ -184,12 +251,12 @@ The gathering engine fetches from **4 direct RSS feeds** (CoinDesk, Cointelegrap
 │        WuBlockchainReal, CryptoQuantOfficial         │
 │  Airdrops: AirdropAlpha, earndrop, AirdropAlert      │
 └─────────────────────────────────────────────────────┘
-                          │
-                    Spam Filter (8 patterns)
-                          │
-              ┌───────────┴───────────┐
-              ▼                       ▼
-      News → raw_news_buffer    Airdrops → airdrop_projects
+                           │
+                     Spam Filter (8 patterns)
+                           │
+               ┌───────────┴───────────┐
+               ▼                       ▼
+       News → raw_news_buffer    Airdrops → airdrop_projects
 ```
 
 Uses **Telegram MTProto** (gram.js) for direct channel scraping — no API rate limits, no bot accounts. Built-in spam filter blocks pump signals, guaranteed profit scams, and join-group spam. Requires `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `TELEGRAM_SESSION_STRING`.
@@ -198,14 +265,14 @@ Uses **Telegram MTProto** (gram.js) for direct channel scraping — no API rate 
 
 ```
 5 verified RSS sources (The Block, Decrypt, CoinDesk, CoinTelegraph, BeInCrypto)
-         │
-    Airdrop keyword filter (airdrop, snapshot, tge, claim, retrodrop, ...)
-         │
-    SHA-256 dedup (Redis SET + 7-day TTL, fallback to in-memory Set)
-         │
-    AI Validation (max 5 calls/run) → airdrop_projects table
-         │
-    GLM/Zhipu web search enrichment (for short AI responses)
+          │
+     Airdrop keyword filter (airdrop, snapshot, tge, claim, retrodrop, ...)
+          │
+     SHA-256 dedup (Redis SET + 7-day TTL, fallback to in-memory Set)
+          │
+     AI Validation (max 5 calls/run) → airdrop_projects table
+          │
+     GLM/Zhipu web search enrichment (for short AI responses)
 ```
 
 ### Phase 1B — Triage (TriageEngine) `0 */2 * * *`
@@ -268,6 +335,8 @@ raw_news_buffer (processed=true, relevanceScore >= threshold)
 **Bootstrap logic:** If a MINOR event arrives for a coin that has no Master Article yet, the system auto-promotes it to MAJOR to create the first Living Article.
 
 **Fallback schema validation & UI:** If AI writer attempts fail strict schema constraints, the system dynamically relaxes validation (e.g., length-only degradation) to salvage partial articles rather than cluttering the UI with placeholders. If all fallback attempts fail, it safely degrades to a raw template-based rendering from the analysis JSON — no article is ever lost.
+
+**Event-price dataset direction:** The system incorporates historical event impact statistics from the event_impact_outcomes table (behind `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` flag, default false) to inform AI analysis without enabling predictive claims.
 
 > **Note:** Service files for CryptoPanic, Reddit, DexScreener, and Tavily exist in `services/` but are **not wired** into the TerminalEngine cron. They are available as extension points for future ingestion expansion.
 
@@ -392,6 +461,8 @@ const glmGateway = createGLMGateway({
 | Quality Audit | DeepSeek Direct | `deepseek-chat` |
 | Embeddings | OpenRouter or Ollama | `text-embedding-3-small` / `nomic-embed-text` |
 
+**Public output safety language:** All AI-generated content uses market scenario terminology (e.g., "Market Scenario Identified" instead of "Signal Detected"). Historical outcomes are framed as "historical patterns suggest" rather than predictions. "Not financial advice" disclaimers are automatically appended.
+
 > **Isolated Backend Architecture:** All AI calls are handled exclusively via backend endpoints. The frontend never calls any AI service directly — no API keys, no SDKs, no client-side AI logic.
 
 ### PromptFactory — Centralized Prompt Templates
@@ -402,7 +473,7 @@ All prompts live in one file. This makes prompt engineering systematic and versi
 
 - **`buildTriageMessages()`** — Batch classification of 10 news items in a single call (cheaper than 10 individual calls)
 - **`buildDeepAnalysisMessages()`** — Feeds DeepSeek full context: current price, 24h change, ATH date, 52-week range, 8-week trend, 30-day change, Wikipedia background, historical event patterns. Output is strict JSON — no free text, no hallucination surface
-- **`buildArticleWriterMessages()`** — Writer operates with strict rules: no new analysis, no verdict changes, no fabricated numbers. Tone adapts per event type (urgent/exciting/cautious/optimistic/solemn/analytical/professional)
+- **`buildArticleWriterMessages()`** — Writer operates with strict rules: no new analysis, no verdict changes, no fabricated numbers. Tone adapts per event type (urgent/exciting/cautious/optimistic/solemn/analytical/professional). Uses policy-safe terminology (Market Scenario, Reference Price, Target Zone, Risk Zone)
 - **`buildAirdropValidationMessages()`** — Validates airdrop projects for legitimacy and risk assessment
 - **`buildChatMessages()`** — Two modes: general crypto chat and context-aware (injects Master Article + Timeline + Coin Memory)
 
@@ -559,6 +630,7 @@ crons.forEach((cron, index) => {
 | **MarketMood** | `0 7 * * *` (07:00 UTC) | `marketMood.cron.ts` | Blends external Fear & Greed with internal radar signals |
 | **HistoricalNews** | `0 4 * * *` (04:00 UTC) | `historicalNews.cron.ts` | Backfills historical news + 7-day price outcomes |
 | **BufferCleanup** | `0 0 * * *` (midnight) | `bufferCleanup.cron.ts` | Deletes expired TTL entries from buffer |
+| **ScenarioOutcomeChecker** | `0 */2 * * *` (every 2h) | `scenarioOutcomeChecker.cron.ts` | Checks pending scenarios for close conditions (TP/SL/time expiry) |
 
 **Concurrency protection:** All crons use an in-memory `isRunning` flag to prevent concurrent execution. AiWorkflow additionally uses a **Redis mutex lock** (`SET NX EX 900`) for cross-instance safety.
 
@@ -1280,6 +1352,16 @@ Four-tier strategy to minimize AI spend while maximizing intelligence quality:
 | Strategic Outlook | Only triggers on MAJOR events with impact >= 70 + structural criteria |
 | Conviction Score | Zero AI calls — pure algorithm |
 | Fallback Article Generation | Template-based fallback if all 3 AI attempts fail — no article lost |
+
+### Migration Strategy Note (Phase 8)
+
+A comprehensive migration discipline has been established to ensure safe database schema evolution:
+
+- **Approval Gates:** All migrations require explicit approval before production deployment
+- **Rollback Plans:** Every migration includes tested rollback procedures
+- **Validation Checklists:** Pre/post-migration health checks and data integrity verification
+- **Zero Breaking Changes:** Backward compatibility maintained across all API contracts
+- **Current State:** No pending migrations; system ready for production with existing schema
 
 ---
 
