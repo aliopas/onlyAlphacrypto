@@ -1,7 +1,7 @@
 # ONLYALPHA — PROJECT STATE
 
 **Last Updated:** May 4, 2026
-**Current Focus:** Phase 6B — Event Impact Persistence (PLANNED — awaiting execution)
+**Current Focus:** Phase 1 — Minimum Data Foundation (IN PROGRESS — docs complete, code pending)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -15,22 +15,37 @@
 2. **Modular Boundaries:** Cache logic -> `CacheManager`. AI calls -> `AIGateway`. Prompts -> `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
 
-## Current Mission: Phase 6B — Event Impact Persistence
+## Current Mission: Phase 1 — Minimum Data Foundation
 
-**Status:** PLANNED — Ready for execution after Phase 6A QA PASS
+**Status:** IN PROGRESS — Code tasks (T-1.2, T-1.3, T-1.4) pending; Docs tasks (T-1.1, T-1.5, T-1.6, T-1.7) COMPLETED
 **Authorized By:** Strategic Planner — May 4, 2026
-**Key Objective:** Create persistence layer for Event Impact Engine. Store calculated event impact data in two dedicated parallel tables (event_impacts, event_impact_outcomes). Do not modify existing tables.
-**Plan Path:** `agent_gedens/THE_NEXUS_HUB.md` — Phase 6B section
-**Task Count:** 7 (T-6B.1 through T-6B.7)
-**Scope:** 2 migrations, 1 Drizzle model update, 1 persistence service, 1 backfill script, 3 env flags, 1 doc update, 1 QA checklist
+**Key Objective:** Activate the Event Impact Engine in production. Wire sync cron (reads coin_news_history → creates event_impacts), wire outcome checker cron (fills event_impact_outcomes with real Binance price data), enable feature flags in controlled rollout.
+**Plan Path:** `agent_gedens/THE_NEXUS_HUB.md` — Phase 1 section
+**Task Count:** 7 (T-1.1 through T-1.7)
+**Scope:** 2 new crons, 2 new env flags, 1 server.ts registration update, 1 migration plan, 1 runbook, 1 QA checklist
+**Architecture Decision:** Option D (separate sync cron) — does NOT modify any existing crons or services
+**Prerequisites:** Phase 6A (✅ complete) + Phase 6B (✅ complete) — both pushed
 
-**Previous:** Phase 6A — Event Impact Analysis Engine — ✅ COMPLETED (QA PASS)
+**Previous:** Phase 6B — Event Impact Persistence — ✅ COMPLETED
 
 ## Completed Phases
 
+### Phase 1 — Minimum Data Foundation (Activation)
+**Status:** IN PROGRESS — Code tasks (T-1.2, T-1.3, T-1.4) pending; Docs tasks (T-1.1, T-1.5, T-1.6, T-1.7) ✅ COMPLETED
+**Tasks:** 7 (T-1.1 through T-1.7) — 4 Docs Complete, 3 Code Pending
+**New Files:** `backend/src/crons/eventImpactSync.cron.ts`, `backend/src/crons/eventImpactOutcomeChecker.cron.ts`
+**Modified Files:** `backend/src/config/env.ts` (+2 flags), `backend/src/server.ts` (+2 conditional registrations)
+**Summary:**
+- eventImpactSync.cron: every 30 min, reads unsynced coin_news_history via LEFT JOIN, creates event_impacts + event_impact_outcomes
+- eventImpactOutcomeChecker.cron: every 30 min, checks due pending outcomes, fetches Binance klines, calculates metrics, updates records
+- 2 new env flags (both default false): EVENT_IMPACT_SYNC_ENABLED, EVENT_IMPACT_OUTCOME_CHECKER_ENABLED
+- Conditional server.ts registration (same pattern as MONITORING_CRON_ENABLED)
+- Production runbook with step-by-step activation procedure
+- Zero modifications to existing crons, services, models, or frontend
+
 ### Phase 6B — Event Impact Persistence
-**Status:** PLANNED — Ready for execution
-**Tasks:** 7 (T-6B.1 through T-6B.7) — All Pending
+**Status:** COMPLETED — Pushed
+**Tasks:** 7 (T-6B.1 through T-6B.7) — All Done
 **Planned Files:** `backend/scripts/migrate-event-impacts.sql`, `backend/src/services/eventImpactPersistence.service.ts`, `backend/scripts/backfill-event-impacts.js`
 **Modified Files:** `backend/src/models/market.model.ts`, `backend/src/config/env.ts`, `agent_gedens/THE_NEXUS_HUB.md`
 **Summary:**

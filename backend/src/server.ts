@@ -25,6 +25,8 @@ import { startEventOutcomeCheckerCron } from './crons/eventOutcomeChecker.cron';
 import { startLevelIntelligenceCron } from './crons/levelIntelligenceCron';
 import { startScenarioOutcomeCheckerCron } from './crons/scenarioOutcomeChecker.cron';
 import { startMonitoringCron } from './crons/monitoringCron';
+import { startEventImpactSyncCron } from './crons/eventImpactSync.cron';
+import { startEventImpactOutcomeCheckerCron } from './crons/eventImpactOutcomeChecker.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -132,6 +134,30 @@ async function bootstrap(): Promise<void> {
                     logger.error('[Server] Failed to start optional cron MonitoringCron: %s', error instanceof Error ? error.message : String(error));
                 }
             }, crons.length * cronStartDelay);
+        }
+
+        // Optional Event Impact Sync cron
+        if (env.EVENT_IMPACT_SYNC_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startEventImpactSyncCron();
+                    logger.info('[Server] Optional cron started: EventImpactSync');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron EventImpactSync: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 1) * cronStartDelay);
+        }
+
+        // Optional Event Impact Outcome Checker cron
+        if (env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startEventImpactOutcomeCheckerCron();
+                    logger.info('[Server] Optional cron started: EventImpactOutcomeChecker');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron EventImpactOutcomeChecker: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 2) * cronStartDelay);
         }
     } catch (error) {
         logger.error('[Server] Failed to start: %s', error instanceof Error ? error.message : String(error));

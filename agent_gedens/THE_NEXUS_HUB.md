@@ -1,3 +1,1359 @@
+# Phase 1 — Minimum Data Foundation (Activate Event Impact Engine)
+
+**Status:** IN PROGRESS — Code tasks (T-1.2, T-1.3, T-1.4) pending execution; Documentation tasks (T-1.1, T-1.5, T-1.6, T-1.7) COMPLETED
+**Date:** May 4, 2026
+**Priority:** P1 (Activates Phase 6A+6B deliverables in production)
+**Scope:** 2 new crons, 2 new env flags, 1 server.ts registration, 1 runbook, 1 QA checklist
+**Prerequisites:** Phase 6A (complete) + Phase 6B (complete) — both pushed
+**Authorized By:** Strategic Planner — May 4, 2026
+
+## OBJECTIVE
+
+Activate the Event Impact Engine in production. After Phase 1, every new event/news item should automatically:
+1. Create an `event_impacts` record (via sync cron reading `coin_news_history`)
+2. Create `event_impact_outcomes` records for each horizon (1h, 4h, 24h, 3d, 7d)
+3. Have outcomes checked and filled as time passes (via outcome checker cron)
+
+Phase 1 does NOT modify any existing tables, crons, AI workflows, or frontend.
+
+## ARCHITECTURE DECISION — Option D (Separate Sync Cron)
+
+**Integration point:** A new `eventImpactSync.cron.ts` that independently reads recent `coin_news_history` records and creates `event_impacts` for any missing records.
+
+**Why Option D over alternatives:**
+- Does NOT modify any existing cron (aiWorkflow, triageEngine, eventOutcomeChecker)
+- Runs independently with its own flag
+- Idempotent by design (skips already-synced records via LEFT JOIN)
+- Can be enabled/disabled without affecting the rest of the pipeline
+- Safest possible integration — zero risk to existing data flow
+
+**Data flow:**
+```
+coin_news_history (existing, unchanged)
+         │
+         ▼
+eventImpactSync.cron.ts (NEW — every 30 min)
+   ├── LEFT JOIN: finds records with eventSeverity but no event_impacts row
+   ├── calls persistEventImpact() → event_impacts
+   └── calls persistEventImpactOutcomes() → event_impact_outcomes (5 rows, status='pending')
+         │
+         ▼
+eventImpactOutcomeChecker.cron.ts (NEW — every 30 min)
+   ├── finds event_impact_outcomes WHERE status='pending' AND due_at <= now()
+   ├── fetches price via getCoinKlinesRange() from Binance
+   ├── calculates change_percent, max_upside, max_drawdown, times
+   ├── classifies outcome
+   └── updates event_impact_outcomes row → status='completed'
+         │
+         ▼
+event_impacts table (growing dataset of event-price impact records)
+event_impact_outcomes table (per-horizon outcomes with real price data)
+```
+
+## PHASE 1 SCOPE LIMITATIONS
+
+**Allowed:**
+- Create 2 new cron files (eventImpactSync, eventImpactOutcomeChecker)
+- Add 2 new env flags (EVENT_IMPACT_SYNC_ENABLED, EVENT_IMPACT_OUTCOME_CHECKER_ENABLED)
+- Register new crons in server.ts (conditional on flags)
+- Create production runbook (T-1.1, T-1.5)
+
+**Forbidden:**
+- Modify coin_news_history schema
+- Modify existing cron behavior
+- Modify Living Articles
+- Modify scorecard
+- Modify public UI / frontend
+- Add external APIs beyond existing Binance
+- Modify AI workflow prompts
+- Add prediction/forecasting language
+- Commit or push before QA PASS
+
+## EXECUTION ORDER
+
+```
+T-1.4 (feature flags) ─────────────────────────┐
+                                                  ├── T-1.2 (sync cron) ──┐
+T-1.5 (runbook plan) ───────────────────────────┤                         ├── T-1.6 (docs) ── T-1.7 (QA)
+                                                  ├── T-1.3 (outcome cron)─┘
+```
+
+T-1.4 must complete first (flags needed by T-1.2 and T-1.3).
+T-1.2 and T-1.3 can run in parallel.
+T-1.5 can run in parallel with all code tasks.
+T-1.6 and T-1.7 after all code tasks complete.
+
+---
+
+## REQUIRED TASKS
+
+### T-1.1 — Production Migration Execution Plan
+
+**Task ID:** T-1.1
+**Phase:** Phase 1 — Minimum Data Foundation
+**Assigned Agent:** Prompt Engineer
+**Status:** Pending
+
+**Objective:**
+Document a safe production migration execution plan for running `migrate-event-impacts.sql`. This is a PLAN document, not execution.
+
+**Files to inspect:**
+- `backend/scripts/migrate-event-impacts.sql` — the migration to execute
+- `backend/src/models/market.model.ts` — Drizzle model (verify it matches SQL)
+
+**Deliverable:**
+Write a detailed runbook section covering:
+
+1. **Pre-migration checklist:**
+   - Verify `event_impacts` and `event_impact_outcomes` tables do NOT already exist
+   - Verify `coin_news_history` table exists and has expected row count
+   - Take a pg_dump backup of the database (or at minimum the coin_news_history table)
+   - Verify DATABASE_URL points to correct database
+   - Estimate row count impact (how many eligible coin_news_history rows have eventSeverity IS NOT NULL)
+
+2. **Migration execution:**
+   - Exact command: `psql $DATABASE_URL -f backend/scripts/migrate-event-impacts.sql`
+   - Expected output (table/index creation messages)
+   - Verification queries:
+     ```sql
+     SELECT table_name FROM information_schema.tables WHERE table_name IN ('event_impacts', 'event_impact_outcomes');
+     SELECT indexname FROM pg_indexes WHERE tablename IN ('event_impacts', 'event_impact_outcomes');
+     SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'event_impacts' ORDER BY ordinal_position;
+     SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'event_impact_outcomes' ORDER BY ordinal_position;
+     ```
+
+3. **Rollback procedure:**
+   ```sql
+   DROP TABLE IF EXISTS event_impact_outcomes;
+   DROP TABLE IF EXISTS event_impacts;
+   ```
+   - Note: CASCADE on DROP handles index cleanup
+   - No data in existing tables affected (new tables only)
+
+4. **Post-migration verification:**
+   - Both tables exist with correct column count (13 + 16)
+   - All indexes present (5 + 4)
+   - FK constraints correct
+   - Idempotency confirmed (re-running migration produces no errors)
+
+**Acceptance criteria:**
+- Plan documented as a subsection in THE_NEXUS_HUB.md
+- All verification queries provided
+- Rollback procedure documented
+- Pre-flight checklist complete
+
+**QA checklist:**
+- [ ] All table names match migration SQL
+- [ ] All column names and types verified against Drizzle model
+- [ ] FK constraints documented (ON DELETE SET NULL for source_id, ON DELETE CASCADE for outcomes)
+- [ ] Backup command provided
+- [ ] Rollback drops in correct order (outcomes first)
+
+**Dependencies:** None
+
+---
+
+### T-1.2 — Event Impact Sync Cron
+
+**Task ID:** T-1.2
+**Phase:** Phase 1 — Minimum Data Foundation
+**Assigned Agent:** Senior Developer
+**Status:** Pending
+
+**Objective:**
+Create `backend/src/crons/eventImpactSync.cron.ts` — a cron that periodically reads recent `coin_news_history` records and creates `event_impacts` + `event_impact_outcomes` for any records not yet synced. This is the primary data ingestion point for the Event Impact Engine.
+
+**Files to inspect:**
+- `backend/src/services/eventImpactPersistence.service.ts` — existing `persistEventImpact()` and `persistEventImpactOutcomes()` functions
+- `backend/src/crons/eventOutcomeChecker.cron.ts` — reference cron pattern (schedule, logger, error handling)
+- `backend/src/crons/scenarioOutcomeChecker.cron.ts` — reference for env flag check pattern
+- `backend/src/models/market.model.ts` — `coinNewsHistory` and `eventImpacts` Drizzle tables
+- `backend/src/config/env.ts` — `EVENT_IMPACT_SYNC_ENABLED` flag (added in T-1.4)
+- `backend/src/server.ts` — cron registration pattern (lines 93-135)
+
+**Files allowed to create:**
+- `backend/src/crons/eventImpactSync.cron.ts` (new file)
+
+**Files allowed to modify:**
+- `backend/src/server.ts` (add import + registration, lines 27 and 111-112)
+
+**Forbidden files:**
+- Any existing cron files
+- Any service files
+- Any model files
+- Any controller/route files
+- `backend/src/config/env.ts` (T-1.4 handles flags)
+
+**Constraints:**
+- ZERO `any` types
+- Feature-flagged: check `env.EVENT_IMPACT_SYNC_ENABLED` at cron start
+- Idempotent: skip records that already have event_impacts rows
+- Independent: does NOT modify existing pipeline or cron behavior
+- Uses existing persistence functions from eventImpactPersistence.service.ts
+
+**Design specification:**
+
+1. **Query for unsynced records:**
+   ```sql
+   SELECT cnh.*
+   FROM coin_news_history cnh
+   LEFT JOIN event_impacts ei ON ei.source_id = cnh.id
+   WHERE cnh.event_severity IS NOT NULL
+     AND ei.id IS NULL
+     AND cnh.published_at > NOW() - INTERVAL '48 hours'
+   ORDER BY cnh.published_at DESC
+   LIMIT 50
+   ```
+
+   Drizzle equivalent:
+   ```typescript
+   import { db } from '../config/db';
+   import { coinNewsHistory, eventImpacts } from '../models/market.model';
+   import { and, isNotNull, isNull, gt, sql, desc } from 'drizzle-orm';
+
+   const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
+   const unsyncedRows = await db
+       .select()
+       .from(coinNewsHistory)
+       .leftJoin(eventImpacts, eq(eventImpacts.sourceId, coinNewsHistory.id))
+       .where(and(
+           isNotNull(coinNewsHistory.eventSeverity),
+           isNull(eventImpacts.id),
+           gt(coinNewsHistory.publishedAt, fortyEightHoursAgo)
+       ))
+       .orderBy(desc(coinNewsHistory.publishedAt))
+       .limit(50);
+   ```
+
+   Filter out rows where the JOIN produced an eventImpacts result (shouldn't happen due to isNull, but defensive):
+   ```typescript
+   const candidates = unsyncedRows.filter(row => !row.eventImpacts);
+   ```
+
+2. **Process each candidate:**
+   ```typescript
+   import { persistEventImpact, persistEventImpactOutcomes } from '../services/eventImpactPersistence.service';
+
+   for (const row of candidates) {
+       const sourceRecord = row.coin_news_history; // LEFT JOIN result shape
+       const eventImpactId = await persistEventImpact(sourceRecord as CoinNewsHistoryRecord);
+       if (eventImpactId !== null) {
+           await persistEventImpactOutcomes(eventImpactId, sourceRecord as CoinNewsHistoryRecord);
+       }
+   }
+   ```
+
+3. **Export pattern (following existing crons):**
+   ```typescript
+   export async function runEventImpactSync(): Promise<void> { ... }
+   export function startEventImpactSyncCron(): void {
+       cron.schedule('*/30 * * * *', () => runEventImpactSync());
+       console.log('EventImpactSync scheduled — every 30 minutes');
+   }
+   ```
+
+4. **server.ts registration (conditional, following MONITORING_CRON_ENABLED pattern at lines 125-135):**
+   ```typescript
+   // Add import at line 27 (after startScenarioOutcomeCheckerCron):
+   import { startEventImpactSyncCron } from './crons/eventImpactSync.cron';
+
+   // Add conditional registration after the monitoring cron block (after line 135):
+   if (env.EVENT_IMPACT_SYNC_ENABLED) {
+       setTimeout(() => {
+           try {
+               startEventImpactSyncCron();
+               logger.info('[Server] Optional cron started: EventImpactSync');
+           } catch (error) {
+               logger.error('[Server] Failed to start optional cron EventImpactSync: %s', error instanceof Error ? error.message : String(error));
+           }
+       }, crons.length * cronStartDelay);
+   }
+   ```
+
+   **IMPORTANT:** The sync cron must NOT be added to the main `crons` array (lines 94-112). It must use the conditional pattern (lines 125-135) since its flag defaults to `false`.
+
+**Error handling:**
+- Outer try/catch in `runEventImpactSync()` with logger.error
+- Inner try/catch per row (skip failed rows, continue processing)
+- Log summary: `{ scanned, synced, skipped, errors }`
+
+**Step-by-step instructions for Senior Developer:**
+
+1. Create `backend/src/crons/eventImpactSync.cron.ts`
+2. Import: cron, db, Drizzle operators, persistence functions, env, logger
+3. Implement `runEventImpactSync()`:
+   a. Check `env.EVENT_IMPACT_SYNC_ENABLED` — return early if false
+   b. Calculate 48-hour cutoff
+   c. LEFT JOIN query to find unsynced candidates
+   d. Filter candidates (defensive null check on JOIN result)
+   e. Loop: call `persistEventImpact()` then `persistEventImpactOutcomes()`
+   f. Log summary
+4. Implement `startEventImpactSyncCron()` with `*/30 * * * *` schedule
+5. Export both functions
+6. Add import to `server.ts` at line 27
+7. Add conditional registration after monitoring cron block in `server.ts`
+
+**Acceptance criteria:**
+- Cron created with correct LEFT JOIN query
+- Idempotent (skips already-synced records)
+- Feature-flagged (env.EVENT_IMPACT_SYNC_ENABLED)
+- Registered in server.ts conditionally (not in main crons array)
+- Zero `any` types
+- Proper error handling (outer + inner try/catch)
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] File created at correct path
+- [ ] LEFT JOIN query uses correct tables and conditions
+- [ ] 48-hour window filter present
+- [ ] LIMIT 50 per run
+- [ ] env.EVENT_IMPACT_SYNC_ENABLED check at function start
+- [ ] persistEventImpact() and persistEventImpactOutcomes() called correctly
+- [ ] CoinNewsHistoryRecord type cast without `any` (use `as unknown as CoinNewsHistoryRecord` or proper type narrowing)
+- [ ] Outer try/catch with logger.error
+- [ ] Inner try/catch per row
+- [ ] Summary logged: scanned, synced, skipped, errors
+- [ ] Export: runEventImpactSync + startEventImpactSyncCron
+- [ ] server.ts import added at line 27
+- [ ] server.ts conditional registration (not in main crons array)
+- [ ] Zero `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-1.4 (env flag must exist)
+
+**Rollback notes:**
+- Delete `backend/src/crons/eventImpactSync.cron.ts`
+- Revert server.ts (remove import + conditional block)
+
+---
+
+### T-1.3 — Event Impact Outcome Checker Cron
+
+**Task ID:** T-1.3
+**Phase:** Phase 1 — Minimum Data Foundation
+**Assigned Agent:** Senior Developer
+**Status:** Pending
+
+**Objective:**
+Create `backend/src/crons/eventImpactOutcomeChecker.cron.ts` — a cron that checks due `event_impact_outcomes` records, fetches real price data from Binance, calculates outcome metrics, and updates the records.
+
+**Files to inspect:**
+- `backend/src/crons/eventOutcomeChecker.cron.ts` — reference for Binance kline fetching + metric calculation pattern (lines 99-186)
+- `backend/src/crons/scenarioOutcomeChecker.cron.ts` — reference for env flag check + due_at query pattern (lines 8-55)
+- `backend/src/services/binance.service.ts` — `getCoinKlinesRange(symbol, interval, startTime, endTime)` function (lines 120-187)
+- `backend/src/models/market.model.ts` — `eventImpactOutcomes` and `eventImpacts` Drizzle tables
+- `backend/src/config/env.ts` — `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` flag (added in T-1.4)
+- `backend/src/server.ts` — cron registration pattern
+
+**Files allowed to create:**
+- `backend/src/crons/eventImpactOutcomeChecker.cron.ts` (new file)
+
+**Files allowed to modify:**
+- `backend/src/server.ts` (add import + conditional registration)
+
+**Forbidden files:**
+- Any existing cron files
+- Any service files
+- Any model files
+- Any controller/route files
+
+**Constraints:**
+- ZERO `any` types
+- Feature-flagged: check `env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` at cron start
+- Use existing `getCoinKlinesRange()` from binance.service.ts ONLY
+- Handle missing prices gracefully (mark as 'failed' with error_message)
+- Handle non-Binance coins gracefully (mark as 'unsupported')
+- Registered in server.ts conditionally (NOT in main crons array)
+
+**Design specification:**
+
+1. **Query for due pending outcomes:**
+   ```typescript
+   const now = new Date();
+
+   const dueOutcomes = await db
+       .select({
+           outcomeId: eventImpactOutcomes.id,
+           eventImpactId: eventImpactOutcomes.eventImpactId,
+           horizon: eventImpactOutcomes.horizon,
+           horizonHours: eventImpactOutcomes.horizonHours,
+           dueAt: eventImpactOutcomes.dueAt,
+           coinSymbol: eventImpacts.coinSymbol,
+           priceAtEvent: eventImpacts.priceAtEvent,
+           publishedAt: eventImpacts.publishedAt,
+       })
+       .from(eventImpactOutcomes)
+       .innerJoin(eventImpacts, eq(eventImpactOutcomes.eventImpactId, eventImpacts.id))
+       .where(and(
+           eq(eventImpactOutcomes.status, 'pending'),
+           lte(eventImpactOutcomes.dueAt, now)
+       ))
+       .limit(100);
+   ```
+
+2. **Process each outcome:**
+   For each due outcome:
+   a. Check `priceAtEvent` is not null — if null, mark as 'failed' with "Missing price_at_event"
+   b. Validate `coinSymbol` is a valid Binance pair (format: BTCUSDT, ETHUSDT, etc.)
+   c. Fetch candles: `getCoinKlinesRange(coinSymbol + 'USDT', '1h', publishedAtMs, dueAtMs)`
+   d. If candles empty → mark as 'failed' with "No candles available from Binance"
+   e. Find price at horizon (closest candle to dueAt)
+   f. Calculate change_percent: `((priceAtHorizon - priceAtEvent) / priceAtEvent) * 100`
+   g. Calculate max_upside, max_drawdown, time_to_peak, time_to_bottom from all candles
+   h. Classify outcome at the horizon level:
+      - >15%: strong_bullish
+      - >5%: bullish
+      - [-5%, +5%]: neutral
+      - >-15%: bearish
+      - <=-15%: strong_bearish
+   i. Update the outcome record with all calculated fields + status='completed'
+
+3. **Coin symbol handling:**
+   - `coinSymbol` in the DB is stored as 'BTC', 'ETH', etc. (without USDT suffix)
+   - Binance API requires 'BTCUSDT', 'ETHUSDT'
+   - Append 'USDT' when calling `getCoinKlinesRange()`
+   - If the coin is not on Binance (API returns empty candles), mark as 'unsupported'
+
+4. **Metric calculation logic (from eventOutcomeChecker.cron.ts lines 154-175):**
+   ```typescript
+   let maxUpside = 0;
+   let maxDrawdown = 0;
+   let peakTimeMs = 0;
+   let bottomTimeMs = 0;
+
+   for (const candle of allCandles) {
+       const changePct = ((candle.close - priceAtEvent) / priceAtEvent) * 100;
+       if (changePct > maxUpside) {
+           maxUpside = changePct;
+           peakTimeMs = candle.closeTime;
+       }
+       if (changePct < maxDrawdown) {
+           maxDrawdown = changePct;
+           bottomTimeMs = candle.closeTime;
+       }
+   }
+
+   const timeToPeakHours = peakTimeMs > 0 ? Math.round((peakTimeMs - publishedAtMs) / 3600000) : null;
+   const timeToBottomHours = bottomTimeMs > 0 ? Math.round((bottomTimeMs - publishedAtMs) / 3600000) : null;
+   ```
+
+5. **Classification thresholds (same as eventOutcomeChecker.cron.ts lines 178-186):**
+   ```typescript
+   let classification: string;
+   if (changePercent > 15) classification = 'strong_bullish';
+   else if (changePercent > 5) classification = 'bullish';
+   else if (changePercent > -5) classification = 'neutral';
+   else if (changePercent > -15) classification = 'bearish';
+   else classification = 'strong_bearish';
+   ```
+
+6. **Update query:**
+   ```typescript
+   await db.update(eventImpactOutcomes)
+       .set({
+           priceAtHorizon: priceAtHorizon,
+           changePercent,
+           maxUpsidePercent: maxUpside,
+           maxDrawdownPercent: maxDrawdown,
+           timeToPeakHours,
+           timeToBottomHours,
+           outcomeClassification: classification,
+           status: 'completed',
+           checkedAt: new Date(),
+           updatedAt: new Date(),
+       })
+       .where(eq(eventImpactOutcomes.id, outcomeId));
+   ```
+
+7. **Failure cases:**
+   ```typescript
+   // Price at event missing:
+   await db.update(eventImpactOutcomes)
+       .set({ status: 'failed', errorMessage: 'Missing price_at_event', checkedAt: new Date(), updatedAt: new Date() })
+       .where(eq(eventImpactOutcomes.id, outcomeId));
+
+   // No candles from Binance (non-Binance coin):
+   await db.update(eventImpactOutcomes)
+       .set({ status: 'unsupported', errorMessage: `No candles for ${coinSymbol} on Binance`, checkedAt: new Date(), updatedAt: new Date() })
+       .where(eq(eventImpactOutcomes.id, outcomeId));
+
+   // Binance API error:
+   await db.update(eventImpactOutcomes)
+       .set({ status: 'failed', errorMessage: 'Binance API error', checkedAt: new Date(), updatedAt: new Date() })
+       .where(eq(eventImpactOutcomes.id, outcomeId));
+   ```
+
+8. **server.ts registration (conditional, same pattern as T-1.2):**
+   ```typescript
+   // Add import at line 27:
+   import { startEventImpactOutcomeCheckerCron } from './crons/eventImpactOutcomeChecker.cron';
+
+   // Add conditional registration:
+   if (env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED) {
+       setTimeout(() => {
+           try {
+               startEventImpactOutcomeCheckerCron();
+               logger.info('[Server] Optional cron started: EventImpactOutcomeChecker');
+           } catch (error) {
+               logger.error('[Server] Failed to start optional cron EventImpactOutcomeChecker: %s', error instanceof Error ? error.message : String(error));
+           }
+       }, crons.length * cronStartDelay);
+   }
+   ```
+
+**Step-by-step instructions for Senior Developer:**
+
+1. Create `backend/src/crons/eventImpactOutcomeChecker.cron.ts`
+2. Import: cron, db, Drizzle operators (eq, lte, and), binance getCoinKlinesRange, logger, env
+3. Implement `runEventImpactOutcomeChecker()`:
+   a. Check `env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` — return early if false
+   b. Query due outcomes via INNER JOIN with event_impacts
+   c. Loop through outcomes, call `processOutcome(outcome)`
+   d. Log summary
+4. Implement `processOutcome()`:
+   a. Validate priceAtEvent not null
+   b. Append 'USDT' to coinSymbol
+   c. Fetch candles via getCoinKlinesRange
+   d. Handle failure cases (no candles, API error)
+   e. Calculate metrics (change, max upside/drawdown, times)
+   f. Classify outcome
+   g. Update record
+5. Implement `startEventImpactOutcomeCheckerCron()` with `*/30 * * * *` schedule
+6. Export both functions
+7. Add import to server.ts at line 27
+8. Add conditional registration in server.ts
+
+**Acceptance criteria:**
+- Cron finds due pending outcomes via INNER JOIN
+- Fetches Binance klines correctly (USDT suffix appended)
+- Calculates all 6 metrics correctly
+- Classifies outcome using correct thresholds
+- Handles failure cases (missing price, no candles, API error)
+- Non-Binance coins marked as 'unsupported'
+- Feature-flagged
+- Registered in server.ts conditionally
+- Zero `any` types
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] File created at correct path
+- [ ] INNER JOIN query joins eventImpactOutcomes with eventImpacts
+- [ ] WHERE: status='pending' AND due_at <= now()
+- [ ] LIMIT 100 per run
+- [ ] env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED check at function start
+- [ ] USDT suffix appended to coinSymbol for Binance API
+- [ ] priceAtEvent null check (mark 'failed')
+- [ ] Empty candles check (mark 'unsupported' or 'failed')
+- [ ] change_percent calculated: ((priceAtHorizon - priceAtEvent) / priceAtEvent) * 100
+- [ ] max_upside_percent: max positive change across all candles
+- [ ] max_drawdown_percent: max negative change across all candles
+- [ ] time_to_peak_hours: (peakCandle.closeTime - publishedAt) / 3600000
+- [ ] time_to_bottom_hours: (bottomCandle.closeTime - publishedAt) / 3600000
+- [ ] Classification thresholds: strong_bullish(>15), bullish(>5), neutral(±5), bearish(>-15), strong_bearish(<=-15)
+- [ ] Update sets status='completed', checkedAt=now()
+- [ ] Failure updates set appropriate status + errorMessage
+- [ ] Outer try/catch with logger.error
+- [ ] Inner try/catch per outcome
+- [ ] Summary logged: processed, completed, failed, unsupported
+- [ ] Export: runEventImpactOutcomeChecker + startEventImpactOutcomeCheckerCron
+- [ ] server.ts import + conditional registration
+- [ ] Zero `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-1.4 (env flag must exist)
+
+**Rollback notes:**
+- Delete `backend/src/crons/eventImpactOutcomeChecker.cron.ts`
+- Revert server.ts (remove import + conditional block)
+- Outcome records with status='completed' remain in DB (harmless, no rollback needed)
+
+---
+
+### T-1.4 — Add Phase 1 Feature Flags
+
+**Task ID:** T-1.4
+**Phase:** Phase 1 — Minimum Data Foundation
+**Assigned Agent:** Senior Developer
+**Status:** Pending
+
+**Objective:**
+Add two new feature flags to `backend/src/config/env.ts` for the new crons created in T-1.2 and T-1.3.
+
+**Files to inspect:**
+- `backend/src/config/env.ts` — existing env schema (lines 84-88 for event impact flags, lines 77-91 for all feature flags)
+
+**Files allowed to modify:**
+- `backend/src/config/env.ts` (add 2 new boolean flags)
+
+**Forbidden files:**
+- Any other files
+
+**Design specification:**
+
+Add two new boolean flags after the existing event impact flags (after line 88):
+
+```typescript
+// Event Impact Engine (Phase 6A/6B — existing, keep unchanged)
+EVENT_IMPACT_ENGINE_ENABLED: z.boolean().default(false),
+EVENT_IMPACT_PERSISTENCE_ENABLED: z.boolean().default(false),
+EVENT_IMPACT_BACKFILL_ENABLED: z.boolean().default(false),
+EVENT_IMPACT_BACKFILL_DRY_RUN: z.boolean().default(true),
+
+// Event Impact Engine — Phase 1 Activation (NEW)
+EVENT_IMPACT_SYNC_ENABLED: z.boolean().default(false),
+EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false),
+```
+
+**Constraints:**
+- Both flags default to `false` (safe — crons won't run unless explicitly enabled)
+- Use `z.boolean().default(false)` pattern (same as existing flags)
+- Add after existing EVENT_IMPACT_BACKFILL_DRY_RUN (line 88)
+- Before MONITORING_CRON_ENABLED (line 91)
+
+**Step-by-step instructions:**
+
+1. Open `backend/src/config/env.ts`
+2. After line 88 (`EVENT_IMPACT_BACKFILL_DRY_RUN: z.boolean().default(true),`), add:
+   ```typescript
+   EVENT_IMPACT_SYNC_ENABLED: z.boolean().default(false),
+   EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false),
+   ```
+3. Verify `tsc --noEmit` clean
+4. Verify no other files modified
+
+**Acceptance criteria:**
+- Two new flags added with correct Zod schema
+- Both default to `false`
+- Placed logically with other event impact flags
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] `EVENT_IMPACT_SYNC_ENABLED: z.boolean().default(false)` present
+- [ ] `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false)` present
+- [ ] Both default to false
+- [ ] Placed after existing event impact flags
+- [ ] No other lines changed in env.ts
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** None (this should be the FIRST code task executed)
+
+**Rollback notes:**
+- Remove the 2 added lines from env.ts
+
+---
+
+### T-1.5 — Production Activation Runbook
+
+**Task ID:** T-1.5
+**Phase:** Phase 1 — Minimum Data Foundation
+**Assigned Agent:** Prompt Engineer
+**Status:** ✅ COMPLETED
+
+**Objective:**
+Document a comprehensive production activation runbook for enabling the Event Impact Engine in production. This covers the entire sequence from migration to full activation.
+
+---
+
+## PRODUCTION ACTIVATION RUNBOOK — Phase 1: Event Impact Engine
+
+**Version:** 1.0
+**Date:** May 4, 2026
+**Author:** Prompt Engineer
+**Prerequisites:** Phase 6A (✅ complete) + Phase 6B (✅ complete) — both pushed
+
+---
+
+### Day 0 — Pre-Activation Checks
+
+Before any activation steps, verify the following:
+
+- [ ] **Phase 6B deployed successfully** — `event_impacts` and `event_impact_outcomes` tables exist in DB, `eventImpactPersistence.service.ts` deployed
+- [ ] **All Phase 1 flags are currently false:**
+  ```bash
+  # Verify in .env or runtime:
+  EVENT_IMPACT_SYNC_ENABLED=false
+  EVENT_IMPACT_OUTCOME_CHECKER_ENABLED=false
+  EVENT_IMPACT_PERSISTENCE_ENABLED=false
+  EVENT_IMPACT_BACKFILL_ENABLED=false
+  ```
+- [ ] **Run intelligence health check:**
+  ```bash
+  node backend/scripts/verify-intelligence-health.js
+  ```
+  Verify no critical errors in output.
+- [ ] **Existing crons are healthy** — check server logs for all 14 crons registering without error on startup
+- [ ] **Database backup:**
+  ```bash
+  pg_dump $DATABASE_URL > backup_pre_phase1_$(date +%Y%m%d_%H%M%S).sql
+  ```
+- [ ] **Binance API accessible:**
+  ```bash
+  curl -s "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=1"
+  ```
+  Should return JSON array with candle data.
+- [ ] **Phase 1 code deployed** — `tsc --noEmit` clean, both new cron files present
+
+---
+
+### Step 1 — Run Migration
+
+Create the `event_impacts` and `event_impact_outcomes` tables.
+
+**1.1. Execute migration:**
+```bash
+psql $DATABASE_URL -f backend/scripts/migrate-event-impacts.sql
+```
+
+Expected output: `CREATE TABLE`, `CREATE INDEX` (no errors).
+
+**1.2. Verify tables created:**
+```sql
+SELECT table_name FROM information_schema.tables
+WHERE table_name IN ('event_impacts', 'event_impact_outcomes');
+-- Expected: 2 rows
+```
+
+**1.3. Verify indexes created:**
+```sql
+SELECT indexname, tablename FROM pg_indexes
+WHERE tablename IN ('event_impacts', 'event_impact_outcomes')
+ORDER BY tablename, indexname;
+-- Expected: 5 indexes for event_impacts, 4 indexes for event_impact_outcomes
+```
+
+**1.4. Verify foreign keys correct:**
+```sql
+SELECT
+    tc.table_name,
+    kcu.column_name,
+    ccu.table_name AS foreign_table,
+    tc.constraint_name,
+    rc.delete_rule
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+JOIN information_schema.referential_constraints rc ON tc.constraint_name = rc.constraint_name
+WHERE tc.table_name IN ('event_impacts', 'event_impact_outcomes');
+-- Expected:
+--   event_impacts.source_id → coin_news_history.id ON DELETE SET NULL
+--   event_impact_outcomes.event_impact_id → event_impacts.id ON DELETE CASCADE
+```
+
+**1.5. Verify no data exists yet:**
+```sql
+SELECT count(*) AS event_impacts_count FROM event_impacts;
+-- Expected: 0
+
+SELECT count(*) AS outcomes_count FROM event_impact_outcomes;
+-- Expected: 0
+```
+
+---
+
+### Step 2 — Run Backfill in Dry-Run Mode
+
+Preview what the backfill would write without actually writing anything.
+
+**2.1. Set flags:**
+```bash
+EVENT_IMPACT_BACKFILL_ENABLED=true      # Enable backfill script
+EVENT_IMPACT_BACKFILL_DRY_RUN=true       # Default — keep as dry-run
+```
+
+**2.2. Execute:**
+```bash
+npx ts-node backend/scripts/backfill-event-impacts.ts
+```
+
+**2.3. Review output:**
+- Note the `Eligible` count (records with eventSeverity IS NOT NULL)
+- Note the `Would Create` count (should equal Eligible minus already-existing)
+- Verify no errors in output
+
+**2.4. Verify no actual writes:**
+```sql
+SELECT count(*) FROM event_impacts;
+-- Expected: 0 (dry-run produces no writes)
+
+SELECT count(*) FROM event_impact_outcomes;
+-- Expected: 0
+```
+
+---
+
+### Step 3 — Run Backfill in Execute Mode
+
+Write historical event data to the new tables.
+
+**3.1. Enable persistence (required for writes):**
+```bash
+EVENT_IMPACT_PERSISTENCE_ENABLED=true   # Required for persist functions to write
+```
+
+**3.2. Execute backfill:**
+```bash
+npx ts-node backend/scripts/backfill-event-impacts.ts --execute
+```
+
+**3.3. Monitor logs:**
+- Watch for batch progress output
+- Watch for error count in final summary
+- Note total Created count
+
+**3.4. Verify event_impacts rows created:**
+```sql
+SELECT count(*) AS total_impacts FROM event_impacts;
+-- Expected: matches "Created" count from backfill summary
+
+SELECT status, count(*) FROM event_impacts GROUP BY status;
+-- Expected: mix of 'completed' (all 5 horizons had data) and 'pending'
+```
+
+**3.5. Verify event_impact_outcomes rows created:**
+```sql
+SELECT count(*) AS total_outcomes FROM event_impact_outcomes;
+-- Expected: ~5x the event_impacts count (5 horizons per event)
+
+SELECT status, count(*) FROM event_impact_outcomes GROUP BY status;
+-- Expected: mix of 'completed' (had pre-existing change data) and 'pending' (awaiting outcome check)
+```
+
+**3.6. Disable backfill after completion:**
+```bash
+EVENT_IMPACT_BACKFILL_ENABLED=false      # Disable — one-time operation complete
+```
+
+---
+
+### Step 4 — Enable Sync Cron
+
+Start the automatic sync of new coin_news_history records into event_impacts.
+
+**4.1. Set flag:**
+```bash
+EVENT_IMPACT_SYNC_ENABLED=true
+```
+
+**4.2. Restart server** to pick up the new flag.
+
+**4.3. Monitor for 1–2 hours:**
+- Check server logs for: `EventImpactSync scheduled — every 30 minutes`
+- After first run (~30 min), check logs for sync summary: `{ scanned, synced, skipped, errors }`
+- Verify new coin_news_history records (with eventSeverity) are creating event_impacts
+
+**4.4. Verification queries:**
+```sql
+-- New records created since activation
+SELECT count(*) AS new_impacts FROM event_impacts
+WHERE created_at > NOW() - INTERVAL '2 hours';
+
+-- Verify source linkage
+SELECT ei.id, ei.coin_symbol, ei.published_at, cnh.title
+FROM event_impacts ei
+LEFT JOIN coin_news_history cnh ON ei.source_id = cnh.id
+WHERE ei.created_at > NOW() - INTERVAL '2 hours'
+ORDER BY ei.published_at DESC
+LIMIT 10;
+```
+
+---
+
+### Step 5 — Enable Outcome Checker
+
+Start the automatic checking of due outcomes against real Binance price data.
+
+**5.1. Set flag:**
+```bash
+EVENT_IMPACT_OUTCOME_CHECKER_ENABLED=true
+```
+
+**5.2. Restart server** to pick up the new flag.
+
+**5.3. Monitor for 24 hours:**
+- Check server logs for: `EventImpactOutcomeChecker scheduled — every 30 minutes`
+- After each run, check logs for summary: `{ processed, completed, failed, unsupported }`
+- Verify pending outcomes (where due_at <= now) are being filled
+
+**5.4. Verification queries:**
+```sql
+-- Outcomes completed since activation
+SELECT count(*) AS completed_outcomes FROM event_impact_outcomes
+WHERE status = 'completed' AND checked_at > NOW() - INTERVAL '24 hours';
+
+-- Pending outcomes still awaiting check
+SELECT count(*) AS pending_overdue FROM event_impact_outcomes
+WHERE status = 'pending' AND due_at <= NOW();
+
+-- Failed outcomes (investigate)
+SELECT count(*) AS failed FROM event_impact_outcomes
+WHERE status = 'failed' AND checked_at > NOW() - INTERVAL '24 hours';
+
+-- Unsupported outcomes (non-Binance coins)
+SELECT count(*) AS unsupported FROM event_impact_outcomes
+WHERE status = 'unsupported';
+
+-- Error messages for failed outcomes
+SELECT error_message, count(*) FROM event_impact_outcomes
+WHERE status = 'failed'
+GROUP BY error_message
+ORDER BY count(*) DESC;
+```
+
+---
+
+### Daily Monitoring (Days 1–7)
+
+Run these checks every day during the stabilization window:
+
+**Health check script:**
+```bash
+node backend/scripts/verify-intelligence-health.js
+```
+
+**DB growth monitoring:**
+```sql
+-- 1. Event impacts created per day (last 7 days)
+SELECT
+    DATE(created_at) AS day,
+    count(*) AS new_impacts
+FROM event_impacts
+WHERE created_at > NOW() - INTERVAL '7 days'
+GROUP BY DATE(created_at)
+ORDER BY day DESC;
+
+-- 2. Outcomes filled per day (last 7 days)
+SELECT
+    DATE(checked_at) AS day,
+    status,
+    count(*) AS count
+FROM event_impact_outcomes
+WHERE checked_at > NOW() - INTERVAL '7 days'
+GROUP BY DATE(checked_at), status
+ORDER BY day DESC, status;
+
+-- 3. Pending outcomes >24h overdue
+SELECT count(*) AS overdue_pending FROM event_impact_outcomes
+WHERE status = 'pending' AND due_at < NOW() - INTERVAL '24 hours';
+
+-- 4. Failed outcomes breakdown
+SELECT status, count(*),
+    round(count(*)::numeric * 100.0 / sum(count(*)) over(), 1) AS pct
+FROM event_impact_outcomes
+GROUP BY status
+ORDER BY count(*) DESC;
+
+-- 5. Unsupported coins (non-Binance)
+SELECT DISTINCT ei.coin_symbol, count(*) AS outcome_count
+FROM event_impact_outcomes eio
+JOIN event_impacts ei ON eio.event_impact_id = ei.id
+WHERE eio.status = 'unsupported'
+GROUP BY ei.coin_symbol
+ORDER BY outcome_count DESC;
+
+-- 6. Duplicate prevention check (should always return 0)
+SELECT source_id, count(*) AS dupes
+FROM event_impacts
+WHERE source_id IS NOT NULL
+GROUP BY source_id
+HAVING count(*) > 1;
+-- Expected: 0 rows (UNIQUE index prevents this)
+```
+
+**Server log monitoring:**
+- Grep for `[EventImpactSync]` errors
+- Grep for `[EventImpactOutcomeChecker]` errors
+- Grep for Binance API errors (429 status, timeouts)
+- Check server memory usage
+
+---
+
+### Healthy / Warning Thresholds
+
+| Metric | Healthy | Warning | Action |
+|--------|---------|---------|--------|
+| event_impacts created/day | >0 (if news flowing) | 0 for 24h | Check coin_news_history ingestion, check eventSeverity population |
+| event_impact_outcomes filled/day | >0 (after 1h horizon passes) | <50% of due outcomes | Check outcome checker cron logs, Binance API status |
+| Pending outcomes >24h overdue | 0 | >10 | Check outcome checker is running, check Binance availability |
+| Failed outcomes percentage | <5% | >10% | Investigate error_message distribution |
+| Unsupported coins percentage | <10% | >20% | Expected for obscure coins; if high, review coin_news_history source quality |
+| Binance API error rate (429s) | 0/hour | >3/hour | Reduce outcome checker LIMIT or increase interval |
+| Server memory | <70% | >80% | Reduce batch sizes, check for memory leaks in outcome checker |
+
+---
+
+### Rollback Procedure
+
+**Soft rollback (flags only — data preserved):**
+```bash
+EVENT_IMPACT_SYNC_ENABLED=false
+EVENT_IMPACT_OUTCOME_CHECKER_ENABLED=false
+EVENT_IMPACT_PERSISTENCE_ENABLED=false
+```
+Restart server. New events will no longer create event_impacts. All existing data remains in tables (harmless, zero impact on other features).
+
+**Full rollback (data removal — ONLY if absolutely necessary):**
+```sql
+DROP TABLE IF EXISTS event_impact_outcomes;   -- Must drop first (FK depends on event_impacts)
+DROP TABLE IF EXISTS event_impacts;
+```
+No existing tables are affected. CASCADE on DROP handles index cleanup.
+
+**Code rollback (if Phase 1 code needs removal):**
+1. Delete `backend/src/crons/eventImpactSync.cron.ts`
+2. Delete `backend/src/crons/eventImpactOutcomeChecker.cron.ts`
+3. Revert `backend/src/server.ts` (remove 2 imports + 2 conditional registration blocks)
+4. Revert `backend/src/config/env.ts` (remove 2 Phase 1 flags)
+
+---
+
+### Flag Reference
+
+| Flag | Default | Purpose | Set When |
+|------|---------|---------|----------|
+| `EVENT_IMPACT_PERSISTENCE_ENABLED` | `false` | Allows persist functions to write | Before migration + backfill |
+| `EVENT_IMPACT_BACKFILL_ENABLED` | `false` | Allows backfill script to run | Step 2 (dry-run), Step 3 (execute) |
+| `EVENT_IMPACT_BACKFILL_DRY_RUN` | `true` | Backfill preview mode (no writes) | Step 2 (keep true), Step 3 (set false) |
+| `EVENT_IMPACT_SYNC_ENABLED` | `false` | Enables sync cron (30 min) | Step 4 |
+| `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` | `false` | Enables outcome checker cron (30 min) | Step 5 |
+
+**Flag enablement order:** persistence → backfill → sync → outcome checker
+
+---
+
+*Runbook authored: May 4, 2026 | Prompt Engineer | Phase 1 — Minimum Data Foundation*
+
+---
+
+### T-1.6 — Documentation Update
+
+**Task ID:** T-1.6
+**Phase:** Phase 1 — Minimum Data Foundation
+**Assigned Agent:** Prompt Engineer
+**Status:** ✅ COMPLETED
+
+**Objective:**
+Update PROJECT_STATE.md and AGENT_LOGS.md to reflect Phase 1 documentation tasks completion.
+
+**Files modified:**
+- `agent_gedens/PROJECT_STATE.md` — Phase 1 docs tasks (T-1.5, T-1.6, T-1.7) status updated
+- `agent_gedens/AGENT_LOGS.md` — T-1.5, T-1.6, T-1.7 completion entries added
+
+**Updates performed:**
+
+1. **PROJECT_STATE.md:**
+   - Phase 1 task statuses updated to reflect documentation completion
+   - T-1.5 (Runbook): ✅ COMPLETED
+   - T-1.6 (Docs Update): ✅ COMPLETED
+   - T-1.7 (QA Checklist): ✅ COMPLETED
+
+2. **AGENT_LOGS.md:**
+   - T-1.5 runbook completion entry added
+   - T-1.6 documentation update entry added
+   - T-1.7 QA checklist completion entry added
+
+3. **THE_NEXUS_HUB.md:**
+   - T-1.5 status updated to ✅ COMPLETED with full runbook
+   - T-1.6 status updated to ✅ COMPLETED
+   - T-1.7 status updated to ✅ COMPLETED with full QA checklist
+   - Phase 1 header status updated
+
+**Acceptance criteria:**
+- [x] PROJECT_STATE.md reflects documentation task completion
+- [x] AGENT_LOGS.md has completion entries for T-1.5, T-1.6, T-1.7
+- [x] THE_NEXUS_HUB.md updated with completed statuses
+
+**Dependencies:** None (documentation tasks are independent)
+
+---
+
+### T-1.7 — QA Checklist
+
+**Task ID:** T-1.7
+**Phase:** Phase 1 — Minimum Data Foundation
+**Assigned Agent:** Prompt Engineer
+**Status:** ✅ COMPLETED
+
+**Objective:**
+Comprehensive QA checklist for validating all Phase 1 deliverables before production activation.
+
+---
+
+## PHASE 1 — COMPREHENSIVE QA CHECKLIST
+
+---
+
+### A. Cron Registration Safety
+
+- [ ] **A1.** `eventImpactSync.cron.ts` is NOT in the main `crons` array in `server.ts` (lines 94-112)
+- [ ] **A2.** `eventImpactOutcomeChecker.cron.ts` is NOT in the main `crons` array in `server.ts`
+- [ ] **A3.** Both new crons use the conditional registration pattern (lines 125-135 style)
+- [ ] **A4.** Sync cron registration wrapped in `if (env.EVENT_IMPACT_SYNC_ENABLED)`
+- [ ] **A5.** Outcome checker registration wrapped in `if (env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED)`
+- [ ] **A6.** Both conditional blocks use `setTimeout` with `crons.length * cronStartDelay`
+- [ ] **A7.** Both conditional blocks have try/catch with `logger.error` on failure
+- [ ] **A8.** Server starts without errors when both flags are false (default)
+- [ ] **A9.** Existing 14 crons still register normally (no regressions)
+- [ ] **A10.** Import paths for both new crons are correct in server.ts
+
+---
+
+### B. Feature Flag Defaults
+
+- [ ] **B1.** `EVENT_IMPACT_SYNC_ENABLED` defaults to `false` in `env.ts`
+- [ ] **B2.** `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` defaults to `false` in `env.ts`
+- [ ] **B3.** All 6 event impact flags present in `env.ts` (4 Phase 6B + 2 Phase 1):
+  - `EVENT_IMPACT_ENGINE_ENABLED` (default false)
+  - `EVENT_IMPACT_PERSISTENCE_ENABLED` (default false)
+  - `EVENT_IMPACT_BACKFILL_ENABLED` (default false)
+  - `EVENT_IMPACT_BACKFILL_DRY_RUN` (default true)
+  - `EVENT_IMPACT_SYNC_ENABLED` (default false)
+  - `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` (default false)
+- [ ] **B4.** Missing env vars do NOT crash the server (Zod defaults)
+- [ ] **B5.** Flags are accessible via `env.FLAG_NAME` in code
+- [ ] **B6.** No other env flags were modified or renamed
+
+---
+
+### C. Disabled Flag Behavior
+
+- [ ] **C1.** When `EVENT_IMPACT_SYNC_ENABLED=false`: sync cron function returns early without querying DB
+- [ ] **C2.** When `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED=false`: outcome checker function returns early without querying DB
+- [ ] **C3.** When both flags are false: zero references to event_impacts/event_impact_outcomes tables in server logs
+- [ ] **C4.** Server memory footprint unchanged when flags are false (cron functions not loaded into memory path)
+- [ ] **C5.** No background processes or side effects when flags are false
+
+---
+
+### D. No Existing Cron Modifications
+
+- [ ] **D1.** `aiWorkflow.cron.ts` — unchanged (verify via git diff)
+- [ ] **D2.** `triageEngine.cron.ts` — unchanged (if exists)
+- [ ] **D3.** `eventOutcomeChecker.cron.ts` — unchanged (this is the existing Phase 6A outcome checker)
+- [ ] **D4.** `scenarioOutcomeChecker.cron.ts` — unchanged
+- [ ] **D5.** `signalPerformance.cron.ts` — unchanged
+- [ ] **D6.** `tpslMonitor.cron.ts` — unchanged
+- [ ] **D7.** `airdropDiscovery.cron.ts` — unchanged
+- [ ] **D8.** `airdropRssHunter.cron.ts` — unchanged
+- [ ] **D9.** `convictionUpdate.cron.ts` — unchanged
+- [ ] **D10.** `historicalNews.cron.ts` — unchanged
+- [ ] **D11.** `telegramMonitor.cron.ts` — unchanged
+- [ ] **D12.** `levelIntelligenceCron.ts` — unchanged
+
+**Verification:** `git diff --name-only` should only show `server.ts`, `env.ts`, and the 2 new cron files.
+
+---
+
+### E. No Existing Service Modifications
+
+- [ ] **E1.** `eventImpactAnalysis.service.ts` — unchanged
+- [ ] **E2.** `eventImpactPersistence.service.ts` — unchanged (used by new crons but not modified)
+- [ ] **E3.** `openai.service.ts` — unchanged
+- [ ] **E4.** `binance.service.ts` — unchanged (used by outcome checker but not modified)
+- [ ] **E5.** All other service files — unchanged
+
+**Verification:** No service file in `backend/src/services/` modified except the 2 new cron files.
+
+---
+
+### F. No Existing Table Modifications
+
+- [ ] **F1.** `coin_news_history` table — schema unchanged
+- [ ] **F2.** `coin_memory` table — schema unchanged
+- [ ] **F3.** `radarSignals` table — schema unchanged
+- [ ] **F4.** `signalPerformance` table — schema unchanged
+- [ ] **F5.** `market_scenarios` table — schema unchanged
+- [ ] **F6.** No `ALTER TABLE` statements in migration SQL
+- [ ] **F7.** Migration SQL only contains `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX`
+
+**Verification:** `grep -i "ALTER TABLE" backend/scripts/migrate-event-impacts.sql` returns nothing.
+
+---
+
+### G. Outcome Reuse from coin_news_history
+
+- [ ] **G1.** Backfill correctly maps `change1h` → 1h horizon outcome `change_percent`
+- [ ] **G2.** Backfill correctly maps `change4h` → 4h horizon outcome `change_percent`
+- [ ] **G3.** Backfill correctly maps `change24h` → 24h horizon outcome `change_percent`
+- [ ] **G4.** Backfill correctly maps `change3d` → 3d (72h) horizon outcome `change_percent`
+- [ ] **G5.** Backfill correctly maps `change7d` → 7d (168h) horizon outcome `change_percent`
+- [ ] **G6.** Backfill correctly maps `priceXhAfter` → `price_at_horizon`
+- [ ] **G7.** Backfill correctly maps `maxUpsideAfterEvent` → `max_upside_percent` (same for all 5 horizons)
+- [ ] **G8.** Backfill correctly maps `maxDrawdownAfterEvent` → `max_drawdown_percent` (same for all 5 horizons)
+- [ ] **G9.** Backfill correctly maps `timeToPeakHours` → `time_to_peak_hours` (same for all 5 horizons)
+- [ ] **G10.** Backfill correctly maps `timeToBottomHours` → `time_to_bottom_hours` (same for all 5 horizons)
+- [ ] **G11.** Backfill correctly maps `outcomeClassification` → `outcome_classification` (same for all 5 horizons)
+- [ ] **G12.** `due_at` calculated correctly: `published_at + horizon_hours`
+- [ ] **G13.** `status` set to `'completed'` when `change_percent` is not null, `'pending'` otherwise
+
+---
+
+### H. Idempotency
+
+- [ ] **H1.** Sync cron LEFT JOIN query skips already-synced records (WHERE event_impacts.id IS NULL)
+- [ ] **H2.** Running sync cron twice produces no duplicate event_impacts
+- [ ] **H3.** UNIQUE index on `event_impacts.source_id` prevents duplicates at DB level
+- [ ] **H4.** UNIQUE index on `event_impact_outcomes (event_impact_id, horizon)` prevents duplicate outcomes
+- [ ] **H5.** Backfill script skips already-processed records (checks source_id existence)
+- [ ] **H6.** Running backfill script twice produces identical results (same row counts)
+- [ ] **H7.** Outcome checker only processes `status='pending'` records (skips already-completed)
+- [ ] **H8.** Migration SQL uses `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` (idempotent)
+
+---
+
+### I. Error Handling
+
+- [ ] **I1.** Sync cron has outer try/catch in `runEventImpactSync()`
+- [ ] **I2.** Sync cron has inner try/catch per row (failed rows don't stop batch)
+- [ ] **I3.** Sync cron logs summary: `{ scanned, synced, skipped, errors }`
+- [ ] **I4.** Outcome checker has outer try/catch in `runEventImpactOutcomeChecker()`
+- [ ] **I5.** Outcome checker has inner try/catch per outcome
+- [ ] **I6.** Outcome checker logs summary: `{ processed, completed, failed, unsupported }`
+- [ ] **I7.** Outcome checker handles missing `priceAtEvent` → marks as 'failed' with error message
+- [ ] **I8.** Outcome checker handles empty candles from Binance → marks as 'unsupported'
+- [ ] **I9.** Outcome checker handles Binance API errors → marks as 'failed' with error message
+- [ ] **I10.** Both crons log errors via `logger.error` (not console.log)
+- [ ] **I11.** Neither cron crashes the server on error (both use try/catch in startCron)
+
+---
+
+### J. TypeScript Quality
+
+- [ ] **J1.** `tsc --noEmit` clean on entire backend
+- [ ] **J2.** Zero `any` types in `eventImpactSync.cron.ts` (verify: `rg '\bany\b' backend/src/crons/eventImpactSync.cron.ts`)
+- [ ] **J3.** Zero `any` types in `eventImpactOutcomeChecker.cron.ts` (verify: `rg '\bany\b' backend/src/crons/eventImpactOutcomeChecker.cron.ts`)
+- [ ] **J4.** All Drizzle query results properly typed (no implicit `any` from ORM)
+- [ ] **J5.** `CoinNewsHistoryRecord` type used correctly (no unsafe casts)
+- [ ] **J6.** Import paths are correct and resolve without errors
+- [ ] **J7.** No `@ts-ignore` or `@ts-expect-error` directives
+
+---
+
+### K. No External API Additions
+
+- [ ] **K1.** No new API endpoints added to `market.routes.ts`
+- [ ] **K2.** No new controller handlers added to `market.controller.ts`
+- [ ] **K3.** Outcome checker uses ONLY existing `getCoinKlinesRange()` from `binance.service.ts`
+- [ ] **K4.** No new HTTP client libraries installed
+- [ ] **K5.** No new external API URLs referenced in new code
+- [ ] **K6.** Sync cron makes zero network calls (DB only)
+- [ ] **K7.** `package.json` has no new dependencies
+
+**Verification:** `git diff package.json` shows no changes (or only dev dependency changes).
+
+---
+
+### L. Sync Cron Implementation (T-1.2)
+
+- [ ] **L1.** File exists at `backend/src/crons/eventImpactSync.cron.ts`
+- [ ] **L2.** Exports: `runEventImpactSync`, `startEventImpactSyncCron`
+- [ ] **L3.** Schedule: `*/30 * * * *` (every 30 minutes)
+- [ ] **L4.** Env flag check at function start: `env.EVENT_IMPACT_SYNC_ENABLED`
+- [ ] **L5.** LEFT JOIN query: `coinNewsHistory LEFT JOIN eventImpacts ON eventImpacts.sourceId = coinNewsHistory.id`
+- [ ] **L6.** WHERE conditions: `isNotNull(eventSeverity)`, `isNull(eventImpacts.id)`, `gt(publishedAt, 48h ago)`
+- [ ] **L7.** `orderBy(desc(publishedAt))` + `.limit(50)`
+- [ ] **L8.** Defensive filter: `unsyncedRows.filter(row => !row.eventImpacts)`
+- [ ] **L9.** Calls `persistEventImpact()` then `persistEventImpactOutcomes()` per row
+- [ ] **L10.** Summary logged at end of run
+
+---
+
+### M. Outcome Checker Cron Implementation (T-1.3)
+
+- [ ] **M1.** File exists at `backend/src/crons/eventImpactOutcomeChecker.cron.ts`
+- [ ] **M2.** Exports: `runEventImpactOutcomeChecker`, `startEventImpactOutcomeCheckerCron`
+- [ ] **M3.** Schedule: `*/30 * * * *` (every 30 minutes)
+- [ ] **M4.** Env flag check at function start: `env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED`
+- [ ] **M5.** INNER JOIN query: `eventImpactOutcomes JOIN eventImpacts`
+- [ ] **M6.** WHERE: `eq(status, 'pending')` AND `lte(dueAt, now)`
+- [ ] **M7.** `.limit(100)`
+- [ ] **M8.** USDT suffix appended: `coinSymbol + 'USDT'` for Binance API
+- [ ] **M9.** `priceAtEvent` null check → status 'failed'
+- [ ] **M10.** Empty candles → status 'unsupported'
+- [ ] **M11.** `change_percent = ((priceAtHorizon - priceAtEvent) / priceAtEvent) * 100`
+- [ ] **M12.** `max_upside_percent` = max positive change across all candles
+- [ ] **M13.** `max_drawdown_percent` = max negative change across all candles
+- [ ] **M14.** `time_to_peak_hours` = `(peakCandle.closeTime - publishedAtMs) / 3600000`
+- [ ] **M15.** `time_to_bottom_hours` = `(bottomCandle.closeTime - publishedAtMs) / 3600000`
+- [ ] **M16.** Classification thresholds: strong_bullish (>15), bullish (>5), neutral (±5), bearish (>-15), strong_bearish (<=-15)
+- [ ] **M17.** Update sets: `status='completed'`, `checkedAt=new Date()`, `updatedAt=new Date()`
+- [ ] **M18.** Failure updates set appropriate `status` + `errorMessage`
+
+---
+
+### N. Runbook Verification (T-1.5)
+
+- [ ] **N1.** All flag names in runbook match `env.ts` exactly
+- [ ] **N2.** All SQL queries in runbook are syntactically correct for PostgreSQL
+- [ ] **N3.** Migration execution steps documented with verification queries
+- [ ] **N4.** Backfill steps follow dry-run → execute sequence
+- [ ] **N5.** Flag enablement order: persistence → backfill → sync → outcome checker
+- [ ] **N6.** Monitoring queries return useful diagnostic data
+- [ ] **N7.** Rollback sets all Phase 1 flags to false
+- [ ] **N8.** Full rollback SQL drops tables in correct order (outcomes first)
+- [ ] **N9.** Healthy/warning thresholds defined with actionable responses
+- [ ] **N10.** Daily monitoring section covers 7-day stabilization window
+
+---
+
+### Summary Scorecard
+
+| Section | Items | Status |
+|---------|-------|--------|
+| A. Cron Registration Safety | 10 | ☐ |
+| B. Feature Flag Defaults | 6 | ☐ |
+| C. Disabled Flag Behavior | 5 | ☐ |
+| D. No Existing Cron Modifications | 12 | ☐ |
+| E. No Existing Service Modifications | 5 | ☐ |
+| F. No Existing Table Modifications | 7 | ☐ |
+| G. Outcome Reuse from coin_news_history | 13 | ☐ |
+| H. Idempotency | 8 | ☐ |
+| I. Error Handling | 11 | ☐ |
+| J. TypeScript Quality | 7 | ☐ |
+| K. No External API Additions | 7 | ☐ |
+| L. Sync Cron Implementation | 10 | ☐ |
+| M. Outcome Checker Implementation | 18 | ☐ |
+| N. Runbook Verification | 10 | ☐ |
+| **TOTAL** | **129** | **☐/129** |
+
+**QA PASS Criteria:** All 129 items checked. Zero blocking failures allowed.
+
+---
+
+*QA Checklist authored: May 4, 2026 | Prompt Engineer | Phase 1 — Minimum Data Foundation*
+
+---
+
+## GUARDRAILS
+
+1. **ZERO `any` types** across all new files.
+2. **No existing cron modifications** — new crons only.
+3. **No existing service modifications** — use existing `persistEventImpact()` and `persistEventImpactOutcomes()`.
+4. **No existing model modifications** — Drizzle models already have event_impacts + event_impact_outcomes.
+5. **Feature flags default to `false`** — safe to deploy without enabling.
+6. **Conditional server.ts registration** — new crons only start when flags are true.
+7. **Idempotent sync** — LEFT JOIN ensures no duplicate event_impacts records.
+8. **Graceful failure** — individual outcome check failures don't stop the cron.
+9. **Binance only** — no new external APIs.
+10. **No AI calls** — outcome checking is deterministic (price data only).
+11. **No frontend changes** — this is backend-only.
+12. **No commit/push before QA PASS**.
+
+## RISK ASSESSMENT
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Binance API rate limits during outcome checking | Medium | LIMIT 100 per run, 30-min interval, handle 429 errors gracefully |
+| Non-Binance coins cause repeated failures | Low | Mark as 'unsupported' on first failure, don't retry |
+| Sync cron creates duplicates | None | LEFT JOIN + UNIQUE constraint on source_id prevents duplicates |
+| Existing pipeline breaks | None | Zero modifications to existing crons/services |
+| Large backfill causes DB load | Low | Batch size 100, run during low-traffic period |
+| Migration fails | Low | IF NOT EXISTS + documented rollback (DROP TABLE) |
+
+---
+
+---
+
 # Phase 6B — Event Impact Persistence
 
 **Status:** PLANNED — Ready for execution after Phase 6A QA PASS  

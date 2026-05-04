@@ -2,6 +2,15 @@
 
 **Last Updated:** May 4, 2026
 
+## Phase 1 — Minimum Data Foundation (Activation)
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|---|
+| May 4, 2026 | P1-PLAN | PLANNED | Strategic Planner | — | 7 micro-tasks defined (T-1.1 through T-1.7). Activates Phase 6A+6B deliverables in production. 2 new crons: eventImpactSync.cron.ts (reads unsynced coin_news_history via LEFT JOIN, creates event_impacts + event_impact_outcomes) + eventImpactOutcomeChecker.cron.ts (checks due pending outcomes, fetches Binance klines, calculates metrics, updates records). Architecture Decision: Option D (separate sync cron) — safest integration, zero modifications to existing crons/services. 2 new env flags (both default false). Conditional server.ts registration. Execution order: T-1.4 (flags) → T-1.2+T-1.3 (crons, parallel) → T-1.5 (runbook) → T-1.6+T-1.7 (docs/QA). PROJECT_STATE.md updated. THE_NEXUS_HUB.md updated with full Phase 1 plan. |
+| May 4, 2026 | T-1.5 | ✅ COMPLETED | Prompt Engineer | — | Production Activation Runbook written and embedded in THE_NEXUS_HUB.md. Covers: Day 0 pre-activation checks (6 items including verify-intelligence-health.js, Binance API, DB backup), Step 1 migration (5 verification queries for tables/indexes/FKs), Step 2 backfill dry-run (flag config + zero-write verification), Step 3 backfill execute (persistence flag + row count verification + disable after), Step 4 enable sync cron (flag + restart + 1-2h monitoring), Step 5 enable outcome checker (flag + restart + 24h monitoring), Daily monitoring (Days 1-7 with 6 SQL queries + log monitoring), Healthy/Warning thresholds (7 metrics with actionable responses), Rollback procedure (soft flags-only + full DROP TABLE + code removal). Flag reference table with enablement order documented. |
+| May 4, 2026 | T-1.6 | ✅ COMPLETED | Prompt Engineer | — | Documentation update completed. THE_NEXUS_HUB.md: T-1.5 status → ✅ COMPLETED (full runbook embedded), T-1.6 status → ✅ COMPLETED, T-1.7 status → ✅ COMPLETED (full QA checklist embedded), Phase 1 header status updated to IN PROGRESS. PROJECT_STATE.md: Current Focus updated, Phase 1 status updated to IN PROGRESS — docs complete, code pending. AGENT_LOGS.md: T-1.5, T-1.6, T-1.7 completion entries added. |
+| May 4, 2026 | T-1.7 | ✅ COMPLETED | Prompt Engineer | — | Comprehensive QA checklist written — 129 items across 14 sections (A-N). A: Cron Registration Safety (10 items), B: Feature Flag Defaults (6), C: Disabled Flag Behavior (5), D: No Existing Cron Modifications (12), E: No Existing Service Modifications (5), F: No Existing Table Modifications (7), G: Outcome Reuse from coin_news_history (13), H: Idempotency (8), I: Error Handling (11), J: TypeScript Quality (7), K: No External API Additions (7), L: Sync Cron Implementation (10), M: Outcome Checker Implementation (18), N: Runbook Verification (10). Summary scorecard with pass criteria: all 129 items, zero blocking failures. |
+
 ---
 
 ## Phase 6B — Event Impact Persistence

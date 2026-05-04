@@ -86,6 +86,8 @@ const envSchema = z.object({
     EVENT_IMPACT_PERSISTENCE_ENABLED: z.boolean().default(false),
     EVENT_IMPACT_BACKFILL_ENABLED: z.boolean().default(false),
     EVENT_IMPACT_BACKFILL_DRY_RUN: z.boolean().default(true),
+    EVENT_IMPACT_SYNC_ENABLED: z.boolean().default(false),
+    EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false),
 
     // Monitoring Cron
     MONITORING_CRON_ENABLED: z.boolean().default(false),
