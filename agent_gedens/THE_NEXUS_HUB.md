@@ -1,6 +1,6 @@
 # Phase 7 — Public Language / Google-Safe Presentation
 
-**Status:** 🟡 IMPLEMENTATION — Phase 7B In Progress (T-7B-01→04 Committed, T-7B-05 Review Complete, T-7B-05-01/02 Added, T-7B-06 Pending)
+**Status:** 🟡 IMPLEMENTATION — Phase 7B In Progress (T-7B-01→05-02 Committed, T-7B-06 Pending)
 **Date:** May 4, 2026
 **Priority:** P0 (AdSense policy compliance, Google-safe public presentation)
 **Scope:** T-7A-01 audit complete, Phase 7B implementation in progress, API safe alias tasks added
@@ -365,7 +365,7 @@ Record these decisions in HUB:
 
 # Phase 7B — Implementation
 
-**Status:** 🟡 IMPLEMENTATION — T-7B-01/02/03/04 Committed, T-7B-05-01 Done, T-7B-05-02 Pending, T-7B-06 Pending
+**Status:** 🟡 IMPLEMENTATION — T-7B-01/02/03/04/05-01/05-02 Committed, T-7B-06 Pending
 **Date:** May 4, 2026
 **Priority:** P0 (AdSense policy compliance implementation)
 **Scope:** 6 implementation microtasks (T-7B-01 through T-7B-06) + 2 API safe alias subtasks (T-7B-05-01/02), targeted code changes, no migrations
@@ -612,16 +612,10 @@ Existing old fields must remain in response for backward compatibility.
 
 ### T-7B-05-02 — Frontend Safe Alias Adoption
 **Owner:** Senior Developer
-**Status:** Deferred until T-7B-05-01 QA PASS
+**Status:** ✅ DONE / QA PASS / COMMITTED / commit 06bd913
 
-**Goal:**
-Update frontend to consume safe alias fields where available.
-
-**Allowed files:**
-- To be defined after T-7B-05-01 QA.
-
-**Forbidden:**
-- Do not start until T-7B-05-01 is QA passed and committed.
+Note: Frontend scorecard now prefers safe aliases with backward-compatible fallbacks to old API fields.
+File changed: frontend/src/app/(standard)/scorecard/page.tsx
 
 ### T-7B-06 — Phase 7 QA Verification
 **Owner:** QA & Security Hunter
