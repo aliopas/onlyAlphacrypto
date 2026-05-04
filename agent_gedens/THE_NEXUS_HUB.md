@@ -4596,8 +4596,254 @@ Comprehensive verification that Phase 1 foundation is working correctly, with ro
 
 ---
 
-*Phase 1 authored: May 2, 2026*  
+*Phase 1 authored: May 2, 2026*
 *Foundation for: All temporal intelligence, event-outcome correlation, price impact analysis*
+
+---
+
+# Remaining Work Master Plan
+
+**Last Updated:** May 4, 2026
+**Strategic Planner:** Kilo
+
+## Current Project Status Summary
+
+### Completed Phases
+- **Phase 1:** Event-Price Foundation — ✅ COMPLETE / QA PASSED / COMMITTED
+- **Phase 2:** Full Event Impact Engine — ✅ COMPLETE / QA PASSED WITH NOTES / COMMITTED (stats injection disabled by flag)
+- **Phase 6A:** Event Impact Analysis Engine — ✅ COMPLETE / QA PASSED
+- **Phase 6B:** Event Impact Persistence — ✅ COMPLETE / QA PASSED / COMMITTED
+- **Phase 0.5:** AdSense-Safe Public Presentation — ✅ COMPLETE / QA PASSED
+- **Phase 23:** TP/SL Auto-Close & Signal Lifecycle — ✅ COMPLETE / CODE DEPLOYED
+- **Phase 21:** Multi-Timeframe Signal System & Scorecard Overhaul — ✅ COMPLETE / CODE DEPLOYED
+- **Phase 20:** AI Pipeline Quality Fix — ✅ COMPLETE / QA PASSED
+- **Phase 19:** AdSense Legal Pages + Footer — ✅ COMPLETE / QA PASSED
+- **Phase 16:** Airdrop UX Overhaul — ✅ COMPLETE / DEPLOY 1 PASSED
+- **Phase 15:** Strategic Intelligence Layer — ✅ COMPLETE / QA PASSED
+- **Phase 14:** Article Content Disappears Fix — ✅ COMPLETE / QA PASSED
+- **Phase 13:** 404 Fix Dynamic AI Radar Coins — ✅ COMPLETE / QA PASSED
+- **Phase 12:** Airdrop UX Overhaul — ✅ COMPLETE / AWAITING FINAL QA
+- **Phase 11:** Airdrop RSS Hunter — ✅ COMPLETE / QA PASSED
+- **Phase 10:** Top Movers Widget — ✅ COMPLETE / QA PASSED
+- **Phase 9:** Terminal Deep-Link & SEO — ✅ COMPLETE / QA PASSED
+- **Phase 8:** Market Mood Gauge — ✅ COMPLETE / QA PASSED
+- **SEO & Platform Quality Audit:** ✅ COMPLETE / QA PASSED
+
+### Partial Phases (Needs Reconciliation)
+- **Phase 3:** Multi-Horizon Scenario Tracker — ⚠️ PARTIAL FOUNDATION EXISTS / NEEDS RECONCILIATION (scenarioTracker.service.ts and market_scenarios table exist from commit 58ecebd, not confirmed complete, needs integration into aiWorkflow.cron.ts and outcome checker)
+- **Phase 4:** OHLCV Price Snapshots — ⬜ NOT COMPLETE / PARTIAL FOUNDATION ONLY (no dedicated OHLCV tables found, getCoinKlinesRange exists in binance.service.ts but no storage layer)
+- **Phase 5:** Level Intelligence Engine — ⚠️ PARTIAL FOUNDATION EXISTS / NOT FULLY INTEGRATED (levelIntelligence.service.ts exists from commit adac61e, not integrated into aiWorkflow.cron.ts or article generation)
+- **Phase 6:** AI Cost Reduction — ⚠️ PARTIAL FOUNDATION EXISTS / NOT COMPLETE (ai-gateway.ts, cache-manager.ts, PromptFactory exist, full cost reduction plan not complete)
+- **Phase 7:** Public Language / Google-Safe Presentation — 🔴 NEXT PRIORITY / PARTIAL (Phase 7B 5/6 tasks complete, 1 task remaining)
+
+### Not Started
+- **Phase 8:** Migration Strategy — ⬜ NOT STARTED
+
+### Blocked / Reconciliation Notes
+- Phase 7B: T-7B-05 committed, T-7B-05-01 to T-7B-06 pending execution.
+- No conflicts detected between HUB and git history.
+- All partial phases have foundation code present but lack full integration or completion.
+
+## Remaining Tasks by Phase
+
+### Phase 7 — Public Language / Google-Safe Presentation (NEXT PRIORITY)
+
+**T-7B-05-01 — Backend Safe Alias Implementation**
+- **Owner Role:** Senior Developer
+- **Goal:** Implement safe alias mapping in backend services (e.g., openai.service.ts, prompt-factory.ts) to replace risky terms with policy-safe alternatives.
+- **Allowed Files:** backend/src/services/ai/prompt-factory.ts, backend/src/services/openai.service.ts, backend/src/services/ai-gateway.ts
+- **Forbidden Changes:** No schema changes, no new APIs, no external services, no frontend changes, no route changes.
+- **Dependencies:** None
+- **Validation Requirements:** TypeScript compiles, no any types, aliases applied in prompts.
+- **QA Requirement:** Manual audit of AI prompts for safe language.
+- **Commit Requirement:** Yes, after QA pass.
+
+**T-7B-05-02 — Frontend Safe Alias Adoption**
+- **Owner Role:** Senior Developer
+- **Goal:** Update frontend components (scorecard, terminal) to use safe aliases for display labels.
+- **Allowed Files:** frontend/src/app/(standard)/scorecard/page.tsx, frontend/src/app/(standard)/terminal/[coin]/page.tsx, frontend/src/features/shared/components/
+- **Forbidden Changes:** No backend changes, no API changes, no new packages, no SEO URLs.
+- **Dependencies:** T-7B-05-01
+- **Validation Requirements:** Frontend compiles, labels display safe terms.
+- **QA Requirement:** Visual QA of scorecard and terminal pages.
+- **Commit Requirement:** Yes, after QA pass.
+
+**T-7B-06 — Phase 7 QA Verification**
+- **Owner Role:** QA Hunter
+- **Goal:** Comprehensive QA to verify all public-facing outputs use policy-safe language.
+- **Allowed Files:** frontend/src/, backend/src/services/ai/
+- **Forbidden Changes:** No code changes, only verification.
+- **Dependencies:** T-7B-05-01, T-7B-05-02
+- **Validation Requirements:** All risky terms replaced, outputs policy-safe.
+- **QA Requirement:** Full audit checklist.
+- **Commit Requirement:** No (verification only).
+
+### Phase 3 — Multi-Horizon Scenario Tracker
+
+**T-3-01 — Scenario Tracker Integration into AI Workflow**
+- **Owner Role:** Senior Developer
+- **Goal:** Integrate scenarioTracker.service.ts into aiWorkflow.cron.ts to create market_scenarios entries for classified events.
+- **Allowed Files:** backend/src/crons/aiWorkflow.cron.ts, backend/src/services/scenarioTracker.service.ts
+- **Forbidden Changes:** No schema changes, no new tables, no API changes.
+- **Dependencies:** None
+- **Validation Requirements:** Scenarios created for events, TypeScript compiles.
+- **QA Requirement:** Verify scenario creation in logs.
+- **Commit Requirement:** Yes, after QA pass.
+
+**T-3-02 — Scenario Outcome Checker Cron**
+- **Owner Role:** Senior Developer
+- **Goal:** Create and register scenarioOutcomeChecker.cron.ts to update market_scenarios with outcomes at horizons.
+- **Allowed Files:** backend/src/crons/scenarioOutcomeChecker.cron.ts (new), backend/src/server.ts
+- **Forbidden Changes:** No existing cron modifications.
+- **Dependencies:** T-3-01
+- **Validation Requirements:** Cron registered, updates outcomes.
+- **QA Requirement:** Outcome fields populated.
+- **Commit Requirement:** Yes, after QA pass.
+
+**T-3-03 — Scenario Tracker Frontend Integration**
+- **Owner Role:** Senior Developer
+- **Goal:** Update scorecard to display scenarios from market_scenarios table.
+- **Allowed Files:** frontend/src/app/(standard)/scorecard/page.tsx, backend/src/controllers/market.controller.ts
+- **Forbidden Changes:** No schema changes.
+- **Dependencies:** T-3-02
+- **Validation Requirements:** Scenarios displayed on scorecard.
+- **QA Requirement:** UI QA.
+- **Commit Requirement:** Yes, after QA pass.
+
+### Phase 4 — OHLCV Price Snapshots
+
+**T-4-01 — OHLCV Storage Schema**
+- **Owner Role:** Senior Developer
+- **Goal:** Add OHLCV snapshot tables to market.model.ts and create migration.
+- **Allowed Files:** backend/src/models/market.model.ts, backend/scripts/migrate-ohlcv-snapshots.sql (new)
+- **Forbidden Changes:** No existing table modifications.
+- **Dependencies:** None
+- **Validation Requirements:** Tables created, Drizzle compiles.
+- **QA Requirement:** Migration runs safely.
+- **Commit Requirement:** Yes, after QA pass.
+
+**T-4-02 — OHLCV Snapshot Service**
+- **Owner Role:** Senior Developer
+- **Goal:** Create OHLCV snapshot service to fetch and store historical data.
+- **Allowed Files:** backend/src/services/ohlcvSnapshot.service.ts (new)
+- **Forbidden Changes:** No existing services modified.
+- **Dependencies:** T-4-01
+- **Validation Requirements:** Data stored correctly.
+- **QA Requirement:** Snapshot accuracy.
+- **Commit Requirement:** Yes, after QA pass.
+
+**T-4-03 — OHLCV Snapshot Cron**
+- **Owner Role:** Senior Developer
+- **Goal:** Create cron to periodically update OHLCV snapshots.
+- **Allowed Files:** backend/src/crons/ohlcvSnapshot.cron.ts (new), backend/src/server.ts
+- **Forbidden Changes:** No existing crons modified.
+- **Dependencies:** T-4-02
+- **Validation Requirements:** Cron runs, updates data.
+- **QA Requirement:** Data freshness.
+- **Commit Requirement:** Yes, after QA pass.
+
+### Phase 5 — Level Intelligence Engine
+
+**T-5-01 — Level Intelligence Integration into AI Workflow**
+- **Owner Role:** Senior Developer
+- **Goal:** Integrate levelIntelligence.service.ts into aiWorkflow.cron.ts for support/resistance levels.
+- **Allowed Files:** backend/src/crons/aiWorkflow.cron.ts, backend/src/services/levelIntelligence.service.ts
+- **Forbidden Changes:** No schema changes.
+- **Dependencies:** None
+- **Validation Requirements:** Levels calculated and used in analysis.
+- **QA Requirement:** Analysis includes levels.
+- **Commit Requirement:** Yes, after QA pass.
+
+**T-5-02 — Level Intelligence Cron Activation**
+- **Owner Role:** Senior Developer
+- **Goal:** Ensure levelIntelligenceCron.ts is active and integrated.
+- **Allowed Files:** backend/src/crons/levelIntelligenceCron.ts, backend/src/server.ts
+- **Forbidden Changes:** No new crons, only registration if missing.
+- **Dependencies:** T-5-01
+- **Validation Requirements:** Cron runs and populates levels.
+- **QA Requirement:** Level data available.
+- **Commit Requirement:** Yes, after QA pass.
+
+### Phase 6 — AI Cost Reduction
+
+**T-6-01 — Complete AIGateway Refactoring**
+- **Owner Role:** Senior Developer
+- **Goal:** Replace direct openrouter.chat.completions.create calls with AIGateway in openai.service.ts.
+- **Allowed Files:** backend/src/services/openai.service.ts
+- **Forbidden Changes:** No new libraries, no API changes.
+- **Dependencies:** None
+- **Validation Requirements:** All calls go through AIGateway.
+- **QA Requirement:** Cost reduction verified.
+- **Commit Requirement:** Yes, after QA pass.
+
+**T-6-02 — CacheManager Integration**
+- **Owner Role:** Senior Developer
+- **Goal:** Replace analysisCache Map with CacheManager in openai.service.ts.
+- **Allowed Files:** backend/src/services/openai.service.ts, backend/src/services/cache-manager.ts
+- **Forbidden Changes:** No schema changes.
+- **Dependencies:** T-6-01
+- **Validation Requirements:** Cache uses CacheManager.
+- **QA Requirement:** Caching works.
+- **Commit Requirement:** Yes, after QA pass.
+
+**T-6-03 — PromptFactory Migration**
+- **Owner Role:** Senior Developer
+- **Goal:** Move all prompts from openai.service.ts to PromptFactory.
+- **Allowed Files:** backend/src/services/openai.service.ts, backend/src/services/ai/prompt-factory.ts
+- **Forbidden Changes:** No API changes.
+- **Dependencies:** T-6-02
+- **Validation Requirements:** Prompts in PromptFactory.
+- **QA Requirement:** Prompts load correctly.
+- **Commit Requirement:** Yes, after QA pass.
+
+### Phase 8 — Migration Strategy
+
+**T-8-01 — Migration Strategy Documentation**
+- **Owner Role:** Strategic Planner
+- **Goal:** Document migration strategy for database, APIs, etc.
+- **Allowed Files:** agent_gedens/THE_NEXUS_HUB.md
+- **Forbidden Changes:** No code changes.
+- **Dependencies:** All other phases complete.
+- **Validation Requirements:** Strategy documented.
+- **QA Requirement:** Review by team.
+- **Commit Requirement:** Yes.
+
+## Recommended Execution Order
+
+1. **T-7B-05-01** (Phase 7 priority)
+2. **T-7B-05-02** (depends on T-7B-05-01)
+3. **T-7B-06** (QA for Phase 7)
+4. **T-3-01** (Phase 3 start)
+5. **T-3-02** (depends on T-3-01)
+6. **T-3-03** (depends on T-3-02)
+7. **T-4-01** (Phase 4 start, independent)
+8. **T-4-02** (depends on T-4-01)
+9. **T-4-03** (depends on T-4-02)
+10. **T-5-01** (Phase 5 start, independent)
+11. **T-5-02** (depends on T-5-01)
+12. **T-6-01** (Phase 6 start, independent)
+13. **T-6-02** (depends on T-6-01)
+14. **T-6-03** (depends on T-6-02)
+15. **T-8-01** (after all phases)
+
+## Parallelization Notes
+
+- T-7B-05-01 and T-4-01 can run in parallel (different areas).
+- T-7B-05-02 and T-3-01 can run in parallel after their deps.
+- T-5-01 and T-6-01 can run in parallel.
+- No parallel execution for tasks touching same files or requiring prior commits.
+- All QA tasks sequential after implementation.
+
+## Risks / Blockers / Reconciliation Notes
+
+- Phase 7B tasks are immediate priority but may require prompt adjustments for safe aliases.
+- Partial phases have existing code, but integration may reveal missing pieces.
+- No stale HUB issues detected.
+- Potential blocker: If safe aliases affect API contracts, but forbidden.
+
+## Next Immediate Task
+
+T-7B-05-01 — Backend Safe Alias Implementation
 
 ---
 
