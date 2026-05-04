@@ -1,3 +1,603 @@
+# Phase 7 — Public Language / Google-Safe Presentation
+
+**Status:** 🟡 IMPLEMENTATION — T-7A-01 Completed, Phase 7B Microtasks Created
+**Date:** May 4, 2026
+**Priority:** P0 (AdSense policy compliance, Google-safe public presentation)
+**Scope:** T-7A-01 audit complete, Phase 7B implementation microtasks defined
+**Prerequisites:** None (independent audit phase)
+**Authorized By:** Strategic Planner — May 4, 2026
+**Depends On:** Phase 0.5 (partial compliance already done)
+
+## OBJECTIVE
+
+Identify all public-facing risky trading/advice language across the entire OnlyAlpha codebase and create a comprehensive replacement map before any implementation begins. This is a **PLANNING AND AUDIT ONLY** task — no application code will be modified.
+
+The goal is to produce a detailed inventory of every instance of policy-violating terminology (BUY, SELL, Signal, Entry, TP, SL, P&L, Win Rate, etc.) with a clear mapping to Google/AdSense-safe alternatives. This inventory will then drive the implementation microtasks in Phase 7B.
+
+## PHASE 7A SCOPE LIMITATIONS
+
+**Allowed:**
+- Read and audit all backend/frontend files listed in Audit Targets
+- Define the forbidden terms list and safe replacement map
+- Define internal-only vs public-facing rules
+- Produce a structured audit report as a deliverable
+- Update THE_NEXUS_HUB.md only (this file)
+- Define next possible microtasks without marking them active
+
+**Forbidden:**
+- Do NOT modify application code
+- Do NOT modify frontend components
+- Do NOT modify backend prompts
+- Do NOT change database enums
+- Do NOT create migrations
+- Do NOT rename routes or SEO URLs
+- Do NOT enable EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED
+- Do NOT install new packages
+- Do NOT commit or push
+
+## AUDIT TARGETS
+
+### Backend Files to Inspect
+
+| File | Reason |
+|---|---|
+| `backend/src/services/ai/prompt-factory.ts` | AI prompt templates — primary source of generated public content |
+| `backend/src/services/openai.service.ts` | AI response parsing, output formatting |
+| `backend/src/controllers/market.controller.ts` | API response labels and field names |
+| `backend/src/routes/market.routes.ts` | Route naming patterns |
+| `backend/src/models/market.model.ts` | Database enum values that may leak to API |
+| `backend/src/services/signalManager.service.ts` | Signal generation, TP/SL/Entry logic |
+| `backend/src/crons/signalPerformance.cron.ts` | Win rate, P&L calculations |
+| Any article/living article generation services | Published article text |
+| Any radar/signal/scorecard API responses | Public-facing JSON responses |
+
+### Frontend Files to Inspect
+
+| Area | Reason |
+|---|---|
+| Frontend pages/components | UI labels, headings, descriptions |
+| Scorecard page/components | Scorecard labels, verdicts, close reasons |
+| Radar signal components | Signal type labels, indicators |
+| Article components | Article headings, body text |
+| SEO/meta title/description generation | Page titles, meta descriptions, OG tags |
+| Navigation labels | Sidebar, header, footer navigation text |
+| Dashboard cards | Summary statistics labels |
+| Public CTA text | Call-to-action buttons, marketing copy |
+
+### Search Terms (Case-Insensitive)
+
+| Term | Category | Severity |
+|---|---|---|
+| BUY | Trading directive | HIGH |
+| SELL | Trading directive | HIGH |
+| STRONG_BUY | Trading directive | HIGH |
+| STRONG_SELL | Trading directive | HIGH |
+| Signal | Trading terminology | MEDIUM |
+| Signals | Trading terminology | MEDIUM |
+| Entry | Trading terminology | MEDIUM |
+| Take Profit | Trading terminology | HIGH |
+| Stop Loss | Trading terminology | HIGH |
+| TP | Trading abbreviation | HIGH |
+| SL | Trading abbreviation | HIGH |
+| P&L | Financial result | HIGH |
+| Profit | Financial result | MEDIUM |
+| Trade | Trading terminology | MEDIUM |
+| Trading | Trading terminology | MEDIUM |
+| Position | Trading terminology | MEDIUM |
+| Win Rate | Performance claim | HIGH |
+| Forecast | Predictive language | MEDIUM |
+| Prediction | Predictive language | MEDIUM |
+| You should | Imperative advice | HIGH |
+| Guaranteed | Absolute claim | HIGH |
+
+## SAFE TERMINOLOGY MAP
+
+| Old Term | New Term | Context | Notes |
+|---|---|---|---|
+| Signal | Market Scenario | All public UI, articles, API labels | Core rebranding |
+| Signals | Market Scenarios | All public UI, articles, API labels | Core rebranding (plural) |
+| Entry | Reference Price | Scorecard, articles, prompts | Neutral price reference |
+| Take Profit / TP | Target Zone / Upside Target Zone | Scorecard, articles, prompts | Use "Target Zone" generically, "Upside Target Zone" for bullish |
+| Stop Loss / SL | Risk Zone / Invalidation Zone | Scorecard, articles, prompts | Use "Risk Zone" generically, "Invalidation Zone" for critical |
+| Buy | Bullish Bias | Signal cards, articles, API responses | Directional assessment, not directive |
+| Sell | Bearish Bias | Signal cards, articles, API responses | Directional assessment, not directive |
+| Strong Buy | Strong Bullish Bias | Signal cards, articles, API responses | High-conviction directional |
+| Strong Sell | Strong Bearish Bias | Signal cards, articles, API responses | High-conviction directional |
+| Trade | Market Setup / Scenario | General text | Neutral framing |
+| Trading | Market Analysis / Market Activity | General text, nav labels | Activity-based, not action-based |
+| Position | Scenario Exposure / Market View | Dashboard, articles | Exposure concept, not holdings |
+| P&L | Historical Outcome / Scenario Drift | Dashboard, scorecard | Outcome-based, not profit claim |
+| Profit | Outcome / Upside Move / Historical Gain | Factual context only | Only where historically factual |
+| Win Rate | Outcome Rate | Dashboard, performance stats | Rate without "win" implication |
+| Forecast | Scenario Outlook | Articles, analysis pages | Outlook, not prediction |
+| Prediction | Scenario View / Historical Pattern | Articles, analysis pages | Pattern-based, not predictive |
+| You should | Consider / Traders may watch / The scenario highlights | Articles, prompts | Suggestive, not imperative |
+| Guaranteed | Remove entirely | All contexts | Replace with uncertainty language ("may", "could", "historical patterns suggest") |
+
+## PUBLIC VS INTERNAL RULE
+
+**INTERNAL CODE / DATABASE ENUMS — May remain temporarily (not public-facing):**
+
+The following terms may continue to exist in internal code, database enums, and backend logic **only if they do not leak to public-facing outputs**:
+
+- `BUY` (database enum value)
+- `SELL` (database enum value)
+- `STRONG_BUY` (database enum value)
+- `STRONG_SELL` (database enum value)
+- `TP` (internal variable/field name)
+- `SL` (internal variable/field name)
+
+**PUBLIC-FACING OUTPUTS — Must use policy-safe wording:**
+
+The following surfaces must NEVER contain internal enum values or trading directives:
+- Public UI labels, headings, buttons
+- Article text (headlines, body, summaries)
+- SEO text (meta titles, meta descriptions, OG tags)
+- API response field names/labels visible to frontend
+- AI-generated content that reaches end users
+- Prompt instructions that generate public content
+- Navigation labels
+- Dashboard card titles
+- CTA text
+- Scorecard verdict/close reason labels
+- Radar signal type labels
+
+**Leak Prevention Rule:** If a backend enum value like `BUY` is stored in the database but displayed to the user, there MUST be a mapping layer that translates `BUY` → `Bullish Bias` before it reaches the frontend. This mapping layer is an implementation detail for Phase 7B, but the audit must identify all such leak points.
+
+**Database enums will NOT be changed in this task or Phase 7A.** A future task (Phase 7C or later) may plan database enum migration if needed.
+
+## REQUIRED TASKS
+
+### T-7A-01 — Public Language Audit and Replacement Map
+
+**Task ID:** T-7A-01
+**Phase:** Phase 7A — Public Language / Google-Safe Presentation (Audit)
+**Assigned Agent:** QA & Security Hunter or Product Visionary
+**Status:** ✅ DONE — Audit completed, report delivered, zero code changes.
+
+**Objective:**
+Perform a comprehensive audit of the entire OnlyAlpha codebase to identify every instance of public-facing risky trading/advice language. Produce a structured audit report with a complete replacement map, internal-only term classification, and implementation microtask proposal.
+
+**Files to inspect (READ-ONLY):**
+
+Backend:
+- `backend/src/services/ai/prompt-factory.ts`
+- `backend/src/services/openai.service.ts`
+- `backend/src/controllers/market.controller.ts`
+- `backend/src/routes/market.routes.ts`
+- `backend/src/models/market.model.ts`
+- `backend/src/services/signalManager.service.ts`
+- `backend/src/crons/signalPerformance.cron.ts`
+- Any article/living article generation services (search for `article`, `livingArticle`, `living-article`)
+- Any radar/signal/scorecard API responses (search for `radar`, `signal`, `scorecard`)
+
+Frontend:
+- `frontend/` directory — all pages, components, layouts
+- Focus on: scorecard, radar, articles, terminal, home pages
+- `frontend/src/app/` — page-level components and metadata
+- `frontend/src/features/` — feature components
+- Search for: SEO generation, meta tags, OG tags
+
+**Methodology:**
+
+1. **Automated grep sweep:** Use the search terms listed above to scan all backend and frontend files
+2. **Manual review:** For each match, determine:
+   - Is this public-facing? (YES / NO / UNCLEAR)
+   - What is the severity? (HIGH / MEDIUM / LOW)
+   - What is the recommended replacement?
+3. **Context classification:** For each finding, classify the context:
+   - `PROMPT` — AI prompt text that generates public content
+   - `UI_LABEL` — Visible UI text (buttons, headings, cards)
+   - `API_RESPONSE` — Data returned to frontend that gets displayed
+   - `SEO_META` — Page titles, descriptions, OG tags
+   - `ARTICLE` — Published article text
+   - `NAV` — Navigation labels
+   - `INTERNAL` — Code-only, never reaches user (safe)
+   - `ENUM` — Database enum value (safe if not leaked)
+4. **Leak analysis:** For each internal/enum finding, check if there is a direct path to a public-facing output without translation
+
+**Constraints:**
+- READ-ONLY — do not modify any files
+- Do not create migrations
+- Do not enable feature flags
+- Do not install packages
+- Do not commit or push
+
+**Expected Deliverable Format:**
+
+The executor must produce a structured report with the following sections:
+
+#### 1. Risky Phrase Inventory
+
+| File | Line | Phrase | Public-Facing? | Severity | Context | Recommended Replacement |
+|---|---|---|---|---|---|---|
+| `prompt-factory.ts` | 142 | `"Take Profit"` | YES | HIGH | PROMPT | `Target Zone` |
+| `signalManager.service.ts` | 87 | `signalType: 'BUY'` | UNCLEAR | HIGH | API_RESPONSE | Needs mapping layer |
+| ... | ... | ... | ... | ... | ... | ... |
+
+#### 2. Public Replacement Map
+
+| Old Term | New Term | Context(s) | Notes |
+|---|---|---|---|
+| Signal | Market Scenario | UI_LABEL, ARTICLE, API_RESPONSE, SEO_META | Core rebranding |
+| ... | ... | ... | ... |
+
+#### 3. Internal-Only Terms (Allowed to Remain)
+
+| Term | Why It Can Remain Internal | Must Not Leak Via |
+|---|---|---|
+| `BUY` (enum) | Database storage, internal logic | API responses, UI labels, prompts |
+| ... | ... | ... |
+
+#### 4. Implementation Microtask Proposal
+
+Propose the following microtask breakdown for Phase 7B implementation (do NOT mark them active):
+
+| Task ID | Description | Estimated Complexity | Dependencies |
+|---|---|---|---|
+| T-7B-01 | Backend prompt cleanup (prompt-factory.ts) | Medium | T-7A-01 |
+| T-7B-02 | Frontend label cleanup (scorecard, radar, articles) | High | T-7A-01 |
+| T-7B-03 | API response mapping layer (enum → safe label) | Medium | T-7A-01, T-7B-01 |
+| T-7B-04 | SEO/meta text cleanup | Low | T-7A-01 |
+| T-7B-05 | Navigation and CTA text cleanup | Low | T-7A-01 |
+| T-7B-06 | QA verification (grep sweep + visual check) | Medium | T-7B-01 through T-7B-05 |
+
+#### 5. Acceptance Criteria
+
+- [ ] All public-facing instances of BUY/SELL/STRONG_BUY/STRONG_SELL identified with file:line references
+- [ ] All public-facing instances of TP/SL/Entry/Stop Loss/Take Profit identified
+- [ ] All instances of "Signal" / "Signals" in public UI mapped
+- [ ] All instances of "Win Rate", "P&L", "Profit" in public outputs identified
+- [ ] All "You should" / "Guaranteed" / imperative advice instances found
+- [ ] Each finding classified as public-facing (YES/NO/UNCLEAR) with justification
+- [ ] Each finding has severity rating (HIGH/MEDIUM/LOW)
+- [ ] Each finding has recommended replacement from the Safe Terminology Map
+- [ ] Internal-only terms documented with leak prevention requirements
+- [ ] No direct buy/sell advice remains in any identified public output
+- [ ] No TP/SL/Entry wording remains in any identified public UI
+- [ ] No "guaranteed" or imperative financial advice found
+- [ ] Internal database enums documented as allowed (not changed in this phase)
+- [ ] Routes and SEO URLs documented as unchanged
+- [ ] Implementation microtask proposal provided with dependency ordering
+- [ ] Zero code files modified (audit is read-only)
+
+**QA checklist:**
+- [ ] Audit report delivered in the format specified above
+- [ ] All 20 search terms swept across backend + frontend
+- [ ] Every match logged with file, line, context classification
+- [ ] Public-facing determination justified for each match
+- [ ] Severity ratings applied consistently
+- [ ] Safe Terminology Map covers all identified terms
+- [ ] Internal-only terms clearly separated from public-facing terms
+- [ ] Leak paths identified for internal terms near public boundaries
+- [ ] Microtask proposal is actionable and sequenced
+- [ ] Zero files modified during audit
+
+**Dependencies:** None (this is the first task in Phase 7)
+
+**Rollback notes:** N/A — no code changes in this task
+
+---
+
+## PHASE 7A GUARDRAILS
+
+1. **READ-ONLY AUDIT** — no code modifications of any kind
+2. **No feature flag changes** — especially EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED remains false
+3. **No database changes** — enums, tables, migrations untouched
+4. **No route changes** — SEO URLs and API paths unchanged
+5. **No frontend changes** — components, pages, layouts untouched
+6. **No package installations** — use existing tools only
+7. **No commits or pushes** — audit deliverable is a report, not code
+8. **Internal enums allowed** — BUY/SELL/STRONG_BUY/STRONG_SELL/TP/SL may remain in DB if not public-facing
+9. **Translation layer required** — if internal enum values reach public output, a mapping layer is needed (implementation, not audit)
+10. **Phase 0.5 already done** — some terminology already cleaned (disclaimer, terms, AlphaStream, scorecard verdicts, prompt-factory safe harbor). The audit should verify these are still compliant and identify remaining gaps.
+
+## RISK ASSESSMENT
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Missing terms in audit | Medium | Comprehensive 20-term search list + manual review |
+| False positives (flagging internal-only code) | Low | Context classification (INTERNAL/ENUM) separates safe from risky |
+| False negatives (missing public-facing instances) | Medium | Cross-reference Phase 0.5 completed items, check all AI output paths |
+| Over-scoping into implementation | None | Explicit forbidden list, read-only constraint |
+| Unclear public/internal boundary | Low | Leak analysis methodology identifies boundary crossings |
+
+## KNOWN PARTIAL COMPLIANCE (Phase 0.5)
+
+The following areas were already cleaned in Phase 0.5 / Phase EMERGENCY:
+- ✅ `disclaimer/page.tsx` — BUY/SELL → Bullish/Bearish
+- ✅ `terms/page.tsx` — BUY/SELL → Bullish/Bearish, Signal Scorecard → Market Scenario
+- ✅ `AlphaStream.tsx` — Decoding Signal → Loading Intelligence, Signal Intelligence → Market Intelligence
+- ✅ `prompt-factory.ts` — Safe harbor vocabulary reinforcement added
+- ✅ `scorecard/page.tsx` — Meta tags, labels, verdict/closeReason mappings already compliant
+
+**The audit must still verify these areas** for any remaining gaps or regressions, and focus effort on areas NOT yet covered.
+
+---
+
+*Phase 7A authored: May 4, 2026 | Strategic Planner*
+*Prerequisites: None (independent audit phase)*
+*Enables: Phase 7B implementation microtasks (prompt cleanup, frontend cleanup, API mapping, SEO cleanup, QA verification)*
+
+---
+
+## T-7A-01 AUDIT RESULTS
+
+Audit summary:
+- 175 source files scanned
+- 78 distinct findings
+- 14 HIGH severity
+- 38 MEDIUM severity
+- 26 LOW severity
+- Overall public language risk: MEDIUM
+- AdSense-safe status: UNCLEAR
+- Zero files modified during audit
+
+Highest-risk findings:
+1. backend/src/services/openai.service.ts:788 — "position sizing and stop-loss strategies"
+2. backend/src/services/openai.service.ts:793 — "Signal Detected"
+3. backend/src/services/openai.service.ts:794 — "signals"
+4. frontend/src/app/layout.tsx — "AI trading", "serious traders"
+5. frontend/src/app/(terminal)/terminal/[coin]/opengraph-image.tsx:15 — "trading signals"
+6. frontend/src/app/feed.xml/route.ts:40 — "serious crypto traders"
+7. frontend public UI contains many "signal/signals" instances
+8. legal pages contain "signals" terminology
+9. API field names contain activePositions, bestTrade, unrealizedPnl
+10. prompt fields signalText/recommendation may need later mapping but should not be renamed immediately without tracing consumers
+
+## PRODUCT DECISIONS FOR PHASE 7B
+
+Record these decisions in HUB:
+
+1. Do NOT rename signalText in T-7B-01.
+   Reason: likely consumed by multiple services; risk of breaking consumers.
+   Action: keep internal for now, map public wording only.
+
+2. Do NOT rename recommendation or recommendedAction in T-7B-01.
+   Reason: interface/API compatibility risk.
+   Action: defer to later API/presentation mapping task.
+
+3. Do NOT backfill legacy stored articles in Phase 7B.
+   Reason: DB-wide content backfill is higher risk.
+   Action: fix generation/templates going forward only.
+
+4. Legal pages cleanup should be separate and may require product/legal wording review.
+
+## IMPLEMENTATION ORDER
+
+Recommended order:
+
+1. T-7B-01 — backend article/chat high-risk wording
+2. T-7B-04 — SEO/meta/OG high-visibility wording
+3. T-7B-02 — frontend label cleanup
+4. T-7B-03 — legal/disclaimer cleanup after product review
+5. T-7B-05 — API field mapping review, deferred
+6. T-7B-06 — QA verification
+
+# Phase 7B — Implementation
+
+**Status:** 🟡 READY — Microtasks Defined, Ready for Assignment
+**Date:** May 4, 2026
+**Priority:** P0 (AdSense policy compliance implementation)
+**Scope:** 6 implementation microtasks (T-7B-01 through T-7B-06), targeted code changes, no migrations
+**Prerequisites:** T-7A-01 complete
+**Authorized By:** Strategic Planner — May 4, 2026
+**Depends On:** Phase 7A (audit complete)
+
+## OBJECTIVE
+
+Implement the Google-safe presentation changes identified in the T-7A-01 audit. Replace public-facing risky trading/advice language with policy-safe alternatives across backend prompts, frontend UI, SEO meta, and legal pages. Maintain all existing functionality while eliminating AdSense-violating terminology.
+
+## PHASE 7B SCOPE LIMITATIONS
+
+**Allowed:**
+- Backend: Modify prompt templates, article generation wording
+- Frontend: Update UI labels, meta tags, OG tags, legal pages
+- Testing: TypeScript checks, linting, QA verification
+- Documentation: Update THE_NEXUS_HUB.md with progress
+
+**Forbidden:**
+- Do NOT modify application code outside specified files
+- Do NOT modify frontend components outside listed files
+- Do NOT change database enums
+- Do NOT create migrations
+- Do NOT rename routes or SEO URLs
+- Do NOT enable flags
+- Do NOT install new packages
+- Do NOT commit or push
+- Do NOT backfill legacy articles
+- Do NOT rename API fields (signalText, recommendation, etc.)
+- Do NOT change internal logic
+
+## REQUIRED TASKS
+
+### T-7B-01 — Backend Article Template Policy-Safe Wording Cleanup
+**Owner:** Senior Developer
+**Status:** Pending
+
+**Goal:**
+Remove HIGH-risk public article/chat wording from backend-generated content without changing schemas or API contracts.
+
+**Allowed files:**
+- backend/src/services/openai.service.ts
+- backend/src/controllers/chat.controller.ts
+
+**Allowed changes:**
+- Replace "position sizing and stop-loss strategies" with "risk management and downside protection considerations"
+- Replace "Signal Detected" with "Market Scenario Identified" or "Scenario Update"
+- Replace article hook "signals" with "indicators" or "patterns"
+- Replace "[PRIMARY FOCUS - AI SIGNAL]" with "[PRIMARY FOCUS - AI SCENARIO]"
+
+**Forbidden:**
+- Do not rename signalText
+- Do not rename recommendation
+- Do not change interfaces
+- Do not change DB models
+- Do not change API contracts
+- Do not touch frontend
+- Do not create migrations
+
+**Acceptance criteria:**
+- No "Signal Detected" in article templates
+- No "stop-loss strategies" in article templates
+- No public "AI SIGNAL" chat label
+- TypeScript passes
+- No API/schema changes
+
+### T-7B-04 — SEO / Meta / OG Language Cleanup
+**Owner:** Senior Developer
+**Status:** Pending
+
+**Goal:**
+Remove public SEO/meta/OG trading-signal wording.
+
+**Allowed files:**
+- frontend/src/app/layout.tsx
+- frontend/src/app/(terminal)/terminal/[coin]/opengraph-image.tsx
+- frontend/src/app/feed.xml/route.ts
+- frontend/src/app/(standard)/about/page.tsx
+
+**Allowed changes:**
+- "serious traders" → "crypto market participants"
+- "AI trading" → "AI market analysis"
+- "trading signals" → "scenario analysis" or "market intelligence"
+- "serious crypto traders" → "crypto market participants"
+- about meta "for traders and investors" → "for market participants"
+
+**Forbidden:**
+- Do not change routes
+- Do not change URLs
+- Do not change OG image structure
+- Do not change dynamic DB content
+- Do not backfill articles
+- Do not touch backend
+
+**Acceptance criteria:**
+- Root meta contains no "AI trading"
+- Root meta contains no "serious traders"
+- OG default subtitle contains no "trading signals"
+- RSS static description contains no "serious crypto traders"
+- No route/SEO URL changes
+
+### T-7B-02 — Frontend Public Label Cleanup
+**Owner:** Senior Developer
+**Status:** Pending
+
+**Goal:**
+Replace public-facing "signal/signals" UI wording with "scenario/scenarios" where appropriate.
+
+**Allowed files:**
+- frontend/src/features/home/components/RadarGrid.tsx
+- frontend/src/features/terminal/components/TerminalWire.tsx
+- frontend/src/features/terminal/components/AlphaStream.tsx
+- frontend/src/features/settings/components/PreferencesPanel.tsx
+- frontend/src/features/settings/components/OgBadge.tsx
+- frontend/src/app/(standard)/about/page.tsx
+- frontend/src/app/(standard)/auth/page.tsx
+
+**Allowed changes:**
+- "No signals yet" → "No scenarios yet"
+- "Load More Signals +" → "Load More Scenarios +"
+- "No radar signals found" → "No market scenarios found"
+- "Signal acquired at" → "Detected at" or "Scenario recorded at"
+- "AI Signals" → "AI Scenarios"
+- About page signal wording → scenario/indicator wording
+- Auth page "AI signals" → "AI market scenarios"
+
+**Forbidden:**
+- Do not rename TypeScript data fields in this task
+- Do not change API contracts
+- Do not change database fields
+- Do not change routes
+- Do not touch legal pages
+- Do not touch SEO/meta files covered by T-7B-04
+
+**Acceptance criteria:**
+- No visible "signals" wording in listed public UI files, except if part of non-public variable names
+- UI behavior unchanged
+- TypeScript passes
+
+### T-7B-03 — Legal / Disclaimer Terminology Cleanup
+**Owner:** Product Visionary + Senior Developer
+**Status:** Pending / Requires Product Review
+
+**Goal:**
+Replace public legal-page "signals" terminology with "scenarios" while preserving legal meaning.
+
+**Allowed files:**
+- frontend/src/app/(standard)/disclaimer/page.tsx
+- frontend/src/app/(standard)/terms/page.tsx
+- frontend/src/app/(standard)/privacy/page.tsx
+- frontend/src/app/(standard)/contact/page.tsx
+
+**Forbidden:**
+- Do not weaken disclaimers
+- Do not remove risk warnings
+- Do not change routes
+- Do not change legal meaning
+- Do not touch backend
+
+**Acceptance criteria:**
+- Product-approved wording
+- "signals" replaced where appropriate
+- "Win rates" replaced with "Historical outcome rates"
+- Legal risk warnings preserved
+
+### T-7B-05 — API Presentation Field Mapping Review
+**Owner:** System Architect
+**Status:** Deferred
+
+**Goal:**
+Review whether public API response field names such as activePositions, bestTrade, unrealizedPnl, recommendedAction should be presentation-mapped.
+
+**Allowed:**
+- Architecture review only at first
+- Identify backward compatibility risks
+- Propose mapping strategy
+
+**Forbidden:**
+- No implementation yet
+- No API contract change yet
+- No frontend interface rename yet
+- No DB/model change
+
+**Acceptance criteria:**
+- Compatibility-safe mapping strategy documented
+- Decision whether to version API or add parallel safe aliases
+
+### T-7B-06 — Phase 7 QA Verification
+**Owner:** QA & Security Hunter
+**Status:** Pending after T-7B-01/02/03/04
+
+**Goal:**
+Verify public language cleanup after implementation tasks.
+
+**Allowed:**
+- Read-only grep sweep
+- TypeScript/lint validation
+- Public UI text verification
+
+**Forbidden:**
+- No code changes
+
+**Acceptance criteria:**
+- Zero HIGH-risk public language remains in templates/meta/UI
+- Internal enums allowed only if not public-facing
+- Scorecard labels remain policy-safe
+- Routes and SEO URLs unchanged
+- No DB schema changes
+- No migrations
+
+---
+
+*Phase 7B authored: May 4, 2026 | Strategic Planner*
+*Prerequisites: T-7A-01 complete*
+*Enables: Phase 8 planning (if needed)*
+
+---
+
+---
+
 # Phase 2 — Full Event Impact Engine
 
 **Status:** ✅ COMPLETE — Code committed (4ae0af4), QA PASSED WITH NOTES (68/68)
