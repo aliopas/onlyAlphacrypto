@@ -1,6 +1,17 @@
 # 📋 ONLYALPHA — AGENT LOGS
 
-**Last Updated:** May 4, 2026 (Phase 8 Complete)
+**Last Updated:** May 7, 2026 (v2.Phase 0 + 0.1 — micro-tasks PLANNED)
+
+## Master Plan v2.1 — Tranche 1: Foundation + Validation
+
+| Date | Task ID | Verdict | Executor | Reviewer | Notes |
+|---|---|---|---|---|
+| May 7, 2026 | PLAN-V2-TRANCHE1 | 📋 PLANNED | Strategic Planner | — | Tranche 1 micro-task breakdown complete. 12 tasks written to THE_NEXUS_HUB.md: T-V2-0A (coins.ts), T-V2-0B (Triage filter), T-V2-0C (Workflow filter), T-V2-0D (Terminal filter), T-V2-0E (Market filter + cron), T-V2-0F (Phase 0 flags), T-V2-01A (OHLCV DB schema), T-V2-01B (OHLCV snapshot service), T-V2-01C (OHLCV cron), T-V2-01D (backfill script), T-V2-01E (Phase 0.1 flags), T-V2-0Q (QA). All tasks assigned to Senior Developer (code) or QA Hunter (QA). Execution groups: A (flags+constants) → B (coin filters) → C (market filter) → D (DB schema) → E (service+cron) → F (backfill) → G (QA). PROJECT_STATE.md updated. Next action: Senior Developer executes T-V2-0A + T-V2-0F + T-V2-01E (Group A — no deps). |
+| May 7, 2026 | PLAN-v2.1-APPROVED | ✅ APPROVED | Tech Lead | — | Master Plan v2.1 approved. All 9 issues from v2.0 review resolved. Plan handed to Strategic Planner for micro-task breakdown. Starting with v2.Phase 0 (Coin Filter + Market Filter) + v2.Phase 0.1 (OHLCV Infrastructure). PROJECT_STATE.md updated with full v2.1 phase roadmap, 3 tranches, exit gates, and new infrastructure inventory. Next action: Planner breaks v2.Phase 0 into micro-tasks. |
+| May 7, 2026 | PLAN-v2.0-REVIEW | ❌ CONDITIONALLY REJECTED | Tech Lead | — | 9 critical/high issues found. (1) BLOCKER: No OHLCV data infrastructure — Phase 1 TA engine is 100% blocked without candle storage. (2) BLOCKER: Phase numbering collision with existing 23 phases. (3) CRITICAL: Admin dashboard security unacceptable (memory sessions, 404 not 401, no brute-force protection). (4) HIGH: Signal starvation risk from 8-gate filter chain. (5) HIGH: No backtesting before shadow mode. (6) MEDIUM: AdSense policy conflict with BUY/SELL terminology reintroduction. (7) MEDIUM: ATR dependency underspecified. (8) MEDIUM: 6+ week scope unrealistic. (9) Terminology must use AdSense-safe labels internally. Guiding principle APPROVED: algorithm → numbers, AI → explanation. Shadow mode concept APPROVED with backtesting prerequisite. |
+| May 7, 2026 | PLAN-v2.1-REVISION | ✅ REVISED | Tech Lead | — | All 9 issues addressed in nextstep2-v2.md. Fix (1): Added v2.Phase 0.1 — OHLCV Data Infrastructure (ohlcv_candles + ohlcv_indicators tables, snapshot service, cron, backfill script). Fix (2): All phases renamed v2.Phase X. Fix (3): Admin security rewritten — Redis sessions (connect-redis), bcrypt password hashing, express-rate-limit 5/15min, 401 responses, brute-force lockout. Fix (4): Added v2.Phase 1.5 — Backtesting Framework with 5 pass criteria (win rate >40%, quality >=60 on 20%+ days, directional diversity, trend accuracy >55%, S/R hit rate >50%). Fix (5): Signal starvation monitoring added to v2.Phase 5 — checkSignalHealth() in tpslMonitor, reduced confidence mode (threshold 60→45, "Limited Data" badge). Fix (6): Terminology Standard section — all BUY/SELL/STRONG_BUY/STRONG_SELL → BULLISH/BEARISH, API-layer mapping defined. Fix (7): v2.Phase 1.6 — ATR-14 Calculator added (Wilder's smoothing, Daily for TP/SL, 4H for entry zones, stored in ohlcv_indicators). Fix (8): Split into 3 tranches with explicit exit gates. Fix (9): AdSense-safe terminology enforced in Hard Rules. |
+
+---
 
 ## State Reconciliation — May 4, 2026
 

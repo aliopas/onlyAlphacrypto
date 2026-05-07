@@ -1,7 +1,9 @@
 # ONLYALPHA — PROJECT STATE
 
-**Last Updated:** May 4, 2026 (Phase 7 Complete)
-**Current Focus:** Phase 8 — COMPLETE. Awaiting next priority assignment.
+**Last Updated:** May 7, 2026 (v2.Trance 1 — micro-tasks PLANNED)
+**Current Focus:** v2.Trance 1 — Execute v2.Phase 0 + v2.Phase 0.1 micro-tasks
+**Active Plan Source:** plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md
+**Next Step:** Senior Developer executes Group A tasks: T-V2-0A (coins.ts) + T-V2-0F (Phase 0 flags) + T-V2-01E (Phase 0.1 flags)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -14,15 +16,77 @@
 1. **Zero `any` Types:** Strict TypeScript enforcement.
 2. **Modular Boundaries:** Cache logic -> `CacheManager`. AI calls -> `AIGateway`. Prompts -> `PromptFactory`.
 3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized by the Tech Lead.
+4. **Zero BUY/SELL Terminology:** All verdicts use BULLISH/BEARISH internally. API-layer mapping to AdSense-safe public labels.
 
-## Current Mission: Phase 7 — COMPLETE
+---
 
-**Status:** COMPLETE — All implementation done, QA PASSED
-**Key Objective:** Identify and replace public-facing BUY/SELL/Signal/Entry/TP/SL/P&L labels with AdSense-policy-safe terminology.
-**Result:** T-7A-01 audit (175 files, 78 findings) complete. T-7B-01→06 implementation complete. Zero HIGH-risk public language remains.
-**Commits:** 3933f44, 251f5f5, 1c31da9, 1b1d406, 32478f6, 06bd913, f1e6535
+## Current Mission: Master Plan v2.1 — Algorithmic Signal Engine
 
-## Phase Overview (All Phases)
+**Status:** APPROVED by Tech Lead — Ready for Planner micro-task breakdown
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md`
+**Guiding Principle:** The algorithm reads the market and produces the numbers. The AI explains the why. Never the reverse.
+
+### Tranche 1 — Foundation + Validation (Weeks 0-2)
+| Phase | Description | Status | Dependency |
+|---|---|---|---|
+| v2.Phase 0 | Coin Filter + Market Filter | 🟡 PLANNED — 6 tasks written | None |
+| v2.Phase 0.1 | OHLCV Data Infrastructure | 🟡 PLANNED — 5 tasks written | None (but blocks everything after) |
+| v2.Phase 0.1 Backfill | Historical candle backfill script | ⬜ NOT STARTED | v2.Phase 0.1 |
+| v2.Phase 1 | Technical Analysis Engine | ⬜ NOT STARTED | v2.Phase 0.1 + 90 days data |
+| v2.Phase 1.5 | Backtesting Framework (NEW) | ⬜ NOT STARTED | v2.Phase 1 |
+
+**Tranche 1 Exit Gate:**
+- [ ] 90 days of candle data stored for all 11 coins x 3 timeframes (4H/Daily/Weekly)
+- [ ] Backtesting pass criteria ALL met (win rate >40%, quality >=60 on 20%+ days, directional diversity, trend accuracy >55%, S/R hit rate >50%)
+
+### Tranche 2 — Shadow Mode + Classification (Weeks 3-5) [BLOCKED by Tranche 1 Gate]
+| Phase | Description | Status | Dependency |
+|---|---|---|---|
+| v2.Phase 0.5 | Shadow Mode + Admin Dashboard | ⬜ BLOCKED | v2.Phase 1.5 PASSED |
+| v2.Phase 3 | Signal Classification System | ⬜ BLOCKED | v2.Phase 1 |
+| v2.Phase 2 | Market Regime Detection | ⬜ BLOCKED | v2.Phase 1 |
+| v2.Phase 4 | TP/SL Engine Overhaul | ⬜ BLOCKED | v2.Phase 1 + v2.Phase 1.6 (ATR) |
+| v2.Phase 6 | AI Role Refinement | ⬜ BLOCKED | v2.Phase 1 + v2.Phase 2 |
+
+**Tranche 2 Exit Gate:**
+- [ ] Shadow mode running minimum 2 weeks
+- [ ] 20+ resolved shadow signals
+- [ ] Algorithm disagreement win rate > 60%
+
+### Tranche 3 — Full Integration (Weeks 6+) [BLOCKED by Tranche 2 Gate]
+| Phase | Description | Status | Dependency |
+|---|---|---|---|
+| v2.Phase 5 | Signal Lifecycle System | ⬜ BLOCKED | v2.Phase 3 + v2.Phase 4 |
+| v2.Phase 7.1 | Daily Trend Context | ⬜ BLOCKED | v2.Phase 1 |
+| v2.Phase 7.2 | Weekly Bias Layer | ⬜ BLOCKED | v2.Phase 7.1 |
+| v2.Phase 7.3 | 4H Entry Timing | ⬜ BLOCKED | v2.Phase 7.2 |
+| v2.Phase 7.4 | Multi-TF Classification | ⬜ BLOCKED | v2.Phase 7.3 |
+| v2.Phase 8 | Scorecard Redesign | ⬜ BLOCKED | v2.Phase 5 + v2.Phase 6 |
+
+### Independent Track
+| Phase | Description | Status | Dependency |
+|---|---|---|---|
+| v2.Phase 9 | Airdrop System Redesign | ⬜ NOT STARTED | v2.Phase 0 only |
+
+### Key New Infrastructure (v2.1)
+| Component | File | Purpose |
+|---|---|---|
+| Coin Constants | `backend/src/config/coins.ts` | Single source of truth for 11 tracked coins |
+| OHLCV Candles Table | `ohlcv_candles` in `market.model.ts` | Raw candle storage (11 coins x 3 TFs) |
+| OHLCV Indicators Table | `ohlcv_indicators` in `market.model.ts` | Pre-computed EMA/ATR/volume_avg |
+| OHLCV Snapshot Service | `backend/src/services/ohlcvSnapshot.service.ts` | Fetch, store, compute indicators |
+| OHLCV Snapshot Cron | `backend/src/crons/ohlcvSnapshot.cron.ts` | Every 4H refresh |
+| Historical Backfill | `backend/scripts/backfill-ohlcv.ts` | One-time 90-day backfill |
+| Technical Analysis | `backend/src/services/technicalAnalysis.service.ts` | EMA, S/R, Structure, Patterns, Volume, ATR, Quality Score |
+| Backtesting Script | `backend/scripts/backtest-technical.ts` | Historical validation before shadow mode |
+| Admin Auth Middleware | `backend/src/middleware/adminAuth.middleware.ts` | Redis session + bcrypt auth |
+| Admin Routes | `backend/src/routes/admin.routes.ts` | Shadow mode dashboard API |
+| Shadow Checker Cron | `backend/src/crons/shadowChecker.cron.ts` | Every 15min, fills 72h/7d results |
+| Market Filter Cron | `backend/src/crons/marketFilter.cron.ts` | Every 6H, coin health check |
+
+---
+
+## Phase Overview (Legacy Phases — All Pre-v2)
 
 | Phase | Description | Status | Commit |
 |---|---|---|---|
@@ -33,13 +97,13 @@
 | Phase 5 | Level Intelligence Engine | ⚠️ PARTIAL FOUNDATION EXISTS | adac61e (partial) |
 | Phase 6 | AI Cost Reduction | ⚠️ PARTIAL FOUNDATION EXISTS | — |
 | Phase 7 | Public Language / Google-Safe | ✅ COMPLETE / QA PASSED | 3933f44→f1e6535 |
-| Phase 8 | Migration Strategy | ⬜ NOT STARTED | — |
+| Phase 8 | Migration Strategy | ✅ COMPLETE / QA PASSED | f5d0ec3 |
 
 ### Phase Notes
 - **Phase 2:** Runtime stats injection disabled by feature flag (`EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` default `false`). Classification confidence function exists but not fully wired into workflow (documented TODO). No blockers from QA.
 - **Phase 3:** `scenarioTracker.service.ts` and related schema exist from commit 58ecebd. Not confirmed complete under current roadmap. Needs reconciliation.
 - **Phase 5:** `levelIntelligence.service.ts` exists from commit adac61e. Not fully integrated into public scenario/article generation.
-- **Phase 6:** `ai-gateway.ts`, `cache-manager.ts`, routing/cache exists. Full cost reduction plan not complete.
+- **Phase 6:** `ai-gateway.ts`, `cache-manager.ts`, routing/cache exists. Full cost reduction plan not complete. v2.Phase 6 (AI Role Refinement) supersedes this.
 
 ## Completed Phases
 
