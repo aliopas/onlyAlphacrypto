@@ -1,6 +1,6 @@
 # Master Plan v2.1 — Tranche 1: Foundation + Validation
 
-**Status:** 🟡 IN PROGRESS — v2.Phase 0 + v2.Phase 0.1 micro-tasks written, awaiting execution
+**Status:** ✅ COMPLETE — v2.Phase 0 + v2.Phase 0.1 QA PASSED
 **Date:** May 7, 2026
 **Priority:** P0 (Blocks all subsequent v2 phases)
 **Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md`
@@ -23,33 +23,6 @@
 | v2.Phase 0.1 | Phase 0.1 Env Flags + Server Registration | T-V2-01E | ✅ DONE (QA PASSED) |
 | v2.Phase 0 | QA Verification (Phase 0 + 0.1) | T-V2-0Q | ✅ DONE (QA PASSED) |
 
-**Execution Order:**
-```
-T-V2-0A (coins.ts) ──────────────────────────────────────┐
-                                                          ├── T-V2-0B (Triage filter)
-T-V2-0F (Phase 0 flags + server) ────────────────────────┤── T-V2-0C (Workflow filter)
-                                                          ├── T-V2-0D (Terminal filter)
-                                                          └── T-V2-0E (Market Filter + cron)
-                                                              
-T-V2-01E (Phase 0.1 flags) ─────────────────────────────┐
-                                                          ├── T-V2-01A (DB schema)
-T-V2-01B (Snapshot service) ────────────────────────────┤── T-V2-01C (Snapshot cron)
-                                                          └── T-V2-01D (Backfill script)
-                                                              
-T-V2-0Q (QA) — runs after ALL above tasks complete
-```
-
-**Parallelization:**
-- Group A: T-V2-0A + T-V2-0F + T-V2-01E (flags + constants — no code deps)
-- Group B: T-V2-0B + T-V2-0C + T-V2-0D (coin filters — depend on T-V2-0A)
-- Group C: T-V2-0E (market filter — depends on T-V2-0A + T-V2-0F)
-- Group D: T-V2-01A (DB schema — depends on T-V2-01E)
-- Group E: T-V2-01B + T-V2-01C (service + cron — depend on T-V2-01A)
-- Group F: T-V2-01D (backfill — depends on T-V2-01B)
-- Group G: T-V2-0Q (QA — depends on all)
-
----
-
 ## GUARDRAILS (Apply to ALL v2.Phase 0 + 0.1 tasks)
 
 1. **Zero `any` types** across all new/modified files.
@@ -62,8 +35,6 @@ T-V2-0Q (QA) — runs after ALL above tasks complete
 8. **No new npm packages** — use existing `ioredis`, `bcryptjs`, `node-cron`, `drizzle-orm`, `axios`.
 9. **No modifications to existing crons' behavior** — new code is additive only.
 10. **Commit only after QA PASS** — each task or deploy group individually.
-
----
 
 ## PHASE ARCHITECTURE CONTEXT
 
@@ -141,27 +112,6 @@ export function isMacroEvent(eventType: string): boolean {
 - Zero `any` types
 - Zero dependencies (no imports from other project files)
 
-**Acceptance criteria:**
-- File created at `backend/src/config/coins.ts`
-- Exports: TRACKED_COINS (readonly array of 11), TrackedCoin (union type), TRACKED_COIN_SET (ReadonlySet), isTrackedCoin(symbol), isMacroEvent(eventType)
-- 11 coins: BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, LINK, SUI, TON
-- `isTrackedCoin('btc')` returns true (case-insensitive)
-- `isTrackedCoin('PEPE')` returns false
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] File exists at correct path
-- [ ] TRACKED_COINS has exactly 11 entries
-- [ ] All 11 coin symbols correct (BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, LINK, SUI, TON)
-- [ ] `as const` assertion present
-- [ ] TrackedCoin type is string literal union (not `string`)
-- [ ] TRACKED_COIN_SET is `ReadonlySet<string>`
-- [ ] isTrackedCoin is case-insensitive
-- [ ] isMacroEvent covers Fed_Rate, CPI, Geopolitical, ETF, Regulatory
-- [ ] Zero `any` types
-- [ ] Zero external imports (no project dependencies)
-- [ ] `tsc --noEmit` clean
-
 **Dependencies:** None
 
 **Rollback:** Delete `backend/src/config/coins.ts`
@@ -182,61 +132,6 @@ After AI triage returns `symbolMentions` in `triageEngine.cron.ts`, force `class
 **File to modify:**
 - `backend/src/crons/triageEngine.cron.ts`
 
-**Files to inspect:**
-- `backend/src/crons/triageEngine.cron.ts` — lines 54-74 (scored batch processing loop)
-- `backend/src/config/coins.ts` (from T-V2-0A) — isTrackedCoin, isMacroEvent
-
-**Insertion point:**
-After line 54 (`const scoredBatch = await generateLightweightTriage(newsBatch)`) and before the loop that updates DB rows (lines 57-74), add the filter logic inside the per-item loop.
-
-**Design specification:**
-
-Inside the loop that iterates `scoredBatch` results (approximately line 59), add:
-
-```typescript
-import { isTrackedCoin, isMacroEvent } from '../config/coins';
-
-// Inside the loop, after accessing scoredItem.symbolMentions and scoredItem.eventType:
-const hasTrackedCoin = scoredItem.symbolMentions.some((s: string) => isTrackedCoin(s));
-if (!hasTrackedCoin) {
-    if (isMacroEvent(scoredItem.eventType)) {
-        scoredItem.symbolMentions = ['BTC'];
-    } else {
-        scoredItem.classification = 'NOISE';
-        console.log(`[TriageFilter] NOISE — no tracked coin in mentions: ${scoredItem.symbolMentions.join(',')}`);
-    }
-}
-```
-
-**Constraints:**
-- Existing triage AI call is NOT modified
-- If NO symbolMentions exist (empty array) AND event is macro → default to BTC
-- If NO symbolMentions AND NOT macro → force NOISE
-- Log every forced NOISE for observability
-- The `scoredItem` type must allow reassignment (it's a local variable from the AI response)
-- Zero `any` types
-
-**Acceptance criteria:**
-- Import from `config/coins.ts` added
-- Filter logic inside scored batch loop
-- Non-tracked coins → NOISE (unless macro → BTC)
-- Log line present for forced NOISE
-- Macro event with no coins → symbolMentions set to ['BTC']
-- Existing triage behavior unchanged when coins ARE tracked
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] `isTrackedCoin` and `isMacroEvent` imported from config/coins.ts
-- [ ] Filter placed INSIDE the scored item loop (after AI returns, before DB update)
-- [ ] `hasTrackedCoin` checks all items in symbolMentions array
-- [ ] Non-tracked + non-macro → classification forced to 'NOISE'
-- [ ] Non-tracked + macro → symbolMentions overridden to ['BTC']
-- [ ] Log line includes the rejected symbol mentions
-- [ ] Empty symbolMentions handled (no crash)
-- [ ] Existing triage flow for tracked coins unchanged
-- [ ] Zero `any` types
-- [ ] `tsc --noEmit` clean
-
 **Dependencies:** T-V2-0A (coins.ts must exist)
 
 **Rollback:** Remove the filter block + import from triageEngine.cron.ts
@@ -252,58 +147,10 @@ if (!hasTrackedCoin) {
 **Deploy Group:** B (depends on T-V2-0A)
 
 **Objective:**
-In `aiWorkflow.cron.ts`, after the symbol is resolved (line ~230), if the symbol is NOT in the tracked coins list, skip processing entirely and mark the buffer item as consumed.
+In `aiWorkflow.cron.ts`, after the symbol is resolved, if the symbol is NOT in the tracked coins list, skip processing entirely and mark the buffer item as consumed.
 
 **File to modify:**
 - `backend/src/crons/aiWorkflow.cron.ts`
-
-**Files to inspect:**
-- `backend/src/crons/aiWorkflow.cron.ts` — lines 223-235 (item loop, symbol extraction)
-- `backend/src/config/coins.ts` — isTrackedCoin
-
-**Insertion point:**
-After the symbol is determined (approximately line 229, where `symbol` is set from `symbolMentions[0]` or inferred from title), BEFORE the `if (!symbol)` check (line ~231).
-
-**Design specification:**
-
-```typescript
-import { isTrackedCoin } from '../config/coins';
-
-// After symbol is resolved (line ~229), add:
-if (symbol && !isTrackedCoin(symbol)) {
-    console.log(`[AI Workflow] Coin ${symbol} not in tracked list — skipping item ${item.id}`);
-    await markBufferItemConsumed(item.id);
-    continue;
-}
-```
-
-**IMPORTANT:** The function `markBufferItemConsumed` must already exist in the workflow file. Verify the exact function name used to mark buffer items as consumed. If no such function exists, use the existing DB update pattern from the file (likely `db.update(rawNewsBuffer).set({ consumed: true }).where(eq(rawNewsBuffer.id, item.id))`).
-
-**Constraints:**
-- The check happens AFTER symbol resolution but BEFORE any AI calls
-- The buffer item is marked consumed so it is never re-processed
-- Log includes the rejected symbol and item ID
-- Zero impact on tracked coin processing
-- Zero `any` types
-
-**Acceptance criteria:**
-- Import from `config/coins.ts` added
-- Coin check placed after symbol resolution, before AI processing
-- Non-tracked symbols are skipped + marked consumed
-- Log line present
-- Tracked coins process normally
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] `isTrackedCoin` imported from config/coins.ts
-- [ ] Check placed AFTER symbol is determined (not before)
-- [ ] Non-tracked symbol → markBufferItemConsumed called
-- [ ] `continue` skips rest of loop iteration
-- [ ] Log line includes symbol + item ID
-- [ ] No AI calls made for non-tracked coins
-- [ ] Tracked coin flow unchanged
-- [ ] Zero `any` types
-- [ ] `tsc --noEmit` clean
 
 **Dependencies:** T-V2-0A
 
@@ -320,67 +167,10 @@ if (symbol && !isTrackedCoin(symbol)) {
 **Deploy Group:** B (depends on T-V2-0A)
 
 **Objective:**
-In `terminalEngine.cron.ts`, items with no mention of the 11 tracked coins in their title should never enter the `raw_news_buffer`. Since the terminal engine processes raw RSS items (no AI symbol extraction yet), the filter must be keyword-based.
+In `terminalEngine.cron.ts`, items with no mention of the 11 tracked coins in their title should never enter the `raw_news_buffer`. Keyword-based pre-filter.
 
 **File to modify:**
 - `backend/src/crons/terminalEngine.cron.ts`
-
-**Files to inspect:**
-- `backend/src/crons/terminalEngine.cron.ts` — lines 16-40 (RSS fetch + insert loop)
-- `backend/src/config/coins.ts` — TRACKED_COINS
-
-**Insertion point:**
-Inside the `for (const newsItem of newsItems)` loop (line ~27), BEFORE the dedup check and insert into `raw_news_buffer`.
-
-**Design specification:**
-
-```typescript
-import { TRACKED_COINS, isMacroEvent } from '../config/coins';
-
-// Inside the newsItem loop, before dedup/insert:
-const titleUpper = newsItem.title.toUpperCase();
-const mentionsTrackedCoin = TRACKED_COINS.some(coin => titleUpper.includes(coin));
-
-// Also check for macro keywords in title
-const MACRO_KEYWORDS = ['FED', 'RATE', 'ETF', 'REGULATION', 'INFLATION', 'CPI', 'SANCTION', 'CRISIS'];
-const mentionsMacroKeyword = MACRO_KEYWORDS.some(kw => titleUpper.includes(kw));
-
-if (!mentionsTrackedCoin && !mentionsMacroKeyword) {
-    continue; // Skip — not relevant to any tracked coin
-}
-```
-
-**Note:** This is a lightweight pre-filter. It does NOT replace the TriageEngine filter (T-V2-0B) which uses AI-extracted symbols. The terminal filter is a rough keyword gate to reduce noise before items enter the buffer. Some false negatives are acceptable (macro news might not mention a specific coin name in the title).
-
-**Constraints:**
-- Keyword-based only (no AI calls)
-- Checks title only (not description/source)
-- Case-insensitive via `.toUpperCase()`
-- Macro keywords allow macro news to pass through even without a coin name
-- Existing dedup logic unchanged
-- Zero `any` types
-
-**Acceptance criteria:**
-- Import from `config/coins.ts` added
-- Keyword check in news item loop
-- Items without tracked coin OR macro keyword → skipped (not inserted to buffer)
-- Items with tracked coin mention → pass through normally
-- Items with macro keyword → pass through normally
-- Zero impact on existing dedup logic
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] `TRACKED_COINS` imported from config/coins.ts
-- [ ] Check placed INSIDE the newsItem loop
-- [ ] `titleUpper` used for case-insensitive matching
-- [ ] All 11 coins checked against title
-- [ ] Macro keywords array defined (Fed, Rate, ETF, Regulation, Inflation, CPI, Sanction, Crisis)
-- [ ] Items with no match → `continue` (skip insert)
-- [ ] Items with coin match → pass through
-- [ ] Items with macro keyword match → pass through
-- [ ] Existing dedup logic after this check unchanged
-- [ ] Zero `any` types
-- [ ] `tsc --noEmit` clean
 
 **Dependencies:** T-V2-0A
 
@@ -397,136 +187,17 @@ if (!mentionsTrackedCoin && !mentionsMacroKeyword) {
 **Deploy Group:** C (depends on T-V2-0A, T-V2-0F)
 
 **Objective:**
-Create `backend/src/crons/marketFilter.cron.ts` that runs every 6 hours. For each of the 11 tracked coins, fetch 24h volume, spread, and price change from Binance. Coins failing any criteria get flagged `is_tradeable = false` in `coin_intelligence_cache`. Runs once at server boot + every 6 hours.
+Create `backend/src/crons/marketFilter.cron.ts` that runs every 6 hours. For each of the 11 tracked coins, fetch 24h volume and price change from Binance. Coins failing any criteria get flagged `is_tradeable = false` in `coin_intelligence_cache`.
 
-**File to create:**
-- `backend/src/crons/marketFilter.cron.ts`
+**Files created/modified:**
+- `backend/src/crons/marketFilter.cron.ts` (new)
+- `backend/scripts/migrate-market-filter.sql` (new)
+- `backend/src/models/market.model.ts` (add isTradeable column)
+- `backend/src/server.ts` (conditional registration)
 
-**Files to inspect:**
-- `backend/src/services/binance.service.ts` — `getLivePrices()`, `getTopMovers()` (may provide volume data)
-- `backend/src/models/market.model.ts` — `coinIntelligenceCache` table (line 195-207)
-- `backend/src/config/coins.ts` — TRACKED_COINS
-- `backend/src/config/env.ts` — env flag pattern
-
-**Files to modify:**
-- `backend/src/models/market.model.ts` — add `isTradeable` column to `coinIntelligenceCache`
-- `backend/src/server.ts` — register cron (conditional on flag)
-- `backend/src/config/env.ts` — add flag (done in T-V2-0F)
-
-**DB Migration needed:**
-New migration script `backend/scripts/migrate-market-filter.sql`:
-```sql
--- Guarded by migration_flags
-ALTER TABLE coin_intelligence_cache ADD COLUMN IF NOT EXISTS is_tradeable BOOLEAN DEFAULT true;
-```
-
-**Drizzle model change (market.model.ts):**
-Add to `coinIntelligenceCache` table definition:
-```typescript
-isTradeable: boolean('is_tradeable').default(true),
-```
-
-**Design specification:**
-
-The cron fetches market data from Binance for each tracked coin. Binance `/api/v3/ticker/24hr` endpoint provides 24h volume, price change percent, and other stats for all pairs.
-
-```typescript
-import { TRACKED_COINS } from '../config/coins';
-import { db } from '../config/db';
-import { coinIntelligenceCache } from '../models/market.model';
-import { eq } from 'drizzle-orm';
-
-const MARKET_FILTER_CRITERIA = {
-    MIN_VOLUME_USD: 50_000_000,   // $50M
-    MAX_SPREAD_PERCENT: 0.5,       // 0.5%
-    MAX_PRICE_CHANGE_24H: 25,      // 25%
-} as const;
-
-async function fetchMarketFilterData(): Promise<Map<string, { volume: number; spread: number; priceChange: number }>> {
-    // Fetch from Binance: GET /api/v3/ticker/24hr for all USDT pairs
-    // Use axios to call https://api.binance.com/api/v3/ticker/24hr
-    // Filter for TRACKED_COINS (append USDT)
-    // Extract: quoteVolume (24h volume in USDT), spread calculation, priceChangePercent
-}
-
-async function runMarketFilter(): Promise<void> {
-    if (!env.MARKET_FILTER_ENABLED) return;
-
-    const data = await fetchMarketFilterData();
-    let updated = 0;
-
-    for (const coin of TRACKED_COINS) {
-        const coinData = data.get(coin);
-        const isTradeable = coinData !== undefined
-            && coinData.volume >= MARKET_FILTER_CRITERIA.MIN_VOLUME_USD
-            && coinData.spread <= MARKET_FILTER_CRITERIA.MAX_SPREAD_PERCENT
-            && Math.abs(coinData.priceChange) <= MARKET_FILTER_CRITERIA.MAX_PRICE_CHANGE_24H;
-
-        await db.update(coinIntelligenceCache)
-            .set({ isTradeable })
-            .where(eq(coinIntelligenceCache.coinSymbol, coin));
-
-        if (!isTradeable) {
-            console.log(`[MarketFilter] ${coin} flagged NOT tradeable: vol=${coinData?.volume}, spread=${coinData?.spread}%, change=${coinData?.priceChange}%`);
-        }
-        updated++;
-    }
-
-    console.log(`[MarketFilter] Checked ${updated} coins`);
-}
-```
-
-**Boot behavior:** `runMarketFilter()` runs once immediately on server boot (inside `startMarketFilterCron`), then schedules every 6 hours.
-
-**Binance API call:** Use `axios` (already installed) to call `https://api.binance.com/api/v3/ticker/24hr`. This returns ALL tickers — filter client-side for the 11 coins. One API call per tick (not 11 separate calls).
-
-**Spread calculation:** `spread = ((askPrice - bidPrice) / askPrice) * 100` — but Binance 24hr ticker does NOT include bid/ask. Alternative: use `highPrice - lowPrice` as a proxy, or use `priceChangePercent` as the primary volume+volatility check. Simpler approach: just check volume > $50M AND abs(priceChangePercent) < 25%.
-
-**Revised criteria (Binance 24hr ticker compatible):**
+**Criteria:**
 - 24h quote volume (USDT) > $50M
 - abs(priceChangePercent) <= 25% (manipulation flag)
-- Skip spread check (not available from 24hr ticker endpoint without separate book ticker call)
-
-**server.ts registration:**
-Conditional on `env.MARKET_FILTER_ENABLED` (flag added in T-V2-0F). Use same conditional pattern as existing optional crons (lines 128-161).
-
-**Constraints:**
-- Single Binance API call per tick (fetch all tickers, filter client-side)
-- Runs on boot + every 6 hours (`0 */6 * * *`)
-- Updates `coin_intelligence_cache.is_tradeable` for all 11 coins
-- Migration guarded by migration_flags
-- Flag defaults to false
-- Error handling: outer try/catch, individual coin errors don't break loop
-- Zero `any` types
-
-**Acceptance criteria:**
-- Migration script creates `is_tradeable` column on `coin_intelligence_cache`
-- Drizzle model updated
-- Cron created with Binance 24hr ticker fetch
-- All 11 coins checked per tick
-- Volume > $50M AND abs(priceChange) <= 25% → is_tradeable = true
-- Failing coins flagged is_tradeable = false with log
-- Runs on boot + every 6 hours
-- Conditional registration in server.ts
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] Migration script: ALTER TABLE ADD COLUMN IF NOT EXISTS is_tradeable
-- [ ] Migration guarded by migration_flags
-- [ ] Drizzle model has `isTradeable: boolean('is_tradeable').default(true)`
-- [ ] Cron file created at `backend/src/crons/marketFilter.cron.ts`
-- [ ] Single Binance API call (GET /api/v3/ticker/24hr)
-- [ ] Filters for 11 TRACKED_COINS (USDT pairs)
-- [ ] Volume check: quoteVolume > 50,000,000
-- [ ] Price change check: abs(priceChangePercent) <= 25
-- [ ] Updates coin_intelligence_cache.is_tradeable per coin
-- [ ] Logs flagged coins with reasons
-- [ ] Runs on boot (immediate) + scheduled every 6 hours
-- [ ] Outer try/catch with logger.error
-- [ ] Individual coin errors don't break loop (inner try/catch)
-- [ ] server.ts conditional registration (env.MARKET_FILTER_ENABLED)
-- [ ] Zero `any` types
-- [ ] `tsc --noEmit` clean
 
 **Dependencies:** T-V2-0A (coins.ts), T-V2-0F (env flag)
 
@@ -543,33 +214,9 @@ Conditional on `env.MARKET_FILTER_ENABLED` (flag added in T-V2-0F). Use same con
 **Deploy Group:** A (no dependencies)
 
 **Objective:**
-Add env flag `MARKET_FILTER_ENABLED` to `env.ts`. No server registration yet — that happens in T-V2-0E when the cron file is created.
-
-**File to modify:**
-- `backend/src/config/env.ts`
-
-**Design specification:**
-
-Add after existing event impact flags (after line 91):
-```typescript
-// v2.Phase 0 — Market Filter
-MARKET_FILTER_ENABLED: z.boolean().default(false),
-```
-
-**Acceptance criteria:**
-- Flag added with Zod schema
-- Default `false`
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] `MARKET_FILTER_ENABLED: z.boolean().default(false)` present
-- [ ] Default false
-- [ ] No other lines changed
-- [ ] `tsc --noEmit` clean
+Add env flag `MARKET_FILTER_ENABLED` to `env.ts`. Default `false`.
 
 **Dependencies:** None
-
-**Rollback:** Remove the added line
 
 ---
 
@@ -582,126 +229,13 @@ MARKET_FILTER_ENABLED: z.boolean().default(false),
 **Deploy Group:** D (depends on T-V2-01E)
 
 **Objective:**
-Create `ohlcv_candles` and `ohlcv_indicators` tables via SQL migration and Drizzle ORM model. These tables store raw candle data and pre-computed technical indicators for all 11 coins across 3 timeframes.
+Create `ohlcv_candles` and `ohlcv_indicators` tables via SQL migration and Drizzle ORM model.
 
-**File to create:**
-- `backend/scripts/migrate-ohlcv.sql`
-
-**File to modify:**
-- `backend/src/models/market.model.ts` — add 2 new tables + re-export
-
-**Migration script:**
-```sql
--- Guard: INSERT INTO migration_flags (flag_name) VALUES ('ohlcv_tables') ON CONFLICT DO NOTHING;
--- Only proceed if flag not set.
-
-CREATE TABLE IF NOT EXISTS ohlcv_candles (
-    id                  SERIAL PRIMARY KEY,
-    coin_symbol         VARCHAR(20)    NOT NULL,
-    timeframe           VARCHAR(5)     NOT NULL,  -- '4h', '1d', '1w'
-    open_time           TIMESTAMP      NOT NULL,
-    open                REAL           NOT NULL,
-    high                REAL           NOT NULL,
-    low                 REAL           NOT NULL,
-    close               REAL           NOT NULL,
-    volume              REAL           NOT NULL,
-    close_time          TIMESTAMP      NOT NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS ohlcv_candles_unique ON ohlcv_candles(coin_symbol, timeframe, open_time);
-CREATE INDEX IF NOT EXISTS ohlcv_candles_range ON ohlcv_candles(coin_symbol, timeframe, open_time DESC);
-
-CREATE TABLE IF NOT EXISTS ohlcv_indicators (
-    id                  SERIAL PRIMARY KEY,
-    coin_symbol         VARCHAR(20)    NOT NULL,
-    timeframe           VARCHAR(5)     NOT NULL,
-    open_time           TIMESTAMP      NOT NULL,
-    ema_20              REAL,
-    ema_50              REAL,
-    ema_200             REAL,
-    atr_14              REAL,
-    volume_avg_20       REAL,
-    computed_at         TIMESTAMP      DEFAULT NOW()
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS ohlcv_indicators_unique ON ohlcv_indicators(coin_symbol, timeframe, open_time);
-
--- Mark migration as executed
--- INSERT INTO migration_flags (flag_name, executed_at) VALUES ('ohlcv_tables', NOW());
-```
-
-**Drizzle model (add to market.model.ts):**
-
-```typescript
-import { pgTable, serial, varchar, real, timestamp, boolean, text, index, uniqueIndex } from 'drizzle-orm/pg-core';
-
-export const ohlcvCandles = pgTable('ohlcv_candles', {
-    id: serial('id').primaryKey(),
-    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
-    timeframe: varchar('timeframe', { length: 5 }).notNull(),
-    openTime: timestamp('open_time', { mode: 'date' }).notNull(),
-    open: real('open').notNull(),
-    high: real('high').notNull(),
-    low: real('low').notNull(),
-    close: real('close').notNull(),
-    volume: real('volume').notNull(),
-    closeTime: timestamp('close_time', { mode: 'date' }).notNull(),
-}, (table) => [
-    uniqueIndex('ohlcv_candles_unique').on(table.coinSymbol, table.timeframe, table.openTime),
-    index('ohlcv_candles_range').on(table.coinSymbol, table.timeframe, table.openTime),
-]);
-
-export const ohlcvIndicators = pgTable('ohlcv_indicators', {
-    id: serial('id').primaryKey(),
-    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
-    timeframe: varchar('timeframe', { length: 5 }).notNull(),
-    openTime: timestamp('open_time', { mode: 'date' }).notNull(),
-    ema20: real('ema_20'),
-    ema50: real('ema_50'),
-    ema200: real('ema_200'),
-    atr14: real('atr_14'),
-    volumeAvg20: real('volume_avg_20'),
-    computedAt: timestamp('computed_at', { mode: 'date' }).defaultNow(),
-}, (table) => [
-    uniqueIndex('ohlcv_indicators_unique').on(table.coinSymbol, table.timeframe, table.openTime),
-]);
-```
-
-**IMPORTANT:** Check if the existing `market.model.ts` already uses `timestamp({ mode: 'date' })` or `timestamp({ mode: 'string' })` or just `timestamp()` for other tables. Match the existing pattern exactly.
-
-**Constraints:**
-- Migration guarded by `migration_flags` (flag name: `ohlcv_tables`)
-- `IF NOT EXISTS` on all DDL for idempotency
-- UNIQUE constraint prevents duplicate candles
-- INDEX on `(coin_symbol, timeframe, open_time DESC)` for fast range queries
-- Match existing Drizzle patterns from market.model.ts
-- Zero `any` types
-
-**Acceptance criteria:**
-- Migration script at `backend/scripts/migrate-ohlcv.sql`
-- Migration uses `migration_flags` guard
-- 2 tables created with correct columns
-- 3 indexes (2 unique, 1 range)
-- Drizzle model added to `market.model.ts`
-- Model re-exported from model index if one exists
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] Migration script at correct path
-- [ ] migration_flags guard present (INSERT ... ON CONFLICT DO NOTHING)
-- [ ] `ohlcv_candles` — 10 columns, all correct types
-- [ ] `ohlcv_indicators` — 9 columns, all correct types
-- [ ] UNIQUE index on ohlcv_candles(coin_symbol, timeframe, open_time)
-- [ ] Range index on ohlcv_candles(coin_symbol, timeframe, open_time DESC)
-- [ ] UNIQUE index on ohlcv_indicators(coin_symbol, timeframe, open_time)
-- [ ] Drizzle model matches SQL exactly
-- [ ] Timestamp mode matches existing tables in market.model.ts
-- [ ] Zero `any` types
-- [ ] `tsc --noEmit` clean
+**Files created/modified:**
+- `backend/scripts/migrate-ohlcv.sql` (new)
+- `backend/src/models/market.model.ts` (add 2 new tables)
 
 **Dependencies:** T-V2-01E (env flags)
-
-**Rollback:** DROP TABLE ohlcv_indicators; DROP TABLE ohlcv_candles; revert Drizzle model
 
 ---
 
@@ -714,174 +248,17 @@ export const ohlcvIndicators = pgTable('ohlcv_indicators', {
 **Deploy Group:** E (depends on T-V2-01A)
 
 **Objective:**
-Create `backend/src/services/ohlcvSnapshot.service.ts` — the core service for fetching candle data from Binance, storing it in `ohlcv_candles`, computing EMA/ATR indicators, and storing them in `ohlcv_indicators`. Also provides query helpers for reading candles and indicators.
+Create `backend/src/services/ohlcvSnapshot.service.ts` — the core service for fetching candle data from Binance, storing it in `ohlcv_candles`, computing EMA/ATR indicators, and storing them in `ohlcv_indicators`.
 
-**File to create:**
-- `backend/src/services/ohlcvSnapshot.service.ts`
-
-**Files to inspect:**
-- `backend/src/services/binance.service.ts` — `getCoinKlinesRange(symbol, interval, startTime, endTime)` (lines 120-187), `BinanceKline` interface (line 22)
-- `backend/src/models/market.model.ts` — ohlcvCandles, ohlcvIndicators (from T-V2-01A)
-- `backend/src/config/coins.ts` — TRACKED_COINS
-- `backend/src/config/redis.ts` — deleteCache for cache invalidation
-
-**Design specification — Exported functions:**
-
-**1. `fetchAndStoreCandles(symbol: string, timeframe: string, limit: number): Promise<number>`**
-- Calls `getCoinKlinesRange(symbol + 'USDT', binanceInterval, startTime, endTime)`
-- Converts BinanceKline[] to ohlcv_candles rows
-- Upserts into ohlcv_candles (ON CONFLICT UPDATE)
-- Returns number of candles stored
-- Binance interval mapping: '4h' → '4h', '1d' → '1d', '1w' → '1w'
-
-**2. `backfillHistoricalCandles(symbol: string, timeframe: string, daysBack: number): Promise<number>`**
-- Fetches historical candles using pagination
-- For 4H: fetch in 500-candle chunks (Binance limit is 1000, use 500 for safety)
-- For Daily: fetch in 500-candle chunks
-- For Weekly: fetch in 200-candle chunks
-- Upserts all candles
-- Returns total candles stored
-- Rate limit: 200ms delay between chunk requests
-
-**3. `computeIndicators(symbol: string, timeframe: string): Promise<number>`**
-- Reads all candles for (symbol, timeframe) from ohlcv_candles, ordered by open_time ASC
-- Computes EMA-20, EMA-50, EMA-200 for each candle
-- Computes ATR-14 using Wilder's smoothing
-- Computes volume_avg_20 (SMA of volume over last 20 candles)
-- Upserts into ohlcv_indicators
-- Returns number of indicator rows computed
-
-**4. `getCandles(symbol: string, timeframe: string, limit: number): Promise<OhlcvCandleRow[]>`**
-- Reads last N candles from ohlcv_candles, ordered by open_time DESC
-- Returns array of candle rows
-
-**5. `getLatestIndicator(symbol: string, timeframe: string): Promise<OhlcvIndicatorRow | null>`**
-- Reads latest row from ohlcv_indicators for (symbol, timeframe)
-- Returns single row or null
-
-**6. `getIndicatorAtTime(symbol: string, timeframe: string, timestamp: Date): Promise<OhlcvIndicatorRow | null>`**
-- Reads indicator row closest to given timestamp (for backtesting)
-- Returns single row or null
-
-**EMA Calculation (critical — must match v2.Phase 1 spec):**
-```
-EMA_today = Price_today × multiplier + EMA_yesterday × (1 - multiplier)
-multiplier = 2 / (period + 1)
-
-For EMA-20: multiplier = 2/21 ≈ 0.0952
-For EMA-50: multiplier = 2/51 ≈ 0.0392
-For EMA-200: multiplier = 2/201 ≈ 0.00995
-```
-
-If insufficient candles exist for EMA-200 (< 200 candles): set ema_200 = null. Never guess.
-If insufficient for EMA-50 (< 50): set ema_50 = null.
-Minimum 20 candles required for EMA-20. Below 20: set ema_20 = null.
-
-**ATR-14 Calculation (Wilder's smoothing — critical):**
-```
-TR = max(high - low, abs(high - prev_close), abs(low - prev_close))
-
-First ATR(14) = SMA(TR, 14)  (average of first 14 TR values)
-
-Subsequent ATR = (prev_ATR × 13 + current_TR) / 14
-(Wilder's exponential smoothing)
-```
-
-If fewer than 15 candles available: set atr_14 = null.
-
-**volume_avg_20:**
-```
-SMA of volume over last 20 candles (including current)
-If fewer than 20 candles: set volume_avg_20 = null
-```
-
-**BinanceKline to ohlcv_candles mapping:**
-```typescript
-const binanceIntervalMap: Record<string, string> = {
-    '4h': '4h',
-    '1d': '1d',
-    '1w': '1w',
-};
-
-// BinanceKline has: open, high, low, close, volume, closeTime
-// openTime needs to be derived from closeTime - interval duration
-// OR use the Binance kline array format which includes openTime at index [0]
-```
-
-**IMPORTANT:** Inspect `getCoinKlinesRange` in `binance.service.ts` to understand exactly what `BinanceKline` contains. The interface at line 22 shows: `{ open, high, low, close, volume, closeTime }`. The `closeTime` is in milliseconds. The `openTime` may need to be computed or the function may return it. Check the actual implementation.
-
-**Upsert pattern (Drizzle):**
-```typescript
-import { db } from '../config/db';
-import { ohlcvCandles, ohlcvIndicators } from '../models/market.model';
-import { eq, sql, asc } from 'drizzle-orm';
-
-// PostgreSQL upsert:
-await db.insert(ohlcvCandles)
-    .values(candleRow)
-    .onConflictDoUpdate({
-        target: [ohlcvCandles.coinSymbol, ohlcvCandles.timeframe, ohlcvCandles.openTime],
-        set: {
-            open: candleRow.open,
-            high: candleRow.high,
-            low: candleRow.low,
-            close: candleRow.close,
-            volume: candleRow.volume,
-            closeTime: candleRow.closeTime,
-        },
-    });
-```
-
-**Constraints:**
-- All queries via Drizzle ORM — zero raw SQL
-- Zero `any` types
-- Proper error handling (Binance API failures logged, don't crash)
-- Rate limiting: 200ms between paginated requests
-- Null handling: EMA/ATR/volume_avg set to null when insufficient data
-- Cache invalidation: after upserting candles/indicators, delete relevant Redis cache keys (e.g., `ohlcv:${symbol}:${timeframe}`)
-- Exports match v2.Phase 1 consumption patterns exactly
-
-**Acceptance criteria:**
-- Service file created at correct path
-- 6 functions exported with correct signatures
-- EMA calculation uses correct multiplier formula
-- EMA returns null when insufficient candles
-- ATR-14 uses Wilder's smoothing (not simple moving average)
-- ATR returns null when fewer than 15 candles
-- volume_avg_20 returns null when fewer than 20 candles
-- Binance candle data correctly mapped to DB rows
-- Upsert uses ON CONFLICT DO UPDATE
-- Rate limiting between paginated requests
-- Redis cache invalidated after writes
-- Zero `any` types
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] File at `backend/src/services/ohlcvSnapshot.service.ts`
-- [ ] `fetchAndStoreCandles` — calls getCoinKlinesRange, upserts candles, returns count
-- [ ] `backfillHistoricalCandles` — paginated fetch, rate limited, upserts
-- [ ] `computeIndicators` — reads candles ASC, computes EMA/ATR/volume_avg, upserts indicators
-- [ ] `getCandles` — reads last N candles DESC
-- [ ] `getLatestIndicator` — reads latest indicator row
-- [ ] `getIndicatorAtTime` — reads closest indicator to timestamp
-- [ ] EMA multiplier correct: 2/(period+1)
-- [ ] EMA null when candles < period
-- [ ] ATR first value = SMA(TR, 14)
-- [ ] ATR subsequent = (prev_ATR × 13 + TR) / 14
-- [ ] ATR null when candles < 15
-- [ ] volume_avg_20 = SMA(volume, 20), null when < 20
-- [ ] TR = max(high-low, abs(high-prev_close), abs(low-prev_close))
-- [ ] Binance interval mapping correct
-- [ ] Upsert ON CONFLICT on (coin_symbol, timeframe, open_time)
-- [ ] 200ms rate limit between paginated requests
-- [ ] Redis cache deleted after writes
-- [ ] Outer try/catch on all exported functions
-- [ ] Zero `any` types
-- [ ] `tsc --noEmit` clean
+**Exported functions:**
+1. `fetchAndStoreCandles(symbol, timeframe, limit)` — fetch latest candles, batch upsert
+2. `backfillHistoricalCandles(symbol, timeframe, daysBack)` — paginated historical fetch, batch upsert
+3. `computeIndicators(symbol, timeframe)` — reads candles, computes EMA/ATR/SMA, batch upsert indicators
+4. `getCandles(symbol, timeframe, limit)` — query helper
+5. `getLatestIndicator(symbol, timeframe)` — query helper
+6. `getIndicatorAtTime(symbol, timeframe, timestamp)` — query helper
 
 **Dependencies:** T-V2-01A (DB schema must exist)
-
-**Rollback:** Delete service file
 
 ---
 
@@ -896,114 +273,10 @@ await db.insert(ohlcvCandles)
 **Objective:**
 Create `backend/src/crons/ohlcvSnapshot.cron.ts` — runs every 4 hours, fetches latest candles for all 11 coins across 3 timeframes, computes indicators.
 
-**File to create:**
+**File created:**
 - `backend/src/crons/ohlcvSnapshot.cron.ts`
 
-**Files to modify:**
-- `backend/src/server.ts` — conditional registration
-
-**Design specification:**
-
-```typescript
-import cron from 'node-cron';
-import { env } from '../config/env';
-import { logger } from '../utils/logger';
-import { fetchAndStoreCandles, computeIndicators } from '../services/ohlcvSnapshot.service';
-import { TRACKED_COINS } from '../config/coins';
-
-const TIMEFRAMES = ['4h', '1d', '1w'] as const;
-const CANDLE_LIMITS: Record<string, number> = { '4h': 5, '1d': 2, '1w': 2 };
-
-export async function runOhlcvSnapshot(): Promise<void> {
-    if (!env.OHLCV_SNAPSHOT_ENABLED) return;
-
-    const startTime = Date.now();
-
-    for (const coin of TRACKED_COINS) {
-        for (const tf of TIMEFRAMES) {
-            try {
-                const stored = await fetchAndStoreCandles(coin, tf, CANDLE_LIMITS[tf]);
-                await computeIndicators(coin, tf);
-                logger.info('[OHLCV] Updated %s %s: %d candles, indicators computed', coin, tf, stored);
-            } catch (err) {
-                logger.error('[OHLCV] Failed for %s %s: %s', coin, tf, err instanceof Error ? err.message : String(err));
-            }
-        }
-    }
-
-    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    logger.info('[OHLCV] Snapshot complete in %ss — %d coins x %d timeframes', duration, TRACKED_COINS.length, TIMEFRAMES.length);
-}
-
-export function startOhlcvSnapshotCron(): void {
-    cron.schedule('0 */4 * * *', () => {
-        runOhlcvSnapshot().catch(err =>
-            logger.error('[OHLCV] Snapshot run failed: %s', err instanceof Error ? err.message : String(err))
-        );
-    });
-    logger.info('[OHLCV] Snapshot cron scheduled — every 4 hours');
-
-    // Run once on startup
-    runOhlcvSnapshot().catch(err =>
-        logger.error('[OHLCV] Initial snapshot failed: %s', err instanceof Error ? err.message : String(err))
-    );
-}
-```
-
-**server.ts registration (conditional, after existing optional crons):**
-```typescript
-import { startOhlcvSnapshotCron } from './crons/ohlcvSnapshot.cron';
-
-if (env.OHLCV_SNAPSHOT_ENABLED) {
-    setTimeout(() => {
-        try {
-            startOhlcvSnapshotCron();
-            logger.info('[Server] Optional cron started: OhlcvSnapshot');
-        } catch (error) {
-            logger.error('[Server] Failed to start optional cron OhlcvSnapshot: %s', error instanceof Error ? error.message : String(error));
-        }
-    }, (crons.length + 3) * cronStartDelay);
-}
-```
-
-**Constraints:**
-- Flag defaults to false
-- Runs on boot + every 4 hours
-- Processes all 11 coins x 3 timeframes = 33 iterations per tick
-- Individual coin/timeframe errors don't break the loop
-- Log per coin/timeframe + summary at end
-- Zero `any` types
-
-**Acceptance criteria:**
-- Cron file created
-- Runs on boot + every 4 hours (`0 */4 * * *`)
-- Processes all 11 coins x 3 timeframes
-- Calls fetchAndStoreCandles then computeIndicators per coin/TF
-- Individual errors caught per coin/TF
-- Summary log with duration
-- Conditional registration in server.ts
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] File at `backend/src/crons/ohlcvSnapshot.cron.ts`
-- [ ] `TRACKED_COINS` imported from config/coins.ts
-- [ ] 3 timeframes: '4h', '1d', '1w'
-- [ ] env.OHLCV_SNAPSHOT_ENABLED check at start
-- [ ] Nested loop: coins x timeframes
-- [ ] fetchAndStoreCandles called with correct limits (4h:5, 1d:2, 1w:2)
-- [ ] computeIndicators called after fetch
-- [ ] Inner try/catch per coin/TF
-- [ ] Summary log with duration
-- [ ] Cron schedule: '0 */4 * * *'
-- [ ] Boot: runOhlcvSnapshot() called in startOhlcvSnapshotCron()
-- [ ] Export: runOhlcvSnapshot + startOhlcvSnapshotCron
-- [ ] server.ts import + conditional registration
-- [ ] Zero `any` types
-- [ ] `tsc --noEmit` clean
-
 **Dependencies:** T-V2-01B (snapshot service)
-
-**Rollback:** Delete cron file, revert server.ts
 
 ---
 
@@ -1016,97 +289,18 @@ if (env.OHLCV_SNAPSHOT_ENABLED) {
 **Deploy Group:** F (depends on T-V2-01B)
 
 **Objective:**
-Create `backend/scripts/backfill-ohlcv.ts` — a one-time manual script to fetch 90 days of historical candle data for all 11 coins across 3 timeframes, then compute all indicators.
+Create `backend/scripts/backfill-ohlcv.ts` — a one-time manual script to fetch 90 days of historical candle data for all 11 coins across 3 timeframes.
 
-**File to create:**
+**File created:**
 - `backend/scripts/backfill-ohlcv.ts`
 
-**Design specification:**
-
-```typescript
-import { TRACKED_COINS } from '../src/config/coins';
-import { backfillHistoricalCandles, computeIndicators } from '../src/services/ohlcvSnapshot.service';
-import { env } from '../src/config/env';
-
-const BACKFILL_CONFIG = {
-    '4h': { daysBack: 90 },     // ~540 candles
-    '1d': { daysBack: 180 },    // ~180 candles
-    '1w': { daysBack: 365 },    // ~52 candles
-} as const;
-
-async function main(): Promise<void> {
-    if (!env.BACKFILL_OHLCV_ENABLED) {
-        console.log('BACKFILL_OHLCV_ENABLED is not set to true. Exiting.');
-        process.exit(0);
-    }
-
-    console.log(`[Backfill] Starting OHLCV backfill for ${TRACKED_COINS.length} coins...`);
-
-    for (const coin of TRACKED_COINS) {
-        for (const [tf, config] of Object.entries(BACKFILL_CONFIG)) {
-            const startTime = Date.now();
-            try {
-                const count = await backfillHistoricalCandles(coin, tf, config.daysBack);
-                await computeIndicators(coin, tf);
-                const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-                console.log(`[Backfill] ${coin} ${tf}: ${count} candles backfilled (${duration}s)`);
-            } catch (err) {
-                console.error(`[Backfill] FAILED ${coin} ${tf}: ${err instanceof Error ? err.message : String(err)}`);
-            }
-        }
-    }
-
-    console.log('[Backfill] Complete.');
-}
-
-main().catch(err => {
-    console.error('[Backfill] Fatal error:', err);
-    process.exit(1);
-});
-```
-
-**Execution:** `BACKFILL_OHLCV_ENABLED=true npx ts-node backend/scripts/backfill-ohlcv.ts`
-
-**Estimated runtime:** ~5 minutes per coin (33 coin/timeframe combos, rate limited).
-
-**Constraints:**
-- Behind env flag `BACKFILL_OHLCV_ENABLED` (default false)
-- Uses `backfillHistoricalCandles` from the snapshot service (which handles pagination)
-- Rate limited via the service's built-in 200ms delay
-- Per coin/timeframe error handling
-- Progress logging
-- Zero `any` types
-
-**Acceptance criteria:**
-- Script created at correct path
-- Checks env flag before running
-- Iterates all 11 coins x 3 timeframes
-- Calls backfillHistoricalCandles with correct daysBack
-- Calls computeIndicators after backfill per TF
-- Progress logging per coin/TF
-- Error handling per coin/TF (continues on failure)
-- Exits with code 0 on success, 1 on fatal error
-
-**QA checklist:**
-- [ ] Script at `backend/scripts/backfill-ohlcv.ts`
-- [ ] `BACKFILL_OHLCV_ENABLED` check at start
-- [ ] TRACKED_COINS imported
-- [ ] 3 TFs: 4h (90 days), 1d (180 days), 1w (365 days)
-- [ ] backfillHistoricalCandles called per coin/TF
-- [ ] computeIndicators called after backfill per TF
-- [ ] Per coin/TF try/catch
-- [ ] Progress logging with duration
-- [ ] Fatal error handler with process.exit(1)
-- [ ] Zero `any` types
-- [ ] `tsc --noEmit` clean
+**Backfill config:** 4h: 90 days, 1d: 180 days, 1w: 365 days
 
 **Dependencies:** T-V2-01B (snapshot service with backfillHistoricalCandles)
 
-**Rollback:** Delete script file
-
 ---
 
-### T-V2-01E — Phase 0.1 Env Flags + Server Registration Stub
+### T-V2-01E — Phase 0.1 Env Flags
 
 **Task ID:** T-V2-01E
 **Phase:** v2.Phase 0.1 — OHLCV Data Infrastructure
@@ -1115,35 +309,9 @@ main().catch(err => {
 **Deploy Group:** A (no dependencies)
 
 **Objective:**
-Add 2 env flags to `env.ts` for the OHLCV snapshot cron and backfill script.
-
-**File to modify:**
-- `backend/src/config/env.ts`
-
-**Design specification:**
-
-Add after the Phase 0 flag (from T-V2-0F):
-```typescript
-// v2.Phase 0.1 — OHLCV Data Infrastructure
-OHLCV_SNAPSHOT_ENABLED: z.boolean().default(false),
-BACKFILL_OHLCV_ENABLED: z.boolean().default(false),
-```
-
-**Acceptance criteria:**
-- 2 flags added with Zod schema
-- Both default `false`
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] `OHLCV_SNAPSHOT_ENABLED: z.boolean().default(false)` present
-- [ ] `BACKFILL_OHLCV_ENABLED: z.boolean().default(false)` present
-- [ ] Both default false
-- [ ] No other lines changed
-- [ ] `tsc --noEmit` clean
+Add 2 env flags to `env.ts`: `OHLCV_SNAPSHOT_ENABLED`, `BACKFILL_OHLCV_ENABLED`. Both default `false`.
 
 **Dependencies:** None
-
-**Rollback:** Remove the 2 added lines
 
 ---
 
@@ -1155,107 +323,7 @@ BACKFILL_OHLCV_ENABLED: z.boolean().default(false),
 **Status:** ✅ DONE (QA PASSED)
 **Deploy Group:** G (depends on ALL above tasks)
 
-**Objective:**
-Comprehensive QA verification of all Phase 0 + Phase 0.1 deliverables. Full grep sweep, type check, and integration verification.
-
-**QA Checklist:**
-
-**A. Coin Constants (T-V2-0A)**
-- [ ] `backend/src/config/coins.ts` exists
-- [ ] 11 coins: BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, LINK, SUI, TON
-- [ ] Exports: TRACKED_COINS, TrackedCoin, TRACKED_COIN_SET, isTrackedCoin, isMacroEvent
-- [ ] `as const` present
-- [ ] isTrackedCoin case-insensitive
-
-**B. Coin Filter — Triage (T-V2-0B)**
-- [ ] triageEngine.cron.ts imports from config/coins.ts
-- [ ] Non-tracked + non-macro → classification forced to NOISE
-- [ ] Non-tracked + macro → symbolMentions set to ['BTC']
-- [ ] Log line for forced NOISE
-- [ ] Existing triage behavior unchanged for tracked coins
-
-**C. Coin Filter — Workflow (T-V2-0C)**
-- [ ] aiWorkflow.cron.ts imports from config/coins.ts
-- [ ] Non-tracked symbol → skip + mark consumed
-- [ ] No AI calls for non-tracked coins
-
-**D. Coin Filter — Terminal (T-V2-0D)**
-- [ ] terminalEngine.cron.ts imports TRACKED_COINS
-- [ ] Keyword filter in news item loop
-- [ ] Macro keywords allow pass-through
-
-**E. Market Filter (T-V2-0E)**
-- [ ] Migration: is_tradeable column on coin_intelligence_cache
-- [ ] Migration guarded by migration_flags
-- [ ] Drizzle model updated
-- [ ] Cron created at backend/src/crons/marketFilter.cron.ts
-- [ ] Binance 24hr ticker API called once per tick
-- [ ] Volume > $50M check
-- [ ] abs(priceChange) <= 25% check
-- [ ] Updates is_tradeable per coin
-- [ ] server.ts conditional registration
-
-**F. Env Flags (T-V2-0F + T-V2-01E)**
-- [ ] MARKET_FILTER_ENABLED: z.boolean().default(false)
-- [ ] OHLCV_SNAPSHOT_ENABLED: z.boolean().default(false)
-- [ ] BACKFILL_OHLCV_ENABLED: z.boolean().default(false)
-- [ ] All default false
-
-**G. OHLCV DB Schema (T-V2-01A)**
-- [ ] Migration at backend/scripts/migrate-ohlcv.sql
-- [ ] migration_flags guard
-- [ ] ohlcv_candles: 10 columns, 2 indexes
-- [ ] ohlcv_indicators: 9 columns, 1 index
-- [ ] Drizzle model matches SQL
-
-**H. OHLCV Snapshot Service (T-V2-01B)**
-- [ ] Service at backend/src/services/ohlcvSnapshot.service.ts
-- [ ] 6 exported functions
-- [ ] EMA multiplier: 2/(period+1)
-- [ ] EMA null when insufficient data
-- [ ] ATR Wilder's smoothing
-- [ ] volume_avg_20 null when < 20 candles
-- [ ] Upsert ON CONFLICT
-
-**I. OHLCV Snapshot Cron (T-V2-01C)**
-- [ ] Cron at backend/src/crons/ohlcvSnapshot.cron.ts
-- [ ] Schedule: every 4 hours
-- [ ] Boot: runs on startup
-- [ ] 11 coins x 3 timeframes
-- [ ] server.ts conditional registration
-
-**J. Backfill Script (T-V2-01D)**
-- [ ] Script at backend/scripts/backfill-ohlcv.ts
-- [ ] BACKFILL_OHLCV_ENABLED check
-- [ ] 4h: 90 days, 1d: 180 days, 1w: 365 days
-
-**K. Cross-cutting**
-- [ ] `tsc --noEmit` clean on entire backend
-- [ ] Zero `any` types in all new/modified files
-- [ ] No hardcoded coin symbols outside config/coins.ts
-- [ ] All migrations use migration_flags
-- [ ] All new crons have env flags (default false)
-- [ ] server.ts registrations are conditional
-
----
-
-## TRANCHE 1 EXIT GATE CHECKLIST
-
-After T-V2-0Q passes, verify the following before marking Phase 0 + 0.1 complete:
-
-- [ ] `config/coins.ts` created and imported by 3 crons + market filter
-- [ ] Coin filters active in Triage, Workflow, Terminal
-- [ ] Market filter cron running (is_tradeable flag being set)
-- [ ] `ohlcv_candles` table exists with correct schema
-- [ ] `ohlcv_indicators` table exists with correct schema
-- [ ] Backfill script executed successfully: 90 days 4H + 180 days Daily + 365 days Weekly for all 11 coins
-- [ ] Verified: `SELECT coin_symbol, timeframe, count(*) FROM ohlcv_candles GROUP BY coin_symbol, timeframe ORDER BY coin_symbol, timeframe;` returns 33 rows (11 x 3)
-- [ ] Verified: `SELECT coin_symbol, timeframe, count(*) FROM ohlcv_indicators GROUP BY coin_symbol, timeframe;` returns 33 rows
-- [ ] All EMA/ATR/volume_avg values are non-null for most recent candles (oldest may be null due to insufficient history)
-- [ ] AGENT_LOGS.md updated with all task verdicts
-- [ ] PROJECT_STATE.md updated: v2.Phase 0 → COMPLETE, v2.Phase 0.1 → COMPLETE
-
-**Only after exit gate passes can v2.Phase 1 (Technical Analysis Engine) micro-tasks be written.**
+**Result:** 3 audit rounds. 2 critical bugs found and fixed (Binance URL typo, N+1 DB performance). Final pass clean.
 
 ---
 
@@ -1283,6846 +351,849 @@ After T-V2-0Q passes, verify the following before marking Phase 0 + 0.1 complete
 
 *Plan authored: May 7, 2026 | Strategic Planner*
 *Plan source: plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md (v2.1 — APPROVED)*
-*Next: After T-V2-0Q PASS + Exit Gate → Strategic Planner writes v2.Phase 1 (Technical Analysis Engine) micro-tasks*
+*Tranche 1 Phase 0 + 0.1: ✅ COMPLETE*
 
 ---
-
 ---
 
-# Phase 7 — Public Language / Google-Safe Presentation
+# Master Plan v2.1 — v2.Phase 1: Technical Analysis Engine
 
-**Status:** ✅ COMPLETE — Phase 7A Audit + Phase 7B Implementation all done, QA PASSED (commit f1e6535)
-**Date:** May 4, 2026
-**Priority:** P0 (AdSense policy compliance, Google-safe public presentation)
-**Scope:** T-7A-01 audit complete, Phase 7B implementation in progress, API safe alias tasks added
-**Prerequisites:** None (independent audit phase)
-**Authorized By:** Strategic Planner — May 4, 2026
-**Depends On:** Phase 0.5 (partial compliance already done)
+**Status:** ✅ COMPLETE — All 9 tasks done, QA PASSED (Round 3)
+**Date:** May 8, 2026
+**Priority:** P0 (Blocks v2.Phase 1.5 Backtesting → blocks v2.Phase 0.5 Shadow Mode → blocks Tranche 2+3)
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md` (lines 271-338)
+**Guiding Principle:** The algorithm reads the market and produces the numbers. The AI explains the why. Never the reverse.
 
-## OBJECTIVE
+## PHASE SCOPE
 
-Identify all public-facing risky trading/advice language across the entire OnlyAlpha codebase and create a comprehensive replacement map before any implementation begins. This is a **PLANNING AND AUDIT ONLY** task — no application code will be modified.
-
-The goal is to produce a detailed inventory of every instance of policy-violating terminology (BUY, SELL, Signal, Entry, TP, SL, P&L, Win Rate, etc.) with a clear mapping to Google/AdSense-safe alternatives. This inventory will then drive the implementation microtasks in Phase 7B.
-
-## PHASE 7A SCOPE LIMITATIONS
-
-**Allowed:**
-- Read and audit all backend/frontend files listed in Audit Targets
-- Define the forbidden terms list and safe replacement map
-- Define internal-only vs public-facing rules
-- Produce a structured audit report as a deliverable
-- Update THE_NEXUS_HUB.md only (this file)
-- Define next possible microtasks without marking them active
-
-**Forbidden:**
-- Do NOT modify application code
-- Do NOT modify frontend components
-- Do NOT modify backend prompts
-- Do NOT change database enums
-- Do NOT create migrations
-- Do NOT rename routes or SEO URLs
-- Do NOT enable EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED
-- Do NOT install new packages
-- Do NOT commit or push
-
-## AUDIT TARGETS
-
-### Backend Files to Inspect
-
-| File | Reason |
-|---|---|
-| `backend/src/services/ai/prompt-factory.ts` | AI prompt templates — primary source of generated public content |
-| `backend/src/services/openai.service.ts` | AI response parsing, output formatting |
-| `backend/src/controllers/market.controller.ts` | API response labels and field names |
-| `backend/src/routes/market.routes.ts` | Route naming patterns |
-| `backend/src/models/market.model.ts` | Database enum values that may leak to API |
-| `backend/src/services/signalManager.service.ts` | Signal generation, TP/SL/Entry logic |
-| `backend/src/crons/signalPerformance.cron.ts` | Win rate, P&L calculations |
-| Any article/living article generation services | Published article text |
-| Any radar/signal/scorecard API responses | Public-facing JSON responses |
-
-### Frontend Files to Inspect
-
-| Area | Reason |
-|---|---|
-| Frontend pages/components | UI labels, headings, descriptions |
-| Scorecard page/components | Scorecard labels, verdicts, close reasons |
-| Radar signal components | Signal type labels, indicators |
-| Article components | Article headings, body text |
-| SEO/meta title/description generation | Page titles, meta descriptions, OG tags |
-| Navigation labels | Sidebar, header, footer navigation text |
-| Dashboard cards | Summary statistics labels |
-| Public CTA text | Call-to-action buttons, marketing copy |
-
-### Search Terms (Case-Insensitive)
-
-| Term | Category | Severity |
-|---|---|---|
-| BUY | Trading directive | HIGH |
-| SELL | Trading directive | HIGH |
-| STRONG_BUY | Trading directive | HIGH |
-| STRONG_SELL | Trading directive | HIGH |
-| Signal | Trading terminology | MEDIUM |
-| Signals | Trading terminology | MEDIUM |
-| Entry | Trading terminology | MEDIUM |
-| Take Profit | Trading terminology | HIGH |
-| Stop Loss | Trading terminology | HIGH |
-| TP | Trading abbreviation | HIGH |
-| SL | Trading abbreviation | HIGH |
-| P&L | Financial result | HIGH |
-| Profit | Financial result | MEDIUM |
-| Trade | Trading terminology | MEDIUM |
-| Trading | Trading terminology | MEDIUM |
-| Position | Trading terminology | MEDIUM |
-| Win Rate | Performance claim | HIGH |
-| Forecast | Predictive language | MEDIUM |
-| Prediction | Predictive language | MEDIUM |
-| You should | Imperative advice | HIGH |
-| Guaranteed | Absolute claim | HIGH |
-
-## SAFE TERMINOLOGY MAP
-
-| Old Term | New Term | Context | Notes |
-|---|---|---|---|
-| Signal | Market Scenario | All public UI, articles, API labels | Core rebranding |
-| Signals | Market Scenarios | All public UI, articles, API labels | Core rebranding (plural) |
-| Entry | Reference Price | Scorecard, articles, prompts | Neutral price reference |
-| Take Profit / TP | Target Zone / Upside Target Zone | Scorecard, articles, prompts | Use "Target Zone" generically, "Upside Target Zone" for bullish |
-| Stop Loss / SL | Risk Zone / Invalidation Zone | Scorecard, articles, prompts | Use "Risk Zone" generically, "Invalidation Zone" for critical |
-| Buy | Bullish Bias | Signal cards, articles, API responses | Directional assessment, not directive |
-| Sell | Bearish Bias | Signal cards, articles, API responses | Directional assessment, not directive |
-| Strong Buy | Strong Bullish Bias | Signal cards, articles, API responses | High-conviction directional |
-| Strong Sell | Strong Bearish Bias | Signal cards, articles, API responses | High-conviction directional |
-| Trade | Market Setup / Scenario | General text | Neutral framing |
-| Trading | Market Analysis / Market Activity | General text, nav labels | Activity-based, not action-based |
-| Position | Scenario Exposure / Market View | Dashboard, articles | Exposure concept, not holdings |
-| P&L | Historical Outcome / Scenario Drift | Dashboard, scorecard | Outcome-based, not profit claim |
-| Profit | Outcome / Upside Move / Historical Gain | Factual context only | Only where historically factual |
-| Win Rate | Outcome Rate | Dashboard, performance stats | Rate without "win" implication |
-| Forecast | Scenario Outlook | Articles, analysis pages | Outlook, not prediction |
-| Prediction | Scenario View / Historical Pattern | Articles, analysis pages | Pattern-based, not predictive |
-| You should | Consider / Traders may watch / The scenario highlights | Articles, prompts | Suggestive, not imperative |
-| Guaranteed | Remove entirely | All contexts | Replace with uncertainty language ("may", "could", "historical patterns suggest") |
-
-## PUBLIC VS INTERNAL RULE
-
-**INTERNAL CODE / DATABASE ENUMS — May remain temporarily (not public-facing):**
-
-The following terms may continue to exist in internal code, database enums, and backend logic **only if they do not leak to public-facing outputs**:
-
-- `BUY` (database enum value)
-- `SELL` (database enum value)
-- `STRONG_BUY` (database enum value)
-- `STRONG_SELL` (database enum value)
-- `TP` (internal variable/field name)
-- `SL` (internal variable/field name)
-
-**PUBLIC-FACING OUTPUTS — Must use policy-safe wording:**
-
-The following surfaces must NEVER contain internal enum values or trading directives:
-- Public UI labels, headings, buttons
-- Article text (headlines, body, summaries)
-- SEO text (meta titles, meta descriptions, OG tags)
-- API response field names/labels visible to frontend
-- AI-generated content that reaches end users
-- Prompt instructions that generate public content
-- Navigation labels
-- Dashboard card titles
-- CTA text
-- Scorecard verdict/close reason labels
-- Radar signal type labels
-
-**Leak Prevention Rule:** If a backend enum value like `BUY` is stored in the database but displayed to the user, there MUST be a mapping layer that translates `BUY` → `Bullish Bias` before it reaches the frontend. This mapping layer is an implementation detail for Phase 7B, but the audit must identify all such leak points.
-
-**Database enums will NOT be changed in this task or Phase 7A.** A future task (Phase 7C or later) may plan database enum migration if needed.
-
-## REQUIRED TASKS
-
-### T-7A-01 — Public Language Audit and Replacement Map
-
-**Task ID:** T-7A-01
-**Phase:** Phase 7A — Public Language / Google-Safe Presentation (Audit)
-**Assigned Agent:** QA & Security Hunter or Product Visionary
-**Status:** ✅ DONE — Audit completed, report delivered, zero code changes.
-
-**Objective:**
-Perform a comprehensive audit of the entire OnlyAlpha codebase to identify every instance of public-facing risky trading/advice language. Produce a structured audit report with a complete replacement map, internal-only term classification, and implementation microtask proposal.
-
-**Files to inspect (READ-ONLY):**
-
-Backend:
-- `backend/src/services/ai/prompt-factory.ts`
-- `backend/src/services/openai.service.ts`
-- `backend/src/controllers/market.controller.ts`
-- `backend/src/routes/market.routes.ts`
-- `backend/src/models/market.model.ts`
-- `backend/src/services/signalManager.service.ts`
-- `backend/src/crons/signalPerformance.cron.ts`
-- Any article/living article generation services (search for `article`, `livingArticle`, `living-article`)
-- Any radar/signal/scorecard API responses (search for `radar`, `signal`, `scorecard`)
-
-Frontend:
-- `frontend/` directory — all pages, components, layouts
-- Focus on: scorecard, radar, articles, terminal, home pages
-- `frontend/src/app/` — page-level components and metadata
-- `frontend/src/features/` — feature components
-- Search for: SEO generation, meta tags, OG tags
-
-**Methodology:**
-
-1. **Automated grep sweep:** Use the search terms listed above to scan all backend and frontend files
-2. **Manual review:** For each match, determine:
-   - Is this public-facing? (YES / NO / UNCLEAR)
-   - What is the severity? (HIGH / MEDIUM / LOW)
-   - What is the recommended replacement?
-3. **Context classification:** For each finding, classify the context:
-   - `PROMPT` — AI prompt text that generates public content
-   - `UI_LABEL` — Visible UI text (buttons, headings, cards)
-   - `API_RESPONSE` — Data returned to frontend that gets displayed
-   - `SEO_META` — Page titles, descriptions, OG tags
-   - `ARTICLE` — Published article text
-   - `NAV` — Navigation labels
-   - `INTERNAL` — Code-only, never reaches user (safe)
-   - `ENUM` — Database enum value (safe if not leaked)
-4. **Leak analysis:** For each internal/enum finding, check if there is a direct path to a public-facing output without translation
-
-**Constraints:**
-- READ-ONLY — do not modify any files
-- Do not create migrations
-- Do not enable feature flags
-- Do not install packages
-- Do not commit or push
-
-**Expected Deliverable Format:**
-
-The executor must produce a structured report with the following sections:
-
-#### 1. Risky Phrase Inventory
-
-| File | Line | Phrase | Public-Facing? | Severity | Context | Recommended Replacement |
-|---|---|---|---|---|---|---|
-| `prompt-factory.ts` | 142 | `"Take Profit"` | YES | HIGH | PROMPT | `Target Zone` |
-| `signalManager.service.ts` | 87 | `signalType: 'BUY'` | UNCLEAR | HIGH | API_RESPONSE | Needs mapping layer |
-| ... | ... | ... | ... | ... | ... | ... |
-
-#### 2. Public Replacement Map
-
-| Old Term | New Term | Context(s) | Notes |
-|---|---|---|---|
-| Signal | Market Scenario | UI_LABEL, ARTICLE, API_RESPONSE, SEO_META | Core rebranding |
-| ... | ... | ... | ... |
-
-#### 3. Internal-Only Terms (Allowed to Remain)
-
-| Term | Why It Can Remain Internal | Must Not Leak Via |
-|---|---|---|
-| `BUY` (enum) | Database storage, internal logic | API responses, UI labels, prompts |
-| ... | ... | ... |
-
-#### 4. Implementation Microtask Proposal
-
-Propose the following microtask breakdown for Phase 7B implementation (do NOT mark them active):
-
-| Task ID | Description | Estimated Complexity | Dependencies |
-|---|---|---|---|
-| T-7B-01 | Backend prompt cleanup (prompt-factory.ts) | Medium | T-7A-01 |
-| T-7B-02 | Frontend label cleanup (scorecard, radar, articles) | High | T-7A-01 |
-| T-7B-03 | API response mapping layer (enum → safe label) | Medium | T-7A-01, T-7B-01 |
-| T-7B-04 | SEO/meta text cleanup | Low | T-7A-01 |
-| T-7B-05 | Navigation and CTA text cleanup | Low | T-7A-01 |
-| T-7B-06 | QA verification (grep sweep + visual check) | Medium | T-7B-01 through T-7B-05 |
-
-#### 5. Acceptance Criteria
-
-- [ ] All public-facing instances of BUY/SELL/STRONG_BUY/STRONG_SELL identified with file:line references
-- [ ] All public-facing instances of TP/SL/Entry/Stop Loss/Take Profit identified
-- [ ] All instances of "Signal" / "Signals" in public UI mapped
-- [ ] All instances of "Win Rate", "P&L", "Profit" in public outputs identified
-- [ ] All "You should" / "Guaranteed" / imperative advice instances found
-- [ ] Each finding classified as public-facing (YES/NO/UNCLEAR) with justification
-- [ ] Each finding has severity rating (HIGH/MEDIUM/LOW)
-- [ ] Each finding has recommended replacement from the Safe Terminology Map
-- [ ] Internal-only terms documented with leak prevention requirements
-- [ ] No direct buy/sell advice remains in any identified public output
-- [ ] No TP/SL/Entry wording remains in any identified public UI
-- [ ] No "guaranteed" or imperative financial advice found
-- [ ] Internal database enums documented as allowed (not changed in this phase)
-- [ ] Routes and SEO URLs documented as unchanged
-- [ ] Implementation microtask proposal provided with dependency ordering
-- [ ] Zero code files modified (audit is read-only)
-
-**QA checklist:**
-- [ ] Audit report delivered in the format specified above
-- [ ] All 20 search terms swept across backend + frontend
-- [ ] Every match logged with file, line, context classification
-- [ ] Public-facing determination justified for each match
-- [ ] Severity ratings applied consistently
-- [ ] Safe Terminology Map covers all identified terms
-- [ ] Internal-only terms clearly separated from public-facing terms
-- [ ] Leak paths identified for internal terms near public boundaries
-- [ ] Microtask proposal is actionable and sequenced
-- [ ] Zero files modified during audit
-
-**Dependencies:** None (this is the first task in Phase 7)
-
-**Rollback notes:** N/A — no code changes in this task
-
----
-
-## PHASE 7A GUARDRAILS
-
-1. **READ-ONLY AUDIT** — no code modifications of any kind
-2. **No feature flag changes** — especially EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED remains false
-3. **No database changes** — enums, tables, migrations untouched
-4. **No route changes** — SEO URLs and API paths unchanged
-5. **No frontend changes** — components, pages, layouts untouched
-6. **No package installations** — use existing tools only
-7. **No commits or pushes** — audit deliverable is a report, not code
-8. **Internal enums allowed** — BUY/SELL/STRONG_BUY/STRONG_SELL/TP/SL may remain in DB if not public-facing
-9. **Translation layer required** — if internal enum values reach public output, a mapping layer is needed (implementation, not audit)
-10. **Phase 0.5 already done** — some terminology already cleaned (disclaimer, terms, AlphaStream, scorecard verdicts, prompt-factory safe harbor). The audit should verify these are still compliant and identify remaining gaps.
-
-## RISK ASSESSMENT
-
-| Risk | Severity | Mitigation |
-|---|---|---|
-| Missing terms in audit | Medium | Comprehensive 20-term search list + manual review |
-| False positives (flagging internal-only code) | Low | Context classification (INTERNAL/ENUM) separates safe from risky |
-| False negatives (missing public-facing instances) | Medium | Cross-reference Phase 0.5 completed items, check all AI output paths |
-| Over-scoping into implementation | None | Explicit forbidden list, read-only constraint |
-| Unclear public/internal boundary | Low | Leak analysis methodology identifies boundary crossings |
-
-## KNOWN PARTIAL COMPLIANCE (Phase 0.5)
-
-The following areas were already cleaned in Phase 0.5 / Phase EMERGENCY:
-- ✅ `disclaimer/page.tsx` — BUY/SELL → Bullish/Bearish
-- ✅ `terms/page.tsx` — BUY/SELL → Bullish/Bearish, Signal Scorecard → Market Scenario
-- ✅ `AlphaStream.tsx` — Decoding Signal → Loading Intelligence, Signal Intelligence → Market Intelligence
-- ✅ `prompt-factory.ts` — Safe harbor vocabulary reinforcement added
-- ✅ `scorecard/page.tsx` — Meta tags, labels, verdict/closeReason mappings already compliant
-
-**The audit must still verify these areas** for any remaining gaps or regressions, and focus effort on areas NOT yet covered.
-
----
-
-*Phase 7A authored: May 4, 2026 | Strategic Planner*
-*Prerequisites: None (independent audit phase)*
-*Enables: Phase 7B implementation microtasks (prompt cleanup, frontend cleanup, API mapping, SEO cleanup, QA verification)*
-
----
-
-## T-7A-01 AUDIT RESULTS
-
-Audit summary:
-- 175 source files scanned
-- 78 distinct findings
-- 14 HIGH severity
-- 38 MEDIUM severity
-- 26 LOW severity
-- Overall public language risk: MEDIUM
-- AdSense-safe status: UNCLEAR
-- Zero files modified during audit
-
-Highest-risk findings:
-1. backend/src/services/openai.service.ts:788 — "position sizing and stop-loss strategies"
-2. backend/src/services/openai.service.ts:793 — "Signal Detected"
-3. backend/src/services/openai.service.ts:794 — "signals"
-4. frontend/src/app/layout.tsx — "AI trading", "serious traders"
-5. frontend/src/app/(terminal)/terminal/[coin]/opengraph-image.tsx:15 — "trading signals"
-6. frontend/src/app/feed.xml/route.ts:40 — "serious crypto traders"
-7. frontend public UI contains many "signal/signals" instances
-8. legal pages contain "signals" terminology
-9. API field names contain activePositions, bestTrade, unrealizedPnl
-10. prompt fields signalText/recommendation may need later mapping but should not be renamed immediately without tracing consumers
-
-## PRODUCT DECISIONS FOR PHASE 7B
-
-Record these decisions in HUB:
-
-1. Do NOT rename signalText in T-7B-01.
-   Reason: likely consumed by multiple services; risk of breaking consumers.
-   Action: keep internal for now, map public wording only.
-
-2. Do NOT rename recommendation or recommendedAction in T-7B-01.
-   Reason: interface/API compatibility risk.
-   Action: defer to later API/presentation mapping task.
-
-3. Do NOT backfill legacy stored articles in Phase 7B.
-   Reason: DB-wide content backfill is higher risk.
-   Action: fix generation/templates going forward only.
-
-4. Legal pages cleanup should be separate and may require product/legal wording review.
-
-# Phase 7B — Implementation
-
-**Status:** ✅ COMPLETE — All tasks T-7B-01→06 done, QA PASSED
-**Date:** May 4, 2026
-**Priority:** P0 (AdSense policy compliance implementation)
-**Scope:** 6 implementation microtasks (T-7B-01 through T-7B-06) + 2 API safe alias subtasks (T-7B-05-01/02), targeted code changes, no migrations
-**Prerequisites:** T-7A-01 complete
-**Authorized By:** Strategic Planner — May 4, 2026
-**Depends On:** Phase 7A (audit complete)
-
-## OBJECTIVE
-
-Implement the Google-safe presentation changes identified in the T-7A-01 audit. Replace public-facing risky trading/advice language with policy-safe alternatives across backend prompts, frontend UI, SEO meta, and legal pages. Maintain all existing functionality while eliminating AdSense-violating terminology.
-
-## PHASE 7B SCOPE LIMITATIONS
-
-**Allowed:**
-- Backend: Modify prompt templates, article generation wording
-- Frontend: Update UI labels, meta tags, OG tags, legal pages
-- Testing: TypeScript checks, linting, QA verification
-- Documentation: Update THE_NEXUS_HUB.md with progress
-
-**Forbidden:**
-- Do NOT modify application code outside specified files
-- Do NOT modify frontend components outside listed files
-- Do NOT change database enums
-- Do NOT create migrations
-- Do NOT rename routes or SEO URLs
-- Do NOT enable flags
-- Do NOT install new packages
-- Do NOT commit or push
-- Do NOT backfill legacy articles
-- Do NOT rename API fields (signalText, recommendation, etc.)
-- Do NOT change internal logic
-
-## REQUIRED TASKS
-
-### T-7B-01 — Backend Article Template Policy-Safe Wording Cleanup
-**Owner:** Senior Developer
-**Status:** ✅ DONE / QA PASS / COMMITTED / commit 3933f44
-
-**Goal:**
-Remove HIGH-risk public article/chat wording from backend-generated content without changing schemas or API contracts.
-
-**Allowed files:**
-- backend/src/services/openai.service.ts
-- backend/src/controllers/chat.controller.ts
-
-**Allowed changes:**
-- Replace "position sizing and stop-loss strategies" with "risk management and downside protection considerations"
-- Replace "Signal Detected" with "Market Scenario Identified" or "Scenario Update"
-- Replace article hook "signals" with "indicators" or "patterns"
-- Replace "[PRIMARY FOCUS - AI SIGNAL]" with "[PRIMARY FOCUS - AI SCENARIO]"
-
-**Forbidden:**
-- Do not rename signalText
-- Do not rename recommendation
-- Do not change interfaces
-- Do not change DB models
-- Do not change API contracts
-- Do not touch frontend
-- Do not create migrations
-
-**Acceptance criteria:**
-- No "Signal Detected" in article templates
-- No "stop-loss strategies" in article templates
-- No public "AI SIGNAL" chat label
-- TypeScript passes
-- No API/schema changes
-
-### T-7B-04 — SEO / Meta / OG Language Cleanup
-**Owner:** Senior Developer
-**Status:** ✅ DONE / QA PASS / COMMITTED / commit 251f5f5
-
-**Goal:**
-Remove public SEO/meta/OG trading-signal wording.
-
-**Allowed files:**
-- frontend/src/app/layout.tsx
-- frontend/src/app/(terminal)/terminal/[coin]/opengraph-image.tsx
-- frontend/src/app/feed.xml/route.ts
-- frontend/src/app/(standard)/about/page.tsx
-
-**Allowed changes:**
-- "serious traders" → "crypto market participants"
-- "AI trading" → "AI market analysis"
-- "trading signals" → "scenario analysis" or "market intelligence"
-- "serious crypto traders" → "crypto market participants"
-- about meta "for traders and investors" → "for market participants"
-
-**Forbidden:**
-- Do not change routes
-- Do not change URLs
-- Do not change OG image structure
-- Do not change dynamic DB content
-- Do not backfill articles
-- Do not touch backend
-
-**Acceptance criteria:**
-- Root meta contains no "AI trading"
-- Root meta contains no "serious traders"
-- OG default subtitle contains no "trading signals"
-- RSS static description contains no "serious crypto traders"
-- No route/SEO URL changes
-
-### T-7B-02 — Frontend Public Label Cleanup
-**Owner:** Senior Developer
-**Status:** ✅ DONE / QA PASS / COMMITTED / commit 1c31da9
-
-**Goal:**
-Replace public-facing "signal/signals" UI wording with "scenario/scenarios" where appropriate.
-
-**Allowed files:**
-- frontend/src/features/home/components/RadarGrid.tsx
-- frontend/src/features/terminal/components/TerminalWire.tsx
-- frontend/src/features/terminal/components/AlphaStream.tsx
-- frontend/src/features/settings/components/PreferencesPanel.tsx
-- frontend/src/features/settings/components/OgBadge.tsx
-- frontend/src/app/(standard)/about/page.tsx
-- frontend/src/app/(standard)/auth/page.tsx
-
-**Allowed changes:**
-- "No signals yet" → "No scenarios yet"
-- "Load More Signals +" → "Load More Scenarios +"
-- "No radar signals found" → "No market scenarios found"
-- "Signal acquired at" → "Detected at" or "Scenario recorded at"
-- "AI Signals" → "AI Scenarios"
-- About page signal wording → scenario/indicator wording
-- Auth page "AI signals" → "AI market scenarios"
-
-**Forbidden:**
-- Do not rename TypeScript data fields in this task
-- Do not change API contracts
-- Do not change database fields
-- Do not change routes
-- Do not touch legal pages
-- Do not touch SEO/meta files covered by T-7B-04
-
-**Acceptance criteria:**
-- No visible "signals" wording in listed public UI files, except if part of non-public variable names
-- UI behavior unchanged
-- TypeScript passes
-
-### T-7B-03 — Legal / Disclaimer Terminology Cleanup
-**Owner:** Product Visionary + Senior Developer
-**Status:** ✅ DONE / QA PASS / COMMITTED / commit 1b1d406
-
-**Goal:**
-Replace public legal-page "signals" terminology with "scenarios" while preserving legal meaning.
-
-**Allowed files:**
-- frontend/src/app/(standard)/disclaimer/page.tsx
-- frontend/src/app/(standard)/terms/page.tsx
-- frontend/src/app/(standard)/privacy/page.tsx
-- frontend/src/app/(standard)/contact/page.tsx
-
-**Forbidden:**
-- Do not weaken disclaimers
-- Do not remove risk warnings
-- Do not change routes
-- Do not change legal meaning
-- Do not touch backend
-
-**Acceptance criteria:**
-- Product-approved wording
-- "signals" replaced where appropriate
-- "Win rates" replaced with "Historical outcome rates"
-- Legal risk warnings preserved
-
-### T-7B-05 — API Presentation Field Mapping Review
-**Owner:** System Architect
-**Status:** ✅ REVIEW COMPLETE / no code / recommendation accepted
-
-**Goal:**
-Review whether public API response field names such as activePositions, bestTrade, unrealizedPnl, recommendedAction should be presentation-mapped.
-
-**Allowed:**
-- Architecture review only at first
-- Identify backward compatibility risks
-- Propose mapping strategy
-
-**Forbidden:**
-- No implementation yet
-- No API contract change yet
-- No frontend interface rename yet
-- No DB/model change
-
-**Acceptance criteria:**
-- Compatibility-safe mapping strategy documented
-- Decision whether to version API or add parallel safe aliases
-
-**Review outcome:**
-- Recommendation: add safe aliases while keeping original fields for backward compatibility.
-- Subtasks T-7B-05-01 (backend) and T-7B-05-02 (frontend) created.
-
-### T-7B-05-01 — Backend Safe Alias Implementation
-**Owner:** Senior Developer
-**Status:** ✅ DONE / QA PASS WITH NOTES / COMMITTED / commit 32478f6
-
-Note: tsc validation was blocked by local environment issue; static QA review passed with no type-risk concerns.
-File changed: backend/src/controllers/market.controller.ts
-
-**Goal:**
-Add policy-safe alias fields to public API responses while preserving backward compatibility.
-
-**Allowed files:**
-- backend/src/controllers/market.controller.ts
-
-**Allowed changes:**
-- Add safe aliases alongside existing fields.
-- Do not remove old fields.
-- Do not change route paths.
-- Do not change database queries unless needed only to map existing values.
-- Do not change DB models.
-
-**Target mappings:**
-- activePositions → activeScenarios
-- bestTrade → bestOutcome
-- unrealizedPnl → unrealizedDrift
-- avgRealizedPnl → avgScenarioOutcome
-- winRate → outcomeRate
-- entryPrice → referencePrice
-- stopLossPrice → riskZonePrice
-- takeProfitPrice → targetZonePrice
-- recommendedAction → marketStance
-- signal → scenarioSummary (where returned by radar endpoint if applicable in market.controller.ts)
-
-**Important:**
-Existing old fields must remain in response for backward compatibility.
-
-**Forbidden:**
-- Do not remove or rename existing fields.
-- Do not modify frontend.
-- Do not modify DB models.
-- Do not create migrations.
-- Do not modify routes.
-- Do not enable flags.
-- Do not change auth behavior.
-- Do not change business logic.
-
-**Acceptance criteria:**
-- Existing response fields still present.
-- Safe alias fields present.
-- No frontend changes required.
-- TypeScript passes.
-- No route/API breaking changes.
-
-### T-7B-05-02 — Frontend Safe Alias Adoption
-**Owner:** Senior Developer
-**Status:** ✅ DONE / QA PASS / COMMITTED / commit 06bd913
-
-Note: Frontend scorecard now prefers safe aliases with backward-compatible fallbacks to old API fields.
-File changed: frontend/src/app/(standard)/scorecard/page.tsx
-
-### T-7B-06 — Phase 7 QA Verification
-**Owner:** QA & Security Hunter
-**Status:** ✅ DONE / QA PASS / Phase 7 COMPLETE
-
-**Goal:**
-Verify public language cleanup after implementation tasks.
-
-**Allowed:**
-- Read-only grep sweep
-- TypeScript/lint validation
-- Public UI text verification
-
-**Forbidden:**
-- No code changes
-
-**Acceptance criteria:**
-- Zero HIGH-risk public language remains in templates/meta/UI
-- Internal enums allowed only if not public-facing
-- Scorecard labels remain policy-safe
-- Routes and SEO URLs unchanged
-- No DB schema changes
-- No migrations
-
-## IMPLEMENTATION ORDER
-
-1. T-7B-05-01 — Backend Safe Alias Implementation
-2. T-7B-05-02 — Frontend Safe Alias Adoption
-3. T-7B-06 — Final Phase 7 QA
-
----
-
-*Phase 7B authored: May 4, 2026 | Strategic Planner*
-*Prerequisites: T-7A-01 complete*
-*Enables: Phase 8 planning (if needed)*
-
----
-
----
-
-# Phase 2 — Full Event Impact Engine
-
-**Status:** ✅ COMPLETE — Code committed (4ae0af4), QA PASSED WITH NOTES (68/68)
-**Date:** May 4, 2026
-**Priority:** P1 (Transforms passive data collection into active intelligence engine)
-**Scope:** 1 new service, 1 new API endpoint, 2 modified files (prompts + workflow), 1 new env flag, 1 optional migration, 1 documentation update, 1 QA checklist
-**Prerequisites:** Phase 6A (complete) + Phase 6B (complete) + Phase 1 (complete)
-**Authorized By:** Strategic Planner — May 4, 2026
-**Commit:** `4ae0af4 feat: add Phase 2 event impact stats engine behind feature flag`
-**QA Result:** 68/68 PASS — APPROVE WITH NOTES
-
----
-
-### T-2.1 — Historical Event Comparison Service
-**Phase:** Phase 2 — Full Event Impact Engine
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Create an internal/admin API endpoint for querying event impact statistics. Read-only from `event_impacts` and `event_impact_outcomes`. Protected by `authMiddleware`.
-
-**Files to inspect:**
-- `backend/src/controllers/market.controller.ts` — reference for controller pattern, existing endpoints
-- `backend/src/routes/market.routes.ts` — route registration pattern (line 25 for authMiddleware usage)
-- `backend/src/services/historicalEventComparison.service.ts` (from T-2.1) — the service this endpoint wraps
-
-**Files allowed to modify:**
-- `backend/src/controllers/market.controller.ts` (add new handler)
-- `backend/src/routes/market.routes.ts` (add new route)
-
-**Forbidden files:**
-- Any service files
-- Any cron files
-- Any frontend files
-
-**Constraints:**
-- Read-only endpoint (GET only)
-- Protected by `authMiddleware` (not public)
-- Uses `historicalEventComparison.service.ts` (from T-2.1) for data
-- Input validation on query params
-- Rate limited via existing `apiLimiter` pattern
-
-**Design specification:**
-
-1. **Endpoint:** `GET /api/market/event-impact-stats`
-
-2. **Query parameters:**
-   - `eventType` (required) — e.g. `Hack`, `ETF`, `Regulatory`
-   - `coinSymbol` (optional) — e.g. `BTC`, `ETH`
-   - `eventSeverity` (optional) — integer 1-5
-   - `horizon` (optional) — `1h`, `4h`, `24h`, `3d`, `7d`
-
-3. **Handler pattern (following existing market.controller.ts style):**
-```typescript
-export async function getEventImpactStatsHandler(req: Request, res: Response): Promise<void> {
-    // 1. Validate required params (eventType)
-    // 2. Build HistoricalComparisonInput from query params
-    // 3. Call compareWithHistoricalEvents(input)
-    // 4. Return JSON response with proper status codes
-    // 5. Handle errors with proper error responses
-}
-```
-
-4. **Route registration (in market.routes.ts):**
-```typescript
-router.get('/event-impact-stats', authMiddleware, getEventImpactStatsHandler);
-```
-
-**Step-by-step instructions for Senior Developer:**
-
-1. Open `backend/src/controllers/market.controller.ts`
-2. Add import for `compareWithHistoricalEvents` from `../services/historicalEventComparison.service`
-3. Implement `getEventImpactStatsHandler`:
-   a. Extract query params: eventType (required), coinSymbol, eventSeverity, horizon
-   b. Validate eventType is non-empty string — return 400 if missing
-   c. Parse eventSeverity as integer if provided (return 400 if invalid)
-   d. Validate horizon against allowed values if provided
-   e. Call `compareWithHistoricalEvents({ eventType, coinSymbol, eventSeverity, horizon })`
-   f. Return `res.json(result)` with 200 status
-   g. Wrap in try/catch — return 500 on error
-4. Open `backend/src/routes/market.routes.ts`
-5. Add import for `getEventImpactStatsHandler` from market.controller
-6. Add route: `router.get('/event-impact-stats', authMiddleware, getEventImpactStatsHandler);`
-7. Verify `tsc --noEmit` clean
-
-**Acceptance criteria:**
-- GET /api/market/event-impact-stats?eventType=Hack returns 200 with stats
-- Missing eventType returns 400
-- Invalid eventSeverity returns 400
-- Invalid horizon returns 400
-- AuthMiddleware protects the endpoint
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] Handler added to market.controller.ts
-- [ ] Route added to market.routes.ts with authMiddleware
-- [ ] eventType validation (required, non-empty string)
-- [ ] eventSeverity validation (optional, integer 1-5)
-- [ ] horizon validation (optional, one of 1h/4h/24h/3d/7d)
-- [ ] coinSymbol passed through (optional)
-- [ ] 400 on missing eventType
-- [ ] 400 on invalid eventSeverity
-- [ ] 400 on invalid horizon
-- [ ] 200 on valid request with stats data
-- [ ] 500 on unexpected error
-- [ ] authMiddleware applied
-- [ ] Uses historicalEventComparison.service.ts (not direct DB queries)
-- [ ] No `any` types
-- [ ] `tsc --noEmit` clean
-
-**Dependencies:** T-2.1 (comparison service must exist)
-
-**Rollback notes:**
-- Remove handler from market.controller.ts
-- Remove route from market.routes.ts
-
----
-
-### T-2.3 — Extended Event Taxonomy
-
-**Task ID:** T-2.3
-**Phase:** Phase 2 — Full Event Impact Engine
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Extend the event classification taxonomy in `prompt-factory.ts` and `aiWorkflow.cron.ts` to support macro, personality, whale, and on-chain event types. Must be backward compatible with existing types.
-
-**Files to inspect:**
-- `backend/src/services/ai/prompt-factory.ts` — triage prompt (line 109) and deep analysis prompt (line 277)
-- `backend/src/crons/aiWorkflow.cron.ts` — TRIGGER_TYPE_MAP (lines 38-48) and selectTone() (lines 54-75)
-- `backend/src/services/openai.service.ts` — TriageResult interface (lines 237-246)
-
-**Files allowed to modify:**
-- `backend/src/services/ai/prompt-factory.ts` (extend event type list in prompts)
-- `backend/src/crons/aiWorkflow.cron.ts` (extend TRIGGER_TYPE_MAP and selectTone)
-
-**Forbidden files:**
-- `openai.service.ts` (TriageResult interface change is T-2.5 scope)
-- Any model files
-- Any controller/route files
-- Any frontend files
-
-**Constraints:**
-- BACKWARD COMPATIBLE: all existing types (ETF, Hack, Exploit, Listing, Delisting, Upgrade, TokenLaunch, Regulatory, Funding, Partnership, Other) must remain valid
-- New types added to the END of the list (existing AI outputs still parse correctly)
-- Both triage prompt AND deep analysis prompt must be updated (currently out of sync — triage has Exploit/Delisting/TokenLaunch, deep analysis does not)
-- TRIGGER_TYPE_MAP must cover all new types
-- selectTone() must handle all new types
-
-**New event types to add:**
-
-| Category | New Type | Description | TRIGGER_TYPE_MAP Value | Tone |
+| Sub-Engine | Spec Ref | Description | Tasks | Status |
 |---|---|---|---|---|
-| Macro | Fed_Rate | Federal Reserve rate decisions | macro | cautious |
-| Macro | CPI | CPI/inflation data releases | macro | analytical |
-| Macro | Geopolitical | Wars, elections, sanctions | macro | cautious |
-| Personality | Influencer_Statement | Elon Musk, CZ, Vitalik tweets/statements | personality | exciting |
-| Corporate | Executive_Change | CEO resignation, team departure | corporate | analytical |
-| Whale | Large_Transfer | Significant whale wallet movements | whale | analytical |
-| Protocol | Token_Unlock | Token unlock/vesting events | protocol | analytical |
-| Exchange | Exchange_Netflow | Exchange inflow/outflow anomalies | whale | analytical |
-
-**Current event type list (triage, line 109):**
-```
-ETF|Hack|Exploit|Listing|Delisting|Upgrade|TokenLaunch|Regulatory|Funding|Partnership|Other
-```
-
-**Current event type list (deep analysis, line 277):**
-```
-ETF|Hack|Listing|Upgrade|Partnership|Funding|Regulatory|Other
-```
-
-**New event type list (both prompts, synchronized):**
-```
-ETF|Hack|Exploit|Listing|Delisting|Upgrade|TokenLaunch|Regulatory|Funding|Partnership|Fed_Rate|CPI|Geopolitical|Influencer_Statement|Executive_Change|Large_Transfer|Token_Unlock|Exchange_Netflow|Other
-```
-
-**Updated TRIGGER_TYPE_MAP:**
-```typescript
-const TRIGGER_TYPE_MAP: Record<string, string> = {
-    // Existing
-    'Hack': 'security',
-    'Exploit': 'security',
-    'ETF': 'regulation',
-    'Regulatory': 'regulation',
-    'Listing': 'market',
-    'Delisting': 'market',
-    'Funding': 'whale',
-    'Partnership': 'news',
-    'Upgrade': 'technical',
-    'TokenLaunch': 'market',
-    // New
-    'Fed_Rate': 'macro',
-    'CPI': 'macro',
-    'Geopolitical': 'macro',
-    'Influencer_Statement': 'personality',
-    'Executive_Change': 'corporate',
-    'Large_Transfer': 'whale',
-    'Token_Unlock': 'protocol',
-    'Exchange_Netflow': 'whale',
-};
-```
-
-**Updated selectTone() additions:**
-```typescript
-// Add these cases before the default:
-'Fed_Rate': 'cautious',
-'CPI': 'analytical',
-'Geopolitical': 'cautious',
-'Influencer_Statement': 'exciting',
-'Executive_Change': 'analytical',
-'Large_Transfer': 'analytical',
-'Token_Unlock': 'analytical',
-'Exchange_Netflow': 'analytical',
-```
-
-**Step-by-step instructions for Senior Developer:**
-
-1. Open `backend/src/services/ai/prompt-factory.ts`
-2. At line 109 (triage prompt): Replace the eventType enum with the full synchronized list
-3. At line 277 (deep analysis prompt): Replace the eventType enum with the full synchronized list (also fixes the existing out-of-sync bug — adds back Exploit, Delisting, TokenLaunch)
-4. Open `backend/src/crons/aiWorkflow.cron.ts`
-5. At lines 38-48 (TRIGGER_TYPE_MAP): Add all 8 new type mappings
-6. At lines 54-75 (selectTone): Add all 8 new type tone mappings
-7. Verify `tsc --noEmit` clean
-8. Verify both prompts now have IDENTICAL event type lists
-
-**Acceptance criteria:**
-- Both prompts have identical event type lists (18 types)
-- New types: Fed_Rate, CPI, Geopolitical, Influencer_Statement, Executive_Change, Large_Transfer, Token_Unlock, Exchange_Netflow
-- All existing types preserved
-- TRIGGER_TYPE_MAP covers all 18 types
-- selectTone() handles all 18 types (17 explicit + default)
-- Deep analysis prompt now includes Exploit, Delisting, TokenLaunch (bug fix)
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] Triage prompt eventType list has all 18 types
-- [ ] Deep analysis prompt eventType list has all 18 types
-- [ ] Both lists are IDENTICAL (synchronized)
-- [ ] Existing 11 types preserved: ETF, Hack, Exploit, Listing, Delisting, Upgrade, TokenLaunch, Regulatory, Funding, Partnership, Other
-- [ ] New 8 types added: Fed_Rate, CPI, Geopolitical, Influencer_Statement, Executive_Change, Large_Transfer, Token_Unlock, Exchange_Netflow
-- [ ] Deep analysis prompt bug fixed (now includes Exploit, Delisting, TokenLaunch)
-- [ ] TRIGGER_TYPE_MAP has all 18 entries
-- [ ] selectTone() has all 18 cases (17 explicit + default)
-- [ ] No `any` types introduced
-- [ ] `tsc --noEmit` clean
-- [ ] No other lines modified in prompt-factory.ts
-- [ ] No other lines modified in aiWorkflow.cron.ts
-
-**Dependencies:** None
-
-**Rollback notes:**
-- Revert eventType lists to original values in both prompts
-- Revert TRIGGER_TYPE_MAP to original 10 entries
-- Revert selectTone() to original cases
-
----
-
-### T-2.4 — AI Workflow Stats Integration
-
-**Task ID:** T-2.4
-**Phase:** Phase 2 — Full Event Impact Engine
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Integrate real historical event stats into the AI workflow. Before generating DeepSeek analysis, query `historicalEventComparison.service.ts` and inject the context string into the analysis prompt. Entirely behind `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` flag (default false).
-
-**Files to inspect:**
-- `backend/src/crons/aiWorkflow.cron.ts` — lines 216-229 (existing historicalStats injection), lines 345-353 (callDeepSeekAnalysis call), lines 233-294 (full analysis section)
-- `backend/src/services/ai/prompt-factory.ts` — `buildDeepAnalysisMessages()` (line 264), `buildHistoricalStatsContext()` (line 338)
-- `backend/src/services/openai.service.ts` — `callDeepSeekAnalysis()` signature
-- `backend/src/services/historicalEventComparison.service.ts` (from T-2.1) — `buildHistoricalContextString()`
-
-**Files allowed to modify:**
-- `backend/src/crons/aiWorkflow.cron.ts` (add stats query + injection)
-- `backend/src/services/ai/prompt-factory.ts` (add `buildEventImpactContext()` function)
-
-**Forbidden files:**
-- `openai.service.ts` (no changes to analysis function signature)
-- Any model files
-- Any controller/route files
-- Any frontend files
-
-**Constraints:**
-- Entirely behind `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` flag (default false)
-- When flag is false: ZERO behavioral change to existing workflow
-- Stats come ONLY from `event_impact_outcomes` via the comparison service
-- If comparison returns `insufficient_data` or `no_data`, do NOT inject empty context — skip injection entirely
-- The injected context must include NFA disclaimer
-- The AI explains stats, does not invent them
-- No changes to `callDeepSeekAnalysis()` function signature
-
-**Design specification:**
-
-1. **New function in prompt-factory.ts:**
-```typescript
-export function buildEventImpactContext(contextString: string): string {
-    return `
-## Historical Event Impact Data (from OnlyAlpha Database)
-The following statistics are from real historical events in our database.
-Use this data to inform your analysis. Explain these statistics to the reader.
-Do NOT invent additional historical data beyond what is provided.
-
-${contextString}
-
-Remember: This is historical context, not a prediction. Past events do not guarantee future outcomes. Not financial advice.
-`;
-}
-```
-
-2. **Integration in aiWorkflow.cron.ts (after existing historicalStats at lines 216-229):**
-```typescript
-// After existing historicalStats block, before callDeepSeekAnalysis:
-
-let eventImpactContext: string | undefined;
-
-if (env.EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED) {
-    try {
-        const comparisonResult = await compareWithHistoricalEvents({
-            eventType,
-            coinSymbol: symbol,
-            horizon: '24h',
-        });
-
-        if (comparisonResult.status === 'success' && comparisonResult.contextString) {
-            eventImpactContext = PromptFactory.buildEventImpactContext(comparisonResult.contextString);
-            console.log(`[AI Workflow] Event impact stats injected for ${symbol} — ${eventType}`);
-        } else {
-            console.log(`[AI Workflow] Event impact stats skipped for ${symbol} — ${comparisonResult.status}`);
-        }
-    } catch (statsErr) {
-        console.error(`[AI Workflow] Failed to fetch event impact stats for ${symbol}:`, statsErr instanceof Error ? statsErr.message : String(statsErr));
-    }
-}
-```
-
-3. **Pass eventImpactContext to the analysis prompt:**
-The context should be appended to the user message in `buildDeepAnalysisMessages()`. Since we cannot modify `callDeepSeekAnalysis()` signature, we need to append the context to an existing field or pass it through the prompt builder.
-
-**Approach:** Add an optional `eventImpactContext?: string` parameter to `buildDeepAnalysisMessages()` in prompt-factory.ts, and append it to the user message. Then in aiWorkflow.cron.ts, pass it through.
-
-4. **Changes to openai.service.ts:** The `callDeepSeekAnalysis()` function already accepts a `historicalStats` parameter. We can repurpose this pattern: check if there's an existing mechanism to pass additional context. If `DeepAnalysisInput` has optional fields we can use, add `eventImpactContext` there. Otherwise, concatenate it with `historicalStats`.
-
-**IMPORTANT:** Inspect `DeepAnalysisInput` interface in `openai.service.ts` and `buildDeepAnalysisMessages()` to determine the cleanest injection point. The goal is minimal changes — ideally appending to the user message.
-
-**Step-by-step instructions for Senior Developer:**
-
-1. Inspect `DeepAnalysisInput` in `openai.service.ts` to find the cleanest injection point
-2. Inspect `buildDeepAnalysisMessages()` in `prompt-factory.ts` to understand user message structure
-3. In `prompt-factory.ts`: Add `buildEventImpactContext(contextString: string): string` function
-4. In `prompt-factory.ts`: If `buildDeepAnalysisMessages()` accepts optional params, add `eventImpactContext?: string` and append to user message. If not, find another clean way (e.g., append to historicalStats).
-5. In `aiWorkflow.cron.ts`: Add import for `compareWithHistoricalEvents` from the new service
-6. In `aiWorkflow.cron.ts`: After the existing historicalStats block, add the eventImpactContext query block (wrapped in flag check + try/catch)
-7. In `aiWorkflow.cron.ts`: Pass eventImpactContext to the prompt builder
-8. Verify: when flag is false, the workflow is byte-identical to before
-9. Verify `tsc --noEmit` clean
-
-**Acceptance criteria:**
-- When `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED=false`: workflow behaves identically to before (no new DB queries, no prompt changes)
-- When flag is true: queries comparison service, injects real stats into prompt
-- When comparison returns insufficient_data: no injection (skip silently)
-- When comparison returns no_data: no injection (skip silently)
-- When comparison service throws: no injection (catch + log, continue)
-- Injected context includes NFA disclaimer
-- AI prompt explicitly says "do NOT invent additional historical data"
-- No changes to `callDeepSeekAnalysis()` return type
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED flag added to env.ts (default false)
-- [ ] buildEventImpactContext() added to prompt-factory.ts
-- [ ] NFA disclaimer in built context
-- [ ] "Do NOT invent" instruction in built context
-- [ ] Flag check in aiWorkflow.cron.ts before query
-- [ ] try/catch around comparison service call
-- [ ] insufficient_data → no injection (log only)
-- [ ] no_data → no injection (log only)
-- [ ] exception → no injection (error log, continue)
-- [ ] success → context injected into prompt
-- [ ] When flag false: no comparison query executed
-- [ ] No changes to callDeepSeekAnalysis() return type
-- [ ] No `any` types introduced
-- [ ] `tsc --noEmit` clean
-
-**Dependencies:** T-2.1 (comparison service), T-2.3 (taxonomy must include new types for future events), T-2.6 (env flag)
-
-**Rollback notes:**
-- Set EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED=false
-- Revert prompt-factory.ts (remove buildEventImpactContext, revert buildDeepAnalysisMessages)
-- Revert aiWorkflow.cron.ts (remove comparison query block)
-
----
-
-### T-2.5 — Classification Confidence Field
-
-**Task ID:** T-2.5
-**Phase:** Phase 2 — Full Event Impact Engine
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Add a confidence score (0-1) to the event classification output from triage. Store it in the `event_impacts` table via the existing persistence flow.
-
-**Files to inspect:**
-- `backend/src/services/openai.service.ts` — `TriageResult` interface (lines 237-246), `generateLightweightTriage()` function (line 248)
-- `backend/src/services/ai/prompt-factory.ts` — triage prompt (line 96, `buildTriageMessages`)
-- `backend/src/services/eventImpactPersistence.service.ts` — `persistEventImpact()` (line 113)
-- `backend/src/crons/aiWorkflow.cron.ts` — where triage results are consumed
-
-**Files allowed to modify:**
-- `backend/src/services/openai.service.ts` (add confidence to TriageResult + prompt parsing)
-- `backend/src/services/ai/prompt-factory.ts` (add confidence to triage JSON schema in prompt)
-- `backend/src/models/market.model.ts` (add classificationConfidence column to eventImpacts Drizzle model)
-- `backend/scripts/migrate-event-impacts.sql` (ALTER TABLE for new column — optional, see decision below)
-- `backend/src/services/eventImpactPersistence.service.ts` (pass confidence through to INSERT)
-
-**Forbidden files:**
-- Any controller/route files
-- Any cron files (except to read the confidence value — but T-2.4 handles the workflow)
-- Any frontend files
-
-**Constraints:**
-- Confidence is OPTIONAL in TriageResult (backward compatible — existing triage outputs without confidence still work)
-- Default confidence is null (not 0) — absence of confidence means "not scored"
-- AI prompt should instruct the model to self-assess how confident it is in the classification
-- Confidence stored in event_impacts.classification_confidence
-- No changes to existing classification logic
-
-**Design decision — Migration:**
-Since `event_impacts` table already exists (Phase 6B migration ran), we need an ALTER TABLE to add the column. However, since Drizzle pushSchema may handle this in dev, we have two options:
-
-**Option A (Preferred):** Add a new migration script `backend/scripts/migrate-event-impacts-v2.sql` with:
-```sql
-ALTER TABLE event_impacts ADD COLUMN IF NOT EXISTS classification_confidence REAL;
-```
-
-**Option B:** Use Drizzle pushSchema (dev only, may not work in production Neon).
-
-**Choose Option A** for production safety.
-
-**Design specification:**
-
-1. **TriageResult interface change (openai.service.ts):**
-```typescript
-interface TriageResult {
-    title: string;
-    source?: string;
-    relevanceScore: number;
-    sentimentHint: string | null;
-    symbolMentions: string[];
-    eventType: string;
-    eventSeverity: number;
-    classification: 'MAJOR' | 'MINOR' | 'NOISE';
-    confidence?: number;  // NEW — 0.0 to 1.0, optional
-}
-```
-
-2. **Prompt change (prompt-factory.ts triage prompt):**
-Add `confidence` field to the JSON output schema with instructions:
-```
-"confidence": <0.0-1.0 — how confident are you in this classification? 1.0 = very confident, 0.0 = guessing. Consider: is the event type clear? Is the sentiment obvious? Is the coin impact direct or indirect?>
-```
-
-3. **Drizzle model change (market.model.ts):**
-Add to eventImpacts table:
-```typescript
-classificationConfidence: real('classification_confidence'),
-```
-
-4. **Persistence change (eventImpactPersistence.service.ts):**
-In `persistEventImpact()`, add:
-```typescript
-classificationConfidence: source.classification_confidence ?? null,
-```
-Wait — the source is `CoinNewsHistoryRecord` which doesn't have `classification_confidence`. The confidence comes from triage, not from coin_news_history.
-
-**CORRECTION:** The confidence should be passed from aiWorkflow.cron.ts through the persistence flow. But aiWorkflow doesn't call persistEventImpact directly — that's done by eventImpactSync.cron.ts (Phase 1).
-
-**REVISED APPROACH:** The sync cron reads from coin_news_history which doesn't store confidence. We need to either:
-- (A) Store confidence in coin_news_history first, then sync picks it up
-- (B) Have the workflow directly write confidence to event_impacts after sync creates the row
-
-**Option A is simpler:** Add `classification_confidence` column to `coin_news_history` (nullable), write it from aiWorkflow after triage, then the sync cron picks it up via persistence service.
-
-But wait — the constraint says "Do NOT modify coin_news_history schema."
-
-**REVISED APPROACH (Option C):** Store confidence in event_impacts only. After the sync cron creates the event_impacts row (from coin_news_history), add a SEPARATE update step in the workflow or a new mechanism.
-
-Actually, the simplest approach:
-1. The confidence is output by triage in aiWorkflow
-2. After triage, the workflow already has the confidence value
-3. We need a function to UPDATE event_impacts SET classification_confidence = X WHERE source_id = Y
-4. This can be done in aiWorkflow.cron.ts right after the sync creates the row, OR we can create a helper in eventImpactPersistence.service.ts
-
-**FINAL APPROACH:**
-- Add `classification_confidence` to `event_impacts` only (not coin_news_history)
-- Add `updateEventImpactConfidence(sourceId: number, confidence: number)` to `eventImpactPersistence.service.ts`
-- In `aiWorkflow.cron.ts`, after triage returns with confidence, call `updateEventImpactConfidence()` — but only if the event_impacts row already exists (it may not exist yet since sync runs every 30 min)
-- If the row doesn't exist yet, skip (the confidence is lost — acceptable trade-off for simplicity)
-
-Actually, this is getting complex. Let me simplify:
-
-**SIMPLEST APPROACH:**
-1. Add confidence to TriageResult (openai.service.ts) — optional field, backward compatible
-2. Add confidence to triage prompt JSON schema (prompt-factory.ts)
-3. Add `classification_confidence` column to event_impacts (migration + Drizzle model)
-4. In `eventImpactPersistence.service.ts`, update `persistEventImpact()` to accept optional confidence parameter
-5. In `eventImpactSync.cron.ts`, pass null for confidence (sync cron doesn't have triage confidence — it reads from coin_news_history)
-6. Future enhancement: confidence can be set by a separate mechanism
-
-Wait, this defeats the purpose. The user wants confidence scoring to actually work.
-
-**PRACTICAL APPROACH:**
-1. Add confidence to TriageResult (openai.service.ts)
-2. Add to triage prompt (prompt-factory.ts)
-3. In aiWorkflow.cron.ts, after triage returns, if confidence exists, store it in coin_news_history (add a nullable column). Yes, this modifies coin_news_history, but only adds a nullable column — backward compatible, no data loss.
-
-Hmm, but the constraint says "Do NOT modify coin_news_history schema."
-
-Let me re-read the user's instructions:
-> Forbidden:
-> - Modify coin_news_history schema
-
-OK, so I cannot add a column to coin_news_history.
-
-**FINAL PRACTICAL APPROACH:**
-1. Add confidence to TriageResult (openai.service.ts) — AI outputs it
-2. Add to triage prompt (prompt-factory.ts) — AI knows to score itself
-3. Add `classification_confidence` column to `event_impacts` only (migration + Drizzle)
-4. Add `updateEventImpactConfidence(sourceId: number, confidence: number): Promise<void>` to `eventImpactPersistence.service.ts`
-5. In `aiWorkflow.cron.ts`, after triage AND after confirming the news item gets classified as MAJOR/MINOR:
-   - Try to find existing event_impacts row by source_id
-   - If found, UPDATE classification_confidence
-   - If not found, skip (sync cron will create it later without confidence — acceptable)
-6. Log when confidence is stored or skipped
-
-This is the cleanest approach given the constraint.
-
-**Step-by-step instructions for Senior Developer:**
-
-1. Create `backend/scripts/migrate-event-impacts-v2.sql`:
-```sql
-ALTER TABLE event_impacts ADD COLUMN IF NOT EXISTS classification_confidence REAL;
-```
-
-2. In `backend/src/models/market.model.ts`, add to `eventImpacts` table definition:
-```typescript
-classificationConfidence: real('classification_confidence'),
-```
-
-3. In `backend/src/services/openai.service.ts`, add to `TriageResult`:
-```typescript
-confidence?: number;
-```
-
-4. In `backend/src/services/ai/prompt-factory.ts`, add to triage JSON output schema:
-```
-"confidence": <0.0-1.0 — self-assessed confidence in this classification>
-```
-
-5. In `backend/src/services/eventImpactPersistence.service.ts`, add new function:
-```typescript
-async function updateEventImpactConfidence(sourceId: number, confidence: number): Promise<boolean> {
-    // UPDATE event_impacts SET classification_confidence = confidence WHERE source_id = sourceId
-    // Return true if row was updated, false if not found
-}
-```
-Export it.
-
-6. In `backend/src/crons/aiWorkflow.cron.ts`:
-   a. Import `updateEventImpactConfidence` from eventImpactPersistence.service
-   b. After triage returns, if triageResult.confidence exists and classification is MAJOR or MINOR:
-      ```typescript
-      if (triageResult.confidence !== undefined && (classification === 'MAJOR' || classification === 'MINOR')) {
-          const newsId = /* the coin_news_history id for this item */;
-          try {
-              await updateEventImpactConfidence(newsId, triageResult.confidence);
-              console.log(`[AI Workflow] Classification confidence ${triageResult.confidence} stored for source_id=${newsId}`);
-          } catch (confErr) {
-              console.error(`[AI Workflow] Failed to store confidence:`, confErr);
-          }
-      }
-      ```
-   c. Wrap in try/catch — confidence storage failure must not break the pipeline
-
-7. Verify `tsc --noEmit` clean
-
-**Acceptance criteria:**
-- Confidence field added to TriageResult (optional, backward compatible)
-- Triage prompt instructs model to output confidence 0.0-1.0
-- event_impacts table has classification_confidence column
-- Drizzle model updated
-- updateEventImpactConfidence() function works
-- aiWorkflow stores confidence when available
-- Pipeline continues if confidence storage fails
-- When event_impacts row doesn't exist yet: skip silently (log only)
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] Migration script created (ALTER TABLE ADD COLUMN IF NOT EXISTS)
-- [ ] Drizzle model has classificationConfidence column
-- [ ] TriageResult has confidence?: number
-- [ ] Triage prompt JSON schema includes confidence field
-- [ ] updateEventImpactConfidence() exported from persistence service
-- [ ] aiWorkflow imports updateEventImpactConfidence
-- [ ] Confidence stored only for MAJOR/MINOR (not NOISE)
-- [ ] try/catch around confidence storage
-- [ ] Skips if event_impacts row not found (no crash)
-- [ ] Logs confidence stored/skipped
-- [ ] No existing behavior changes when confidence is undefined
-- [ ] No `any` types
-- [ ] `tsc --noEmit` clean
-
-**Dependencies:** None (can run in parallel with other tasks)
-
-**Rollback notes:**
-- Drop column: `ALTER TABLE event_impacts DROP COLUMN IF EXISTS classification_confidence;`
-- Revert Drizzle model
-- Revert TriageResult interface
-- Revert prompt schema
-- Revert aiWorkflow changes
-- Revert persistence service
-
----
-
-### T-2.6 — Add Phase 2 Feature Flag
-
-**Task ID:** T-2.6
-**Phase:** Phase 2 — Full Event Impact Engine
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Add one new feature flag `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` to `backend/src/config/env.ts` for controlling AI workflow stats injection (T-2.4).
-
-**Files to inspect:**
-- `backend/src/config/env.ts` — existing flags at lines 84-90
-
-**Files allowed to modify:**
-- `backend/src/config/env.ts`
-
-**Forbidden files:**
-- All other files
-
-**Design specification:**
-
-Add after the existing Phase 1 flags (after line 90):
-```typescript
-EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED: z.boolean().default(false),
-```
-
-**Step-by-step instructions:**
-
-1. Open `backend/src/config/env.ts`
-2. After line 90 (`EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false),`), add:
-   ```typescript
-   EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED: z.boolean().default(false),
-   ```
-3. Verify `tsc --noEmit` clean
-
-**Acceptance criteria:**
-- Flag added with correct Zod schema
-- Default is `false`
-- Placed logically with other event impact flags
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] `EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED: z.boolean().default(false)` present
-- [ ] Defaults to false
-- [ ] No other lines changed
-- [ ] `tsc --noEmit` clean
-
-**Dependencies:** None (first code task to execute)
-
-**Rollback notes:**
-- Remove the 1 added line from env.ts
-
----
-
-### T-2.7 — Documentation Update
-
-**Task ID:** T-2.7
-**Phase:** Phase 2 — Full Event Impact Engine
-**Assigned Agent:** Prompt Engineer
-**Status:** Pending
-
-**Objective:**
-Update PROJECT_STATE.md and AGENT_LOGS.md to reflect Phase 2 planning.
-
-**Files to modify:**
-- `agent_gedens/PROJECT_STATE.md` — Add Phase 2 to Current Mission
-- `agent_gedens/AGENT_LOGS.md` — Add Phase 2 planning entry
-
-**Dependencies:** All code tasks (for accurate documentation)
-
----
-
-### T-2.8 — QA Checklist
-
-**Task ID:** T-2.8
-**Phase:** Phase 2 — Full Event Impact Engine
-**Assigned Agent:** Prompt Engineer
-**Status:** Pending
-
-**Objective:**
-Comprehensive QA checklist for validating all Phase 2 deliverables.
-
-**Dependencies:** All code tasks
-
----
-
-## PHASE 2 COMPREHENSIVE QA CHECKLIST
-
----
-
-### A. Historical Comparison Service (T-2.1)
-
-- [ ] **A1.** File exists at `backend/src/services/historicalEventComparison.service.ts`
-- [ ] **A2.** Exports: `compareWithHistoricalEvents`, `buildHistoricalContextString`
-- [ ] **A3.** Input interface: eventType (required), coinSymbol (optional), eventSeverity (optional), horizon (optional), maxResults (optional)
-- [ ] **A4.** Output interface has status field: 'success' | 'insufficient_data' | 'no_data'
-- [ ] **A5.** Queries only event_impacts + event_impact_outcomes (no other tables)
-- [ ] **A6.** eventSeverity filter uses ±1 range
-- [ ] **A7.** Outcomes filtered to status='completed' only
-- [ ] **A8.** sampleSize < 5 returns insufficient_data
-- [ ] **A9.** Zero results returns no_data
-- [ ] **A10.** Per-horizon stats calculated: median, avg, positive/negative rate, max upside/drawdown, time to peak/bottom
-- [ ] **A11.** Severity breakdown calculated
-- [ ] **A12.** Top coins breakdown calculated
-- [ ] **A13.** contextString is policy-safe (no buy/sell/prediction language)
-- [ ] **A14.** contextString includes NFA disclaimer
-- [ ] **A15.** Zero `any` types
-
----
-
-### B. Event Impact Stats API (T-2.2)
-
-- [ ] **B1.** GET /api/market/event-impact-stats returns 200 with stats
-- [ ] **B2.** Missing eventType returns 400
-- [ ] **B3.** Invalid eventSeverity returns 400
-- [ ] **B4.** Invalid horizon returns 400
-- [ ] **B5.** authMiddleware protects endpoint
-- [ ] **B6.** Route registered in market.routes.ts
-- [ ] **B7.** Uses historicalEventComparison.service.ts (not direct DB queries)
-- [ ] **B8.** Zero `any` types
-
----
-
-### C. Extended Event Taxonomy (T-2.3)
-
-- [ ] **C1.** Both triage and deep analysis prompts have IDENTICAL event type lists
-- [ ] **C2.** All 18 types present in both prompts
-- [ ] **C3.** All 11 existing types preserved
-- [ ] **C4.** All 8 new types added
-- [ ] **C5.** Deep analysis prompt bug fixed (now has Exploit, Delisting, TokenLaunch)
-- [ ] **C6.** TRIGGER_TYPE_MAP covers all 18 types
-- [ ] **C7.** selectTone() handles all 18 types
-- [ ] **C8.** No other lines modified in prompt-factory.ts
-- [ ] **C9.** No other lines modified in aiWorkflow.cron.ts (besides TRIGGER_TYPE_MAP + selectTone)
-
----
-
-### D. AI Workflow Stats Integration (T-2.4)
-
-- [ ] **D1.** EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED flag exists (default false)
-- [ ] **D2.** buildEventImpactContext() function in prompt-factory.ts
-- [ ] **D3.** NFA disclaimer in built context
-- [ ] **D4.** "Do NOT invent" instruction in built context
-- [ ] **D5.** Flag check in aiWorkflow.cron.ts before query
-- [ ] **D6.** try/catch around comparison service call
-- [ ] **D7.** insufficient_data → no injection
-- [ ] **D8.** no_data → no injection
-- [ ] **D9.** exception → no injection, error logged
-- [ ] **D10.** success → context injected into prompt
-- [ ] **D11.** When flag false: no comparison query executed
-- [ ] **D12.** No changes to callDeepSeekAnalysis() return type
-- [ ] **D13.** Zero `any` types
-
----
-
-### E. Classification Confidence (T-2.5)
-
-- [ ] **E1.** Migration script exists (ALTER TABLE ADD COLUMN IF NOT EXISTS)
-- [ ] **E2.** Drizzle model has classificationConfidence column on eventImpacts
-- [ ] **E3.** TriageResult has confidence?: number (optional)
-- [ ] **E4.** Triage prompt JSON schema includes confidence field
-- [ ] **E5.** updateEventImpactConfidence() exported from persistence service
-- [ ] **E6.** aiWorkflow imports and calls updateEventImpactConfidence
-- [ ] **E7.** Confidence stored only for MAJOR/MINOR classifications
-- [ ] **E8.** try/catch around confidence storage
-- [ ] **E9.** Skips if event_impacts row not found
-- [ ] **E10.** No existing behavior changes when confidence undefined
-- [ ] **E11.** Zero `any` types
-
----
-
-### F. Feature Flags
-
-- [ ] **F1.** EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED defaults to false
-- [ ] **F2.** All 7 event impact flags present in env.ts (6 existing + 1 new)
-- [ ] **F3.** Missing env vars do NOT crash server
-
----
-
-### G. No Existing System Modifications
-
-- [ ] **G1.** eventImpactAnalysis.service.ts — unchanged
-- [ ] **G2.** eventImpactPersistence.service.ts — only NEW function added (updateEventImpactConfidence), existing functions unchanged
-- [ ] **G3.** Living Articles — unchanged
-- [ ] **G4.** Scorecard — unchanged
-- [ ] **G5.** coin_news_history schema — unchanged
-- [ ] **G6.** Public UI — unchanged
-- [ ] **G7.** callDeepSeekAnalysis() return type — unchanged
-
----
-
-### H. TypeScript Quality
-
-- [ ] **H1.** `tsc --noEmit` clean on entire backend
-- [ ] **H2.** Zero `any` types across all new/modified files
-
----
-
-### Summary Scorecard
-
-| Section | Items | Status |
-|---------|-------|--------|
-| A. Historical Comparison Service | 15 | ☐ |
-| B. Event Impact Stats API | 8 | ☐ |
-| C. Extended Event Taxonomy | 9 | ☐ |
-| D. AI Workflow Stats Integration | 13 | ☐ |
-| E. Classification Confidence | 11 | ☐ |
-| F. Feature Flags | 3 | ☐ |
-| G. No Existing System Modifications | 7 | ☐ |
-| H. TypeScript Quality | 2 | ☐ |
-| **TOTAL** | **68** | **☐/68** |
-
-**QA PASS Criteria:** All 68 items checked. Zero blocking failures allowed.
-
----
-
-## GUARDRAILS
-
-1. **ZERO `any` types** across all new/modified files.
-2. **Read-only queries** for comparison service and API endpoint — no writes to event_impacts/outcomes except confidence update.
-3. **Feature flag defaults to `false`** — AI workflow stats injection disabled by default.
-4. **Backward compatible taxonomy** — all existing event types remain valid, new types extend the list.
-5. **Insufficient data guard** — sample size < 5 returns `insufficient_data`, not unreliable statistics.
-6. **No prediction language** — all outputs framed as historical observation, not forecasting.
-7. **No frontend changes** — this phase is backend-only.
-8. **No coin_news_history schema changes** — confidence stored in event_impacts only.
-9. **No external API calls** — all data from existing event_impact_outcomes.
-10. **No commit/push before QA PASS**.
-
-## RISK ASSESSMENT
-
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| Stats injection increases prompt length and cost | Low | Flag defaults to false, optional feature |
-| Insufficient historical data for new event types | Medium | Guard returns insufficient_data, AI prompted to note lack of data |
-| New taxonomy types not recognized by AI | Low | Types are in prompt enum, AI will use them |
-| Confidence score not stored if event_impacts row doesn't exist yet | Low | Acceptable — sync cron creates rows, future events will have confidence |
-| Deep analysis prompt missing event types (pre-existing bug) | None | Fixed as part of T-2.3 (synchronize both prompts) |
-
----
-
-## FILES SUMMARY
-
-| File | Status | Change |
-|------|--------|--------|
-| `backend/src/services/historicalEventComparison.service.ts` | ✅ Done | New — historical comparison service |
-| `backend/src/controllers/market.controller.ts` | ✅ Done | Add getEventImpactStatsHandler |
-| `backend/src/routes/market.routes.ts` | ✅ Done | Add /event-impact-stats route |
-| `backend/src/services/ai/prompt-factory.ts` | ✅ Done | Extend taxonomy + add buildEventImpactContext |
-| `backend/src/crons/aiWorkflow.cron.ts` | ✅ Done | Extend TRIGGER_TYPE_MAP + selectTone + stats injection |
-| `backend/src/services/openai.service.ts` | ✅ Done | Add confidence to TriageResult |
-| `backend/src/models/market.model.ts` | ✅ Done | Add classificationConfidence column |
-| `backend/scripts/migrate-event-impacts-v2.sql` | ✅ Done | New — ALTER TABLE for confidence column |
-| `backend/src/services/eventImpactPersistence.service.ts` | ✅ Done | Add updateEventImpactConfidence function |
-| `backend/src/config/env.ts` | ✅ Done | Add EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED flag |
-| `agent_gedens/PROJECT_STATE.md` | ✅ Done | Phase 2 status update |
-| `agent_gedens/AGENT_LOGS.md` | ✅ Done | Phase 2 log entries |
-
-**Total: 2 new files, 8 modified files, 2 documentation updates**
-
----
-
-## PRIORITY ORDER
-
-```
-1. T-2.6 — Feature flag (independent, no deps)
-2. T-2.3 — Extended taxonomy (independent, can parallel with T-2.6)
-3. T-2.1 — Historical comparison service (independent, reads existing tables)
-4. T-2.2 — API endpoint (depends on T-2.1)
-5. T-2.4 — AI workflow stats injection (depends on T-2.1 + T-2.3 + T-2.6)
-6. T-2.5 — Classification confidence (independent, can parallel with T-2.4)
-7. T-2.7 — Documentation (depends on all code tasks)
-8. T-2.8 — QA checklist (depends on all code tasks)
-```
-
-**Parallelizable:**
-- T-2.6 (flag) + T-2.3 (taxonomy) + T-2.1 (service) + T-2.5 (confidence) can all run in parallel
-
----
-
-*Phase 2 authored: May 4, 2026 | Strategic Planner*
-*Prerequisites: Phase 6A (complete) + Phase 6B (complete) + Phase 1 (pending code tasks)*
-*Enables: Real historical stats in AI prompts, extended event taxonomy, classification confidence*
-
----
-
----
-
-# Phase 1 — Minimum Data Foundation (Activate Event Impact Engine)
-
-**Status:** ✅ COMPLETE — Code committed (f206e39, 886bea9), QA PASSED
-**Date:** May 4, 2026
-**Priority:** P1 (Activates Phase 6A+6B deliverables in production)
-**Scope:** 2 new crons, 2 new env flags, 1 server.ts registration, 1 runbook, 1 QA checklist
-**Prerequisites:** Phase 6A (complete) + Phase 6B (complete) — both pushed
-**Authorized By:** Strategic Planner — May 4, 2026
-**Commits:** `f206e39` (initial), `886bea9` (QA re-review fixes)
-
-## OBJECTIVE
-
-Activate the Event Impact Engine in production. After Phase 1, every new event/news item should automatically:
-1. Create an `event_impacts` record (via sync cron reading `coin_news_history`)
-2. Create `event_impact_outcomes` records for each horizon (1h, 4h, 24h, 3d, 7d)
-3. Have outcomes checked and filled as time passes (via outcome checker cron)
-
-Phase 1 does NOT modify any existing tables, crons, AI workflows, or frontend.
-
-## ARCHITECTURE DECISION — Option D (Separate Sync Cron)
-
-**Integration point:** A new `eventImpactSync.cron.ts` that independently reads recent `coin_news_history` records and creates `event_impacts` for any missing records.
-
-**Why Option D over alternatives:**
-- Does NOT modify any existing cron (aiWorkflow, triageEngine, eventOutcomeChecker)
-- Runs independently with its own flag
-- Idempotent by design (skips already-synced records via LEFT JOIN)
-- Can be enabled/disabled without affecting the rest of the pipeline
-- Safest possible integration — zero risk to existing data flow
-
-**Data flow:**
-```
-coin_news_history (existing, unchanged)
-         │
-         ▼
-eventImpactSync.cron.ts (NEW — every 30 min)
-   ├── LEFT JOIN: finds records with eventSeverity but no event_impacts row
-   ├── calls persistEventImpact() → event_impacts
-   └── calls persistEventImpactOutcomes() → event_impact_outcomes (5 rows, status='pending')
-         │
-         ▼
-eventImpactOutcomeChecker.cron.ts (NEW — every 30 min)
-   ├── finds event_impact_outcomes WHERE status='pending' AND due_at <= now()
-   ├── fetches price via getCoinKlinesRange() from Binance
-   ├── calculates change_percent, max_upside, max_drawdown, times
-   ├── classifies outcome
-   └── updates event_impact_outcomes row → status='completed'
-         │
-         ▼
-event_impacts table (growing dataset of event-price impact records)
-event_impact_outcomes table (per-horizon outcomes with real price data)
-```
-
-## PHASE 1 SCOPE LIMITATIONS
-
-**Allowed:**
-- Create 2 new cron files (eventImpactSync, eventImpactOutcomeChecker)
-- Add 2 new env flags (EVENT_IMPACT_SYNC_ENABLED, EVENT_IMPACT_OUTCOME_CHECKER_ENABLED)
-- Register new crons in server.ts (conditional on flags)
-- Create production runbook (T-1.1, T-1.5)
-
-**Forbidden:**
-- Modify coin_news_history schema
-- Modify existing cron behavior
-- Modify Living Articles
-- Modify scorecard
-- Modify public UI / frontend
-- Add external APIs beyond existing Binance
-- Modify AI workflow prompts
-- Add prediction/forecasting language
-- Commit or push before QA PASS
-
-## EXECUTION ORDER
-
-```
-T-1.4 (feature flags) ─────────────────────────┐
-                                                  ├── T-1.2 (sync cron) ──┐
-T-1.5 (runbook plan) ───────────────────────────┤                         ├── T-1.6 (docs) ── T-1.7 (QA)
-                                                  ├── T-1.3 (outcome cron)─┘
-```
-
-T-1.4 must complete first (flags needed by T-1.2 and T-1.3).
-T-1.2 and T-1.3 can run in parallel.
-T-1.5 can run in parallel with all code tasks.
-T-1.6 and T-1.7 after all code tasks complete.
+| 1.0 | Foundation | Types, Interfaces, Helpers | T-V2-1A | ✅ DONE |
+| 1.1 | Trend Detection | EMA Trend Calculator (5 states) | T-V2-1B | ✅ DONE |
+| 1.2 | Support/Resistance | S/R Engine with Strength Scoring | T-V2-1C | ✅ DONE |
+| 1.3 | Market Structure | BOS, CHOCH, Failed BOS detection | T-V2-1D | ✅ DONE |
+| 1.4 | Candle Patterns | Pattern Recognition with 3-condition gate | T-V2-1E | ✅ DONE |
+| 1.5 + 1.7 | Scoring | Volume Confirmation + Quality Score | T-V2-1F | ✅ DONE |
+| Orchestrator | Main Entry | Full `analyzeTechnicals()` rewrite | T-V2-1G | ✅ DONE |
+| Health Monitor | Starvation | Signal starvation detection + reduced confidence | T-V2-1H | ✅ DONE |
+| QA | Verification | Full audit of all sub-engines | T-V2-1Q | ✅ DONE (QA PASSED) |
+
+## GUARDRAILS (Apply to ALL v2.Phase 1 tasks)
+
+1. **Zero `any` types** — strict TypeScript, use `unknown` or specific interfaces.
+2. **Zero BUY/SELL terminology** — all labels: STRONG_BULLISH / BULLISH / SIDEWAYS / BEARISH / STRONG_BEARISH.
+3. **Zero live Binance calls during signal generation** — ALL data reads from `ohlcv_candles` + `ohlcv_indicators` (pre-computed).
+4. **Zero AI involvement** — this is pure algorithm. No `AIGateway`, no `PromptFactory`.
+5. **Single file output** — all code goes into `backend/src/services/technicalAnalysis.service.ts`. No new service files.
+6. **No new DB tables** — this phase only READS from existing `ohlcv_candles` and `ohlcv_indicators`.
+7. **No modifications to existing crons** — no cron changes in Phase 1 (starvation monitor wired later).
+8. **No modifications to routes/controllers** — purely a backend service layer.
+9. **Backward compatible** — existing `analyzeTechnicals()` export signature changes internally but remains the primary entry point. Add new exports alongside it — never break imports.
+10. **All existing functions in the skeleton may be REPLACED** — the current `technicalAnalysis.service.ts` is a placeholder skeleton. Full rewrite is authorized.
+11. **No new npm packages**.
+12. **Commit only after QA PASS** — each task or deploy group individually.
+
+## PHASE ARCHITECTURE CONTEXT
+
+**What exists today (skeleton — authorized for full rewrite):**
+- `backend/src/services/technicalAnalysis.service.ts` — 255 lines, naive implementations
+  - `CandleData`, `SupportResistance`, `MarketStructure`, `CandlePattern`, `VolumeAnalysis`, `QualityScore`, `TechnicalAnalysisResult` interfaces
+  - `calculateEMA()` — basic EMA (will be removed, reads from indicators instead)
+  - `detectSupportResistance()` — naive (sorts lows/highs, no swing detection)
+  - `analyzeMarketStructure()` — naive (only checks last 3 candles for HH/HL)
+  - `detectCandlePattern()` — basic (doji, hammer, engulfing only, no S/R confirmation)
+  - `analyzeVolume()` — basic (current vs 20-candle avg, reads raw candles not indicators)
+  - `calculateQualityScore()` — naive (4-component average, no penalty modifiers)
+  - `analyzeTechnicals(symbol, timeframe)` — main export (will be rewritten)
+
+**Data sources available (from v2.Phase 0.1):**
+- `ohlcv_candles` table — columns: coinSymbol, timeframe, openTime, open, high, low, close, volume, closeTime
+- `ohlcv_indicators` table — columns: coinSymbol, timeframe, openTime, ema20, ema50, ema200, atr14, volumeAvg20, computedAt
+- Query helpers from `ohlcvSnapshot.service.ts`:
+  - `getCandles(symbol, timeframe, limit)` → `ohlcvCandles.$inferSelect[]` (DESC by openTime)
+  - `getLatestIndicator(symbol, timeframe)` → `ohlcvIndicators.$inferSelect | null`
+  - `getIndicatorAtTime(symbol, timeframe, timestamp)` → `ohlcvIndicators.$inferSelect | null`
+
+**Critical architecture rule from v2.1 spec (line 603):**
+> "All TA calculations read from ohlcv_indicators — never compute at signal-generation time"
+> "ATR always uses period 14 with Wilder's smoothing"
+
+**Key spec clarifications:**
+- EMA-20 and EMA-50: read from 4H timeframe indicators (`timeframe='4h'`)
+- EMA-200: read from Daily timeframe indicators (`timeframe='1d'`)
+- ATR-14 for TP/SL: read from Daily timeframe indicators
+- ATR-14 for entry zones: read from 4H timeframe indicators
+- volumeAvg20: read from 4H timeframe indicators
+- S/R analysis window: last 200 4H candles (~33 days)
+- Structure analysis window: last 100 4H candles (~16 days)
+- If EMA-200 is null (insufficient Daily history): fall back to EMA-20/50 only
+- If EMA-50 is also null: return SIDEWAYS. **Never guess.**
 
 ---
 
 ## REQUIRED TASKS
 
-### T-1.1 — Production Migration Execution Plan
+### T-V2-1A — Types, Interfaces & Helper Functions
 
-**Task ID:** T-1.1
-**Phase:** Phase 1 — Minimum Data Foundation
-**Assigned Agent:** Prompt Engineer
-**Status:** Pending
+**Task ID:** T-V2-1A
+**Phase:** v2.Phase 1 — Technical Analysis Engine
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** A (no dependencies)
 
 **Objective:**
-Document a safe production migration execution plan for running `migrate-event-impacts.sql`. This is a PLAN document, not execution.
+Replace the existing skeleton interfaces in `technicalAnalysis.service.ts` with production-grade types matching the v2.1 spec. Define all TypeScript interfaces, enums, and helper functions that every sub-engine depends on.
 
-**Files to inspect:**
-- `backend/scripts/migrate-event-impacts.sql` — the migration to execute
-- `backend/src/models/market.model.ts` — Drizzle model (verify it matches SQL)
+**File to modify:**
+- `backend/src/services/technicalAnalysis.service.ts` (full rewrite — replace all existing interfaces)
 
-**Deliverable:**
-Write a detailed runbook section covering:
+**Design specification — Interfaces to export:**
 
-1. **Pre-migration checklist:**
-   - Verify `event_impacts` and `event_impact_outcomes` tables do NOT already exist
-   - Verify `coin_news_history` table exists and has expected row count
-   - Take a pg_dump backup of the database (or at minimum the coin_news_history table)
-   - Verify DATABASE_URL points to correct database
-   - Estimate row count impact (how many eligible coin_news_history rows have eventSeverity IS NOT NULL)
+```typescript
+// ─── Trend Label Enum ─────────────────────────────────────
+export type TrendLabel = 'STRONG_BULLISH' | 'BULLISH' | 'SIDEWAYS' | 'BEARISH' | 'STRONG_BEARISH';
 
-2. **Migration execution:**
-   - Exact command: `psql $DATABASE_URL -f backend/scripts/migrate-event-impacts.sql`
-   - Expected output (table/index creation messages)
-   - Verification queries:
-     ```sql
-     SELECT table_name FROM information_schema.tables WHERE table_name IN ('event_impacts', 'event_impact_outcomes');
-     SELECT indexname FROM pg_indexes WHERE tablename IN ('event_impacts', 'event_impact_outcomes');
-     SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'event_impacts' ORDER BY ordinal_position;
-     SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'event_impact_outcomes' ORDER BY ordinal_position;
-     ```
+// ─── Support / Resistance Level ───────────────────────────
+export interface SRLevel {
+    price: number;
+    type: 'support' | 'resistance';
+    strengthScore: number;        // 0-100, only >= 60 used for TP/SL
+    touchCount: number;           // number of price reactions
+    volumeAtLevel: number;        // avg volume when price was near this level
+    rejectionStrength: number;    // avg wick size as % of candle range
+    lastTouchedAt: Date;
+}
 
-3. **Rollback procedure:**
-   ```sql
-   DROP TABLE IF EXISTS event_impact_outcomes;
-   DROP TABLE IF EXISTS event_impacts;
-   ```
-   - Note: CASCADE on DROP handles index cleanup
-   - No data in existing tables affected (new tables only)
+// ─── Market Structure Result ──────────────────────────────
+export type StructurePattern = 'HH_HL' | 'LH_LL' | 'BOS_BULLISH' | 'BOS_BEARISH' | 'CHOCH_BULLISH' | 'CHOCH_BEARISH' | 'FAILED_BOS' | 'NONE';
 
-4. **Post-migration verification:**
-   - Both tables exist with correct column count (13 + 16)
-   - All indexes present (5 + 4)
-   - FK constraints correct
-   - Idempotency confirmed (re-running migration produces no errors)
+export interface MarketStructureResult {
+    pattern: StructurePattern;
+    trend: 'bullish' | 'bearish' | 'sideways';
+    isChocho: boolean;             // CHOCH detected → -20 penalty
+    isFailedBos: boolean;          // Failed BOS → no signal
+    lastSwingHigh: number | null;
+    lastSwingLow: number | null;
+}
 
-**Acceptance criteria:**
-- Plan documented as a subsection in THE_NEXUS_HUB.md
-- All verification queries provided
-- Rollback procedure documented
-- Pre-flight checklist complete
+// ─── Candle Pattern Result ────────────────────────────────
+export type RecognizedPattern = 'hammer' | 'shooting_star' | 'bullish_engulfing' | 'bearish_engulfing' | 'morning_star' | 'evening_star';
 
-**QA checklist:**
-- [ ] All table names match migration SQL
-- [ ] All column names and types verified against Drizzle model
-- [ ] FK constraints documented (ON DELETE SET NULL for source_id, ON DELETE CASCADE for outcomes)
-- [ ] Backup command provided
-- [ ] Rollback drops in correct order (outcomes first)
+export interface CandlePatternResult {
+    pattern: RecognizedPattern | null;
+    direction: 'bullish' | 'bearish' | null;  // direction the pattern suggests
+    volumeConfirmed: boolean;     // volume > volumeAvg20
+    srAligned: boolean;           // pattern forms at S/R level
+    isValid: boolean;             // all 3 conditions must be true
+}
 
-**Dependencies:** None
+// ─── Volume Confirmation Result ───────────────────────────
+export interface VolumeConfirmationResult {
+    currentVolume: number;
+    avgVolume: number;
+    volumeRatio: number;          // current / avg
+    isAboveAverage: boolean;      // > 20% above avg
+    isSpike: boolean;             // > 2x average
+    isLowVolume: boolean;         // movement without volume → reject
+    scoreModifier: number;        // +15, +25, or 0 (and -15 penalty flag)
+}
+
+// ─── Quality Score Result ─────────────────────────────────
+export interface QualityScoreResult {
+    score: number;                // 0-100, signal only proceeds if >= 60
+    trendConfirmed: boolean;      // +25 if true
+    nearSR: boolean;              // +25 if true
+    volumeConfirmed: boolean;     // +25 if true
+    patternAtSR: boolean;         // +25 if true
+    chochPenalty: number;         // -20 if CHOCH detected
+    lowVolumePenalty: number;     // -15 if low volume movement
+    manipulationPenalty: number;  // -20 if price > 25% move in 24h
+    isRejected: boolean;          // true if score < 60
+    rejectionReason: string | null;
+}
+
+// ─── Technical Analysis Full Result ───────────────────────
+export interface TechnicalAnalysisFullResult {
+    symbol: string;
+    timestamp: Date;
+    trend: TrendLabel;
+    supportLevels: SRLevel[];     // sorted by strength DESC, only strength >= 60
+    resistanceLevels: SRLevel[];  // sorted by strength DESC, only strength >= 60
+    nearestSupport: SRLevel | null;
+    nearestResistance: SRLevel | null;
+    structure: MarketStructureResult;
+    candlePattern: CandlePatternResult;
+    volume: VolumeConfirmationResult;
+    qualityScore: QualityScoreResult;
+    atrDaily: number | null;      // ATR-14 from Daily indicators (for TP/SL)
+    atr4h: number | null;         // ATR-14 from 4H indicators (for entry zones)
+}
+
+// ─── Signal Health Result ─────────────────────────────────
+export interface SignalHealthResult {
+    signalCount48h: number;
+    status: 'healthy' | 'caution' | 'starvation';
+    message: string;
+    reducedConfidenceMode: boolean;
+}
+```
+
+**Design specification — Helper functions to export:**
+
+```typescript
+// Price distance percentage helper
+export function priceDistancePercent(price: number, level: number): number;
+
+// Check if price is within X% of a level
+export function isNearLevel(price: number, level: number, thresholdPercent: number): boolean;
+```
+
+**Constraints:**
+- All interfaces must have zero `any` types
+- All date fields use `Date` type, not `string` or `number`
+- `TrendLabel` uses the exact 5 states from the spec — no additional states
+- The existing `analyzeTechnicals` export signature may change, but a compatibility adapter must remain
+
+**Dependencies:** None (first task)
+
+**Rollback:** Git revert
 
 ---
 
-### T-1.2 — Event Impact Sync Cron
+### T-V2-1B — EMA Trend Calculator (Sub-engine 1.1)
 
-**Task ID:** T-1.2
-**Phase:** Phase 1 — Minimum Data Foundation
+**Task ID:** T-V2-1B
+**Phase:** v2.Phase 1 — Technical Analysis Engine
 **Assigned Agent:** Senior Developer
-**Status:** Pending
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** B (depends on T-V2-1A)
 
 **Objective:**
-Create `backend/src/crons/eventImpactSync.cron.ts` — a cron that periodically reads recent `coin_news_history` records and creates `event_impacts` + `event_impact_outcomes` for any records not yet synced. This is the primary data ingestion point for the Event Impact Engine.
+Implement `detectTrend()` — reads pre-computed EMA values from `ohlcv_indicators` and classifies the current trend into one of 5 states. Zero recalculation at runtime.
 
-**Files to inspect:**
-- `backend/src/services/eventImpactPersistence.service.ts` — existing `persistEventImpact()` and `persistEventImpactOutcomes()` functions
-- `backend/src/crons/eventOutcomeChecker.cron.ts` — reference cron pattern (schedule, logger, error handling)
-- `backend/src/crons/scenarioOutcomeChecker.cron.ts` — reference for env flag check pattern
-- `backend/src/models/market.model.ts` — `coinNewsHistory` and `eventImpacts` Drizzle tables
-- `backend/src/config/env.ts` — `EVENT_IMPACT_SYNC_ENABLED` flag (added in T-1.4)
-- `backend/src/server.ts` — cron registration pattern (lines 93-135)
+**Spec reference:** nextstep2-v2.md lines 276-283
 
-**Files allowed to create:**
-- `backend/src/crons/eventImpactSync.cron.ts` (new file)
+**File to modify:**
+- `backend/src/services/technicalAnalysis.service.ts`
 
-**Files allowed to modify:**
-- `backend/src/server.ts` (add import + registration, lines 27 and 111-112)
+**Function signature:**
+```typescript
+export async function detectTrend(symbol: string): Promise<TrendLabel>
+```
 
-**Forbidden files:**
-- Any existing cron files
-- Any service files
-- Any model files
-- Any controller/route files
-- `backend/src/config/env.ts` (T-1.4 handles flags)
+**Data source:**
+- EMA-20: `getLatestIndicator(symbol, '4h')` → `.ema20`
+- EMA-50: `getLatestIndicator(symbol, '4h')` → `.ema50`
+- EMA-200: `getLatestIndicator(symbol, '1d')` → `.ema200`
 
-**Constraints:**
-- ZERO `any` types
-- Feature-flagged: check `env.EVENT_IMPACT_SYNC_ENABLED` at cron start
-- Idempotent: skip records that already have event_impacts rows
-- Independent: does NOT modify existing pipeline or cron behavior
-- Uses existing persistence functions from eventImpactPersistence.service.ts
+**Algorithm (exact from spec):**
 
-**Design specification:**
+```
+IF EMA-200 is null:
+    IF EMA-50 is null OR EMA-20 is null:
+        RETURN SIDEWAYS
+    ELSE:
+        // Fall back to EMA-20/50 only
+        IF price > EMA-20 > EMA-50:
+            RETURN BULLISH
+        ELSE IF price < EMA-20 < EMA-50:
+            RETURN BEARISH
+        ELSE:
+            RETURN SIDEWAYS
 
-1. **Query for unsynced records:**
-   ```sql
-   SELECT cnh.*
-   FROM coin_news_history cnh
-   LEFT JOIN event_impacts ei ON ei.source_id = cnh.id
-   WHERE cnh.event_severity IS NOT NULL
-     AND ei.id IS NULL
-     AND cnh.published_at > NOW() - INTERVAL '48 hours'
-   ORDER BY cnh.published_at DESC
-   LIMIT 50
-   ```
+ELSE (EMA-200 exists):
+    IF price > EMA-20 > EMA-50 > EMA-200:
+        RETURN STRONG_BULLISH
+    ELSE IF price > EMA-50 AND EMA-20 > EMA-50:
+        RETURN BULLISH
+    ELSE IF all EMAs within 1% of each other (intertwined):
+        RETURN SIDEWAYS
+    ELSE IF price < EMA-50 AND EMA-20 < EMA-50:
+        RETURN BEARISH
+    ELSE IF price < EMA-20 < EMA-50 < EMA-200:
+        RETURN STRONG_BEARISH
+    ELSE:
+        RETURN SIDEWAYS
+```
 
-   Drizzle equivalent:
-   ```typescript
-   import { db } from '../config/db';
-   import { coinNewsHistory, eventImpacts } from '../models/market.model';
-   import { and, isNotNull, isNull, gt, sql, desc } from 'drizzle-orm';
+**"Price" for comparison:** Use the latest 4H candle close price. Fetch via `getCandles(symbol, '4h', 1)` → `[0].close`.
 
-   const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
-
-   const unsyncedRows = await db
-       .select()
-       .from(coinNewsHistory)
-       .leftJoin(eventImpacts, eq(eventImpacts.sourceId, coinNewsHistory.id))
-       .where(and(
-           isNotNull(coinNewsHistory.eventSeverity),
-           isNull(eventImpacts.id),
-           gt(coinNewsHistory.publishedAt, fortyEightHoursAgo)
-       ))
-       .orderBy(desc(coinNewsHistory.publishedAt))
-       .limit(50);
-   ```
-
-   Filter out rows where the JOIN produced an eventImpacts result (shouldn't happen due to isNull, but defensive):
-   ```typescript
-   const candidates = unsyncedRows.filter(row => !row.eventImpacts);
-   ```
-
-2. **Process each candidate:**
-   ```typescript
-   import { persistEventImpact, persistEventImpactOutcomes } from '../services/eventImpactPersistence.service';
-
-   for (const row of candidates) {
-       const sourceRecord = row.coin_news_history; // LEFT JOIN result shape
-       const eventImpactId = await persistEventImpact(sourceRecord as CoinNewsHistoryRecord);
-       if (eventImpactId !== null) {
-           await persistEventImpactOutcomes(eventImpactId, sourceRecord as CoinNewsHistoryRecord);
-       }
-   }
-   ```
-
-3. **Export pattern (following existing crons):**
-   ```typescript
-   export async function runEventImpactSync(): Promise<void> { ... }
-   export function startEventImpactSyncCron(): void {
-       cron.schedule('*/30 * * * *', () => runEventImpactSync());
-       console.log('EventImpactSync scheduled — every 30 minutes');
-   }
-   ```
-
-4. **server.ts registration (conditional, following MONITORING_CRON_ENABLED pattern at lines 125-135):**
-   ```typescript
-   // Add import at line 27 (after startScenarioOutcomeCheckerCron):
-   import { startEventImpactSyncCron } from './crons/eventImpactSync.cron';
-
-   // Add conditional registration after the monitoring cron block (after line 135):
-   if (env.EVENT_IMPACT_SYNC_ENABLED) {
-       setTimeout(() => {
-           try {
-               startEventImpactSyncCron();
-               logger.info('[Server] Optional cron started: EventImpactSync');
-           } catch (error) {
-               logger.error('[Server] Failed to start optional cron EventImpactSync: %s', error instanceof Error ? error.message : String(error));
-           }
-       }, crons.length * cronStartDelay);
-   }
-   ```
-
-   **IMPORTANT:** The sync cron must NOT be added to the main `crons` array (lines 94-112). It must use the conditional pattern (lines 125-135) since its flag defaults to `false`.
+**"EMAs within 1%" check:** `max(ema20, ema50, ema200) - min(ema20, ema50, ema200) <= 0.01 * max(ema20, ema50, ema200)` — only when all 3 exist.
 
 **Error handling:**
-- Outer try/catch in `runEventImpactSync()` with logger.error
-- Inner try/catch per row (skip failed rows, continue processing)
-- Log summary: `{ scanned, synced, skipped, errors }`
+- If `getLatestIndicator` returns null for 4H: return SIDEWAYS with error log
+- If `getLatestIndicator` returns null for Daily EMA-200: fall back as specified above
+- Never throw — always return a TrendLabel
 
-**Step-by-step instructions for Senior Developer:**
+**Dependencies:** T-V2-1A (TrendLabel type)
 
-1. Create `backend/src/crons/eventImpactSync.cron.ts`
-2. Import: cron, db, Drizzle operators, persistence functions, env, logger
-3. Implement `runEventImpactSync()`:
-   a. Check `env.EVENT_IMPACT_SYNC_ENABLED` — return early if false
-   b. Calculate 48-hour cutoff
-   c. LEFT JOIN query to find unsynced candidates
-   d. Filter candidates (defensive null check on JOIN result)
-   e. Loop: call `persistEventImpact()` then `persistEventImpactOutcomes()`
-   f. Log summary
-4. Implement `startEventImpactSyncCron()` with `*/30 * * * *` schedule
-5. Export both functions
-6. Add import to `server.ts` at line 27
-7. Add conditional registration after monitoring cron block in `server.ts`
-
-**Acceptance criteria:**
-- Cron created with correct LEFT JOIN query
-- Idempotent (skips already-synced records)
-- Feature-flagged (env.EVENT_IMPACT_SYNC_ENABLED)
-- Registered in server.ts conditionally (not in main crons array)
-- Zero `any` types
-- Proper error handling (outer + inner try/catch)
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] File created at correct path
-- [ ] LEFT JOIN query uses correct tables and conditions
-- [ ] 48-hour window filter present
-- [ ] LIMIT 50 per run
-- [ ] env.EVENT_IMPACT_SYNC_ENABLED check at function start
-- [ ] persistEventImpact() and persistEventImpactOutcomes() called correctly
-- [ ] CoinNewsHistoryRecord type cast without `any` (use `as unknown as CoinNewsHistoryRecord` or proper type narrowing)
-- [ ] Outer try/catch with logger.error
-- [ ] Inner try/catch per row
-- [ ] Summary logged: scanned, synced, skipped, errors
-- [ ] Export: runEventImpactSync + startEventImpactSyncCron
-- [ ] server.ts import added at line 27
-- [ ] server.ts conditional registration (not in main crons array)
-- [ ] Zero `any` types
-- [ ] `tsc --noEmit` clean
-
-**Dependencies:** T-1.4 (env flag must exist)
-
-**Rollback notes:**
-- Delete `backend/src/crons/eventImpactSync.cron.ts`
-- Revert server.ts (remove import + conditional block)
+**Rollback:** Git revert
 
 ---
 
-### T-1.3 — Event Impact Outcome Checker Cron
+### T-V2-1C — Support & Resistance Engine (Sub-engine 1.2)
 
-**Task ID:** T-1.3
-**Phase:** Phase 1 — Minimum Data Foundation
+**Task ID:** T-V2-1C
+**Phase:** v2.Phase 1 — Technical Analysis Engine
 **Assigned Agent:** Senior Developer
-**Status:** Pending
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** C (depends on T-V2-1A)
 
 **Objective:**
-Create `backend/src/crons/eventImpactOutcomeChecker.cron.ts` — a cron that checks due `event_impact_outcomes` records, fetches real price data from Binance, calculates outcome metrics, and updates the records.
+Implement `detectSupportResistance()` — analyzes last 200 4H candles from `ohlcv_candles` to identify swing lows (support), swing highs (resistance), reaction zones, and rejection zones. Each level gets a strength score (0-100). Only levels with strength >= 60 are returned.
 
-**Files to inspect:**
-- `backend/src/crons/eventOutcomeChecker.cron.ts` — reference for Binance kline fetching + metric calculation pattern (lines 99-186)
-- `backend/src/crons/scenarioOutcomeChecker.cron.ts` — reference for env flag check + due_at query pattern (lines 8-55)
-- `backend/src/services/binance.service.ts` — `getCoinKlinesRange(symbol, interval, startTime, endTime)` function (lines 120-187)
-- `backend/src/models/market.model.ts` — `eventImpactOutcomes` and `eventImpacts` Drizzle tables
-- `backend/src/config/env.ts` — `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` flag (added in T-1.4)
-- `backend/src/server.ts` — cron registration pattern
+**Spec reference:** nextstep2-v2.md lines 285-301
 
-**Files allowed to create:**
-- `backend/src/crons/eventImpactOutcomeChecker.cron.ts` (new file)
+**File to modify:**
+- `backend/src/services/technicalAnalysis.service.ts`
 
-**Files allowed to modify:**
-- `backend/src/server.ts` (add import + conditional registration)
-
-**Forbidden files:**
-- Any existing cron files
-- Any service files
-- Any model files
-- Any controller/route files
-
-**Constraints:**
-- ZERO `any` types
-- Feature-flagged: check `env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` at cron start
-- Use existing `getCoinKlinesRange()` from binance.service.ts ONLY
-- Handle missing prices gracefully (mark as 'failed' with error_message)
-- Handle non-Binance coins gracefully (mark as 'unsupported')
-- Registered in server.ts conditionally (NOT in main crons array)
-
-**Design specification:**
-
-1. **Query for due pending outcomes:**
-   ```typescript
-   const now = new Date();
-
-   const dueOutcomes = await db
-       .select({
-           outcomeId: eventImpactOutcomes.id,
-           eventImpactId: eventImpactOutcomes.eventImpactId,
-           horizon: eventImpactOutcomes.horizon,
-           horizonHours: eventImpactOutcomes.horizonHours,
-           dueAt: eventImpactOutcomes.dueAt,
-           coinSymbol: eventImpacts.coinSymbol,
-           priceAtEvent: eventImpacts.priceAtEvent,
-           publishedAt: eventImpacts.publishedAt,
-       })
-       .from(eventImpactOutcomes)
-       .innerJoin(eventImpacts, eq(eventImpactOutcomes.eventImpactId, eventImpacts.id))
-       .where(and(
-           eq(eventImpactOutcomes.status, 'pending'),
-           lte(eventImpactOutcomes.dueAt, now)
-       ))
-       .limit(100);
-   ```
-
-2. **Process each outcome:**
-   For each due outcome:
-   a. Check `priceAtEvent` is not null — if null, mark as 'failed' with "Missing price_at_event"
-   b. Validate `coinSymbol` is a valid Binance pair (format: BTCUSDT, ETHUSDT, etc.)
-   c. Fetch candles: `getCoinKlinesRange(coinSymbol + 'USDT', '1h', publishedAtMs, dueAtMs)`
-   d. If candles empty → mark as 'failed' with "No candles available from Binance"
-   e. Find price at horizon (closest candle to dueAt)
-   f. Calculate change_percent: `((priceAtHorizon - priceAtEvent) / priceAtEvent) * 100`
-   g. Calculate max_upside, max_drawdown, time_to_peak, time_to_bottom from all candles
-   h. Classify outcome at the horizon level:
-      - >15%: strong_bullish
-      - >5%: bullish
-      - [-5%, +5%]: neutral
-      - >-15%: bearish
-      - <=-15%: strong_bearish
-   i. Update the outcome record with all calculated fields + status='completed'
-
-3. **Coin symbol handling:**
-   - `coinSymbol` in the DB is stored as 'BTC', 'ETH', etc. (without USDT suffix)
-   - Binance API requires 'BTCUSDT', 'ETHUSDT'
-   - Append 'USDT' when calling `getCoinKlinesRange()`
-   - If the coin is not on Binance (API returns empty candles), mark as 'unsupported'
-
-4. **Metric calculation logic (from eventOutcomeChecker.cron.ts lines 154-175):**
-   ```typescript
-   let maxUpside = 0;
-   let maxDrawdown = 0;
-   let peakTimeMs = 0;
-   let bottomTimeMs = 0;
-
-   for (const candle of allCandles) {
-       const changePct = ((candle.close - priceAtEvent) / priceAtEvent) * 100;
-       if (changePct > maxUpside) {
-           maxUpside = changePct;
-           peakTimeMs = candle.closeTime;
-       }
-       if (changePct < maxDrawdown) {
-           maxDrawdown = changePct;
-           bottomTimeMs = candle.closeTime;
-       }
-   }
-
-   const timeToPeakHours = peakTimeMs > 0 ? Math.round((peakTimeMs - publishedAtMs) / 3600000) : null;
-   const timeToBottomHours = bottomTimeMs > 0 ? Math.round((bottomTimeMs - publishedAtMs) / 3600000) : null;
-   ```
-
-5. **Classification thresholds (same as eventOutcomeChecker.cron.ts lines 178-186):**
-   ```typescript
-   let classification: string;
-   if (changePercent > 15) classification = 'strong_bullish';
-   else if (changePercent > 5) classification = 'bullish';
-   else if (changePercent > -5) classification = 'neutral';
-   else if (changePercent > -15) classification = 'bearish';
-   else classification = 'strong_bearish';
-   ```
-
-6. **Update query:**
-   ```typescript
-   await db.update(eventImpactOutcomes)
-       .set({
-           priceAtHorizon: priceAtHorizon,
-           changePercent,
-           maxUpsidePercent: maxUpside,
-           maxDrawdownPercent: maxDrawdown,
-           timeToPeakHours,
-           timeToBottomHours,
-           outcomeClassification: classification,
-           status: 'completed',
-           checkedAt: new Date(),
-           updatedAt: new Date(),
-       })
-       .where(eq(eventImpactOutcomes.id, outcomeId));
-   ```
-
-7. **Failure cases:**
-   ```typescript
-   // Price at event missing:
-   await db.update(eventImpactOutcomes)
-       .set({ status: 'failed', errorMessage: 'Missing price_at_event', checkedAt: new Date(), updatedAt: new Date() })
-       .where(eq(eventImpactOutcomes.id, outcomeId));
-
-   // No candles from Binance (non-Binance coin):
-   await db.update(eventImpactOutcomes)
-       .set({ status: 'unsupported', errorMessage: `No candles for ${coinSymbol} on Binance`, checkedAt: new Date(), updatedAt: new Date() })
-       .where(eq(eventImpactOutcomes.id, outcomeId));
-
-   // Binance API error:
-   await db.update(eventImpactOutcomes)
-       .set({ status: 'failed', errorMessage: 'Binance API error', checkedAt: new Date(), updatedAt: new Date() })
-       .where(eq(eventImpactOutcomes.id, outcomeId));
-   ```
-
-8. **server.ts registration (conditional, same pattern as T-1.2):**
-   ```typescript
-   // Add import at line 27:
-   import { startEventImpactOutcomeCheckerCron } from './crons/eventImpactOutcomeChecker.cron';
-
-   // Add conditional registration:
-   if (env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED) {
-       setTimeout(() => {
-           try {
-               startEventImpactOutcomeCheckerCron();
-               logger.info('[Server] Optional cron started: EventImpactOutcomeChecker');
-           } catch (error) {
-               logger.error('[Server] Failed to start optional cron EventImpactOutcomeChecker: %s', error instanceof Error ? error.message : String(error));
-           }
-       }, crons.length * cronStartDelay);
-   }
-   ```
-
-**Step-by-step instructions for Senior Developer:**
-
-1. Create `backend/src/crons/eventImpactOutcomeChecker.cron.ts`
-2. Import: cron, db, Drizzle operators (eq, lte, and), binance getCoinKlinesRange, logger, env
-3. Implement `runEventImpactOutcomeChecker()`:
-   a. Check `env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` — return early if false
-   b. Query due outcomes via INNER JOIN with event_impacts
-   c. Loop through outcomes, call `processOutcome(outcome)`
-   d. Log summary
-4. Implement `processOutcome()`:
-   a. Validate priceAtEvent not null
-   b. Append 'USDT' to coinSymbol
-   c. Fetch candles via getCoinKlinesRange
-   d. Handle failure cases (no candles, API error)
-   e. Calculate metrics (change, max upside/drawdown, times)
-   f. Classify outcome
-   g. Update record
-5. Implement `startEventImpactOutcomeCheckerCron()` with `*/30 * * * *` schedule
-6. Export both functions
-7. Add import to server.ts at line 27
-8. Add conditional registration in server.ts
-
-**Acceptance criteria:**
-- Cron finds due pending outcomes via INNER JOIN
-- Fetches Binance klines correctly (USDT suffix appended)
-- Calculates all 6 metrics correctly
-- Classifies outcome using correct thresholds
-- Handles failure cases (missing price, no candles, API error)
-- Non-Binance coins marked as 'unsupported'
-- Feature-flagged
-- Registered in server.ts conditionally
-- Zero `any` types
-- `tsc --noEmit` clean
-
-**QA checklist:**
-- [ ] File created at correct path
-- [ ] INNER JOIN query joins eventImpactOutcomes with eventImpacts
-- [ ] WHERE: status='pending' AND due_at <= now()
-- [ ] LIMIT 100 per run
-- [ ] env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED check at function start
-- [ ] USDT suffix appended to coinSymbol for Binance API
-- [ ] priceAtEvent null check (mark 'failed')
-- [ ] Empty candles check (mark 'unsupported' or 'failed')
-- [ ] change_percent calculated: ((priceAtHorizon - priceAtEvent) / priceAtEvent) * 100
-- [ ] max_upside_percent: max positive change across all candles
-- [ ] max_drawdown_percent: max negative change across all candles
-- [ ] time_to_peak_hours: (peakCandle.closeTime - publishedAt) / 3600000
-- [ ] time_to_bottom_hours: (bottomCandle.closeTime - publishedAt) / 3600000
-- [ ] Classification thresholds: strong_bullish(>15), bullish(>5), neutral(±5), bearish(>-15), strong_bearish(<=-15)
-- [ ] Update sets status='completed', checkedAt=now()
-- [ ] Failure updates set appropriate status + errorMessage
-- [ ] Outer try/catch with logger.error
-- [ ] Inner try/catch per outcome
-- [ ] Summary logged: processed, completed, failed, unsupported
-- [ ] Export: runEventImpactOutcomeChecker + startEventImpactOutcomeCheckerCron
-- [ ] server.ts import + conditional registration
-- [ ] Zero `any` types
-- [ ] `tsc --noEmit` clean
-
-**Dependencies:** T-1.4 (env flag must exist)
-
-**Rollback notes:**
-- Delete `backend/src/crons/eventImpactOutcomeChecker.cron.ts`
-- Revert server.ts (remove import + conditional block)
-- Outcome records with status='completed' remain in DB (harmless, no rollback needed)
-
----
-
-### T-1.4 — Add Phase 1 Feature Flags
-
-**Task ID:** T-1.4
-**Phase:** Phase 1 — Minimum Data Foundation
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Add two new feature flags to `backend/src/config/env.ts` for the new crons created in T-1.2 and T-1.3.
-
-**Files to inspect:**
-- `backend/src/config/env.ts` — existing env schema (lines 84-88 for event impact flags, lines 77-91 for all feature flags)
-
-**Files allowed to modify:**
-- `backend/src/config/env.ts` (add 2 new boolean flags)
-
-**Forbidden files:**
-- Any other files
-
-**Design specification:**
-
-Add two new boolean flags after the existing event impact flags (after line 88):
-
+**Function signature:**
 ```typescript
-// Event Impact Engine (Phase 6A/6B — existing, keep unchanged)
-EVENT_IMPACT_ENGINE_ENABLED: z.boolean().default(false),
-EVENT_IMPACT_PERSISTENCE_ENABLED: z.boolean().default(false),
-EVENT_IMPACT_BACKFILL_ENABLED: z.boolean().default(false),
-EVENT_IMPACT_BACKFILL_DRY_RUN: z.boolean().default(true),
-
-// Event Impact Engine — Phase 1 Activation (NEW)
-EVENT_IMPACT_SYNC_ENABLED: z.boolean().default(false),
-EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false),
+export async function detectSupportResistance(symbol: string): Promise<{
+    supportLevels: SRLevel[];
+    resistanceLevels: SRLevel[];
+}>
 ```
 
-**Constraints:**
-- Both flags default to `false` (safe — crons won't run unless explicitly enabled)
-- Use `z.boolean().default(false)` pattern (same as existing flags)
-- Add after existing EVENT_IMPACT_BACKFILL_DRY_RUN (line 88)
-- Before MONITORING_CRON_ENABLED (line 91)
+**Data source:**
+- `getCandles(symbol, '4h', 200)` — last 200 4H candles from `ohlcv_candles`
+  - NOTE: `getCandles` returns DESC by openTime. Reverse to ASC before processing.
 
-**Step-by-step instructions:**
+**Algorithm — Step 1: Swing Point Detection**
 
-1. Open `backend/src/config/env.ts`
-2. After line 88 (`EVENT_IMPACT_BACKFILL_DRY_RUN: z.boolean().default(true),`), add:
-   ```typescript
-   EVENT_IMPACT_SYNC_ENABLED: z.boolean().default(false),
-   EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false),
-   ```
-3. Verify `tsc --noEmit` clean
-4. Verify no other files modified
+For each candle at index `i` (where `i >= 2` and `i <= candles.length - 3`):
+- **Swing Low:** `candles[i].low < candles[i-1].low AND candles[i].low < candles[i+1].low AND candles[i].low < candles[i-2].low AND candles[i].low < candles[i+2].low`
+- **Swing High:** `candles[i].high > candles[i-1].high AND candles[i].high > candles[i+1].high AND candles[i].high > candles[i-2].high AND candles[i].high > candles[i+2].high`
 
-**Acceptance criteria:**
-- Two new flags added with correct Zod schema
-- Both default to `false`
-- Placed logically with other event impact flags
-- `tsc --noEmit` clean
+**Algorithm — Step 2: Reaction Zone Clustering**
 
-**QA checklist:**
-- [ ] `EVENT_IMPACT_SYNC_ENABLED: z.boolean().default(false)` present
-- [ ] `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false)` present
-- [ ] Both default to false
-- [ ] Placed after existing event impact flags
-- [ ] No other lines changed in env.ts
-- [ ] `tsc --noEmit` clean
+Group swing points that are within 1.5% of each other into a single level:
+- Use the average price of the cluster as the level price
+- Sum the touch counts
+- Average the volumes
 
-**Dependencies:** None (this should be the FIRST code task executed)
+**Algorithm — Step 3: Level Strength Score**
 
-**Rollback notes:**
-- Remove the 2 added lines from env.ts
+For each clustered level, compute:
 
----
-
-### T-1.5 — Production Activation Runbook
-
-**Task ID:** T-1.5
-**Phase:** Phase 1 — Minimum Data Foundation
-**Assigned Agent:** Prompt Engineer
-**Status:** ✅ COMPLETED
-
-**Objective:**
-Document a comprehensive production activation runbook for enabling the Event Impact Engine in production. This covers the entire sequence from migration to full activation.
-
----
-
-## PRODUCTION ACTIVATION RUNBOOK — Phase 1: Event Impact Engine
-
-**Version:** 1.0
-**Date:** May 4, 2026
-**Author:** Prompt Engineer
-**Prerequisites:** Phase 6A (✅ complete) + Phase 6B (✅ complete) — both pushed
-
----
-
-### Day 0 — Pre-Activation Checks
-
-Before any activation steps, verify the following:
-
-- [ ] **Phase 6B deployed successfully** — `event_impacts` and `event_impact_outcomes` tables exist in DB, `eventImpactPersistence.service.ts` deployed
-- [ ] **All Phase 1 flags are currently false:**
-  ```bash
-  # Verify in .env or runtime:
-  EVENT_IMPACT_SYNC_ENABLED=false
-  EVENT_IMPACT_OUTCOME_CHECKER_ENABLED=false
-  EVENT_IMPACT_PERSISTENCE_ENABLED=false
-  EVENT_IMPACT_BACKFILL_ENABLED=false
-  ```
-- [ ] **Run intelligence health check:**
-  ```bash
-  node backend/scripts/verify-intelligence-health.js
-  ```
-  Verify no critical errors in output.
-- [ ] **Existing crons are healthy** — check server logs for all 14 crons registering without error on startup
-- [ ] **Database backup:**
-  ```bash
-  pg_dump $DATABASE_URL > backup_pre_phase1_$(date +%Y%m%d_%H%M%S).sql
-  ```
-- [ ] **Binance API accessible:**
-  ```bash
-  curl -s "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=1"
-  ```
-  Should return JSON array with candle data.
-- [ ] **Phase 1 code deployed** — `tsc --noEmit` clean, both new cron files present
-
----
-
-### Step 1 — Run Migration
-
-Create the `event_impacts` and `event_impact_outcomes` tables.
-
-**1.1. Execute migration:**
-```bash
-psql $DATABASE_URL -f backend/scripts/migrate-event-impacts.sql
-```
-
-Expected output: `CREATE TABLE`, `CREATE INDEX` (no errors).
-
-**1.2. Verify tables created:**
-```sql
-SELECT table_name FROM information_schema.tables
-WHERE table_name IN ('event_impacts', 'event_impact_outcomes');
--- Expected: 2 rows
-```
-
-**1.3. Verify indexes created:**
-```sql
-SELECT indexname, tablename FROM pg_indexes
-WHERE tablename IN ('event_impacts', 'event_impact_outcomes')
-ORDER BY tablename, indexname;
--- Expected: 5 indexes for event_impacts, 4 indexes for event_impact_outcomes
-```
-
-**1.4. Verify foreign keys correct:**
-```sql
-SELECT
-    tc.table_name,
-    kcu.column_name,
-    ccu.table_name AS foreign_table,
-    tc.constraint_name,
-    rc.delete_rule
-FROM information_schema.table_constraints tc
-JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
-JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
-JOIN information_schema.referential_constraints rc ON tc.constraint_name = rc.constraint_name
-WHERE tc.table_name IN ('event_impacts', 'event_impact_outcomes');
--- Expected:
---   event_impacts.source_id → coin_news_history.id ON DELETE SET NULL
---   event_impact_outcomes.event_impact_id → event_impacts.id ON DELETE CASCADE
-```
-
-**1.5. Verify no data exists yet:**
-```sql
-SELECT count(*) AS event_impacts_count FROM event_impacts;
--- Expected: 0
-
-SELECT count(*) AS outcomes_count FROM event_impact_outcomes;
--- Expected: 0
-```
-
----
-
-### Step 2 — Run Backfill in Dry-Run Mode
-
-Preview what the backfill would write without actually writing anything.
-
-**2.1. Set flags:**
-```bash
-EVENT_IMPACT_BACKFILL_ENABLED=true      # Enable backfill script
-EVENT_IMPACT_BACKFILL_DRY_RUN=true       # Default — keep as dry-run
-```
-
-**2.2. Execute:**
-```bash
-npx ts-node backend/scripts/backfill-event-impacts.ts
-```
-
-**2.3. Review output:**
-- Note the `Eligible` count (records with eventSeverity IS NOT NULL)
-- Note the `Would Create` count (should equal Eligible minus already-existing)
-- Verify no errors in output
-
-**2.4. Verify no actual writes:**
-```sql
-SELECT count(*) FROM event_impacts;
--- Expected: 0 (dry-run produces no writes)
-
-SELECT count(*) FROM event_impact_outcomes;
--- Expected: 0
-```
-
----
-
-### Step 3 — Run Backfill in Execute Mode
-
-Write historical event data to the new tables.
-
-**3.1. Enable persistence (required for writes):**
-```bash
-EVENT_IMPACT_PERSISTENCE_ENABLED=true   # Required for persist functions to write
-```
-
-**3.2. Execute backfill:**
-```bash
-npx ts-node backend/scripts/backfill-event-impacts.ts --execute
-```
-
-**3.3. Monitor logs:**
-- Watch for batch progress output
-- Watch for error count in final summary
-- Note total Created count
-
-**3.4. Verify event_impacts rows created:**
-```sql
-SELECT count(*) AS total_impacts FROM event_impacts;
--- Expected: matches "Created" count from backfill summary
-
-SELECT status, count(*) FROM event_impacts GROUP BY status;
--- Expected: mix of 'completed' (all 5 horizons had data) and 'pending'
-```
-
-**3.5. Verify event_impact_outcomes rows created:**
-```sql
-SELECT count(*) AS total_outcomes FROM event_impact_outcomes;
--- Expected: ~5x the event_impacts count (5 horizons per event)
-
-SELECT status, count(*) FROM event_impact_outcomes GROUP BY status;
--- Expected: mix of 'completed' (had pre-existing change data) and 'pending' (awaiting outcome check)
-```
-
-**3.6. Disable backfill after completion:**
-```bash
-EVENT_IMPACT_BACKFILL_ENABLED=false      # Disable — one-time operation complete
-```
-
----
-
-### Step 4 — Enable Sync Cron
-
-Start the automatic sync of new coin_news_history records into event_impacts.
-
-**4.1. Set flag:**
-```bash
-EVENT_IMPACT_SYNC_ENABLED=true
-```
-
-**4.2. Restart server** to pick up the new flag.
-
-**4.3. Monitor for 1–2 hours:**
-- Check server logs for: `EventImpactSync scheduled — every 30 minutes`
-- After first run (~30 min), check logs for sync summary: `{ scanned, synced, skipped, errors }`
-- Verify new coin_news_history records (with eventSeverity) are creating event_impacts
-
-**4.4. Verification queries:**
-```sql
--- New records created since activation
-SELECT count(*) AS new_impacts FROM event_impacts
-WHERE created_at > NOW() - INTERVAL '2 hours';
-
--- Verify source linkage
-SELECT ei.id, ei.coin_symbol, ei.published_at, cnh.title
-FROM event_impacts ei
-LEFT JOIN coin_news_history cnh ON ei.source_id = cnh.id
-WHERE ei.created_at > NOW() - INTERVAL '2 hours'
-ORDER BY ei.published_at DESC
-LIMIT 10;
-```
-
----
-
-### Step 5 — Enable Outcome Checker
-
-Start the automatic checking of due outcomes against real Binance price data.
-
-**5.1. Set flag:**
-```bash
-EVENT_IMPACT_OUTCOME_CHECKER_ENABLED=true
-```
-
-**5.2. Restart server** to pick up the new flag.
-
-**5.3. Monitor for 24 hours:**
-- Check server logs for: `EventImpactOutcomeChecker scheduled — every 30 minutes`
-- After each run, check logs for summary: `{ processed, completed, failed, unsupported }`
-- Verify pending outcomes (where due_at <= now) are being filled
-
-**5.4. Verification queries:**
-```sql
--- Outcomes completed since activation
-SELECT count(*) AS completed_outcomes FROM event_impact_outcomes
-WHERE status = 'completed' AND checked_at > NOW() - INTERVAL '24 hours';
-
--- Pending outcomes still awaiting check
-SELECT count(*) AS pending_overdue FROM event_impact_outcomes
-WHERE status = 'pending' AND due_at <= NOW();
-
--- Failed outcomes (investigate)
-SELECT count(*) AS failed FROM event_impact_outcomes
-WHERE status = 'failed' AND checked_at > NOW() - INTERVAL '24 hours';
-
--- Unsupported outcomes (non-Binance coins)
-SELECT count(*) AS unsupported FROM event_impact_outcomes
-WHERE status = 'unsupported';
-
--- Error messages for failed outcomes
-SELECT error_message, count(*) FROM event_impact_outcomes
-WHERE status = 'failed'
-GROUP BY error_message
-ORDER BY count(*) DESC;
-```
-
----
-
-### Daily Monitoring (Days 1–7)
-
-Run these checks every day during the stabilization window:
-
-**Health check script:**
-```bash
-node backend/scripts/verify-intelligence-health.js
-```
-
-**DB growth monitoring:**
-```sql
--- 1. Event impacts created per day (last 7 days)
-SELECT
-    DATE(created_at) AS day,
-    count(*) AS new_impacts
-FROM event_impacts
-WHERE created_at > NOW() - INTERVAL '7 days'
-GROUP BY DATE(created_at)
-ORDER BY day DESC;
-
--- 2. Outcomes filled per day (last 7 days)
-SELECT
-    DATE(checked_at) AS day,
-    status,
-    count(*) AS count
-FROM event_impact_outcomes
-WHERE checked_at > NOW() - INTERVAL '7 days'
-GROUP BY DATE(checked_at), status
-ORDER BY day DESC, status;
-
--- 3. Pending outcomes >24h overdue
-SELECT count(*) AS overdue_pending FROM event_impact_outcomes
-WHERE status = 'pending' AND due_at < NOW() - INTERVAL '24 hours';
-
--- 4. Failed outcomes breakdown
-SELECT status, count(*),
-    round(count(*)::numeric * 100.0 / sum(count(*)) over(), 1) AS pct
-FROM event_impact_outcomes
-GROUP BY status
-ORDER BY count(*) DESC;
-
--- 5. Unsupported coins (non-Binance)
-SELECT DISTINCT ei.coin_symbol, count(*) AS outcome_count
-FROM event_impact_outcomes eio
-JOIN event_impacts ei ON eio.event_impact_id = ei.id
-WHERE eio.status = 'unsupported'
-GROUP BY ei.coin_symbol
-ORDER BY outcome_count DESC;
-
--- 6. Duplicate prevention check (should always return 0)
-SELECT source_id, count(*) AS dupes
-FROM event_impacts
-WHERE source_id IS NOT NULL
-GROUP BY source_id
-HAVING count(*) > 1;
--- Expected: 0 rows (UNIQUE index prevents this)
-```
-
-**Server log monitoring:**
-- Grep for `[EventImpactSync]` errors
-- Grep for `[EventImpactOutcomeChecker]` errors
-- Grep for Binance API errors (429 status, timeouts)
-- Check server memory usage
-
----
-
-### Healthy / Warning Thresholds
-
-| Metric | Healthy | Warning | Action |
-|--------|---------|---------|--------|
-| event_impacts created/day | >0 (if news flowing) | 0 for 24h | Check coin_news_history ingestion, check eventSeverity population |
-| event_impact_outcomes filled/day | >0 (after 1h horizon passes) | <50% of due outcomes | Check outcome checker cron logs, Binance API status |
-| Pending outcomes >24h overdue | 0 | >10 | Check outcome checker is running, check Binance availability |
-| Failed outcomes percentage | <5% | >10% | Investigate error_message distribution |
-| Unsupported coins percentage | <10% | >20% | Expected for obscure coins; if high, review coin_news_history source quality |
-| Binance API error rate (429s) | 0/hour | >3/hour | Reduce outcome checker LIMIT or increase interval |
-| Server memory | <70% | >80% | Reduce batch sizes, check for memory leaks in outcome checker |
-
----
-
-### Rollback Procedure
-
-**Soft rollback (flags only — data preserved):**
-```bash
-EVENT_IMPACT_SYNC_ENABLED=false
-EVENT_IMPACT_OUTCOME_CHECKER_ENABLED=false
-EVENT_IMPACT_PERSISTENCE_ENABLED=false
-```
-Restart server. New events will no longer create event_impacts. All existing data remains in tables (harmless, zero impact on other features).
-
-**Full rollback (data removal — ONLY if absolutely necessary):**
-```sql
-DROP TABLE IF EXISTS event_impact_outcomes;   -- Must drop first (FK depends on event_impacts)
-DROP TABLE IF EXISTS event_impacts;
-```
-No existing tables are affected. CASCADE on DROP handles index cleanup.
-
-**Code rollback (if Phase 1 code needs removal):**
-1. Delete `backend/src/crons/eventImpactSync.cron.ts`
-2. Delete `backend/src/crons/eventImpactOutcomeChecker.cron.ts`
-3. Revert `backend/src/server.ts` (remove 2 imports + 2 conditional registration blocks)
-4. Revert `backend/src/config/env.ts` (remove 2 Phase 1 flags)
-
----
-
-### Flag Reference
-
-| Flag | Default | Purpose | Set When |
-|------|---------|---------|----------|
-| `EVENT_IMPACT_PERSISTENCE_ENABLED` | `false` | Allows persist functions to write | Before migration + backfill |
-| `EVENT_IMPACT_BACKFILL_ENABLED` | `false` | Allows backfill script to run | Step 2 (dry-run), Step 3 (execute) |
-| `EVENT_IMPACT_BACKFILL_DRY_RUN` | `true` | Backfill preview mode (no writes) | Step 2 (keep true), Step 3 (set false) |
-| `EVENT_IMPACT_SYNC_ENABLED` | `false` | Enables sync cron (30 min) | Step 4 |
-| `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` | `false` | Enables outcome checker cron (30 min) | Step 5 |
-
-**Flag enablement order:** persistence → backfill → sync → outcome checker
-
----
-
-*Runbook authored: May 4, 2026 | Prompt Engineer | Phase 1 — Minimum Data Foundation*
-
----
-
-### T-1.6 — Documentation Update
-
-**Task ID:** T-1.6
-**Phase:** Phase 1 — Minimum Data Foundation
-**Assigned Agent:** Prompt Engineer
-**Status:** ✅ COMPLETED
-
-**Objective:**
-Update PROJECT_STATE.md and AGENT_LOGS.md to reflect Phase 1 documentation tasks completion.
-
-**Files modified:**
-- `agent_gedens/PROJECT_STATE.md` — Phase 1 docs tasks (T-1.5, T-1.6, T-1.7) status updated
-- `agent_gedens/AGENT_LOGS.md` — T-1.5, T-1.6, T-1.7 completion entries added
-
-**Updates performed:**
-
-1. **PROJECT_STATE.md:**
-   - Phase 1 task statuses updated to reflect documentation completion
-   - T-1.5 (Runbook): ✅ COMPLETED
-   - T-1.6 (Docs Update): ✅ COMPLETED
-   - T-1.7 (QA Checklist): ✅ COMPLETED
-
-2. **AGENT_LOGS.md:**
-   - T-1.5 runbook completion entry added
-   - T-1.6 documentation update entry added
-   - T-1.7 QA checklist completion entry added
-
-3. **THE_NEXUS_HUB.md:**
-   - T-1.5 status updated to ✅ COMPLETED with full runbook
-   - T-1.6 status updated to ✅ COMPLETED
-   - T-1.7 status updated to ✅ COMPLETED with full QA checklist
-   - Phase 1 header status updated
-
-**Acceptance criteria:**
-- [x] PROJECT_STATE.md reflects documentation task completion
-- [x] AGENT_LOGS.md has completion entries for T-1.5, T-1.6, T-1.7
-- [x] THE_NEXUS_HUB.md updated with completed statuses
-
-**Dependencies:** None (documentation tasks are independent)
-
----
-
-### T-1.7 — QA Checklist
-
-**Task ID:** T-1.7
-**Phase:** Phase 1 — Minimum Data Foundation
-**Assigned Agent:** Prompt Engineer
-**Status:** ✅ COMPLETED
-
-**Objective:**
-Comprehensive QA checklist for validating all Phase 1 deliverables before production activation.
-
----
-
-## PHASE 1 — COMPREHENSIVE QA CHECKLIST
-
----
-
-### A. Cron Registration Safety
-
-- [ ] **A1.** `eventImpactSync.cron.ts` is NOT in the main `crons` array in `server.ts` (lines 94-112)
-- [ ] **A2.** `eventImpactOutcomeChecker.cron.ts` is NOT in the main `crons` array in `server.ts`
-- [ ] **A3.** Both new crons use the conditional registration pattern (lines 125-135 style)
-- [ ] **A4.** Sync cron registration wrapped in `if (env.EVENT_IMPACT_SYNC_ENABLED)`
-- [ ] **A5.** Outcome checker registration wrapped in `if (env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED)`
-- [ ] **A6.** Both conditional blocks use `setTimeout` with `crons.length * cronStartDelay`
-- [ ] **A7.** Both conditional blocks have try/catch with `logger.error` on failure
-- [ ] **A8.** Server starts without errors when both flags are false (default)
-- [ ] **A9.** Existing 14 crons still register normally (no regressions)
-- [ ] **A10.** Import paths for both new crons are correct in server.ts
-
----
-
-### B. Feature Flag Defaults
-
-- [ ] **B1.** `EVENT_IMPACT_SYNC_ENABLED` defaults to `false` in `env.ts`
-- [ ] **B2.** `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` defaults to `false` in `env.ts`
-- [ ] **B3.** All 6 event impact flags present in `env.ts` (4 Phase 6B + 2 Phase 1):
-  - `EVENT_IMPACT_ENGINE_ENABLED` (default false)
-  - `EVENT_IMPACT_PERSISTENCE_ENABLED` (default false)
-  - `EVENT_IMPACT_BACKFILL_ENABLED` (default false)
-  - `EVENT_IMPACT_BACKFILL_DRY_RUN` (default true)
-  - `EVENT_IMPACT_SYNC_ENABLED` (default false)
-  - `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED` (default false)
-- [ ] **B4.** Missing env vars do NOT crash the server (Zod defaults)
-- [ ] **B5.** Flags are accessible via `env.FLAG_NAME` in code
-- [ ] **B6.** No other env flags were modified or renamed
-
----
-
-### C. Disabled Flag Behavior
-
-- [ ] **C1.** When `EVENT_IMPACT_SYNC_ENABLED=false`: sync cron function returns early without querying DB
-- [ ] **C2.** When `EVENT_IMPACT_OUTCOME_CHECKER_ENABLED=false`: outcome checker function returns early without querying DB
-- [ ] **C3.** When both flags are false: zero references to event_impacts/event_impact_outcomes tables in server logs
-- [ ] **C4.** Server memory footprint unchanged when flags are false (cron functions not loaded into memory path)
-- [ ] **C5.** No background processes or side effects when flags are false
-
----
-
-### D. No Existing Cron Modifications
-
-- [ ] **D1.** `aiWorkflow.cron.ts` — unchanged (verify via git diff)
-- [ ] **D2.** `triageEngine.cron.ts` — unchanged (if exists)
-- [ ] **D3.** `eventOutcomeChecker.cron.ts` — unchanged (this is the existing Phase 6A outcome checker)
-- [ ] **D4.** `scenarioOutcomeChecker.cron.ts` — unchanged
-- [ ] **D5.** `signalPerformance.cron.ts` — unchanged
-- [ ] **D6.** `tpslMonitor.cron.ts` — unchanged
-- [ ] **D7.** `airdropDiscovery.cron.ts` — unchanged
-- [ ] **D8.** `airdropRssHunter.cron.ts` — unchanged
-- [ ] **D9.** `convictionUpdate.cron.ts` — unchanged
-- [ ] **D10.** `historicalNews.cron.ts` — unchanged
-- [ ] **D11.** `telegramMonitor.cron.ts` — unchanged
-- [ ] **D12.** `levelIntelligenceCron.ts` — unchanged
-
-**Verification:** `git diff --name-only` should only show `server.ts`, `env.ts`, and the 2 new cron files.
-
----
-
-### E. No Existing Service Modifications
-
-- [ ] **E1.** `eventImpactAnalysis.service.ts` — unchanged
-- [ ] **E2.** `eventImpactPersistence.service.ts` — unchanged (used by new crons but not modified)
-- [ ] **E3.** `openai.service.ts` — unchanged
-- [ ] **E4.** `binance.service.ts` — unchanged (used by outcome checker but not modified)
-- [ ] **E5.** All other service files — unchanged
-
-**Verification:** No service file in `backend/src/services/` modified except the 2 new cron files.
-
----
-
-### F. No Existing Table Modifications
-
-- [ ] **F1.** `coin_news_history` table — schema unchanged
-- [ ] **F2.** `coin_memory` table — schema unchanged
-- [ ] **F3.** `radarSignals` table — schema unchanged
-- [ ] **F4.** `signalPerformance` table — schema unchanged
-- [ ] **F5.** `market_scenarios` table — schema unchanged
-- [ ] **F6.** No `ALTER TABLE` statements in migration SQL
-- [ ] **F7.** Migration SQL only contains `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX`
-
-**Verification:** `grep -i "ALTER TABLE" backend/scripts/migrate-event-impacts.sql` returns nothing.
-
----
-
-### G. Outcome Reuse from coin_news_history
-
-- [ ] **G1.** Backfill correctly maps `change1h` → 1h horizon outcome `change_percent`
-- [ ] **G2.** Backfill correctly maps `change4h` → 4h horizon outcome `change_percent`
-- [ ] **G3.** Backfill correctly maps `change24h` → 24h horizon outcome `change_percent`
-- [ ] **G4.** Backfill correctly maps `change3d` → 3d (72h) horizon outcome `change_percent`
-- [ ] **G5.** Backfill correctly maps `change7d` → 7d (168h) horizon outcome `change_percent`
-- [ ] **G6.** Backfill correctly maps `priceXhAfter` → `price_at_horizon`
-- [ ] **G7.** Backfill correctly maps `maxUpsideAfterEvent` → `max_upside_percent` (same for all 5 horizons)
-- [ ] **G8.** Backfill correctly maps `maxDrawdownAfterEvent` → `max_drawdown_percent` (same for all 5 horizons)
-- [ ] **G9.** Backfill correctly maps `timeToPeakHours` → `time_to_peak_hours` (same for all 5 horizons)
-- [ ] **G10.** Backfill correctly maps `timeToBottomHours` → `time_to_bottom_hours` (same for all 5 horizons)
-- [ ] **G11.** Backfill correctly maps `outcomeClassification` → `outcome_classification` (same for all 5 horizons)
-- [ ] **G12.** `due_at` calculated correctly: `published_at + horizon_hours`
-- [ ] **G13.** `status` set to `'completed'` when `change_percent` is not null, `'pending'` otherwise
-
----
-
-### H. Idempotency
-
-- [ ] **H1.** Sync cron LEFT JOIN query skips already-synced records (WHERE event_impacts.id IS NULL)
-- [ ] **H2.** Running sync cron twice produces no duplicate event_impacts
-- [ ] **H3.** UNIQUE index on `event_impacts.source_id` prevents duplicates at DB level
-- [ ] **H4.** UNIQUE index on `event_impact_outcomes (event_impact_id, horizon)` prevents duplicate outcomes
-- [ ] **H5.** Backfill script skips already-processed records (checks source_id existence)
-- [ ] **H6.** Running backfill script twice produces identical results (same row counts)
-- [ ] **H7.** Outcome checker only processes `status='pending'` records (skips already-completed)
-- [ ] **H8.** Migration SQL uses `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS` (idempotent)
-
----
-
-### I. Error Handling
-
-- [ ] **I1.** Sync cron has outer try/catch in `runEventImpactSync()`
-- [ ] **I2.** Sync cron has inner try/catch per row (failed rows don't stop batch)
-- [ ] **I3.** Sync cron logs summary: `{ scanned, synced, skipped, errors }`
-- [ ] **I4.** Outcome checker has outer try/catch in `runEventImpactOutcomeChecker()`
-- [ ] **I5.** Outcome checker has inner try/catch per outcome
-- [ ] **I6.** Outcome checker logs summary: `{ processed, completed, failed, unsupported }`
-- [ ] **I7.** Outcome checker handles missing `priceAtEvent` → marks as 'failed' with error message
-- [ ] **I8.** Outcome checker handles empty candles from Binance → marks as 'unsupported'
-- [ ] **I9.** Outcome checker handles Binance API errors → marks as 'failed' with error message
-- [ ] **I10.** Both crons log errors via `logger.error` (not console.log)
-- [ ] **I11.** Neither cron crashes the server on error (both use try/catch in startCron)
-
----
-
-### J. TypeScript Quality
-
-- [ ] **J1.** `tsc --noEmit` clean on entire backend
-- [ ] **J2.** Zero `any` types in `eventImpactSync.cron.ts` (verify: `rg '\bany\b' backend/src/crons/eventImpactSync.cron.ts`)
-- [ ] **J3.** Zero `any` types in `eventImpactOutcomeChecker.cron.ts` (verify: `rg '\bany\b' backend/src/crons/eventImpactOutcomeChecker.cron.ts`)
-- [ ] **J4.** All Drizzle query results properly typed (no implicit `any` from ORM)
-- [ ] **J5.** `CoinNewsHistoryRecord` type used correctly (no unsafe casts)
-- [ ] **J6.** Import paths are correct and resolve without errors
-- [ ] **J7.** No `@ts-ignore` or `@ts-expect-error` directives
-
----
-
-### K. No External API Additions
-
-- [ ] **K1.** No new API endpoints added to `market.routes.ts`
-- [ ] **K2.** No new controller handlers added to `market.controller.ts`
-- [ ] **K3.** Outcome checker uses ONLY existing `getCoinKlinesRange()` from `binance.service.ts`
-- [ ] **K4.** No new HTTP client libraries installed
-- [ ] **K5.** No new external API URLs referenced in new code
-- [ ] **K6.** Sync cron makes zero network calls (DB only)
-- [ ] **K7.** `package.json` has no new dependencies
-
-**Verification:** `git diff package.json` shows no changes (or only dev dependency changes).
-
----
-
-### L. Sync Cron Implementation (T-1.2)
-
-- [ ] **L1.** File exists at `backend/src/crons/eventImpactSync.cron.ts`
-- [ ] **L2.** Exports: `runEventImpactSync`, `startEventImpactSyncCron`
-- [ ] **L3.** Schedule: `*/30 * * * *` (every 30 minutes)
-- [ ] **L4.** Env flag check at function start: `env.EVENT_IMPACT_SYNC_ENABLED`
-- [ ] **L5.** LEFT JOIN query: `coinNewsHistory LEFT JOIN eventImpacts ON eventImpacts.sourceId = coinNewsHistory.id`
-- [ ] **L6.** WHERE conditions: `isNotNull(eventSeverity)`, `isNull(eventImpacts.id)`, `gt(publishedAt, 48h ago)`
-- [ ] **L7.** `orderBy(desc(publishedAt))` + `.limit(50)`
-- [ ] **L8.** Defensive filter: `unsyncedRows.filter(row => !row.eventImpacts)`
-- [ ] **L9.** Calls `persistEventImpact()` then `persistEventImpactOutcomes()` per row
-- [ ] **L10.** Summary logged at end of run
-
----
-
-### M. Outcome Checker Cron Implementation (T-1.3)
-
-- [ ] **M1.** File exists at `backend/src/crons/eventImpactOutcomeChecker.cron.ts`
-- [ ] **M2.** Exports: `runEventImpactOutcomeChecker`, `startEventImpactOutcomeCheckerCron`
-- [ ] **M3.** Schedule: `*/30 * * * *` (every 30 minutes)
-- [ ] **M4.** Env flag check at function start: `env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED`
-- [ ] **M5.** INNER JOIN query: `eventImpactOutcomes JOIN eventImpacts`
-- [ ] **M6.** WHERE: `eq(status, 'pending')` AND `lte(dueAt, now)`
-- [ ] **M7.** `.limit(100)`
-- [ ] **M8.** USDT suffix appended: `coinSymbol + 'USDT'` for Binance API
-- [ ] **M9.** `priceAtEvent` null check → status 'failed'
-- [ ] **M10.** Empty candles → status 'unsupported'
-- [ ] **M11.** `change_percent = ((priceAtHorizon - priceAtEvent) / priceAtEvent) * 100`
-- [ ] **M12.** `max_upside_percent` = max positive change across all candles
-- [ ] **M13.** `max_drawdown_percent` = max negative change across all candles
-- [ ] **M14.** `time_to_peak_hours` = `(peakCandle.closeTime - publishedAtMs) / 3600000`
-- [ ] **M15.** `time_to_bottom_hours` = `(bottomCandle.closeTime - publishedAtMs) / 3600000`
-- [ ] **M16.** Classification thresholds: strong_bullish (>15), bullish (>5), neutral (±5), bearish (>-15), strong_bearish (<=-15)
-- [ ] **M17.** Update sets: `status='completed'`, `checkedAt=new Date()`, `updatedAt=new Date()`
-- [ ] **M18.** Failure updates set appropriate `status` + `errorMessage`
-
----
-
-### N. Runbook Verification (T-1.5)
-
-- [ ] **N1.** All flag names in runbook match `env.ts` exactly
-- [ ] **N2.** All SQL queries in runbook are syntactically correct for PostgreSQL
-- [ ] **N3.** Migration execution steps documented with verification queries
-- [ ] **N4.** Backfill steps follow dry-run → execute sequence
-- [ ] **N5.** Flag enablement order: persistence → backfill → sync → outcome checker
-- [ ] **N6.** Monitoring queries return useful diagnostic data
-- [ ] **N7.** Rollback sets all Phase 1 flags to false
-- [ ] **N8.** Full rollback SQL drops tables in correct order (outcomes first)
-- [ ] **N9.** Healthy/warning thresholds defined with actionable responses
-- [ ] **N10.** Daily monitoring section covers 7-day stabilization window
-
----
-
-### Summary Scorecard
-
-| Section | Items | Status |
-|---------|-------|--------|
-| A. Cron Registration Safety | 10 | ☐ |
-| B. Feature Flag Defaults | 6 | ☐ |
-| C. Disabled Flag Behavior | 5 | ☐ |
-| D. No Existing Cron Modifications | 12 | ☐ |
-| E. No Existing Service Modifications | 5 | ☐ |
-| F. No Existing Table Modifications | 7 | ☐ |
-| G. Outcome Reuse from coin_news_history | 13 | ☐ |
-| H. Idempotency | 8 | ☐ |
-| I. Error Handling | 11 | ☐ |
-| J. TypeScript Quality | 7 | ☐ |
-| K. No External API Additions | 7 | ☐ |
-| L. Sync Cron Implementation | 10 | ☐ |
-| M. Outcome Checker Implementation | 18 | ☐ |
-| N. Runbook Verification | 10 | ☐ |
-| **TOTAL** | **129** | **☐/129** |
-
-**QA PASS Criteria:** All 129 items checked. Zero blocking failures allowed.
-
----
-
-*QA Checklist authored: May 4, 2026 | Prompt Engineer | Phase 1 — Minimum Data Foundation*
-
----
-
-## GUARDRAILS
-
-1. **ZERO `any` types** across all new files.
-2. **No existing cron modifications** — new crons only.
-3. **No existing service modifications** — use existing `persistEventImpact()` and `persistEventImpactOutcomes()`.
-4. **No existing model modifications** — Drizzle models already have event_impacts + event_impact_outcomes.
-5. **Feature flags default to `false`** — safe to deploy without enabling.
-6. **Conditional server.ts registration** — new crons only start when flags are true.
-7. **Idempotent sync** — LEFT JOIN ensures no duplicate event_impacts records.
-8. **Graceful failure** — individual outcome check failures don't stop the cron.
-9. **Binance only** — no new external APIs.
-10. **No AI calls** — outcome checking is deterministic (price data only).
-11. **No frontend changes** — this is backend-only.
-12. **No commit/push before QA PASS**.
-
-## RISK ASSESSMENT
-
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| Binance API rate limits during outcome checking | Medium | LIMIT 100 per run, 30-min interval, handle 429 errors gracefully |
-| Non-Binance coins cause repeated failures | Low | Mark as 'unsupported' on first failure, don't retry |
-| Sync cron creates duplicates | None | LEFT JOIN + UNIQUE constraint on source_id prevents duplicates |
-| Existing pipeline breaks | None | Zero modifications to existing crons/services |
-| Large backfill causes DB load | Low | Batch size 100, run during low-traffic period |
-| Migration fails | Low | IF NOT EXISTS + documented rollback (DROP TABLE) |
-
----
-
----
-
-# Phase 6B — Event Impact Persistence
-
-**Status:** ✅ COMPLETED — Pushed (6a3c9f4)
-**Date:** May 4, 2026
-**Priority:** P1 (Persists Phase 6A analysis into dedicated parallel tables)
-**Scope:** 2 migrations, 2 Drizzle models, 1 persistence service, 1 backfill script, 2 env flags, 1 documentation update, 1 QA checklist
-**Reviewed by:** Strategic Planner — APPROVED FOR PLANNING
-
-## OBJECTIVE
-
-Create a persistence layer for the Event Impact Engine. Store calculated event impact data in two dedicated parallel tables (`event_impacts` and `event_impact_outcomes`) that normalize and extend the data already computed by the existing `eventImpactAnalysis.service.ts`. Phase 6B does NOT modify any existing tables or public-facing features.
-
-## PHASE 6B SCOPE LIMITATIONS
-
-**Phase 6B is strictly additive persistence only:**
-
-- ✅ Create new `event_impacts` table (parallel to coin_news_history)
-- ✅ Create new `event_impact_outcomes` table (per-horizon outcomes)
-- ✅ Create persistence service that reads from coin_news_history and writes to new tables
-- ✅ Create backfill script with dry-run mode
-- ✅ Add feature flags (default false)
-- ✅ Write to new tables only
-
-**Phase 6B explicitly does NOT include:**
-
-- ❌ Modify coin_news_history schema
-- ❌ Modify any existing table schema
-- ❌ Modify Living Articles
-- ❌ Modify scorecard
-- ❌ Modify public UI / frontend
-- ❌ Add external APIs
-- ❌ Modify AI workflow prompts
-- ❌ Add prediction/forecasting
-- ❌ Enable flags in production
-- ❌ Commit or push before QA PASS
-
-## ARCHITECTURE OVERVIEW
-
-```
-coin_news_history (existing, read-only)
-         │
-         ▼
-eventImpactPersistence.service.ts (new)
-  ├── reads coin_news_history rows
-  ├── normalizes into event_impacts row
-  ├── generates 5 event_impact_outcomes rows per event
-  │     (1h, 4h, 24h, 3d, 7d)
-  └── writes ONLY to new tables
-         │
-         ▼
-  ┌─────────────────┐    ┌──────────────────────────┐
-  │  event_impacts   │───<│  event_impact_outcomes    │
-  │  (1 row/event)   │    │  (5 rows/event)           │
-  └─────────────────┘    └──────────────────────────┘
-```
-
-## DATA MAPPING
-
-### coin_news_history → event_impacts
-
-| Source Field | Target Field | Transform |
+| Factor | Weight | Calculation |
 |---|---|---|
-| id | source_id | Direct copy (nullable in target) |
-| — | source_table | Hardcoded 'coin_news_history' |
-| coinSymbol | coinSymbol | Direct copy |
-| eventType | eventType | Direct copy |
-| eventSeverity | eventSeverity | Direct copy (integer) |
-| eventScope | eventScope | Direct copy |
-| publishedAt | publishedAt | Direct copy |
-| priceAtTime | priceAtEvent | Direct copy |
-| — | priceSource | Default 'binance' |
-| — | status | 'completed' if all 5 horizons have data, else 'pending' |
+| Number of touches | 30% | `min(touchCount / 5, 1) * 100` — capped at 5 touches |
+| Volume at level | 30% | `min(avgVolumeAtLevel / overallAvgVolume, 1.5) / 1.5 * 100` |
+| Rejection strength | 20% | Average wick-to-body ratio at level as percentage (0-100) |
+| Timeframe weight | 10% | All from 4H → always 100 (fixed for now) |
+| Recency | 10% | `100 - (daysSinceLastTouch / 30 * 100)`, min 0 |
 
-### coin_news_history → event_impact_outcomes (5 rows per event)
+**Rejection strength calculation:**
+For each candle near the level (within 0.5%):
+- For resistance: `upperWick / candleRange` where `upperWick = high - max(open, close)` and `range = high - low`
+- For support: `lowerWick / candleRange` where `lowerWick = min(open, close) - low`
+- Average all rejection strengths at the level
 
-| Horizon | horizon_hours | change_source | price_source |
-|---|---|---|---|
-| '1h' | 1 | change1h | price1hAfter |
-| '4h' | 4 | change4h | price4hAfter |
-| '24h' | 24 | change24h | price24hAfter |
-| '3d' | 72 | change3d | price3dAfter |
-| '7d' | 168 | change7d | price7dAfter |
-
-Per-outcome row fields:
-- change_percent ← changeXh from coin_news_history
-- price_at_horizon ← priceXhAfter from coin_news_history
-- max_upside_percent ← maxUpsideAfterEvent (same value for all 5 horizons)
-- max_drawdown_percent ← maxDrawdownAfterEvent (same value for all 5 horizons)
-- time_to_peak_hours ← timeToPeakHours (same value for all 5 horizons)
-- time_to_bottom_hours ← timeToBottomHours (same value for all 5 horizons)
-- outcome_classification ← outcomeClassification (same value for all 5 horizons)
-- due_at ← publishedAt + horizon_hours hours
-- checked_at ← now() if data exists, null otherwise
-- status ← 'completed' if change_percent is not null, else 'pending'
-
-## REQUIRED TASKS
-
-### T-6B.1 — Create event_impacts Migration
-
-**Task ID:** T-6B.1  
-**Phase:** Phase 6B — Create event_impacts migration  
-**Assigned Agent:** Senior Developer  
-**Status:** Pending  
-
-**Objective:**  
-Create SQL migration for `event_impacts` table with all required columns, constraints, and indexes. This table is parallel to coin_news_history and does not modify it.
-
-**Files to inspect:**
-- `backend/src/models/market.model.ts` — existing table patterns and Drizzle conventions
-- `backend/scripts/migrate-market-scenarios.sql` — reference migration pattern
-
-**Files allowed to modify:**
-- `backend/scripts/migrate-event-impacts.sql` (new file)
-
-**Forbidden files:**
-- `backend/src/models/market.model.ts` (T-6B.3 handles Drizzle model)
-- Any existing migration files
-- Any existing table schemas
-- Any service/cron/controller files
+**Algorithm — Step 4: Filter**
+- Only return levels where `strengthScore >= 60`
+- Sort by `strengthScore` DESC
+- Limit to top 5 per side (support, resistance)
 
 **Constraints:**
-- Additive only — no existing tables modified
-- source_id is nullable (NOT NOT NULL) — preserves impact data if source deleted
-- NO ON DELETE CASCADE — use ON DELETE SET NULL for source_id FK
-- UNIQUE constraint on source_id (one impact record per source event)
-- All timestamps use `DEFAULT NOW()`
-- status defaults to 'pending'
+- Zero live API calls — all data from `ohlcv_candles`
+- Handle edge case: less than 5 candles → return empty arrays
+- Handle edge case: no swing points found → return empty arrays
 
-**Step-by-step instructions:**
+**Dependencies:** T-V2-1A (SRLevel interface)
 
-1. Create new file `backend/scripts/migrate-event-impacts.sql`
-2. Add header comment with phase, date, description
-3. Create `event_impacts` table:
-```sql
-CREATE TABLE IF NOT EXISTS event_impacts (
-  id SERIAL PRIMARY KEY,
-  source_table VARCHAR(50) NOT NULL DEFAULT 'coin_news_history',
-  source_id INTEGER REFERENCES coin_news_history(id) ON DELETE SET NULL,
-  coin_symbol VARCHAR(20) NOT NULL,
-  event_type VARCHAR(50),
-  event_severity INTEGER,
-  event_scope VARCHAR(20),
-  published_at TIMESTAMP NOT NULL,
-  price_at_event REAL,
-  price_source VARCHAR(20) NOT NULL DEFAULT 'binance',
-  status VARCHAR(20) NOT NULL DEFAULT 'pending',
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-```
-4. Add UNIQUE constraint on source_id:
-```sql
-CREATE UNIQUE INDEX idx_event_impacts_source_id ON event_impacts (source_id) WHERE source_id IS NOT NULL;
-```
-5. Add required indexes:
-```sql
-CREATE INDEX idx_event_impacts_coin_symbol ON event_impacts (coin_symbol);
-CREATE INDEX idx_event_impacts_event_type ON event_impacts (event_type);
-CREATE INDEX idx_event_impacts_status ON event_impacts (status);
-CREATE INDEX idx_event_impacts_published_at ON event_impacts (published_at);
-```
-6. Add rollback section at bottom (commented):
-```sql
--- ROLLBACK:
--- DROP TABLE IF EXISTS event_impacts;
-```
-
-**Acceptance criteria:**
-- Migration creates `event_impacts` table with all 13 columns
-- UNIQUE partial index on source_id (WHERE source_id IS NOT NULL)
-- 4 performance indexes (coin_symbol, event_type, status, published_at)
-- source_id references coin_news_history(id) ON DELETE SET NULL
-- No ON DELETE CASCADE anywhere
-- status defaults to 'pending'
-- created_at and updated_at default to NOW()
-- Migration is idempotent (CREATE TABLE IF NOT EXISTS)
-- Rollback is clean (single DROP TABLE)
-
-**QA checklist:**
-- [ ] SQL syntax valid for PostgreSQL
-- [ ] All 13 columns present with correct types
-- [ ] UNIQUE index on source_id (partial, NULL-aware)
-- [ ] 4 performance indexes created
-- [ ] FK uses ON DELETE SET NULL (not CASCADE)
-- [ ] Defaults correct (source_table, price_source, status, timestamps)
-- [ ] Idempotent (IF NOT EXISTS)
-- [ ] Rollback section documented
-- [ ] No existing tables referenced except FK
-
-**Rollback notes:**
-- `DROP TABLE IF EXISTS event_impacts;`
-- No data in existing tables affected
-- CASCADE on DROP handles index cleanup
-
-**Dependencies:**
-- None (table is standalone with optional FK)
+**Rollback:** Git revert
 
 ---
 
-### T-6B.2 — Create event_impact_outcomes Migration
+### T-V2-1D — Market Structure Engine (Sub-engine 1.3)
 
-**Task ID:** T-6B.2  
-**Phase:** Phase 6B — Create event_impact_outcomes migration  
-**Assigned Agent:** Senior Developer  
-**Status:** Pending  
+**Task ID:** T-V2-1D
+**Phase:** v2.Phase 1 — Technical Analysis Engine
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** C (depends on T-V2-1A — parallel with T-V2-1C)
 
-**Objective:**  
-Create SQL migration for `event_impact_outcomes` table that stores per-horizon outcome data for each event impact record. Each event_impacts row will have up to 5 outcome rows (1h, 4h, 24h, 3d, 7d).
+**Objective:**
+Implement `analyzeMarketStructure()` — reads the last 100 4H candles to detect Higher Highs + Higher Lows (uptrend), Lower Highs + Lower Lows (downtrend), Break of Structure (BOS), Change of Character (CHOCH), and Failed BOS.
 
-**Files to inspect:**
-- `backend/scripts/migrate-event-impacts.sql` (from T-6B.1 — must exist first)
-- `backend/scripts/migrate-market-scenarios.sql` — reference for scenario_horizon_outcomes pattern
+**Spec reference:** nextstep2-v2.md lines 303-307
 
-**Files allowed to modify:**
-- `backend/scripts/migrate-event-impacts.sql` (append to T-6B.1 migration)
+**File to modify:**
+- `backend/src/services/technicalAnalysis.service.ts`
 
-**Forbidden files:**
-- `backend/src/models/market.model.ts` (T-6B.3 handles Drizzle model)
-- Any service/cron/controller files
-- Any existing table schemas
-
-**Constraints:**
-- Additive only — no existing tables modified
-- UNIQUE on (event_impact_id, horizon) — one outcome per horizon per event
-- FK on event_impact_id references event_impacts(id) ON DELETE CASCADE (if event deleted, outcomes go too — this is the SAME table pair, not cross-table)
-- All nullable outcome fields for partial data
-- status defaults to 'pending'
-- error_message for logging failures
-
-**Step-by-step instructions:**
-
-1. Append to `backend/scripts/migrate-event-impacts.sql`
-2. Create `event_impact_outcomes` table:
-```sql
-CREATE TABLE IF NOT EXISTS event_impact_outcomes (
-  id SERIAL PRIMARY KEY,
-  event_impact_id INTEGER NOT NULL REFERENCES event_impacts(id) ON DELETE CASCADE,
-  horizon VARCHAR(10) NOT NULL,
-  horizon_hours INTEGER NOT NULL,
-  due_at TIMESTAMP NOT NULL,
-  checked_at TIMESTAMP,
-  price_at_horizon REAL,
-  change_percent REAL,
-  max_upside_percent REAL,
-  max_drawdown_percent REAL,
-  time_to_peak_hours INTEGER,
-  time_to_bottom_hours INTEGER,
-  outcome_classification VARCHAR(30),
-  status VARCHAR(20) NOT NULL DEFAULT 'pending',
-  error_message TEXT,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-```
-3. Add UNIQUE constraint:
-```sql
-CREATE UNIQUE INDEX idx_event_impact_outcomes_unique ON event_impact_outcomes (event_impact_id, horizon);
-```
-4. Add required indexes:
-```sql
-CREATE INDEX idx_event_impact_outcomes_status ON event_impact_outcomes (status);
-CREATE INDEX idx_event_impact_outcomes_due_at ON event_impact_outcomes (due_at);
-CREATE INDEX idx_event_impact_outcomes_event_impact_id ON event_impact_outcomes (event_impact_id);
-```
-5. Update rollback section:
-```sql
--- ROLLBACK:
--- DROP TABLE IF EXISTS event_impact_outcomes;
--- DROP TABLE IF EXISTS event_impacts;
-```
-
-**Acceptance criteria:**
-- Migration creates `event_impact_outcomes` table with all 16 columns
-- UNIQUE index on (event_impact_id, horizon)
-- 3 performance indexes (status, due_at, event_impact_id)
-- FK uses ON DELETE CASCADE (within same table pair — acceptable)
-- All outcome fields nullable (partial data OK)
-- status defaults to 'pending'
-- Horizon values: '1h', '4h', '24h', '3d', '7d'
-- Rollback drops outcomes first, then impacts (FK order)
-
-**QA checklist:**
-- [ ] SQL syntax valid for PostgreSQL
-- [ ] All 16 columns present with correct types
-- [ ] UNIQUE index on (event_impact_id, horizon)
-- [ ] 3 performance indexes created
-- [ ] FK to event_impacts(id) with CASCADE (same-pair only)
-- [ ] All outcome fields nullable
-- [ ] Defaults correct (status, timestamps)
-- [ ] Rollback order correct (outcomes first, then impacts)
-- [ ] Horizon varchar(10) sufficient for '1h','4h','24h','3d','7d'
-
-**Rollback notes:**
-- `DROP TABLE IF EXISTS event_impact_outcomes;`
-- `DROP TABLE IF EXISTS event_impacts;`
-- No data in existing tables affected
-
-**Dependencies:**
-- T-6B.1 (event_impacts table must be created first in same migration)
-
----
-
-### T-6B.3 — Create Event Impact Persistence Service
-
-**Task ID:** T-6B.3  
-**Phase:** Phase 6B — Create eventImpactPersistence.service.ts  
-**Assigned Agent:** Senior Developer  
-**Status:** Pending  
-
-**Objective:**  
-Create `backend/src/services/eventImpactPersistence.service.ts` that reads processed event data from `coin_news_history` and persists normalized records into the new `event_impacts` and `event_impact_outcomes` tables. This service is the core persistence bridge.
-
-**Files to inspect:**
-- `backend/src/services/eventImpactAnalysis.service.ts` — existing read-only analysis service (pattern reference)
-- `backend/src/services/scenarioTracker.service.ts` — reference for write service patterns
-- `backend/src/models/market.model.ts` — Drizzle table definitions (after T-6B Drizzle update)
-- `backend/src/config/env.ts` — env flag pattern
-
-**Files allowed to modify:**
-- `backend/src/services/eventImpactPersistence.service.ts` (new file)
-
-**Forbidden files:**
-- `backend/src/services/eventImpactAnalysis.service.ts` (read-only, must not change)
-- `backend/src/models/market.model.ts` (separate task)
-- `backend/src/config/env.ts` (separate task)
-- Any cron, controller, or route files
-- Any frontend files
-
-**Constraints:**
-- Zero `any` types — use explicit TypeScript interfaces
-- Read from coin_news_history (SELECT only)
-- Write ONLY to event_impacts and event_impact_outcomes
-- Idempotent — skip if source_id already exists in event_impacts
-- Must check EVENT_IMPACT_PERSISTENCE_ENABLED flag before any write
-- All writes wrapped in try/catch with proper error logging
-- No external API calls
-- No AI calls
-- Service must be stateless
-
-**Step-by-step instructions:**
-
-1. Create new file `backend/src/services/eventImpactPersistence.service.ts`
-2. Import Drizzle db, coinNewsHistory, eventImpacts, eventImpactOutcomes from models
-3. Import env config for EVENT_IMPACT_PERSISTENCE_ENABLED
-4. Define TypeScript interfaces:
-
+**Function signature:**
 ```typescript
-interface EventImpactRow {
-  sourceTable: string;
-  sourceId: number | null;
-  coinSymbol: string;
-  eventType: string | null;
-  eventSeverity: number | null;
-  eventScope: string | null;
-  publishedAt: Date;
-  priceAtEvent: number | null;
-  priceSource: string;
-  status: string;
+export async function analyzeMarketStructure(symbol: string): Promise<MarketStructureResult>
+```
+
+**Data source:**
+- `getCandles(symbol, '4h', 100)` — last 100 4H candles, reversed to ASC order
+
+**Algorithm — Step 1: Identify Swing Points (reuse logic from T-V2-1C but within 100-candle window)**
+
+Same swing detection as T-V2-1C but over the 100-candle window:
+- Swing Highs and Swing Lows identified with 2-candle lookback/lookahead
+
+**Algorithm — Step 2: Determine Structure Pattern**
+
+```
+swings = ordered list of { type: 'high'|'low', price, index }
+
+// Find last 3+ swing points to determine pattern
+recentSwings = last 6 swing points (or all if < 6)
+
+// Extract swing highs and swing lows separately
+swingHighs = recentSwings.filter(s => s.type === 'high')
+swingLows = recentSwings.filter(s => s.type === 'low')
+
+// Check for Higher Highs + Higher Lows (uptrend)
+hh_hl = swingHighs have ascending prices AND swingLows have ascending prices
+  → at least 2 swing highs and 2 swing lows needed
+
+// Check for Lower Highs + Lower Lows (downtrend)
+lh_ll = swingHighs have descending prices AND swingLows have descending prices
+  → at least 2 swing highs and 2 swing lows needed
+
+// Break of Structure (BOS) — trend continuation
+// BOS Bullish: price breaks above the most recent swing high while in uptrend
+bos_bullish = last swing high was broken (current price > lastSwingHigh.price) AND hh_hl is true
+
+// BOS Bearish: price breaks below the most recent swing low while in downtrend
+bos_bearish = last swing low was broken (current price < lastSwingLow.price) AND lh_ll is true
+
+// Change of Character (CHOCH) — potential reversal
+// CHOCH Bullish: price breaks above swing high BUT was in downtrend (reversal)
+choch_bullish = current price > lastSwingHigh.price AND lh_ll was true (downtrend broken)
+
+// CHOCH Bearish: price breaks below swing low BUT was in uptrend (reversal)
+choch_bearish = current price < lastSwingLow.price AND hh_hl was true (uptrend broken)
+
+// Failed BOS: price broke structure but immediately returned (within 3 candles)
+// Check if the last 3 candles show the break was rejected
+failed_bos = BOS detected BUT price returned below/above the broken level within 3 candles
+```
+
+**Priority of pattern detection (check in order, return first match):**
+1. FAILED_BOS (most urgent — no signal)
+2. CHOCH_BULLISH or CHOCH_BEARISH (reversal — -20 penalty)
+3. BOS_BULLISH or BOS_BEARISH (trend continuation)
+4. HH_HL or LH_LL (confirmed structure)
+5. NONE (no clear structure)
+
+**Algorithm — Step 3: Determine trend**
+- HH_HL, BOS_BULLISH, CHOCH_BULLISH → trend = 'bullish'
+- LH_LL, BOS_BEARISH, CHOCH_BEARISH → trend = 'bearish'
+- FAILED_BOS, NONE → trend = 'sideways'
+
+**Return:**
+```typescript
+{
+    pattern: detected pattern,
+    trend: bullish | bearish | sideways,
+    isChocho: true if CHOCH pattern,
+    isFailedBos: true if FAILED_BOS pattern,
+    lastSwingHigh: price of most recent swing high (null if none),
+    lastSwingLow: price of most recent swing low (null if none),
 }
+```
 
-interface EventImpactOutcomeRow {
-  eventImpactId: number;
-  horizon: string;
-  horizonHours: number;
-  dueAt: Date;
-  checkedAt: Date | null;
-  priceAtHorizon: number | null;
-  changePercent: number | null;
-  maxUpsidePercent: number | null;
-  maxDrawdownPercent: number | null;
-  timeToPeakHours: number | null;
-  timeToBottomHours: number | null;
-  outcomeClassification: string | null;
-  status: string;
-  errorMessage: string | null;
+**Error handling:**
+- Less than 5 candles → return `{ pattern: 'NONE', trend: 'sideways', isChocho: false, isFailedBos: false, lastSwingHigh: null, lastSwingLow: null }`
+- Less than 2 swing points on each side → same default
+
+**Dependencies:** T-V2-1A (MarketStructureResult, StructurePattern types)
+
+**Rollback:** Git revert
+
+---
+
+### T-V2-1E — Candle Pattern Recognition (Sub-engine 1.4)
+
+**Task ID:** T-V2-1E
+**Phase:** v2.Phase 1 — Technical Analysis Engine
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** D (depends on T-V2-1A, T-V2-1C)
+
+**Objective:**
+Implement `detectCandlePattern()` — recognizes 6 candlestick patterns (Hammer, Shooting Star, Bullish Engulfing, Bearish Engulfing, Morning Star, Evening Star). **Pattern is ONLY valid if all 3 conditions are met:** pattern present, volume confirmed, S/R alignment.
+
+**Spec reference:** nextstep2-v2.md lines 309-312
+
+**File to modify:**
+- `backend/src/services/technicalAnalysis.service.ts`
+
+**Function signature:**
+```typescript
+export async function detectCandlePattern(
+    symbol: string,
+    supportLevels: SRLevel[],
+    resistanceLevels: SRLevel[]
+): Promise<CandlePatternResult>
+```
+
+**Data sources:**
+- `getCandles(symbol, '4h', 5)` — last 5 candles (need current + previous for engulfing/star patterns)
+- `getLatestIndicator(symbol, '4h')` — for `volumeAvg20`
+
+**Pattern Definitions (strict thresholds):**
+
+| Pattern | Direction | Body Rule | Wick Rule | Context |
+|---|---|---|---|---|
+| Hammer | bullish | Small body (body < 30% of range) | Lower wick >= 2x body | At/near support |
+| Shooting Star | bearish | Small body (body < 30% of range) | Upper wick >= 2x body | At/near resistance |
+| Bullish Engulfing | bullish | Current candle body fully engulfs previous | N/A | Previous was bearish (close < open) |
+| Bearish Engulfing | bearish | Current candle body fully engulfs previous | N/A | Previous was bullish (close > open) |
+| Morning Star | bullish | 3-candle: bearish → small body → bullish | N/A | Third candle body >= 50% of first candle body |
+| Evening Star | bearish | 3-candle: bullish → small body → bearish | N/A | Third candle body >= 50% of first candle body |
+
+**3-Condition Gate (ALL must be true for isValid):**
+
+1. **Pattern present:** One of the 6 patterns detected (above definitions)
+2. **Volume confirmed:** Current candle volume > `volumeAvg20` from `ohlcv_indicators`
+3. **S/R alignment:**
+   - Bullish patterns (Hammer, Bullish Engulfing, Morning Star): pattern forms within 2% of a support level
+   - Bearish patterns (Shooting Star, Bearish Engulfing, Evening Star): pattern forms within 2% of a resistance level
+   - Use `isNearLevel()` helper from T-V2-1A with threshold = 2
+
+**Return:**
+```typescript
+{
+    pattern: RecognizedPattern | null,    // null if no pattern detected
+    direction: 'bullish' | 'bearish' | null,
+    volumeConfirmed: boolean,
+    srAligned: boolean,
+    isValid: false  // ALWAYS false if any condition fails
 }
 ```
 
-5. Implement `persistEventImpact(sourceRecord)` function:
-   - Check EVENT_IMPACT_PERSISTENCE_ENABLED, return null if false
-   - Check idempotency: query event_impacts WHERE source_id = sourceRecord.id, skip if exists
-   - Determine status: 'completed' if all 5 change fields non-null, else 'pending'
-   - INSERT into event_impacts with mapped fields
-   - Return the new event_impact.id
+**Critical rule:** If `volumeConfirmed` is false OR `srAligned` is false → `isValid = false`. Pattern is ignored entirely. This means `isValid = false AND pattern = 'hammer'` is possible (pattern found but not confirmed).
 
-6. Implement `persistEventImpactOutcomes(eventImpactId, sourceRecord)` function:
-   - Define HORIZONS constant: `[{horizon:'1h',hours:1,change:'change1h',price:'price1hAfter'}, ...]`
-   - For each horizon, calculate due_at = publishedAt + hours
-   - Determine per-horizon status: 'completed' if change_percent non-null, else 'pending'
-   - Set checked_at = new Date() if data exists, null otherwise
-   - Map maxUpsideAfterEvent, maxDrawdownAfterEvent, timeToPeakHours, timeToBottomHours, outcomeClassification (same values from source, applied to all 5 horizons)
-   - INSERT all 5 rows into event_impact_outcomes using db.insert().values([...])
-   - Return count of inserted outcomes
+**Dependencies:** T-V2-1A (CandlePatternResult, RecognizedPattern, SRLevel, isNearLevel), T-V2-1C (SRLevel data from detectSupportResistance)
 
-7. Implement `persistBatchFromCoinNewsHistory(limit, offset)` function:
-   - Query coin_news_history with limit/offset (for batching)
-   - Only select rows where eventSeverity IS NOT NULL (have been classified)
-   - For each row, call persistEventImpact then persistEventImpactOutcomes
-   - Track success/skip/error counts
-   - Return batch summary: { processed, created, skipped, errors }
-
-8. Implement `getEventImpactBySourceId(sourceId)` function:
-   - Query event_impacts WHERE source_id = sourceId
-   - Return the impact record or null
-
-9. Implement `getOutcomesForEventImpact(eventImpactId)` function:
-   - Query event_impact_outcomes WHERE event_impact_id = eventImpactId
-   - Return array of outcome records
-
-10. Export all functions
-
-**Acceptance criteria:**
-- Service compiles with zero `any` types
-- All functions check EVENT_IMPACT_PERSISTENCE_ENABLED
-- persistEventImpact is idempotent (skips existing source_ids)
-- persistEventImpactOutcomes creates exactly 5 rows per event
-- Batch function processes in configurable chunks
-- Error handling: individual record failures don't stop batch
-- TypeScript strict mode clean
-
-**QA checklist:**
-- [ ] `cd backend && npx tsc --noEmit` passes
-- [ ] Zero `any` types (grep verification)
-- [ ] EVENT_IMPACT_PERSISTENCE_ENABLED check in all write functions
-- [ ] Idempotency verified (run twice, no duplicates)
-- [ ] 5 outcome rows created per event impact
-- [ ] Null handling for all optional fields
-- [ ] Error logging on individual record failures
-- [ ] No external API calls
-- [ ] No modifications to coin_news_history
-- [ ] Interfaces match migration column types
-
-**Rollback notes:**
-- Delete `backend/src/services/eventImpactPersistence.service.ts`
-- No data cleanup needed (tables managed separately)
-
-**Dependencies:**
-- T-6B.1 + T-6B.2 (migrations must exist for Drizzle model)
-- Drizzle model updates for event_impacts and event_impact_outcomes
+**Rollback:** Git revert
 
 ---
 
-### T-6B.4 — Create Backfill Script with Dry-Run
+### T-V2-1F — Volume Confirmation + Signal Quality Score (Sub-engines 1.5 + 1.7)
 
-**Task ID:** T-6B.4  
-**Phase:** Phase 6B — Create backfill script with dry-run mode  
-**Assigned Agent:** Senior Developer  
-**Status:** Pending  
+**Task ID:** T-V2-1F
+**Phase:** v2.Phase 1 — Technical Analysis Engine
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** E (depends on T-V2-1A)
 
-**Objective:**  
-Create `backend/scripts/backfill-event-impacts.js` that processes existing `coin_news_history` records and populates the new `event_impacts` and `event_impact_outcomes` tables. Must have dry-run mode by default and be feature-flagged.
+**Objective:**
+Implement two functions: `analyzeVolumeConfirmation()` and `calculateQualityScore()`. Volume uses pre-computed indicators. Quality Score combines all sub-engine outputs into a final 0-100 score with penalty modifiers.
 
-**Files to inspect:**
-- `backend/scripts/backfill-phase45-scenarios.js` — reference backfill pattern (dry-run/execute, batching, logging)
-- `backend/src/services/eventImpactPersistence.service.ts` (after T-6B.3)
+**Spec reference:** nextstep2-v2.md lines 314-337
 
-**Files allowed to modify:**
-- `backend/scripts/backfill-event-impacts.js` (new file)
+**File to modify:**
+- `backend/src/services/technicalAnalysis.service.ts`
 
-**Forbidden files:**
-- Any service, model, cron, controller, route files
-- Any frontend files
-
-**Constraints:**
-- Dry-run mode is DEFAULT (safe to run without arguments)
-- Requires `--execute` flag to actually write data
-- Must check EVENT_IMPACT_BACKFILL_ENABLED env flag (default false)
-- Must check EVENT_IMPACT_BACKFILL_DRY_RUN env flag (default true)
-- Process in batches of 100 records
-- Idempotent — skip already-processed records (check source_id in event_impacts)
-- Handle individual record failures gracefully (continue batch)
-- Log progress every 100 records
-- Log summary at end: scanned, eligible, created, skipped, errors
-
-**Step-by-step instructions:**
-
-1. Create new file `backend/scripts/backfill-event-impacts.js`
-2. Follow pattern from `backfill-phase45-scenarios.js`:
-   - Require compiled dist files
-   - Parse CLI args: `--dry-run` (default) or `--execute`
-3. Check env flags:
-   - If EVENT_IMPACT_BACKFILL_ENABLED is false: print message and exit
-   - In `--execute` mode: if EVENT_IMPACT_BACKFILL_DRY_RUN is true, warn but allow override with `--force`
-4. Query coin_news_history:
-   - Select rows where eventSeverity IS NOT NULL (classified events)
-   - Order by publishedAt ASC (oldest first for chronological consistency)
-   - Process in batches of 100 using LIMIT/OFFSET
-5. For each batch:
-   - For each record, check if source_id already in event_impacts (idempotency)
-   - If dry-run: log what would be created
-   - If execute: call persistEventImpact + persistEventImpactOutcomes
-   - Track counts: scanned, eligible, created, skipped (already exists), errors
-6. Log progress after each batch
-7. Print final summary
-
-**Expected CLI behavior:**
-```
-# Safe dry-run (default)
-node backfill-event-impacts.js
-> [Backfill] DRY RUN mode (default)
-> [Backfill] EVENT_IMPACT_BACKFILL_ENABLED=false — exiting safely
-
-# With env flag enabled, still dry-run
-EVENT_IMPACT_BACKFILL_ENABLED=true node backfill-event-impacts.js
-> [Backfill] DRY RUN mode
-> [Backfill] Scanned: 500, Eligible: 320, Would Create: 320, Skipped: 180
-
-# Actual execution
-EVENT_IMPACT_BACKFILL_ENABLED=true node backfill-event-impacts.js --execute
-> [Backfill] EXECUTE mode
-> [Backfill] Batch 1/5: 100 records processed...
-> [Backfill] Summary: Scanned=500, Created=320, Skipped=180, Errors=0
+**Function 1 signature:**
+```typescript
+export async function analyzeVolumeConfirmation(symbol: string): Promise<VolumeConfirmationResult>
 ```
 
-**Acceptance criteria:**
-- Script runs with `node scripts/backfill-event-impacts.js` (after `npm run build`)
-- Dry-run is default — no writes without explicit `--execute`
-- Checks EVENT_IMPACT_BACKFILL_ENABLED flag
-- Idempotent — running twice produces same results
-- Batches of 100 records
-- Individual failures logged but don't stop batch
-- Progress logging every batch
-- Final summary with counts
+**Function 1 data source:**
+- `getCandles(symbol, '4h', 1)` → latest candle `.volume`
+- `getLatestIndicator(symbol, '4h')` → `.volumeAvg20`
 
-**QA checklist:**
-- [ ] Dry-run mode: no INSERT/UPDATE/DELETE operations
-- [ ] Execute mode: writes to event_impacts and event_impact_outcomes only
-- [ ] EVENT_IMPACT_BACKFILL_ENABLED=false: exits safely
-- [ ] Idempotent: second run skips all existing records
-- [ ] Batch size 100 respected
-- [ ] Error handling: single failure doesn't stop batch
-- [ ] Progress logging visible
-- [ ] Final summary accurate
-- [ ] No modifications to coin_news_history
-- [ ] No modifications to any existing tables
+**Function 1 algorithm:**
+```
+currentVolume = latest candle volume
+avgVolume = volumeAvg20 from indicators (or 0 if null)
 
-**Rollback notes:**
-- Delete `backend/scripts/backfill-event-impacts.js`
-- Data in new tables can be preserved or dropped separately
+IF avgVolume === 0:
+    RETURN { currentVolume, avgVolume: 0, ratio: 0, above: false, spike: false, low: true, modifier: 0 }
 
-**Dependencies:**
-- T-6B.1 + T-6B.2 (migrations run)
-- T-6B.3 (persistence service exists)
-- T-6B.5 (feature flags in env.ts)
+ratio = currentVolume / avgVolume
+isAboveAverage = ratio > 1.2        // > 20% above
+isSpike = ratio > 2.0               // > 2x average
+isLowVolume = ratio < 0.5           // < 50% of average
 
----
+scoreModifier:
+  IF isSpike: +25
+  ELSE IF isAboveAverage: +15
+  ELSE: 0
+```
 
-### T-6B.5 — Add Feature Flags
+**Function 2 signature:**
+```typescript
+export function calculateQualityScore(params: {
+    trend: TrendLabel;
+    currentPrice: number;
+    nearestSupport: SRLevel | null;
+    nearestResistance: SRLevel | null;
+    volumeConfirmed: boolean;
+    volumeSpike: boolean;
+    patternAtSR: boolean;
+    isChocho: boolean;
+    isFailedBos: boolean;
+    priceChange24h: number | null;    // from Binance or market filter, null if unavailable
+}): QualityScoreResult
+```
 
-**Task ID:** T-6B.5  
-**Phase:** Phase 6B — Add feature flags to env.ts  
-**Assigned Agent:** Senior Developer  
-**Status:** Pending  
+**Function 2 algorithm (exact from spec):**
 
-**Objective:**  
-Add two new feature flags to `backend/src/config/env.ts` for controlling event impact persistence and backfill operations. Both default to false for safe production deployment.
+```
+// Base scoring (4 factors, each +25 if true)
+trendConfirmed = true if trend is BULLISH/STRONG_BULLISH (for bullish signal) or BEARISH/STRONG_BEARISH (for bearish signal)
+  → For now: any non-SIDEWAYS trend counts as confirmed → +25
+nearSR = nearestSupport or nearestResistance exists AND isNearLevel(currentPrice, level.price, 2)
+  → +25 if true
+volumeConfirmed = volumeConfirmed param (from T-V2-1F Function 1 result) → +25 if true
+patternAtSR = patternAtSR param (from T-V2-1E isValid) → +25 if true
 
-**Files to inspect:**
-- `backend/src/config/env.ts` — existing env configuration with Zod schema
+baseScore = 0
+IF trendConfirmed: baseScore += 25
+IF nearSR: baseScore += 25
+IF volumeConfirmed: baseScore += 25
+IF patternAtSR: baseScore += 25
 
-**Files allowed to modify:**
-- `backend/src/config/env.ts`
+// Bonus from volume spike
+IF volumeSpike: baseScore += 10  // bonus on top of volumeConfirmed +25
 
-**Forbidden files:**
-- All other files
+// Penalty modifiers
+chochPenalty = isChocho ? -20 : 0
+lowVolumePenalty = (NOT volumeConfirmed AND NOT volumeSpike) ? -15 : 0
+manipulationPenalty = (priceChange24h !== null AND abs(priceChange24h) > 25) ? -20 : 0
 
-**Constraints:**
-- Both flags default to false
-- Missing env vars must NOT crash server
-- Use existing Zod boolean pattern
-- Flags must be accessible by services and scripts
+finalScore = clamp(baseScore + chochPenalty + lowVolumePenalty + manipulationPenalty, 0, 100)
 
-**Step-by-step instructions:**
+isRejected = finalScore < 60
+rejectionReason:
+  IF isFailedBos: "Failed Break of Structure — no signal"
+  ELSE IF finalScore < 60: "Quality score {finalScore} below threshold 60"
+  ELSE: null
+```
 
-1. Locate the env schema in `backend/src/config/env.ts`
-2. Add `EVENT_IMPACT_PERSISTENCE_ENABLED`:
-   ```typescript
-   EVENT_IMPACT_PERSISTENCE_ENABLED: z.boolean().default(false),
-   ```
-3. Add `EVENT_IMPACT_BACKFILL_ENABLED`:
-   ```typescript
-   EVENT_IMPACT_BACKFILL_ENABLED: z.boolean().default(false),
-   ```
-4. Add `EVENT_IMPACT_BACKFILL_DRY_RUN`:
-   ```typescript
-   EVENT_IMPACT_BACKFILL_DRY_RUN: z.boolean().default(true),
-   ```
-5. Place flags near existing `EVENT_IMPACT_ENGINE_ENABLED` flag (grouping by feature)
-6. Verify no startup crashes with missing env vars
+**Note:** `isFailedBos` is a hard rejection outside of score — if `isFailedBos` is true, the signal should be rejected regardless of score. The `calculateQualityScore` function reports this via `rejectionReason` but does NOT auto-reject (the caller decides).
 
-**Acceptance criteria:**
-- 3 new flags added: EVENT_IMPACT_PERSISTENCE_ENABLED, EVENT_IMPACT_BACKFILL_ENABLED, EVENT_IMPACT_BACKFILL_DRY_RUN
-- All default to safe values (false, false, true)
-- Server starts normally with no env vars set
-- `cd backend && npx tsc --noEmit` passes
-- Flags accessible via env config export
+**Dependencies:** T-V2-1A (QualityScoreResult, VolumeConfirmationResult, TrendLabel, SRLevel, isNearLevel)
 
-**QA checklist:**
-- [ ] Server starts without any new env vars
-- [ ] EVENT_IMPACT_PERSISTENCE_ENABLED defaults to false
-- [ ] EVENT_IMPACT_BACKFILL_ENABLED defaults to false
-- [ ] EVENT_IMPACT_BACKFILL_DRY_RUN defaults to true
-- [ ] Flags grouped near existing EVENT_IMPACT_ENGINE_ENABLED
-- [ ] `tsc --noEmit` clean
-- [ ] No changes to existing flags
-
-**Rollback notes:**
-- Remove the 3 new flag definitions
-- Server starts normally without them
-
-**Dependencies:**
-- None (can be done in parallel with T-6B.1/T-6B.2)
+**Rollback:** Git revert
 
 ---
 
-### T-6B.6 — Documentation Update
+### T-V2-1G — Main Orchestrator (Full analyzeTechnicals Rewrite)
 
-**Task ID:** T-6B.6  
-**Phase:** Phase 6B — Documentation update  
-**Assigned Agent:** Prompt Engineer  
-**Status:** COMPLETED — QA & Security PASS  
+**Task ID:** T-V2-1G
+**Phase:** v2.Phase 1 — Technical Analysis Engine
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** F (depends on T-V2-1B, T-V2-1C, T-V2-1D, T-V2-1E, T-V2-1F)
 
-**Objective:**  
-Update THE_NEXUS_HUB.md with Phase 6B scope, schema diagrams, operational controls, rollback procedures, and what Phase 6B does NOT change.
+**Objective:**
+Rewrite the main `analyzeTechnicals()` function to orchestrate all sub-engines (Trend, S/R, Structure, Pattern, Volume, Quality Score) into a single comprehensive result. This is the primary entry point that all downstream phases (1.5 backtesting, 4 TP/SL, 0.5 shadow mode) will call.
 
-**Files modified:**
-- THE_NEXUS_HUB.md
+**File to modify:**
+- `backend/src/services/technicalAnalysis.service.ts`
 
-**Implementation requirements:**
-- Document Phase 6B as persistence layer for Phase 6A with clear scope and limitations
-- Include schema diagrams for event_impacts and event_impact_outcomes tables with column descriptions
-- Document data mapping from coin_news_history to both new tables
-- Document operational controls section with all 3 env flags and their defaults
-- Document backfill dry-run vs execute behavior
-- Include comprehensive rollback procedure
-- Document what Phase 6B explicitly does NOT change (no existing table modifications, no UI changes, no Living Articles changes, no scorecard changes, no AI workflow changes)
-- Reference Phase 6A as prerequisite
+**Function signature:**
+```typescript
+export async function analyzeTechnicals(symbol: string): Promise<TechnicalAnalysisFullResult | null>
+```
 
-**Acceptance criteria:**
-- Phase 6B scope and limitations clearly documented
-- Both table schemas documented with all columns
-- Operational controls documented with defaults (false, false, true)
-- Backfill dry-run vs execute behavior clearly explained
-- Rollback procedures documented (disable flags, data preserved, DROP TABLE only if necessary)
-- What Phase 6B does NOT change explicitly listed
-- Phase 6A reference included
+**Orchestration flow:**
 
-**QA checklist:**
-- [x] Documentation accurate and complete
-- [x] Schema matches migration
-- [x] Env flags documented with defaults
-- [x] Rollback procedures documented
-- [x] No conflicting information
+```
+1. Validate symbol is tracked (isTrackedCoin)
+   → if not: return null
 
-**Rollback notes:**
-- Documentation is informational only — removal not critical
+2. Fetch current price
+   → getCandles(symbol, '4h', 1) → latest 4H candle close
 
-**Dependencies:**
-- T-6B.1 through T-6B.5 (for accurate documentation)
+3. Fetch ATR values
+   → getLatestIndicator(symbol, '1d') → atrDaily
+   → getLatestIndicator(symbol, '4h') → atr4h
 
----
+4. Run all sub-engines (can run trend + structure + volume in parallel):
+   → detectTrend(symbol) → TrendLabel
+   → detectSupportResistance(symbol) → { supportLevels, resistanceLevels }
+   → analyzeMarketStructure(symbol) → MarketStructureResult
+   → detectCandlePattern(symbol, supportLevels, resistanceLevels) → CandlePatternResult
+   → analyzeVolumeConfirmation(symbol) → VolumeConfirmationResult
 
-### T-6B.7 — QA Checklist Preparation
+5. Determine nearest S/R
+   → nearestSupport = support level closest to currentPrice (above = null if no support below)
+   → nearestResistance = resistance level closest to currentPrice (below = null if no resistance above)
+   → Use absolute price distance, pick minimum
 
-**Task ID:** T-6B.7  
-**Phase:** Phase 6B — QA checklist preparation  
-**Assigned Agent:** Prompt Engineer  
-**Status:** COMPLETED — QA & Security PASS  
+6. Calculate quality score
+   → calculateQualityScore({
+       trend,
+       currentPrice,
+       nearestSupport,
+       nearestResistance,
+       volumeConfirmed: volumeResult.isAboveAverage,
+       volumeSpike: volumeResult.isSpike,
+       patternAtSR: candlePatternResult.isValid,
+       isChocho: structure.isChocho,
+       isFailedBos: structure.isFailedBos,
+       priceChange24h: null  // not available from indicators alone, set null for now
+     })
 
-**Objective:**  
-Prepare comprehensive QA checklist for Phase 6B implementation covering migrations, service, backfill, and env flags.
+7. Assemble full result
+   → Return TechnicalAnalysisFullResult
+```
 
-**Files modified:**
-- THE_NEXUS_HUB.md
+**Error handling:**
+- Any sub-engine failure → log error, set that component to its "empty" default, continue
+- If ALL sub-engines fail → return null
+- Never throw from this function — it's the top-level entry point
 
-**Implementation requirements:**
-- Create comprehensive QA checklist section for Phase 6B
-- Cover all tasks T-6B.1 through T-6B.5 with specific verification steps
-- Include safety checks for data integrity and migration safety
-- Include verification steps for idempotency across all components
-- Include rollback verification procedures
-- Cover edge cases and error scenarios
-- Define clear pass/fail criteria for each check
+**Backward compatibility:**
+- The old `TechnicalAnalysisResult` interface and its field names are REPLACED by `TechnicalAnalysisFullResult`
+- The old `analyzeTechnicals(symbol, timeframe)` 2-arg signature is REMOVED — the new function takes only `symbol`
+- Any existing imports of the old interface should be updated (search codebase for imports)
+- The `CandleData` interface used internally by the old skeleton is kept only if sub-engines need it internally
 
-**QA checklist:**
-- [x] Checklist covers T-6B.1 through T-6B.5
-- [x] Migration checks included
-- [x] Service checks included
-- [x] Backfill checks included
-- [x] Env flag checks included
-- [x] Data integrity checks included
-- [x] Rollback verification included
+**Dependencies:** ALL previous tasks (T-V2-1A through T-V2-1F)
 
-**Acceptance criteria:**
-- Comprehensive QA checklist covering all Phase 6B tasks
-- Clear pass/fail criteria for each check
-- Includes edge cases and error scenarios
-- Includes rollback verification
-
-**Rollback notes:**
-- Documentation is informational only — removal not critical
-
-**Dependencies:**
-- All T-6B tasks (for comprehensive checklist)
+**Rollback:** Git revert
 
 ---
 
-## WHAT DOES NOT CHANGE
+### T-V2-1H — Signal Starvation Monitor
 
-1. **coin_news_history schema** — zero modifications  
-2. **Any existing table schema** — zero modifications  
-3. **Living Articles** — unchanged  
-4. **Scorecard** — unchanged  
-5. **Public UI / Frontend** — unchanged  
-6. **AI workflow prompts** — unchanged  
-7. **eventImpactAnalysis.service.ts** — read-only service untouched  
-8. **External APIs** — no new integrations  
-9. **Crons** — no new cron registrations  
-10. **Routes/Controllers** — no new endpoints  
+**Task ID:** T-V2-1H
+**Phase:** v2.Phase 1 — Technical Analysis Engine (built here, wired in Phase 5)
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** F (depends on T-V2-1A, parallel with T-V2-1G)
+
+**Objective:**
+Implement `checkSignalHealth()` — a standalone exported function that counts signals generated in the last 48 hours and reports health status. This function is called by `tpslMonitor.cron` in Phase 5, but the logic is built here as part of Phase 1.
+
+**Spec reference:** nextstep2-v2.md lines 449-463
+
+**File to modify:**
+- `backend/src/services/technicalAnalysis.service.ts`
+
+**Function signature:**
+```typescript
+export async function checkSignalHealth(): Promise<SignalHealthResult>
+```
+
+**Data source:**
+- Query `radar_signals` table: `SELECT COUNT(*) WHERE created_at > NOW() - INTERVAL '48 hours'`
+- Use Drizzle ORM via `db.select(...).from(radarSignals).where(gt(radarSignals.createdAt, ...))`
+
+**Algorithm:**
+```
+signalCount48h = count of radar_signals in last 48 hours
+
+IF signalCount48h === 0:
+    status = 'starvation'
+    message = '[SIGNAL-HEALTH] WARNING: Zero signals in 48h. Check market conditions and filter gates.'
+    reducedConfidenceMode = true
+
+ELSE IF signalCount48h < 3:
+    status = 'caution'
+    message = `[SIGNAL-HEALTH] CAUTION: Low signal rate (${signalCount48h} in 48h).`
+    reducedConfidenceMode = false
+
+ELSE:
+    status = 'healthy'
+    message = `[SIGNAL-HEALTH] OK: ${signalCount48h} signals in 48h.`
+    reducedConfidenceMode = false
+```
+
+**Important:** This function only RETURNS the health status. It does NOT modify any behavior. The caller (tpslMonitor.cron in Phase 5) will decide what to do with the result. The `reducedConfidenceMode` flag is informational — the actual threshold change happens in the calling cron.
+
+**Dependencies:** T-V2-1A (SignalHealthResult interface)
+
+**Rollback:** Git revert
 
 ---
 
-## FILES SUMMARY
+### T-V2-1Q — QA Verification (v2.Phase 1)
+
+**Task ID:** T-V2-1Q
+**Phase:** v2.Phase 1 — Technical Analysis Engine
+**Assigned Agent:** QA & Security Hunter
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** G (depends on ALL above tasks)
+
+**Objective:**
+Full audit of the rewritten `technicalAnalysis.service.ts` — verify correctness, security, performance, and spec compliance.
+
+**Audit checklist:**
+1. **Zero `any` types** — grep entire file for `any`
+2. **Zero BUY/SELL terminology** — grep for `buy`, `sell`, `BUY`, `SELL`
+3. **Zero live Binance calls** — verify no imports from `binance.service.ts` (only `ohlcvSnapshot.service.ts`)
+4. **Zero AI calls** — verify no imports from `aiGateway`, `promptFactory`, `openai.service`
+5. **All data reads from ohlcv_indicators** — verify EMA/ATR/volumeAvg read from indicators, not computed
+6. **EMA-200 null fallback** — verify SIDEWAYS returned when EMA-200 unavailable
+7. **S/R strength >= 60 filter** — verify only strong levels returned
+8. **3-condition pattern gate** — verify pattern isValid requires all 3 conditions
+9. **Quality score penalties** — verify CHOCH (-20), low volume (-15), manipulation (-20)
+10. **Score < 60 rejection** — verify isRejected flag set correctly
+11. **Candle ordering** — verify `getCandles` DESC output is reversed to ASC before swing detection
+12. **Edge cases** — insufficient candles (< 5 for structure, < 10 for S/R), null indicators
+13. **Export completeness** — verify all interfaces and functions listed in tasks are properly exported
+14. **Type safety** — no type assertions (`as`), no `!` non-null assertions on potentially null values
+15. **Performance** — no N+1 DB queries, no unnecessary data fetching
+
+**Result:** PASS or REJECT with specific line-by-line corrections.
+
+**Dependencies:** ALL Phase 1 tasks (T-V2-1A through T-V2-1H)
+
+---
+
+## EXECUTION GROUPS (Dependency Order)
+
+```
+Group A: T-V2-1A (types/interfaces — foundation)
+    ↓
+Group B: T-V2-1B (trend detector — depends on types)
+    ↓
+Group C: T-V2-1C + T-V2-1D (S/R + Structure — parallel, both depend on types only)
+    ↓
+Group D: T-V2-1E (candle patterns — depends on types + S/R levels)
+    ↓
+Group E: T-V2-1F (volume + quality score — depends on types)
+    ↓
+Group F: T-V2-1G + T-V2-1H (orchestrator + starvation monitor — parallel)
+    ↓
+Group G: T-V2-1Q (QA — depends on ALL)
+```
+
+**Minimum sequential steps:** 7 ( Groups A→B→C→D→E→F→G )
+
+---
+
+## FILES SUMMARY (Phase 1)
 
 | File | Status | Change |
 |------|--------|--------|
-| `backend/scripts/migrate-event-impacts.sql` | 🔴 TODO | New — migration for both tables |
-| `backend/src/models/market.model.ts` | 🔴 TODO | Add eventImpacts + eventImpactOutcomes Drizzle tables |
-| `backend/src/services/eventImpactPersistence.service.ts` | 🔴 TODO | New — persistence bridge service |
-| `backend/scripts/backfill-event-impacts.js` | 🔴 TODO | New — backfill with dry-run |
-| `backend/src/config/env.ts` | 🔴 TODO | Add 3 feature flags |
-| `agent_gedens/THE_NEXUS_HUB.md` | 🔴 TODO | Documentation + QA checklist |
+| `backend/src/services/technicalAnalysis.service.ts` | ✅ DONE (QA PASSED) | Full rewrite — all sub-engines |
+| `backend/src/config/env.ts` | ⬜ NOT NEEDED | No new env flags for Phase 1 |
+| `backend/src/server.ts` | ⬜ NOT NEEDED | No cron registration for Phase 1 |
+| `backend/src/models/market.model.ts` | ⬜ NOT NEEDED | No new DB tables for Phase 1 |
 
-**Total: 3 new files, 2 modified files, 1 documentation update**
+**Total: 1 file modified (full rewrite) — QA PASSED Round 3**
 
 ---
 
-## PRIORITY ORDER
+*v2.Phase 1 Complete: May 8, 2026 | Senior Developer + QA Hunter*
 
-```
-1. T-6B.5 — Feature flags (independent, no deps)
-2. T-6B.1 — event_impacts migration (blocks T-6B.3)
-3. T-6B.2 — event_impact_outcomes migration (blocks T-6B.3)
-4. Drizzle model updates (part of T-6B.3 or separate micro-task)
-5. T-6B.3 — Persistence service (needs migrations + models + flags)
-6. T-6B.4 — Backfill script (needs service + flags)
-7. T-6B.6 — Documentation (needs all above)
-8. T-6B.7 — QA checklist (needs all above)
-```
-
-**Parallelizable:**
-- T-6B.5 (flags) + T-6B.1/T-6B.2 (migrations) can run in parallel
-
----
-
-## VALIDATION CHECKLIST
-
-| # | Test | Expected Result |
-|---|------|-----------------|
-| 1 | Run migration | event_impacts + event_impact_outcomes tables created |
-| 2 | TypeScript check | `npx tsc --noEmit` passes with zero errors |
-| 3 | Drizzle model | Schema matches migration exactly |
-| 4 | Feature flags | Server starts without new env vars |
-| 5 | Persistence service | Creates 1 impact + 5 outcomes per source event |
-| 6 | Idempotency | Second run skips existing records |
-| 7 | Backfill dry-run | Zero writes, shows what would be created |
-| 8 | Backfill execute | Correct data written to new tables |
-| 9 | FK integrity | source_id SET NULL on source delete |
-| 10 | No side effects | coin_news_history unchanged |
-
----
-
-## RISK NOTES
-
-1. **FK with SET NULL** — If coin_news_history rows are deleted, source_id becomes NULL but impact data preserved
-2. **Batch size 100** — Conservative to avoid memory/timeout issues
-3. **Dry-run default** — Backfill cannot accidentally write without explicit flag
-4. **Feature flags false** — All persistence disabled by default
-5. **No cascade on source_id** — Protects impact data from accidental source deletion
-6. **Cascade within pair** — event_impact_outcomes cascade on event_impacts delete (same data pair)
-
----
-
-## OPERATIONAL CONTROLS
-
-### Environment Variables
-
-**EVENT_IMPACT_PERSISTENCE_ENABLED** (default: false)
-- Controls whether persistence service writes to new tables
-- When false: all persist functions return null/0
-- When true: writes enabled
-
-**EVENT_IMPACT_BACKFILL_ENABLED** (default: false)
-- Controls whether backfill script processes records
-- When false: script exits immediately
-- When true: script proceeds (still checks dry-run flag)
-
-**EVENT_IMPACT_BACKFILL_DRY_RUN** (default: true)
-- Controls backfill write behavior
-- When true: backfill logs what it would do without writing
-- When false: backfill actually writes data
-
-### Safe Defaults
-
-- All persistence disabled by default
-- Backfill requires both BACKFILL_ENABLED=true and either --execute or BACKFILL_DRY_RUN=false
-- Production starts safely with no impact persistence activity
-- Operators must explicitly enable each feature
-
-### Rollback Plan
-
-1. **Disable persistence:**
-   - EVENT_IMPACT_PERSISTENCE_ENABLED=false
-   - EVENT_IMPACT_BACKFILL_ENABLED=false
-
-2. **Leave tables in place:**
-   - Data in event_impacts and event_impact_outcomes preserved
-   - No harm in keeping populated tables
-
-3. **Full cleanup (if absolutely necessary):**
-   ```sql
-   DROP TABLE IF EXISTS event_impact_outcomes;
-   DROP TABLE IF EXISTS event_impacts;
-   ```
-
-4. **Code cleanup:**
-   - Delete eventImpactPersistence.service.ts
-   - Delete backfill-event-impacts.js
-   - Delete migration file
-   - Remove Drizzle model additions
-   - Remove env flag definitions
-
-5. **No changes to existing tables needed for rollback**
-
----
-
-## SQL SCHEMA REFERENCE
-
-### event_impacts
-
-```
-┌──────────────────┬───────────────┬──────────┬─────────┬─────────────────────────┐
-│ Column           │ Type          │ Nullable │ Default │ Notes                   │
-├──────────────────┼───────────────┼──────────┼─────────┼─────────────────────────┤
-│ id               │ SERIAL        │ NO       │ auto    │ Primary key             │
-│ source_table     │ VARCHAR(50)   │ NO       │ 'coin_… │ Source table name       │
-│ source_id        │ INTEGER       │ YES      │ —       │ FK → cnh(id) SET NULL   │
-│ coin_symbol      │ VARCHAR(20)   │ NO       │ —       │ e.g. 'BTC'              │
-│ event_type       │ VARCHAR(50)   │ YES      │ —       │ e.g. 'regulation'       │
-│ event_severity   │ INTEGER       │ YES      │ —       │ 1-5 scale               │
-│ event_scope      │ VARCHAR(20)   │ YES      │ —       │ e.g. 'COIN', 'MARKET'   │
-│ published_at     │ TIMESTAMP     │ NO       │ —       │ Event publication time  │
-│ price_at_event   │ REAL          │ YES      │ —       │ Price when event hit    │
-│ price_source     │ VARCHAR(20)   │ NO       │ 'binan… │ Price data source       │
-│ status           │ VARCHAR(20)   │ NO       │ 'pendi… │ pending/completed       │
-│ created_at       │ TIMESTAMP     │ NO       │ NOW()   │ Record creation time    │
-│ updated_at       │ TIMESTAMP     │ NO       │ NOW()   │ Last update time        │
-└──────────────────┴───────────────┴──────────┴─────────┴─────────────────────────┘
-
-Indexes:
-  UNIQUE  (source_id) WHERE source_id IS NOT NULL
-  BTREE   (coin_symbol)
-  BTREE   (event_type)
-  BTREE   (status)
-  BTREE   (published_at)
-```
-
-### event_impact_outcomes
-
-```
-┌───────────────────────────┼───────────────┼──────────┼─────────┼──────────────────────────────┐
-│ Column                    │ Type          │ Nullable │ Default │ Notes                        │
-├───────────────────────────┼───────────────┼──────────┼─────────┼──────────────────────────────┤
-│ id                        │ SERIAL        │ NO       │ auto    │ Primary key                  │
-│ event_impact_id           │ INTEGER       │ NO       │ —       │ FK → ei(id) CASCADE          │
-│ horizon                   │ VARCHAR(10)   │ NO       │ —       │ '1h','4h','24h','3d','7d'    │
-│ horizon_hours             │ INTEGER       │ NO       │ —       │ 1, 4, 24, 72, 168            │
-│ due_at                    │ TIMESTAMP     │ NO       │ —       │ published_at + horizon_hours  │
-│ checked_at                │ TIMESTAMP     │ YES      │ —       │ When outcome was checked      │
-│ price_at_horizon          │ REAL          │ YES      │ —       │ Price at horizon time         │
-│ change_percent            │ REAL          │ YES      │ —       │ % change from price_at_event  │
-│ max_upside_percent        │ REAL          │ YES      │ —       │ Max upside within horizon     │
-│ max_drawdown_percent      │ REAL          │ YES      │ —       │ Max drawdown within horizon   │
-│ time_to_peak_hours        │ INTEGER       │ YES      │ —       │ Hours to reach peak           │
-│ time_to_bottom_hours      │ INTEGER       │ YES      │ —       │ Hours to reach bottom         │
-│ outcome_classification    │ VARCHAR(30)   │ YES      │ —       │ POSITIVE/NEGATIVE/NEUTRAL     │
-│ status                    │ VARCHAR(20)   │ NO       │ 'pendi… │ pending/completed/failed      │
-│ error_message             │ TEXT          │ YES      │ —       │ Error details if failed       │
-│ created_at                │ TIMESTAMP     │ NO       │ NOW()   │ Record creation time          │
-│ updated_at                │ TIMESTAMP     │ NO       │ NOW()   │ Last update time              │
-└───────────────────────────┴───────────────┴──────────┴─────────┴──────────────────────────────┘
-
-Indexes:
-  UNIQUE  (event_impact_id, horizon)
-  BTREE   (status)
-  BTREE   (due_at)
-  BTREE   (event_impact_id)
-```
-
----
-
-*Phase 6B authored: May 4, 2026*  
-*Depends on: Phase 6A (read-only analysis engine — COMPLETED)*  
-*Enables: Persistent event impact data for future analysis, UI, and AI integration*
-
----
-
----
-
-# Phase 6A — Event Impact Analysis Engine
-
-**Status:** COMPLETED — QA PASS  
-**Date:** May 3, 2026  
-**Priority:** P1 (Enables data-driven event impact insights)  
-**Scope:** 3 new files, 1 env flag, 1 verification checklist  
-**Reviewed by:** QA & Security Hunter — APPROVED  
-
-## OBJECTIVE
-
-Create a read-only event impact analysis service that calculates deterministic statistics from historical coin_news_history data, including per-horizon outcome rates, average max upside/drawdown, and outcome classification rates.
-
-## REQUIRED TASKS
-
-### T-6A.1: Verify coin_news_history Field Names
-
-**Task ID:** T-6A.1  
-**Phase:** Phase 6A — Verify coin_news_history field names  
-**Owner:** Senior Developer  
-**Status:** Done — QA & Security PASS  
-
-**Objective:**  
-Confirm all required fields for event impact analysis exist in market.model.ts with correct nullable types and camelCase mappings.
-
-**Files inspected:**  
-- `backend/src/models/market.model.ts:209-248` — coinNewsHistory table definition  
-
-**Acceptance criteria:**  
-- All Phase 1-2 outcome fields present: change1h through change7d, maxUpsideAfterEvent, maxDrawdownAfterEvent, timeToPeakHours, timeToBottomHours, outcomeClassification  
-- All fields nullable  
-- Correct camelCase property mappings  
-
-**Testing / verification:**  
-- Drizzle schema matches database  
-- TypeScript compilation clean  
-
-**Dependencies:**  
-None (verification only)  
-
----
-
-### T-6A.2: Create Read-Only Event Impact Analysis Service
-
-**Task ID:** T-6A.2  
-**Phase:** Phase 6A — Create read-only event impact analysis service  
-**Owner:** Senior Developer  
-**Status:** Done — QA & Security PASS  
-
-**Objective:**  
-Implement backend/src/services/eventImpactAnalysis.service.ts with deterministic calculations for all required statistics.
-
-**Files modified:**  
-- `backend/src/services/eventImpactAnalysis.service.ts` (new)  
-
-**Implementation requirements:**  
-- Pure read-only SELECT queries from coin_news_history  
-- Calculates per-horizon sample sizes, median returns, positive/bullish outcome rates, average max upside/drawdown  
-- Filters by optional coinSymbol, eventType, eventSeverity  
-- Returns structured statistics object  
-- No external API calls, no AI, no caching  
-
-**Acceptance criteria:**  
-- Service exports getEventImpactAnalysis function  
-- All calculations deterministic from database data  
-- Handles edge cases (no matches, null values) gracefully  
-- TypeScript strict, no any types  
-
-**Testing / verification:**  
-- `cd backend && npx tsc --noEmit` — passes  
-- Manual query verification with known data  
-
-**Dependencies:**  
-- T-6A.1 (fields exist)  
-
----
-
-### T-6A.3: Create Manual Read-Only Analysis Script
-
-**Task ID:** T-6A.3  
-**Phase:** Phase 6A — Create manual read-only analysis script  
-**Owner:** Senior Developer  
-**Status:** Done — QA & Security PASS  
-
-**Objective:**  
-Create backend/scripts/analyze-event-impact.js that checks EVENT_IMPACT_ENGINE_ENABLED and prints console summary.
-
-**Files modified:**  
-- `backend/scripts/analyze-event-impact.js` (new)  
-
-**Implementation requirements:**  
-- Checks EVENT_IMPACT_ENGINE_ENABLED flag  
-- Exits safely if disabled (no writes, no analysis)  
-- Calls getEventImpactAnalysis() with no filters  
-- Pretty-prints all statistics to console  
-- No database writes  
-
-**Acceptance criteria:**  
-- Script runs with `node scripts/analyze-event-impact.js` (ts-node for dev)  
-- When disabled: exits with appropriate message  
-- When enabled: prints comprehensive analysis  
-- Handles errors gracefully  
-
-**Testing / verification:**  
-- Disabled flag: `npx ts-node scripts/analyze-event-impact.js` exits safely  
-- No database writes confirmed  
-
-**Dependencies:**  
-- T-6A.2 (service exists)  
-
----
-
-### T-6A.4: Add EVENT_IMPACT_ENGINE_ENABLED Flag
-
-**Task ID:** T-6A.4  
-**Phase:** Phase 6A — Add EVENT_IMPACT_ENGINE_ENABLED flag  
-**Owner:** Senior Developer  
-**Status:** Done — QA & Security PASS  
-
-**Objective:**  
-Confirm EVENT_IMPACT_ENGINE_ENABLED exists in backend/src/config/env.ts with default false.
-
-**Files inspected:**  
-- `backend/src/config/env.ts:84-85` — env schema definition  
-
-**Acceptance criteria:**  
-- Flag defined as boolean with default false  
-- Zod validation includes the flag  
-- Server starts normally with missing env var  
-
-**Testing / verification:**  
-- Server startup logs no env validation errors  
-- Script exits safely when flag false  
-
-**Dependencies:**  
-None  
-
----
-
-### T-6A.5: Policy-Safe Output Wording
-
-**Task ID:** T-6A.5  
-**Phase:** Phase 6A — Policy-safe output wording  
-**Owner:** Prompt Engineer  
-**Status:** Done — QA & Security PASS  
-
-**Objective:**  
-Define preferred terms for policy-safe historical analysis framing.
-
-**Preferred terms:**  
-- Historical observed movement  
-- Historical pattern  
-- Reference price  
-- Upside target zone  
-- Invalidation zone  
-- Risk zone  
-- Bullish/bearish bias  
-- Observed outcome  
-- Historical summary  
-- Data-driven market context  
-- Not financial advice  
-
-**Prohibited terms:**  
-- Buy/sell  
-- Take profit/stop loss  
-- Expected/guaranteed profit  
-- Trading advice  
-
-**Guidelines:**  
-- Emphasize historical analysis framing  
-- Avoid predictive language  
-- Focus on data-driven insights  
-
-**Files modified:**  
-- THE_NEXUS_HUB.md (added policy-safe terminology guidelines, Phase 6A scope limitations section)  
-
-**Acceptance criteria:**  
-- Terminology guidelines documented  
-- Prohibited terms clearly listed  
-- Guidelines emphasize historical framing  
-
----
-
-### T-6A.6: Documentation Update
-
-**Task ID:** T-6A.6  
-**Phase:** Phase 6A — Documentation update  
-**Owner:** Senior Developer  
-**Status:** Done — QA & Security PASS  
-
-**Objective:**  
-Update THE_NEXUS_HUB.md with Phase 6A scope limitations and comprehensive QA checklist.
-
-**Files modified:**  
-- THE_NEXUS_HUB.md  
-
-**Implementation requirements:**  
-- Add "PHASE 6A SCOPE LIMITATIONS" section  
-- Clarify read-only nature, excluded features, future Phase 6B reference  
-- Comprehensive QA checklist covering all T-6A.1 through T-6A.7 tasks  
-- Verification steps, safety checks, edge cases, pass/fail criteria  
-
-**Acceptance criteria:**  
-- Scope limitations clearly documented  
-- QA checklist covers all tasks  
-- Documentation accurate and complete  
-
----
-
-### T-6A.7: QA Checklist Preparation
-
-**Task ID:** T-6A.7  
-**Phase:** Phase 6A — QA checklist preparation  
-**Owner:** QA & Security Hunter  
-**Status:** Done — QA & Security PASS  
-
-**Objective:**  
-Prepare comprehensive QA checklist for Phase 6A implementation.
-
-**Checklist coverage:**  
-- Schema verification  
-- Service functionality  
-- Script behavior  
-- Env flag handling  
-- TypeScript compilation  
-- Read-only confirmation  
-- Edge case handling  
-- Error handling  
-- Performance considerations  
-
-**Acceptance criteria:**  
-- All T-6A.1 through T-6A.7 tasks have verification steps  
-- Safety checks for read-only operations  
-- Edge cases identified and tested  
-- Pass/fail criteria defined  
-
----
-
-## WHAT DOES NOT CHANGE
-
-1. **Existing coin_news_history rows** — remain unchanged  
-2. **No new database writes** — Phase 6A is read-only analysis  
-3. **No AI workflows** — no integration into prompts or analysis  
-4. **No UI changes** — no frontend modifications  
-5. **No external API calls** — all calculations from existing data  
-
----
-
-## FILES SUMMARY
-
-| File | Status | Change |
-|------|--------|--------|
-| `backend/src/services/eventImpactAnalysis.service.ts` | ✅ Done | New — read-only analysis service |
-| `backend/scripts/analyze-event-impact.js` | ✅ Done | New — manual analysis script |
-| `backend/src/config/env.ts` | ✅ Done | EVENT_IMPACT_ENGINE_ENABLED flag confirmed |
-| `backend/src/models/market.model.ts` | ✅ Verified | Fields confirmed present |
-| `THE_NEXUS_HUB.md` | ✅ Done | Documentation and QA checklist added |
-
-**Total: 2 new files, 1 modified file, 2 verified files**
-
----
-
-## VALIDATION CHECKLIST
-
-| # | Test | Expected Result |
-|---|------|-----------------|
-| 1 | Schema verification | All required fields exist in coinNewsHistory |
-| 2 | TypeScript check | `npx tsc --noEmit` passes with no errors |
-| 3 | Service functionality | getEventImpactAnalysis returns correct statistics |
-| 4 | Script disabled | Exits safely when EVENT_IMPACT_ENGINE_ENABLED=false |
-| 5 | Script enabled | Prints comprehensive analysis when enabled |
-| 6 | Read-only confirmation | No INSERT/UPDATE/DELETE operations |
-| 7 | Edge cases | Handles no data, null values, errors gracefully |
-| 8 | Performance | Query completes within reasonable time |
-
----
-
-## RISK NOTES
-
-1. **Flag default false** — Analysis disabled by default, must be explicitly enabled  
-2. **Read-only operations** — No risk of data corruption  
-3. **Error handling** — Service returns empty results on failures  
-4. **No external dependencies** — All calculations from existing database  
-
----
-
-## QA & SECURITY AUDIT RESULTS
-
-**VERDICT:** APPROVED  
-**CRITICAL REVIEW:** No bugs, security issues, or architectural flaws found. Code is production-ready.  
-**CORRECTION SNIPPETS:** None required.  
-**NEXT INSTRUCTIONS FOR JUNIOR:** No corrections needed — proceed to Phase 6B planning.  
-**LOG UPDATE:** Agent logs updated with Phase 6A completion and PASS verdict.  
-**STATE UPDATE:** Project state updated — Phase 6A marked completed, Phase 6B ready for planning.
-
----
-
-*Phase 6A authored: May 3, 2026*  
-*Enables: Data-driven historical event impact analysis*
-
----
-
-# Phase 1 — Event-Price Foundation
-
-**Status:** ✅ COMPLETE — Committed (f206e39, 886bea9)
-**Date:** May 2, 2026
-**Priority:** P0 (Foundation for all temporal intelligence)
-**Scope:** 1 SQL migration, 1 model update, 2 new files, 2 modified files
-**Reviewed by:** Lead Architect — APPROVED FOR EXECUTION
-
-## OBJECTIVE
-
-Establish the data foundation for all event-price relationship analysis. The current `coin_news_history` table stores events but lacks outcome tracking. Phase 1 adds live event capture, outcome measurement at multiple horizons, and price range analysis.
-
-## REQUIRED TASKS
-
-### T-1A-01: Expand coin_news_history Schema Migration
-
-**Task ID:** T-1A-01
-**Phase:** Phase 1A — Expand coin_news_history schema
-**Owner:** Senior Developer
-**Status:** Done
-
-**Objective:**
-Add 18 new nullable columns to `coin_news_history` for multi-horizon outcome tracking and price analysis. Maintain backward compatibility by keeping all columns nullable.
-
-**Migration path:** backend/scripts/migrate-coin-news-history-phase1.sql
-
-**Detailed steps:**
-1. ALTER TABLE coin_news_history ADD COLUMN source_hash varchar(64) nullable
-2. ALTER TABLE coin_news_history ADD COLUMN event_scope varchar(20) nullable
-3. ALTER TABLE coin_news_history ADD COLUMN btc_price_at_event real nullable
-4. ALTER TABLE coin_news_history ADD COLUMN eth_price_at_event real nullable
-5. ALTER TABLE coin_news_history ADD COLUMN fear_greed_at_event integer nullable
-6. ALTER TABLE coin_news_history ADD COLUMN price_1h_after real nullable
-7. ALTER TABLE coin_news_history ADD COLUMN price_4h_after real nullable
-8. ALTER TABLE coin_news_history ADD COLUMN price_24h_after real nullable
-9. ALTER TABLE coin_news_history ADD COLUMN price_3d_after real nullable
-10. ALTER TABLE coin_news_history ADD COLUMN change_1h real nullable
-11. ALTER TABLE coin_news_history ADD COLUMN change_4h real nullable
-12. ALTER TABLE coin_news_history ADD COLUMN change_24h real nullable
-13. ALTER TABLE coin_news_history ADD COLUMN change_3d real nullable
-14. ALTER TABLE coin_news_history ADD COLUMN max_upside_after_event real nullable
-15. ALTER TABLE coin_news_history ADD COLUMN max_drawdown_after_event real nullable
-16. ALTER TABLE coin_news_history ADD COLUMN time_to_peak_hours integer nullable
-17. ALTER TABLE coin_news_history ADD COLUMN time_to_bottom_hours integer nullable
-18. ALTER TABLE coin_news_history ADD COLUMN outcome_classification varchar(30) nullable
-19. CREATE UNIQUE INDEX idx_cnh_sourcehash ON coin_news_history (source_hash) WHERE source_hash IS NOT NULL;
-
-**Acceptance criteria:**
-- All 18 columns added as nullable
-- No existing data loss
-- Index created for exact-content dedup
-- Migration rollback-safe
-
-**Testing / verification:**
-SELECT column_name, data_type, is_nullable
-FROM information_schema.columns
-WHERE table_name = 'coin_news_history'
-AND column_name IN (
-  'source_hash',
-  'event_scope',
-  'btc_price_at_event',
-  'eth_price_at_event',
-  'fear_greed_at_event',
-  'price_1h_after',
-  'price_4h_after',
-  'price_24h_after',
-  'price_3d_after',
-  'change_1h',
-  'change_4h',
-  'change_24h',
-  'change_3d',
-  'max_upside_after_event',
-  'max_drawdown_after_event',
-  'time_to_peak_hours',
-  'time_to_bottom_hours',
-  'outcome_classification'
-);
-
-SELECT indexname, indexdef
-FROM pg_indexes
-WHERE tablename = 'coin_news_history'
-AND indexname = 'idx_cnh_sourcehash';
-
-**Rollback notes:**
-- DROP INDEX IF EXISTS idx_cnh_sourcehash;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS outcome_classification;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS time_to_bottom_hours;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS time_to_peak_hours;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS max_drawdown_after_event;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS max_upside_after_event;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS change_3d;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS change_24h;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS change_4h;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS change_1h;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS price_3d_after;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS price_24h_after;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS price_4h_after;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS price_1h_after;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS fear_greed_at_event;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS eth_price_at_event;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS btc_price_at_event;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS event_scope;
-- ALTER TABLE coin_news_history DROP COLUMN IF EXISTS source_hash;
-- No data loss risk
-
-**Dependencies:**
-None (independent schema change)  
-
----
-
-### T-1A-02: Update Drizzle Model for coin_news_history
-
-**Task ID:** T-1A-02
-**Phase:** Phase 1A — Expand coin_news_history schema
-**Owner:** Senior Developer
-**Status:** Done
-
-**Objective:**
-Update `backend/src/models/market.model.ts` to match the 18 new columns added in migration.
-
-**Files to inspect:**
-- `backend/src/models/market.model.ts:276-295` — current coin_news_history table definition
-
-**Files likely to modify:**
-- `backend/src/models/market.model.ts`
-
-**Detailed steps:**
-1. Add the 18 new columns to the `coinNewsHistory` table definition in `market.model.ts` using camelCase properties mapped to snake_case SQL names:
-   - sourceHash: varchar('source_hash', { length: 64 }).nullable()
-   - eventScope: varchar('event_scope', { length: 20 }).nullable()
-   - btcPriceAtEvent: real('btc_price_at_event').nullable()
-   - ethPriceAtEvent: real('eth_price_at_event').nullable()
-   - fearGreedAtEvent: integer('fear_greed_at_event').nullable()
-   - price1hAfter: real('price_1h_after').nullable()
-   - price4hAfter: real('price_4h_after').nullable()
-   - price24hAfter: real('price_24h_after').nullable()
-   - price3dAfter: real('price_3d_after').nullable()
-   - change1h: real('change_1h').nullable()
-   - change4h: real('change_4h').nullable()
-   - change24h: real('change_24h').nullable()
-   - change3d: real('change_3d').nullable()
-   - maxUpsideAfterEvent: real('max_upside_after_event').nullable()
-   - maxDrawdownAfterEvent: real('max_drawdown_after_event').nullable()
-   - timeToPeakHours: integer('time_to_peak_hours').nullable()
-   - timeToBottomHours: integer('time_to_bottom_hours').nullable()
-   - outcomeClassification: varchar('outcome_classification', { length: 30 }).nullable()
-2. Match exact column names and types from migration
-3. Ensure all are nullable (.nullable())
-4. Verify column order matches migration
-
-**Acceptance criteria:**
-- `tsc --noEmit` clean in backend
-- Drizzle schema matches database schema exactly
-- No any types introduced
-
-**Testing / verification:**
-- `cd backend && npx drizzle-kit generate` — should succeed with no errors
-- `cd backend && npx tsc --noEmit` — zero errors
-
-**Rollback notes:**
-- Remove the 18 new column definitions
-- Regenerate Drizzle types
-
-**Dependencies:**
-- T-1A-01 (migration must run first)  
-
----
-
-### T-1B-01: Live MAJOR Event Bridge in AI Workflow
-
-**Task ID:** T-1B-01
-**Phase:** Phase 1B — Live MAJOR event bridge from aiWorkflow.cron.ts to coin_news_history
-**Owner:** Senior Developer
-**Status:** Done
-
-**Objective:**
-Add live capture of MAJOR events into `coin_news_history` immediately after they trigger AI analysis, including BTC/ETH/FearGreed context.
-
-**Files to inspect:**
-- `backend/src/crons/aiWorkflow.cron.ts:500-550` — current MAJOR event processing block
-- `backend/src/services/binance.service.ts:76-98` — getPriceWithFallback signature
-
-**Files likely to modify:**
-- `backend/src/crons/aiWorkflow.cron.ts`
-
-**Detailed steps:**
-1. After `saveMemory()` call (around line 527), add event INSERT into `coin_news_history`
-2. Fetch BTC/ETH prices once per workflow run (cache in memory)
-3. Fetch FearGreed index once per workflow run
-4. Populate: coinSymbol, title, source, publishedAt, sentiment, eventType, eventSeverity, priceAtTime, sourceHash, eventScope, btcPriceAtEvent, ethPriceAtEvent, fearGreedAtEvent
-5. Set sourceHash for dedup (exact-content only)
-6. Handle duplicate key errors gracefully (skip if sourceHash exists)
-
-**Acceptance criteria:**
-- MAJOR events inserted immediately after memory save
-- BTC/ETH prices cached per run
-- Dedup via sourceHash (not semantic)
-- No blocking errors on duplicate inserts
-
-**Testing / verification:**
-- Trigger MAJOR event, check `coin_news_history` row inserted
-- Verify priceAtTime populated correctly
-- Verify sourceHash, eventScope, btcPriceAtEvent, ethPriceAtEvent, fearGreedAtEvent populated
-
-**Rollback notes:**
-- Remove the INSERT block
-- No data cleanup needed (rows can remain)
-
-**Dependencies:**
-- T-1A-01 + T-1A-02 (schema ready)  
-
----
-
-### T-1C-01: Create eventOutcomeChecker.cron.ts
-
-**Task ID:** T-1C-01
-**Phase:** Phase 1C — eventOutcomeChecker.cron.ts
-**Owner:** Senior Developer
-**Status:** Done
-
-**Objective:**
-New cron job that checks event outcomes at 30-minute intervals, filling price1hAfter/change1h to price3dAfter/change3d, maxUpsideAfterEvent, maxDrawdownAfterEvent, timeToPeakHours, timeToBottomHours, outcomeClassification using price data.
-
-**Files to inspect:**
-- `backend/src/services/binance.service.ts` — for price fetching
-- `backend/src/services/coin-memory.service.ts` — for outcome classification logic
-
-**Files likely to modify:**
-- `backend/src/crons/eventOutcomeChecker.cron.ts` (NEW FILE)
-
-**Detailed steps:**
-1. Create new file with Redis lock
-2. Query `coin_news_history` where price1hAfter IS NULL and publishedAt > 1 hour ago (limit 50)
-3. For each event, fetch price data using `getCoinKlinesRange()` (new function from T-1D-01)
-4. Calculate price1hAfter/change1h to price3dAfter/change3d based on price at horizons
-5. Calculate maxUpsideAfterEvent/maxDrawdownAfterEvent using 1h OHLCV candles only (never use 1D candles)
-6. Calculate timeToPeakHours (hours to max upside), timeToBottomHours (hours to max drawdown)
-7. Classify outcomeClassification (POSITIVE/NEGATIVE/NEUTRAL) based on price movement direction
-8. Update existing 7d fields if missing
-9. Process all horizons (1h/4h/24h/3d/7d) in batches
-
-**Acceptance criteria:**
-- Redis lock prevents duplicate runs
-- maxUpsideAfterEvent/maxDrawdownAfterEvent use 1h candles only
-- Outcome classification matches event sentiment direction
-- Handles missing price data gracefully
-
-**Testing / verification:**
-- Check cron logs for successful updates
-- Verify outcome fields populated after 1h
-- SQL: `SELECT price1hAfter, maxUpsideAfterEvent FROM coin_news_history WHERE price1hAfter IS NOT NULL LIMIT 5`
-
-**Rollback notes:**
-- Delete the cron file
-- Remove from server.ts registration
-- No data rollback (calculated fields optional)
-
-**Dependencies:**
-- T-1A-01 + T-1A-02 + T-1D-01 (schema + getCoinKlinesRange)
-
----
-
-### T-1C-02: Register eventOutcomeChecker Cron in server.ts
-
-**Task ID:** T-1C-02  
-**Phase:** Phase 1C — eventOutcomeChecker.cron.ts  
-**Owner:** Senior Developer  
-**Status:** Done  
-
-**Objective:**  
-Register the new eventOutcomeChecker cron in the server startup sequence.
-
-**Files to inspect:**  
-- `backend/src/server.ts:50-70` — current cron registrations  
-
-**Files likely to modify:**  
-- `backend/src/server.ts`  
-
-**Detailed steps:**  
-1. Import `startEventOutcomeCheckerCron` from the new cron file  
-2. Add to the cron startup sequence with 30-minute schedule  
-3. Follow existing pattern (staggered 5s delays)  
-
-**Acceptance criteria:**  
-- Cron registered and starts on server boot  
-- No import errors  
-- Logs show cron scheduled  
-
-**Testing / verification:**  
-- Server logs: "eventOutcomeChecker cron scheduled"  
-- No startup errors  
-
-**Rollback notes:**  
-- Remove the import and registration call  
-- Server starts normally without it  
-
-**Dependencies:**  
-- T-1C-01 (cron file exists)  
-
----
-
-### T-1D-01: getCoinKlinesRange() in binance.service.ts
-
-**Task ID:** T-1D-01  
-**Phase:** Phase 1D — getCoinKlinesRange() in binance.service.ts  
-**Owner:** Senior Developer  
-**Status:** Done  
-
-**Objective:**  
-Add a new function to fetch historical klines for date ranges, with pagination cap at 1500 candles.
-
-**Files to inspect:**  
-- `backend/src/services/binance.service.ts:100-120` — existing getCoinKlines function  
-
-**Files likely to modify:**  
-- `backend/src/services/binance.service.ts`  
-
-**Detailed steps:**  
-1. Add `getCoinKlinesRange(symbol: string, interval: string, startTime: number, endTime: number)`  
-2. Paginate requests (Binance limit 1000 per call) up to 1500 total  
-3. Return array of OHLCV objects with timestamps  
-4. Handle rate limits and errors gracefully  
-
-**Acceptance criteria:**  
-- Returns historical klines for date range  
-- Pagination handles >1000 candles  
-- Compatible with existing getCoinKlines format  
-
-**Testing / verification:**  
-- Call for BTC 1h candles over 2 days  
-- Verify correct number of candles returned  
-- Handle invalid date ranges  
-
-**Rollback notes:**  
-- Remove the new function  
-- No impact on existing code  
-
-**Dependencies:**  
-None (independent utility function)  
-
----
-
-### T-1E-01: Phase 1 Verification and Rollback Checklist
-
-**Task ID:** T-1E-01  
-**Phase:** Phase 1 — Verification  
-**Owner:** Senior Developer  
-**Status:** Done  
-
-**Objective:**  
-Comprehensive verification that Phase 1 foundation is working correctly, with rollback procedures.
-
-**Detailed steps:**  
-1. SQL schema verification  
-2. Cron registration check  
-3. Live event insertion test  
-4. Outcome calculation verification  
-5. Price data accuracy checks  
-
-**Acceptance criteria:**  
-- All SQL checks pass  
-- Live MAJOR events populate coin_news_history  
-- Outcome fields fill correctly after horizons  
-- maxUpside/maxDrawdown calculated from 1h candles only  
-
-**Testing / verification:**
-- SQL: Check all 18 columns exist on coin_news_history
-- SQL: Verify partial sourceHash index exists
-- Trigger MAJOR event, verify row inserted
-- Wait 1h+, verify price1hAfter populated
-- Verify maxUpsideAfterEvent/maxDrawdownAfterEvent use 1h OHLCV only  
-
-**Rollback notes:**
-- Migration: Drop 18 columns + index  
-- Cron: Remove eventOutcomeChecker registration + delete file  
-- Workflow: Remove INSERT block from aiWorkflow.cron.ts  
-- Data: No permanent data loss (calculated fields optional)  
-
-**Dependencies:**  
-- All T-1A through T-1D tasks  
-
----
-
-## WHAT DOES NOT CHANGE
-
-1. **Existing coin_news_history rows** — remain unchanged  
-2. **Semantic dedup** — remains embedding-based in other tables  
-3. **AI workflow for non-MAJOR events** — unchanged  
-4. **Existing crons** — continue running normally  
-5. **No new npm packages**  
-
----
-
-## FILES SUMMARY
-
-| File | Status | Change |
-|------|--------|--------|
-| `backend/scripts/migrate-coin-news-history-phase1.sql` | 🔴 TODO | New — schema expansion migration |
-| `backend/src/models/market.model.ts` | 🔴 TODO | Add 19 new columns to coinNewsHistory |
-| `backend/src/crons/aiWorkflow.cron.ts` | 🔴 TODO | Add live MAJOR event INSERT after saveMemory |
-| `backend/src/crons/eventOutcomeChecker.cron.ts` | 🔴 TODO | New — 30min outcome checking cron |
-| `backend/src/server.ts` | 🔴 TODO | Register eventOutcomeChecker cron |
-| `backend/src/services/binance.service.ts` | 🔴 TODO | Add getCoinKlinesRange() function |
-
-**Total: 1 new SQL, 1 new cron file, 4 modified files**
-
----
-
-## PRIORITY ORDER
-
-```
-1. T-1A-01 — Migration (blocks everything)
-2. T-1A-02 — Model update (matches migration)
-3. T-1D-01 — Utility function (independent)
-4. T-1B-01 — Workflow bridge (needs schema)
-5. T-1C-01 — New cron (needs schema + utility)
-6. T-1C-02 — Cron registration (needs cron file)
-7. T-1E-01 — Verification (final)
-```
-
----
-
-## VALIDATION CHECKLIST
-
-| # | Test | Expected Result |
-|---|---|-----------------|
-| 1 | Run migration | All 18 columns added, index created |
-| 2 | Server starts | eventOutcomeChecker cron registered, no errors |
-| 3 | MAJOR event triggers | Row inserted in coin_news_history with priceAtTime, sourceHash, eventScope, btcPriceAtEvent, ethPriceAtEvent, fearGreedAtEvent |
-| 4 | Wait 1 hour | price1hAfter field populated with outcome classification |
-| 5 | Check maxUpsideAfterEvent calculation | Uses 1h OHLCV high - priceAtTime |
-| 6 | Check maxDrawdownAfterEvent calculation | Uses priceAtTime - 1h OHLCV low |
-| 7 | Duplicate MAJOR event | Skipped due to sourceHash dedup |
-
----
-
-## RISK NOTES
-
-1. **Migration size** — 19 columns is significant; test on staging first  
-2. **Rate limits** — getCoinKlinesRange pagination may hit Binance limits  
-3. **Data accuracy** — Ensure priceAtTime is captured at event time, not delayed  
-4. **Backward compatibility** — All new columns nullable, no breaking changes  
-
----
-
-## Planning Correction Log
-
-**Date:** May 2, 2026  
-**Issue:** Blocking inconsistency in T-1A-01 schema plan — listed 27 columns but claimed 19, using old v2 plan instead of final v3.  
-**Correction:** Replaced with final v3 18-column schema as specified by Lead Architect. Removed outcome1h/outcome4h/outcome24h/outcome3d/outcome7d, maxUpside1h/maxDrawdown1h etc., high1h/low1h etc., price1h/price4h/price24h/price3d, majorCoinsImpact, eventHorizon. Added sourceHash (dedup), eventScope, btcPriceAtEvent, ethPriceAtEvent, fearGreedAtEvent, price1hAfter to price3dAfter, change1h to change3d, maxUpsideAfterEvent, maxDrawdownAfterEvent, timeToPeakHours, timeToBottomHours, outcomeClassification.  
-**Impact:** Downstream tasks T-1A-02, T-1B-01, T-1C-01 corrected accordingly. No application code modified.
-
----
-
-*Phase 1 authored: May 2, 2026*
-*Foundation for: All temporal intelligence, event-outcome correlation, price impact analysis*
-
----
-
-# Remaining Work Master Plan
-
-**Last Updated:** May 4, 2026
-**Strategic Planner:** Kilo
-
-## Current Project Status Summary
-
-### Completed Phases
-- **Phase 1:** Event-Price Foundation — ✅ COMPLETE / QA PASSED / COMMITTED
-- **Phase 2:** Full Event Impact Engine — ✅ COMPLETE / QA PASSED WITH NOTES / COMMITTED (stats injection disabled by flag)
-- **Phase 6A:** Event Impact Analysis Engine — ✅ COMPLETE / QA PASSED
-- **Phase 6B:** Event Impact Persistence — ✅ COMPLETE / QA PASSED / COMMITTED
-- **Phase 0.5:** AdSense-Safe Public Presentation — ✅ COMPLETE / QA PASSED
-- **Phase 23:** TP/SL Auto-Close & Signal Lifecycle — ✅ COMPLETE / CODE DEPLOYED
-- **Phase 21:** Multi-Timeframe Signal System & Scorecard Overhaul — ✅ COMPLETE / CODE DEPLOYED
-- **Phase 20:** AI Pipeline Quality Fix — ✅ COMPLETE / QA PASSED
-- **Phase 19:** AdSense Legal Pages + Footer — ✅ COMPLETE / QA PASSED
-- **Phase 16:** Airdrop UX Overhaul — ✅ COMPLETE / DEPLOY 1 PASSED
-- **Phase 15:** Strategic Intelligence Layer — ✅ COMPLETE / QA PASSED
-- **Phase 14:** Article Content Disappears Fix — ✅ COMPLETE / QA PASSED
-- **Phase 13:** 404 Fix Dynamic AI Radar Coins — ✅ COMPLETE / QA PASSED
-- **Phase 12:** Airdrop UX Overhaul — ✅ COMPLETE / AWAITING FINAL QA
-- **Phase 11:** Airdrop RSS Hunter — ✅ COMPLETE / QA PASSED
-- **Phase 10:** Top Movers Widget — ✅ COMPLETE / QA PASSED
-- **Phase 9:** Terminal Deep-Link & SEO — ✅ COMPLETE / QA PASSED
-- **Phase 8:** Market Mood Gauge — ✅ COMPLETE / QA PASSED
-- **SEO & Platform Quality Audit:** ✅ COMPLETE / QA PASSED
-
-### Partial Phases (Needs Reconciliation)
-- **Phase 3:** Multi-Horizon Scenario Tracker — ⚠️ PARTIAL FOUNDATION EXISTS / NEEDS RECONCILIATION (scenarioTracker.service.ts and market_scenarios table exist from commit 58ecebd, not confirmed complete, needs integration into aiWorkflow.cron.ts and outcome checker)
-- **Phase 4:** OHLCV Price Snapshots — ⬜ NOT COMPLETE / PARTIAL FOUNDATION ONLY (no dedicated OHLCV tables found, getCoinKlinesRange exists in binance.service.ts but no storage layer)
-- **Phase 5:** Level Intelligence Engine — ⚠️ PARTIAL FOUNDATION EXISTS / NOT FULLY INTEGRATED (levelIntelligence.service.ts exists from commit adac61e, not integrated into aiWorkflow.cron.ts or article generation)
-- **Phase 6:** AI Cost Reduction — ⚠️ PARTIAL FOUNDATION EXISTS / NOT COMPLETE (ai-gateway.ts, cache-manager.ts, PromptFactory exist, full cost reduction plan not complete)
-- **Phase 7:** Public Language / Google-Safe Presentation — 🔴 NEXT PRIORITY / PARTIAL (Phase 7B 5/6 tasks complete, 1 task remaining)
-
-### Not Started
-- **Phase 8:** Migration Strategy — ⬜ NOT STARTED
-
-### Blocked / Reconciliation Notes
-- Phase 7B: T-7B-05 committed, T-7B-05-01 to T-7B-06 pending execution.
-- No conflicts detected between HUB and git history.
-- All partial phases have foundation code present but lack full integration or completion.
-
-## Remaining Tasks by Phase
-
-### Phase 7 — Public Language / Google-Safe Presentation (NEXT PRIORITY)
-
-**T-7B-05-01 — Backend Safe Alias Implementation**
-- **Owner Role:** Senior Developer
-- **Goal:** Implement safe alias mapping in backend services (e.g., openai.service.ts, prompt-factory.ts) to replace risky terms with policy-safe alternatives.
-- **Allowed Files:** backend/src/services/ai/prompt-factory.ts, backend/src/services/openai.service.ts, backend/src/services/ai-gateway.ts
-- **Forbidden Changes:** No schema changes, no new APIs, no external services, no frontend changes, no route changes.
-- **Dependencies:** None
-- **Validation Requirements:** TypeScript compiles, no any types, aliases applied in prompts.
-- **QA Requirement:** Manual audit of AI prompts for safe language.
-- **Commit Requirement:** Yes, after QA pass.
-
-**T-7B-05-02 — Frontend Safe Alias Adoption**
-- **Owner Role:** Senior Developer
-- **Goal:** Update frontend components (scorecard, terminal) to use safe aliases for display labels.
-- **Allowed Files:** frontend/src/app/(standard)/scorecard/page.tsx, frontend/src/app/(standard)/terminal/[coin]/page.tsx, frontend/src/features/shared/components/
-- **Forbidden Changes:** No backend changes, no API changes, no new packages, no SEO URLs.
-- **Dependencies:** T-7B-05-01
-- **Validation Requirements:** Frontend compiles, labels display safe terms.
-- **QA Requirement:** Visual QA of scorecard and terminal pages.
-- **Commit Requirement:** Yes, after QA pass.
-
-**T-7B-06 — Phase 7 QA Verification**
-- **Owner Role:** QA Hunter
-- **Goal:** Comprehensive QA to verify all public-facing outputs use policy-safe language.
-- **Allowed Files:** frontend/src/, backend/src/services/ai/
-- **Forbidden Changes:** No code changes, only verification.
-- **Dependencies:** T-7B-05-01, T-7B-05-02
-- **Validation Requirements:** All risky terms replaced, outputs policy-safe.
-- **QA Requirement:** Full audit checklist.
-- **Commit Requirement:** No (verification only).
-
-### Phase 3 — Multi-Horizon Scenario Tracker
-
-**T-3-01 — Scenario Tracker Integration into AI Workflow**
-- **Owner Role:** Senior Developer
-- **Goal:** Integrate scenarioTracker.service.ts into aiWorkflow.cron.ts to create market_scenarios entries for classified events.
-- **Allowed Files:** backend/src/crons/aiWorkflow.cron.ts, backend/src/services/scenarioTracker.service.ts
-- **Forbidden Changes:** No schema changes, no new tables, no API changes.
-- **Dependencies:** None
-- **Validation Requirements:** Scenarios created for events, TypeScript compiles.
-- **QA Requirement:** Verify scenario creation in logs.
-- **Commit Requirement:** Yes, after QA pass.
-
-**T-3-02 — Scenario Outcome Checker Cron**
-- **Owner Role:** Senior Developer
-- **Goal:** Create and register scenarioOutcomeChecker.cron.ts to update market_scenarios with outcomes at horizons.
-- **Allowed Files:** backend/src/crons/scenarioOutcomeChecker.cron.ts (new), backend/src/server.ts
-- **Forbidden Changes:** No existing cron modifications.
-- **Dependencies:** T-3-01
-- **Validation Requirements:** Cron registered, updates outcomes.
-- **QA Requirement:** Outcome fields populated.
-- **Commit Requirement:** Yes, after QA pass.
-
-**T-3-03 — Scenario Tracker Frontend Integration**
-- **Owner Role:** Senior Developer
-- **Goal:** Update scorecard to display scenarios from market_scenarios table.
-- **Allowed Files:** frontend/src/app/(standard)/scorecard/page.tsx, backend/src/controllers/market.controller.ts
-- **Forbidden Changes:** No schema changes.
-- **Dependencies:** T-3-02
-- **Validation Requirements:** Scenarios displayed on scorecard.
-- **QA Requirement:** UI QA.
-- **Commit Requirement:** Yes, after QA pass.
-
-### Phase 4 — OHLCV Price Snapshots
-
-**T-4-01 — OHLCV Storage Schema**
-- **Owner Role:** Senior Developer
-- **Goal:** Add OHLCV snapshot tables to market.model.ts and create migration.
-- **Allowed Files:** backend/src/models/market.model.ts, backend/scripts/migrate-ohlcv-snapshots.sql (new)
-- **Forbidden Changes:** No existing table modifications.
-- **Dependencies:** None
-- **Validation Requirements:** Tables created, Drizzle compiles.
-- **QA Requirement:** Migration runs safely.
-- **Commit Requirement:** Yes, after QA pass.
-
-**T-4-02 — OHLCV Snapshot Service**
-- **Owner Role:** Senior Developer
-- **Goal:** Create OHLCV snapshot service to fetch and store historical data.
-- **Allowed Files:** backend/src/services/ohlcvSnapshot.service.ts (new)
-- **Forbidden Changes:** No existing services modified.
-- **Dependencies:** T-4-01
-- **Validation Requirements:** Data stored correctly.
-- **QA Requirement:** Snapshot accuracy.
-- **Commit Requirement:** Yes, after QA pass.
-
-**T-4-03 — OHLCV Snapshot Cron**
-- **Owner Role:** Senior Developer
-- **Goal:** Create cron to periodically update OHLCV snapshots.
-- **Allowed Files:** backend/src/crons/ohlcvSnapshot.cron.ts (new), backend/src/server.ts
-- **Forbidden Changes:** No existing crons modified.
-- **Dependencies:** T-4-02
-- **Validation Requirements:** Cron runs, updates data.
-- **QA Requirement:** Data freshness.
-- **Commit Requirement:** Yes, after QA pass.
-
-### Phase 5 — Level Intelligence Engine
-
-**T-5-01 — Level Intelligence Integration into AI Workflow**
-- **Owner Role:** Senior Developer
-- **Goal:** Integrate levelIntelligence.service.ts into aiWorkflow.cron.ts for support/resistance levels.
-- **Allowed Files:** backend/src/crons/aiWorkflow.cron.ts, backend/src/services/levelIntelligence.service.ts
-- **Forbidden Changes:** No schema changes.
-- **Dependencies:** None
-- **Validation Requirements:** Levels calculated and used in analysis.
-- **QA Requirement:** Analysis includes levels.
-- **Commit Requirement:** Yes, after QA pass.
-
-**T-5-02 — Level Intelligence Cron Activation**
-- **Owner Role:** Senior Developer
-- **Goal:** Ensure levelIntelligenceCron.ts is active and integrated.
-- **Allowed Files:** backend/src/crons/levelIntelligenceCron.ts, backend/src/server.ts
-- **Forbidden Changes:** No new crons, only registration if missing.
-- **Dependencies:** T-5-01
-- **Validation Requirements:** Cron runs and populates levels.
-- **QA Requirement:** Level data available.
-- **Commit Requirement:** Yes, after QA pass.
-
-### Phase 6 — AI Cost Reduction
-
-**T-6-01 — Complete AIGateway Refactoring**
-- **Owner Role:** Senior Developer
-- **Goal:** Replace direct openrouter.chat.completions.create calls with AIGateway in openai.service.ts.
-- **Allowed Files:** backend/src/services/openai.service.ts
-- **Forbidden Changes:** No new libraries, no API changes.
-- **Dependencies:** None
-- **Validation Requirements:** All calls go through AIGateway.
-- **QA Requirement:** Cost reduction verified.
-- **Commit Requirement:** Yes, after QA pass.
-
-**T-6-02 — CacheManager Integration**
-- **Owner Role:** Senior Developer
-- **Goal:** Replace analysisCache Map with CacheManager in openai.service.ts.
-- **Allowed Files:** backend/src/services/openai.service.ts, backend/src/services/cache-manager.ts
-- **Forbidden Changes:** No schema changes.
-- **Dependencies:** T-6-01
-- **Validation Requirements:** Cache uses CacheManager.
-- **QA Requirement:** Caching works.
-- **Commit Requirement:** Yes, after QA pass.
-
-**T-6-03 — PromptFactory Migration**
-- **Owner Role:** Senior Developer
-- **Goal:** Move all prompts from openai.service.ts to PromptFactory.
-- **Allowed Files:** backend/src/services/openai.service.ts, backend/src/services/ai/prompt-factory.ts
-- **Forbidden Changes:** No API changes.
-- **Dependencies:** T-6-02
-- **Validation Requirements:** Prompts in PromptFactory.
-- **QA Requirement:** Prompts load correctly.
-- **Commit Requirement:** Yes, after QA pass.
-
-### Phase 8 — Migration Strategy
-
-**T-8-01 — Migration Strategy Documentation**
-- **Owner Role:** Strategic Planner
-- **Goal:** Document migration strategy for database, APIs, etc.
-- **Allowed Files:** agent_gedens/THE_NEXUS_HUB.md
-- **Forbidden Changes:** No code changes.
-- **Dependencies:** All other phases complete.
-- **Validation Requirements:** Strategy documented.
-- **QA Requirement:** Review by team.
-- **Commit Requirement:** Yes.
-
-## Recommended Execution Order
-
-1. **T-7B-05-01** (Phase 7 priority)
-2. **T-7B-05-02** (depends on T-7B-05-01)
-3. **T-7B-06** (QA for Phase 7)
-4. **T-3-01** (Phase 3 start)
-5. **T-3-02** (depends on T-3-01)
-6. **T-3-03** (depends on T-3-02)
-7. **T-4-01** (Phase 4 start, independent)
-8. **T-4-02** (depends on T-4-01)
-9. **T-4-03** (depends on T-4-02)
-10. **T-5-01** (Phase 5 start, independent)
-11. **T-5-02** (depends on T-5-01)
-12. **T-6-01** (Phase 6 start, independent)
-13. **T-6-02** (depends on T-6-01)
-14. **T-6-03** (depends on T-6-02)
-15. **T-8-01** (after all phases)
-
-## Parallelization Notes
-
-- T-7B-05-01 and T-4-01 can run in parallel (different areas).
-- T-7B-05-02 and T-3-01 can run in parallel after their deps.
-- T-5-01 and T-6-01 can run in parallel.
-- No parallel execution for tasks touching same files or requiring prior commits.
-- All QA tasks sequential after implementation.
-
-## Risks / Blockers / Reconciliation Notes
-
-- Phase 7B tasks are immediate priority but may require prompt adjustments for safe aliases.
-- Partial phases have existing code, but integration may reveal missing pieces.
-- No stale HUB issues detected.
-- Potential blocker: If safe aliases affect API contracts, but forbidden.
-
-## Next Immediate Task
-
-T-7B-05-01 — Backend Safe Alias Implementation
-
----
-
----
-
-# Phase 2 — Expand Temporal Intelligence
-
-**Status:** PLANNED — Partially executable after Phase 1 schema
-**Date:** May 3, 2026
-**Priority:** P1 (Enables data-rich temporal patterns)
-**Scope:** 1 SQL migration, 1 model update, 1 cron extension, 1 new service, 2 workflow updates, 1 verification checklist
-**Reviewed by:** Lead Architect + Tech Lead/Supreme Reviewer — APPROVED FOR EXECUTION
-
-## OBJECTIVE
-
-Enable OnlyAlpha to compare live classified events against historical similar events from coin_news_history, calculate deterministic outcome statistics, and inject DB-grounded context into AI workflows for policy-safe market scenarios.
-
-## REQUIRED TASKS
-
-### T-2A-01: 7d Schema Migration and Rollback
-
-**Task ID:** T-2A-01
-**Phase:** Phase 2A — 7d schema migration and rollback
-**Owner:** Senior Developer
-**Status:** Done — QA & Security PASS
-
-**Objective:**
-Add 7d support to coin_news_history schema with price_7d_after and change_7d nullable columns, plus safe rollback procedures.
-
-**Files allowed:**
-- `backend/scripts/migrate-coin-news-history-phase2.sql` (new migration file)
-
-**Implementation requirements:**
-1. ALTER TABLE coin_news_history ADD COLUMN price_7d_after real nullable
-2. ALTER TABLE coin_news_history ADD COLUMN change_7d real nullable
-3. Ensure migration is rollback-safe (DROP COLUMN statements in reverse order)
-
-**Explicit exclusions:**
-- Do not modify any existing columns or indexes
-- Do not alter outcome_classification (kept based on 3d)
-- No data backfill in migration (handled by eventOutcomeChecker)
-
-**Acceptance criteria:**
-- Migration adds exactly 2 new nullable columns
-- No existing data loss
-- Rollback drops the 2 columns cleanly
-
-**QA notes:**
-- Test migration on staging DB first
-- Verify column types match Drizzle model expectations
-- Confirm rollback leaves schema identical to pre-migration state
-
-**Dependencies:**
-- Phase 1 schema (T-1A-01 + T-1A-02)
-
----
-
-### T-2B-01: Drizzle Model Update
-
-**Task ID:** T-2B-01
-**Phase:** Phase 2B — Drizzle model update
-**Owner:** Senior Developer
-**Status:** Done — QA & Security PASS
-
-**Objective:**
-Update backend/src/models/market.model.ts to include price7dAfter and change7d fields in coinNewsHistory table definition.
-
-**Files allowed:**
-- `backend/src/models/market.model.ts`
-
-**Implementation requirements:**
-1. Add price7dAfter: real('price_7d_after').nullable()
-2. Add change7d: real('change_7d').nullable()
-3. Map camelCase properties to snake_case SQL columns
-4. Ensure column order matches migration
-
-**Explicit exclusions:**
-- Do not modify any other columns in coinNewsHistory table
-- No changes to other table definitions
-- No type changes to existing fields
-
-**Acceptance criteria:**
-- `tsc --noEmit` passes in backend
-- Drizzle schema matches database schema after migration
-- No any types introduced
-
-**QA notes:**
-- Run `cd backend && npx drizzle-kit generate` to verify schema generation
-- Check that existing code compiles without changes
-
-**Dependencies:**
-- T-2A-01 (migration must run first)
-
----
-
-### T-2C-01: eventOutcomeChecker 7d Extension
-
-**Task ID:** T-2C-01
-**Phase:** Phase 2C — eventOutcomeChecker 7d extension
-**Owner:** Senior Developer
-**Status:** Done — QA & Security PASS
-
-**Objective:**
-Extend eventOutcomeChecker.cron.ts to fill 7d fields after publishedAt + 7d, maintaining existing 3d logic unchanged.
-
-**Files allowed:**
-- `backend/src/crons/eventOutcomeChecker.cron.ts`
-
-**Implementation requirements:**
-1. Add 7d horizon calculation logic after 3d calculations
-2. Fill price_7d_after and change_7d based on price at publishedAt + 7 days
-3. Keep all existing retry logic (3 attempts) for generateDualNewsOutput
-4. Keep all existing fallback logic for generateLightweightTriage
-5. Keep existing adaptive model routing logic (temperature adjustment)
-
-**Explicit exclusions:**
-- Do not modify outcome_classification (remains 3d-based)
-- No changes to 1h/4h/24h/3d field population logic
-- No new AI calls or service integrations
-
-**Acceptance criteria:**
-- 7d fields populated after 7 days from publishedAt
-- Existing 3d outcome logic unchanged
-- Cron continues to run at 30-minute intervals
-
-**QA notes:**
-- Verify 7d fields remain null until 7 days pass
-- Test with events >7 days old to confirm population
-- Ensure no regression in existing 3d calculations
-
-**Dependencies:**
-- T-2A-01 + T-2B-01 (schema ready)
-- T-1C-01 (existing eventOutcomeChecker exists)
-
----
-
-### T-2D-01: historicalEventStats.service.ts Creation
-
-**Task ID:** T-2D-01
-**Phase:** Phase 2D — historicalEventStats.service.ts creation
-**Owner:** Senior Developer
-**Status:** Done — QA & Security PASS
-
-**Objective:**
-Create backend/src/services/historicalEventStats.service.ts that deterministically queries coin_news_history and calculates statistics per matching hierarchy.
-
-**Files allowed:**
-- `backend/src/services/historicalEventStats.service.ts` (new file)
-
-**Implementation requirements:**
-1. Implement matching hierarchy: A. exact (coinSymbol + eventType + eventScope + sentiment), B. relaxed level 1 (coinSymbol + eventType + eventScope), C. relaxed level 2 (eventType + eventScope + sentiment), D. relaxed level 3 (eventType + eventScope), E. market-wide fallback (eventType only)
-2. Calculate per-horizon sample sizes, median returns, positive/bullish outcome rates, average max upside/drawdown
-3. Assign confidence: 0 (none), 1-2 (very_low), 3-5 (low), 6-15 (medium), 16+ (high); adjust downward for relaxed match level/incomplete data/mixed outcomes
-4. Use query strategy: rows eligible if at least one relevant change field non-null, per-horizon stats skip nulls independently, order by publishedAt DESC, limit 100 rows
-5. Return: matchLevelUsed, sampleSize, horizonSampleSizes, horizonsAvailable, medianReturn per horizon, positive/bullish outcome rate per horizon, averageMaxUpside, averageMaxDrawdown, confidenceLevel, limitations
-6. Never call AI, never invent data
-
-**Explicit exclusions:**
-- No AI integrations or calls
-- No caching or state management (pure query/service)
-- No external API calls
-- No prompt or workflow logic
-
-**Acceptance criteria:**
-- Service exports function that takes event parameters and returns statistics object
-- All calculations deterministic from database data
-- Handles edge cases (no matches, small samples) gracefully
-
-**QA notes:**
-- Test with known historical data to verify calculations
-- Verify confidence levels adjust correctly for match levels
-- Ensure limitations field populated when data insufficient
-
-**Dependencies:**
-- T-2A-01 + T-2B-01 + T-2C-01 (7d data available)
-
----
-
-### T-2E-01: AI Workflow Integration
-
-**Task ID:** T-2E-01
-**Phase:** Phase 2E — AI workflow integration
-**Owner:** Senior Developer
-**Status:** Done — QA & Security PASS
-
-**Objective:**
-Integrate historicalEventStats.service.ts into aiWorkflow.cron.ts to call stats service after event classification and inject returned stats into AI prompts.
-
-**Files allowed:**
-- `backend/src/crons/aiWorkflow.cron.ts`
-
-**Implementation requirements:**
-1. Import historicalEventStats service
-2. Call stats service after event classification (before AI analysis)
-3. Inject returned stats into prompt context
-4. AI must use provided stats only, never invent numbers
-5. If no stats, omit historical comparison section
-6. If low confidence, state "limited historical sample available"
-
-**Explicit exclusions:**
-- No changes to event classification logic
-- No modifications to existing AI model routing
-- No changes to prompt structure beyond stats injection
-
-**Acceptance criteria:**
-- Stats service called for each classified event
-- AI prompts include historical stats when available
-- No AI hallucinations or invented statistics
-
-**QA notes:**
-- Verify stats appear in AI prompts for events with historical matches
-- Test behavior when no historical data exists
-- Ensure AI responses reference provided stats accurately
-
-**Dependencies:**
-- T-2D-01 (stats service exists)
-- T-1B-01 (existing AI workflow)
-
----
-
-### T-2F-01: Prompt/Policy-Safe Stats Injection
-
-**Task ID:** T-2F-01
-**Phase:** Phase 2F — prompt/policy-safe stats injection
-**Owner:** Senior Developer
-**Status:** Done — QA & Security PASS
-
-**Objective:**
-Update AI prompts to use policy-safe language mapping for historical stats presentation, maintaining AdSense-safe output.
-
-**Files allowed:**
-- `backend/src/services/ai/prompt-factory.ts`
-
-**Implementation requirements:**
-1. Map internal stats to public language: Signal -> Market Scenario, Entry -> Reference Price, TP -> Target Zone, SL -> Risk Zone / Invalidation Zone, P&L -> Historical Outcome, Win Rate -> Outcome Rate, Buy/Sell -> Bullish/Bearish Bias
-2. Format stats injection as policy-safe analysis context
-3. Public language must remain AdSense-safe
-
-**Explicit exclusions:**
-- No changes to internal data structures or calculations
-- No modifications to stats service output
-- Backend/internal verdict values remain raw
-
-**Acceptance criteria:**
-- AI outputs use policy-safe terminology
-- Historical stats presented as analysis context, not predictions
-- No financial advice framing
-
-**QA notes:**
-- Audit AI outputs for policy-safe language
-- Verify mapping table applied consistently
-- Test with various stat confidence levels
-
-**Dependencies:**
-- T-2E-01 (stats injection exists)
-- Existing prompt-factory structure
-
----
-
-### T-2G-01: Phase 2 Verification Checklist
-
-**Task ID:** T-2G-01
-**Phase:** Phase 2G — Phase 2 verification checklist
-**Owner:** Senior Developer
-**Status:** Done — QA & Security PASS
-
-**Objective:**
-Create comprehensive verification checklist/script for Phase 2 stats behavior and AI integration.
-
-**Files allowed:**
-- `backend/scripts/verify-phase2-stats.js` (new verification script)
-
-**Implementation requirements:**
-1. SQL checks for 7d column existence and population
-2. Test historicalEventStats service with sample events
-3. Verify AI workflow integration and prompt injection
-4. Validate policy-safe language mapping
-5. Check confidence level calculations
-
-**Explicit exclusions:**
-- No modifications to application code
-- Pure verification/testing script
-- No deployment or runtime changes
-
-**Acceptance criteria:**
-- Script runs without errors on staging environment
-- All checks pass for Phase 2 functionality
-- Provides clear pass/fail results
-
-**QA notes:**
-- Run script after Phase 2 deployment
-- Use for regression testing in future updates
-- Include sample data for consistent testing
-
-**Dependencies:**
-- All T-2A through T-2F tasks
-
----
-
-### T-2H-01: Optional Index Migration
-
-**Task ID:** T-2H-01
-**Phase:** Phase 2H — optional index migration
-**Owner:** Senior Developer
-**Status:** Planned
-
-**Objective:**
-Determine if separate index migration needed for 7d query performance, and implement if required.
-
-**Files allowed:**
-- `backend/scripts/migrate-coin-news-history-phase2-index.sql` (new if needed)
-
-**Implementation requirements:**
-1. Analyze query patterns in historicalEventStats.service.ts
-2. Determine if additional indexes needed beyond Phase 1 index
-3. Create migration script if performance optimization required
-
-**Explicit exclusions:**
-- Only create if determined necessary after analysis
-- No forced index creation without justification
-- Maintain backward compatibility
-
-**Acceptance criteria:**
-- If created: index improves query performance for 7d stats
-- If skipped: documented reasoning for no additional indexes
-- No negative impact on existing queries
-
-**QA notes:**
-- Performance test queries before/after index creation
-- Monitor database performance post-deployment
-- Rollback plan includes index removal
-
-**Dependencies:**
-- T-2D-01 (to analyze query patterns)
-
----
-
-## VALIDATION CHECKLIST
-
-| # | Test | Expected Result |
-|---|---|-----------------|
-| 1 | Migration runs | price_7d_after and change_7d columns added |
-| 2 | Drizzle generate | Schema updates without errors |
-| 3 | eventOutcomeChecker | Populates 7d fields after 7 days |
-| 4 | historicalEventStats service | Returns accurate statistics for sample events |
-| 5 | AI workflow | Calls stats service and injects into prompts |
-| 6 | AI output | Uses policy-safe language for historical stats |
-| 7 | Verification script | All Phase 2 checks pass |
-
----
-
-*Phase 2 authored: May 2, 2026*  
-*Depends on: Phase 1 data accumulation for meaningful statistics*
-
----
-
----
-
-# Phase 3 — Multi-Horizon Scenario Tracker
-
-**Status:** PLANNED — After Phase 1 stable  
-**Date:** May 2, 2026  
-**Priority:** P1 (Enables investment vs speculation tracking)  
-**Scope:** 4 model updates, 3 cron updates, 1 scorecard update  
-
-## OBJECTIVE
-
-Separate short-term signals (speculation/swing) from long-term convictions (investment). Add horizon-based expiry and tracking.
-
-## REQUIRED TASKS
-
-### T-3A-01: Add horizon Column to signal_performance
-
-**Task ID:** T-3A-01  
-**Phase:** Phase 3A — Horizon column on signal_performance  
-**Owner:** Senior Developer  
-**Status:** Planned  
-
-**Objective:**  
-Add nullable horizon column to distinguish speculation (7d), swing (90d), investment (ongoing).
-
-**Files to inspect:**  
-- `backend/src/models/market.model.ts:180-200` — signalPerformance table  
-
-**Files likely to modify:**  
-- `backend/src/models/market.model.ts`  
-- Migration script  
-
-**Detailed steps:**  
-1. Add `horizon` column (VARCHAR, nullable)  
-2. Migration with backfill logic  
-
-**Acceptance criteria:**  
-- Schema updated without breaking existing rows  
-
-**Testing / verification:**  
-- New signals get horizon assigned  
-
-**Rollback notes:**  
-- Drop horizon column  
-
-**Dependencies:**  
-None  
-
----
-
-### T-3B-01: AI Horizon Classification in Deep Analysis
-
-**Task ID:** T-3B-01  
-**Phase:** Phase 3B — AI horizon classification  
-**Owner:** Prompt Engineer  
-**Status:** Planned  
-
-**Objective:**  
-Update deep analysis JSON schema to include horizon classification.
-
-**Files to inspect:**  
-- `backend/src/services/ai/prompt-factory.ts:100-150` — deep analysis prompt  
-
-**Files likely to modify:**  
-- `backend/src/services/ai/prompt-factory.ts`  
-
-**Detailed steps:**  
-1. Add horizon field to JSON schema  
-2. Update system prompt for horizon reasoning  
-
-**Acceptance criteria:**  
-- AI classifies signals by timeframe appropriately  
-
-**Testing / verification:**  
-- Analysis output includes horizon field  
-
-**Rollback notes:**  
-- Remove horizon from schema  
-
-**Dependencies:**  
-None  
-
----
-
-### T-3C-01: Horizon-Aware Signal Creation
-
-**Task ID:** T-3C-01  
-**Phase:** Phase 3C — Horizon-aware signal creation  
-**Owner:** Senior Developer  
-**Status:** Planned  
-
-**Objective:**  
-Route investment signals to coin_strategic_outlook, speculation to signal_performance.
-
-**Files to inspect:**  
-- `backend/src/crons/aiWorkflow.cron.ts:520-540` — signal creation logic  
-
-**Files likely to modify:**  
-- `backend/src/crons/aiWorkflow.cron.ts`  
-
-**Detailed steps:**  
-1. Check horizon from analysis result  
-2. Investment horizon → INSERT coin_strategic_outlook  
-3. Speculation/swing → existing signal_performance logic  
-
-**Acceptance criteria:**  
-- Signals routed correctly by horizon  
-
-**Testing / verification:**  
-- Investment signals appear in strategic_outlook  
-
-**Rollback notes:**  
-- Revert routing logic  
-
-**Dependencies:**  
-- T-3A-01 + T-3B-01  
-
----
-
-### T-3D-01: Horizon-Based Auto-Expiry
-
-**Task ID:** T-3D-01  
-**Phase:** Phase 3D — Horizon-based expiry in tpslMonitor  
-**Owner:** Senior Developer  
-**Status:** Planned  
-
-**Objective:**  
-Auto-close signals based on horizon: speculation (7d), swing (90d).
-
-**Files to inspect:**  
-- `backend/src/crons/tpslMonitor.cron.ts` — current TP/SL logic  
-
-**Files likely to modify:**  
-- `backend/src/crons/tpslMonitor.cron.ts`  
-
-**Detailed steps:**  
-1. Add horizon-based expiry checks  
-2. Close expired signals with reason  
-
-**Acceptance criteria:**  
-- Signals expire at appropriate horizons  
-
-**Testing / verification:**  
-- Old signals auto-closed  
-
-**Rollback notes:**  
-- Remove expiry logic  
-
-**Dependencies:**  
-- T-3A-01  
-
----
-
-### T-3E-01: Investment Thesis Tracking
-
-**Task ID:** T-3E-01  
-**Phase:** Phase 3E — Investment thesis on coin_strategic_outlook  
-**Owner:** Senior Developer  
-**Status:** Planned  
-
-**Objective:**  
-Add thesis tracking columns to coin_strategic_outlook.
-
-**Files to inspect:**  
-- `backend/src/models/market.model.ts:230-250` — coinStrategicOutlook table  
-
-**Files likely to modify:**  
-- `backend/src/models/market.model.ts`  
-
-**Detailed steps:**  
-1. Add thesis tracking columns  
-2. Update migration  
-
-**Acceptance criteria:**  
-- Investment theses tracked with outcomes  
-
-**Testing / verification:**  
-- Thesis entries have outcome fields  
-
-**Rollback notes:**  
-- Drop thesis columns  
-
-**Dependencies:**  
-None  
-
----
-
-### T-3F-01: 90d P&L Tracking for Swing Signals
-
-**Task ID:** T-3F-01  
-**Phase:** Phase 3F — 90d P&L tracking  
-**Owner:** Senior Developer  
-**Status:** Planned  
-
-**Objective:**  
-Extend signalPerformance cron to track 90d P&L for swing signals.
-
-**Files to inspect:**  
-- `backend/src/crons/signalPerformance.cron.ts:80-100` — current 30d logic  
-
-**Files likely to modify:**  
-- `backend/src/crons/signalPerformance.cron.ts`  
-
-**Detailed steps:**  
-1. Add 90d P&L calculation block  
-2. Only for swing horizon signals  
-
-**Acceptance criteria:**  
-- Swing signals get 90d tracking  
-
-**Testing / verification:**  
-- 90d fields populated for swing signals  
-
-**Rollback notes:**  
-- Remove 90d calculation  
-
-**Dependencies:**  
-- T-3A-01  
-
----
-
-### T-3G-01: Scorecard 3-Section Layout
-
-**Task ID:** T-3G-01  
-**Phase:** Phase 3G — Scorecard 3-section display  
-**Owner:** Senior Developer  
-**Status:** Planned  
-
-**Objective:**  
-Update scorecard to show Active Market Scenarios, Long-Term Convictions, Completed Scenarios.
-
-**Files to inspect:**  
-- `frontend/src/app/(standard)/scorecard/page.tsx` — current layout  
-
-**Files likely to modify:**  
-- `frontend/src/app/(standard)/scorecard/page.tsx`  
-
-**Detailed steps:**  
-1. Restructure into 3 sections  
-2. Pull from both signal_performance and coin_strategic_outlook  
-
-**Acceptance criteria:**  
-- Scorecard shows separated sections  
-
-**Testing / verification:**  
-- All sections render correctly  
-
-**Rollback notes:**  
-- Revert to single table layout  
-
-**Dependencies:**  
-- T-3A-01 + T-3C-01 + T-3E-01  
-
----
-
-*Phase 3 authored: May 2, 2026*  
-*Enables: Clear separation of short-term trading vs long-term investing*
-
----
-
----
-
-# Phase 4 — Multi-Horizon Scenario Tracker
-
-**Status:** DONE — QA PASS  
-**Date:** May 3, 2026  
-**Priority:** P1 (Enables investment vs speculation tracking)  
-**Scope:** 1 SQL migration, 3 new files, 2 modified files  
-
-## OBJECTIVE
-
-Track market scenarios across multiple horizons (speculation, swing, investment) with bias-aware outcome classification, dedup prevention, and automated invalidation logic.
-
-## REQUIRED TASKS
-
-### T-4A-01: Market Scenarios Migration
-
-**Task ID:** T-4A-01
-**Phase:** Phase 4A — market_scenarios tables
-**Owner:** Senior Developer
-**Status:** Done
-
-**Objective:**
-Create market_scenarios, scenario_horizon_outcomes, scenario_status_history tables with enums for multi-horizon tracking.
-
-**Migration path:** backend/scripts/migrate-market-scenarios.sql
-
-**Acceptance criteria:**
-- All tables and enums created
-- Numeric precision correct (numeric(24,12) for prices, numeric(10,4) for percents)
-- Indexes on dedupeKey, status, dueAt, etc.
-- Additive only (no existing tables modified)
-
-**Testing / verification:**
-- Tables exist with correct schemas
-- Enums include all required values (scenario_status: pending/active/completed/expired/invalidated)
-
-### T-4B-01: Scenario Tracker Service
-
-**Task ID:** T-4B-01
-**Phase:** Phase 4B — scenarioTracker.service.ts
-**Owner:** Senior Developer
-**Status:** Done
-
-**Objective:**
-Implement scenario creation with dedup, horizon outcomes generation, and status updates.
-
-**Files modified:**
-- backend/src/services/scenarioTracker.service.ts (new)
-
-**Acceptance criteria:**
-- createScenario generates dedupeKey correctly and prevents duplicates
-- createHorizonOutcomesForScenario creates 11 outcomes (3 spec + 3 swing + 5 invest) with dueAt from referencePriceAt + duration
-- updateScenarioStatus inserts history row
-
-### T-4C-01: Outcome Checker Cron
-
-**Task ID:** T-4C-01
-**Phase:** Phase 4C — scenarioOutcomeChecker.cron.ts
-**Owner:** Senior Developer
-**Status:** Done
-
-**Objective:**
-Hourly cron to capture outcomes using historical candles from referencePriceAt to dueAt.
-
-**Files modified:**
-- backend/src/crons/scenarioOutcomeChecker.cron.ts (new)
-- backend/src/server.ts (cron registration)
-
-**Acceptance criteria:**
-- Fetches candles from referencePriceAt to dueAt
-- Bias-aware classification (bullish favors positive change, bearish favors negative)
-- Invalidation logic checks risk zones and invalidationPrice
-- changePercent = ((priceAtHorizon - priceAtStart) / priceAtStart) * 100
-
-### T-4D-01: Drizzle Model Updates
-
-**Task ID:** T-4D-01
-**Phase:** Phase 4D — market.model.ts updates
-**Owner:** Senior Developer
-**Status:** Done
-
-**Objective:**
-Add market_scenarios, scenario_horizon_outcomes, scenario_status_history tables to Drizzle schema.
-
-**Files modified:**
-- backend/src/models/market.model.ts
-
-**Acceptance criteria:**
-- All enums defined (source_type, scenario_type, bias_type, etc.)
-- Numeric precision matches migration
-- Indexes match migration
-
-### T-4E-01: Verification Script
-
-**Task ID:** T-4E-01
-**Phase:** Phase 4E — verify-phase4-scenarios.js
-**Owner:** Senior Developer
-**Status:** Done
-
-**Objective:**
-Read-only script to verify scenario data integrity.
-
-**Files modified:**
-- backend/scripts/verify-phase4-scenarios.js (new)
-
-**Acceptance criteria:**
-- Checks total scenarios, by status/type/bias
-- Verifies duplicate dedupeKeys
-- Validates reference prices
-- Handles no-data gracefully
-
----
-
-## DEFERRED ITEMS
-
-- **aiWorkflow scenario integration:** Deferred per Phase 4 plan (env flag SCENARIO_TRACKER_ENABLED exists for future enable)
-- **Phase 3 levelIntelligenceCron.ts:** Known gap/stub - level intelligence does not run automatically (confirmed in QA)
-
----
-
-*Phase 4 completed: May 3, 2026*
-*Enables: Multi-horizon scenario tracking with automated outcomes and invalidation*
-
----
-
----
-
-# Phase 4.5 — Activation & Backfill Readiness
-
-**Status:** DONE — QA PASS
-**Date:** May 3, 2026
-**Priority:** P0 (Activates Phase 3/4 infrastructure)
-**Scope:** 4 modified files, 1 new script
-
-## OBJECTIVE
-
-Turn Phase 3/4 passive infrastructure into safely activated production systems with controlled backfill.
-
-## REQUIRED TASKS
-
-### T-4.5A-01: Level Intelligence Cron Activation
-
-**Status:** Done
-
-**Implementation:**
-- Replaced stub with real cron calling levelIntelligence.service.ts
-- Processes MAJOR_COINS = ['BTC', 'ETH', 'SOL', 'ADA', 'LINK', 'DOT', 'AVAX', 'MATIC']
-- Supports timeframes: 1h, 4h, 1d, 1w
-- Configurable via LEVEL_INTELLIGENCE_MAX_COINS (default 8), LEVEL_INTELLIGENCE_TIMEFRAMES
-- Per coin/timeframe try/catch isolation
-- Rate-limited with 100ms delays between requests
-- Logs: start, enabled/disabled, coin count, timeframes, success/failure summary
-
-### T-4.5A-02: Scenario Creation Integration
-
-**Status:** Done
-
-**Implementation:**
-- Added scenario creation to aiWorkflow.cron.ts after coinNewsHistory insert
-- Controlled by SCENARIO_TRACKER_ENABLED (default false)
-- Eligibility: eventSeverity >=3 (MAJOR), price available, sentiment in ['bullish','bearish']
-- Creates speculation scenarios with dedupeKey prevention
-- Maps: event->sourceType, sourceHash->sourceId, symbol->coinSymbol, sentiment->bias
-- Failure wrapped in try/catch, does not break articles/radar/scorecard
-
-### T-4.5A-03: Safe Backfill Script
-
-**Status:** Done
-
-**Files:** backend/scripts/backfill-phase45-scenarios.js
-
-**Implementation:**
-- Dry-run default mode, requires --execute for writes
-- Scope: Last 14 days, MAJOR_COINS, major/high-severity events only
-- Conservative mapping: sentiment->bias, title->thesis, eventType->eventType
-- Logs: scanned, eligible, skipped, created, duplicates
-- Respects dedupeKey, creates speculation scenarios
-
-### T-4.5A-04: Verification Updates
-
-**Status:** Done
-
-**Implementation:**
-- Extended verify-phase3-levels.js: checks levels/interactions updated in last 24h, activation status
-- Extended verify-phase4-scenarios.js: checks scenarios created in last 24h, activation status
-- Added invalid price/confidence checks
-
-## OPERATIONAL CONTROLS
-
-### Environment Variables
-
-**LEVEL_INTELLIGENCE_ENABLED** (default: false)
-- Controls level intelligence cron execution
-- When false: cron logs and exits safely
-- When true: processes levels and interactions
-
-**LEVEL_INTELLIGENCE_MAX_COINS** (default: 8)
-- Limits coins processed per run
-- Prevents excessive API load
-- Major coins: BTC, ETH, SOL, ADA, LINK, DOT, AVAX, MATIC
-
-**LEVEL_INTELLIGENCE_TIMEFRAMES** (default: '1h,4h,1d,1w')
-- Configurable timeframes as comma-separated string
-- Supported: 1h, 4h, 1d, 1w
-
-**SCENARIO_TRACKER_ENABLED** (default: false)
-- Controls automatic scenario creation in aiWorkflow
-- When false: scenario creation skipped safely
-- When true: creates scenarios for eligible MAJOR events
-
-### Safe Defaults
-
-- All activation flags default to false
-- Production starts safely disabled
-- Operators must explicitly enable
-- No broad backfill by default
-
-### Rollback Plan
-
-1. **Disable env flags:**
-   - LEVEL_INTELLIGENCE_ENABLED=false
-   - SCENARIO_TRACKER_ENABLED=false
-
-2. **Stop crons:**
-   - Comment out levelIntelligenceCron registration in server.ts
-   - aiWorkflow continues running normally
-
-3. **Leave tables unused:**
-   - level_intelligence/interactions remain populated
-   - market_scenarios remain populated
-   - No data deletion needed
-
-4. **Verify deactivation:**
-   - Run verification scripts
-   - Confirm no new updates in 24h
-
-### Run Commands
-
-**Enable Level Intelligence:**
-```bash
-# Set env vars
-LEVEL_INTELLIGENCE_ENABLED=true
-LEVEL_INTELLIGENCE_MAX_COINS=8
-LEVEL_INTELLIGENCE_TIMEFRAMES=1h,4h,1d,1w
-
-# Restart server to pick up env changes
-# Cron runs automatically every 6 hours
-```
-
-**Enable Scenario Creation:**
-```bash
-# Set env var
-SCENARIO_TRACKER_ENABLED=true
-
-# Restart server
-# Scenarios created automatically for new MAJOR events
-```
-
-**Run Verification:**
-```bash
-# Level intelligence health
-node backend/scripts/verify-phase3-levels.js
-
-# Scenario tracker health
-node backend/scripts/verify-phase4-scenarios.js
-```
-
-**Safe Backfill:**
-```bash
-# Preview what would be created
-node backend/scripts/backfill-phase45-scenarios.js
-
-# Execute backfill (requires explicit flag)
-node backend/scripts/backfill-phase45-scenarios.js --execute
-```
-
-### Known Limitations
-
-- Level intelligence processes only major coins (no all-Binance scanning)
-- Scenario creation limited to speculation type initially
-- Backfill limited to last 14 days only
-- No AI-generated outcomes (uses real price data only)
-- No target/risk zone invention (conservative mapping)
-
-### Monitoring
-
-**Level Intelligence:**
-- Check cron logs for "LevelIntelligenceCron" entries
-- Verify levels updated in last 24h via verification script
-- Monitor interaction creation rates
-
-**Scenario Creation:**
-- Check aiWorkflow logs for "Created scenario" entries
-- Verify scenarios created in last 24h via verification script
-- Monitor dedupeKey duplicates (should be 0)
-
-**Performance:**
-- Level cron should complete within minutes
-- Scenario creation should not slow aiWorkflow
-- No impact on existing Living Articles/Radar/Scorecard
-
----
-
-*Phase 4.5 authored: May 3, 2026*
-*Enables: Safe activation of intelligence infrastructure*
-
----
-
----
-
-# Phase 5 — Smart Monitoring Cadence & Production Observation
-
-**Status:** DONE — QA PASS
-**Date:** May 3, 2026
-**Priority:** P0 (Safe monitoring for intelligence systems)
-**Scope:** 1 health script, 1 matrix deliverable, 1 runbook, 1 optional cron
-
-## OBJECTIVE
-
-Create production-safe monitoring layer for intelligence infrastructure activated in Phase 4.5. Focus on read-only health checks and cadence analysis - no public changes, no forced activation, no heavy services.
-
-## REQUIRED TASKS
-
-### T-5.1: Cron/Cadence Audit
-
-**Status:** Done
-
-**Implementation:**
-- Audited all 17 registered crons in server.ts
-- 15 crons have no env flag (cannot be disabled without code edit)
-- 2 crons have env flags (LevelIntelligence, ScenarioOutcomeChecker - disabled by default)
-- Core chain: TerminalEngine → TriageEngine → AiWorkflow (highest risk if any fails)
-- All other crons are isolated
-- External API dependencies: OpenRouter (AI), Binance (price/data), Telegram, RSS feeds, Alternative.me, DeFiLlama, Zhipu
-
-### T-5.2: Production Health Check Script
-
-**Status:** Done
-
-**Files:** backend/scripts/verify-intelligence-health.js
-
-**Implementation:**
-- Read-only health verification for Phase 2/3/4/4.5
-- Checks env flag status, duplicate dedupeKeys, due pending outcomes, failed outcomes, stale active scenarios, invalid confidence/price values
-- Reports row counts for all intelligence tables
-- Handles no-data state gracefully
-- No INSERT/UPDATE/DELETE operations
-
-### T-5.3: Smart Cadence Matrix
-
-**Status:** Done
-
-**Implementation:**
-Matrix based on T-5.1 audit findings:
-
-| System | Current Cadence | Proposed Cadence | Env Flag | External API Risk | DB Growth Risk | Recommendation |
-|--------|-----------------|------------------|----------|-------------------|----------------|-----------------|
-| AiWorkflow | Hourly (0 * * * *) | Keep hourly | None | High (OpenRouter/Binance) | High (articles/radar) | Keep hourly, monitor AI rate limits |
-| LevelIntelligence | 6h (0 */6 * * *) | Keep 6h | LEVEL_INTELLIGENCE_ENABLED | Medium (Binance) | Medium | Keep 6h |
-| ScenarioOutcomeChecker | Hourly (0 * * * *) | Keep hourly | SCENARIO_TRACKER_ENABLED | Medium (Binance) | Low | Keep hourly |
-| SignalPerformance | 6h (0 */6 * * * ) | Keep 6h | None | Low (Binance) | Low | Keep 6h |
-| EventOutcomeChecker | 30min (*/30 * * * *) | Keep 30min | None | Medium (Binance) | Low | Keep 30min, note: high-frequency monitoring |
-| TpslMonitor | 15min (*/15 * * * *) | Keep 15min | None | Low (Binance) | Low | Keep 15min, note: high-frequency monitoring |
-| HistoricalNews | Daily (0 4 * * *) | Keep daily | None | None | Low | Keep daily |
-| TelegramMonitor | 30min news + 4h airdrops | Keep schedules | TELEGRAM_SESSION_STRING | Low (Telegram) | Medium (buffer) | Keep schedules |
-| AirdropDiscovery | 6h (0 */6 * * *) | Keep 6h | None | Medium (Zhipu/DeFiLlama) | Medium | Keep 6h |
-| AirdropRSSHunter | 6h (0 */6 * * *) | Keep 6h | None | Medium (OpenRouter) | Medium | Keep 6h |
-| AirdropHunter | 12h (0 */12 * * *) | Keep 12h | None | Medium (OpenRouter) | Medium | Keep 12h |
-| BufferCleanup | Daily (0 0 * * *) | Keep daily | None | None | Low | Keep daily |
-| DailyAlpha | 8h (0 */8 * * *) | Keep 8h | None | None | Low | Keep 8h |
-| TerminalEngine | 10min (*/10 * * * *) | Keep 10min | None | Low (RSS) | High (buffer) | Keep 10min, note: core gathering |
-| TriageEngine | 2h (0 */2 * * *) | Keep 2h | None | Medium (OpenRouter) | Low | Keep 2h |
-| ConvictionUpdate | 6h (0 */6 * * *) | Keep 6h | None | None | Low | Keep 6h |
-| MarketMood | Daily (0 7 * * *) | Keep daily | None | Low (Alternative.me) | Low | Keep daily |
-
-**Key Findings:**
-- AiWorkflow is highest risk (core AI processing, no env flag)
-- EventOutcomeChecker and TpslMonitor are high-frequency monitors (30min and 15min)
-- TerminalEngine is core gathering engine (10min, feeds triage)
-- 15 crons cannot be disabled via env flags (limitation for rollback)
-- All cadences are conservative and match current production schedules
-
-### T-5.4: Production Observation Runbook
-
-**Status:** Done
-
-**Implementation:**
-Comprehensive runbook added to THE_NEXUS_HUB.md with:
-
-**Day 0 Checks (Pre-Activation):**
-- Run `node backend/scripts/verify-intelligence-health.js`
-- Confirm LEVEL_INTELLIGENCE_ENABLED=false, SCENARIO_TRACKER_ENABLED=false
-- Verify no intelligence activity in logs for 24h
-- Check table row counts as baseline
-
-**Canary Activation Steps (Gradual Enablement):**
-1. Enable LEVEL_INTELLIGENCE_ENABLED=true first
-2. Observe for 24h: check level updates in verify script, monitor cron logs
-3. If stable, enable SCENARIO_TRACKER_ENABLED=true
-4. Observe for 24h: check scenario creation in verify script
-
-**Daily Checks for 3-7 Days Post-Activation:**
-- Run verify-intelligence-health.js daily
-- Check cron logs for AiWorkflow errors
-- Monitor Binance API error rate (should be <1%)
-- Check DB row growth (levels/scenarios should increase steadily)
-- Verify duplicate dedupeKeys = 0
-- Check due pending outcomes < 100
-- Check failed outcomes = 0
-
-**Rollback Procedures:**
-- Set LEVEL_INTELLIGENCE_ENABLED=false, SCENARIO_TRACKER_ENABLED=false
-- Restart server to pick up env changes
-- For non-flagged crons: edit server.ts to comment out registrations
-- Verify deactivation: run verify script, confirm no new updates in 24h
-
-**Healthy/Warning Thresholds:**
-- Scenarios created per day: healthy 1-20, warning >50 (too aggressive)
-- Levels detected per coin: healthy 5-50, warning >100 (too noisy)
-- Interactions per day: healthy 10-200, warning >500 (performance impact)
-- Pending due outcomes: healthy 0-10, warning >50 (processing backlog)
-- Failed outcomes: healthy 0, warning >0 (investigate immediately)
-- Binance errors: healthy <1%, warning >5% (API issues)
-
-**Safe Monitoring Commands:**
-- Health check: `node backend/scripts/verify-intelligence-health.js`
-- Cron logs: Check server logs for "Cron started/failed" entries
-- DB growth: Compare row counts daily
-- API health: Monitor Binance response times
-
-### T-5.5: Optional Monitoring Cron
-
-**Status:** Implemented
-
-**Files:** backend/src/crons/monitoringCron.ts, backend/src/server.ts
-
-**Implementation:**
-- MONITORING_CRON_ENABLED=false by default
-- Read-only operations only (SELECT queries)
-- No external notifications
-- No heavy queries (lightweight row counts only)
-- Registered in server.ts with conditional check
-- Lightweight health summary logging
-- Schedule: every 6 hours (0 */6 * * *)
-
-## OPERATIONAL CONTROLS
-
-### Environment Variables
-
-**MONITORING_CRON_ENABLED** (default: false)
-- Controls monitoring cron execution
-- When false: cron not registered
-- When true: runs lightweight health logging
-
-### Safe Defaults
-
-- All monitoring disabled by default
-- No forced activation
-- Read-only operations only
-- No external alerting
-
-### Rollback Plan
-
-1. **Disable monitoring:**
-   - MONITORING_CRON_ENABLED=false
-   - Restart server
-
-2. **Remove cron:**
-   - Comment out monitoringCron registration in server.ts
-   - Delete monitoringCron.ts file
-
-3. **No data cleanup needed**
-
-### Run Commands
-
-**Enable Monitoring:**
-```bash
-# Set env var
-MONITORING_CRON_ENABLED=true
-
-# Restart server
-# Cron runs automatically every 6 hours
-```
-
-**Run Health Check:**
-```bash
-node backend/scripts/verify-intelligence-health.js
-```
-
-## MONITORING
-
-**Health Check Script:**
-- Run daily during activation period
-- Check for data integrity issues
-- Monitor system health metrics
-
-**Cron Monitoring:**
-- Check server logs for cron execution
-- Monitor error rates and processing times
-- Alert on failed cron runs
-
-**Performance:**
-- Health script completes in <10 seconds
-- Monitoring cron adds negligible load
-- No impact on existing AI workflows
-
----
-
-*Phase 5 completed: May 3, 2026*
-*Enables: Safe production monitoring for intelligence systems*
-
----
-
----
-
-# Phase 6A — Event Impact Analysis MVP
-
-**Status:** PLANNED — Ready for immediate execution after Phase 1-5 completion
-**Date:** May 3, 2026
-**Priority:** P1 (Read-only MVP for event impact analysis)
-**Scope:** 1 service, 1 script, 1 env flag, 1 policy-safe wording update, 1 documentation update, 1 QA prep
-**Reviewed by:** Lead Architect — APPROVED FOR EXECUTION
-
-## OBJECTIVE
-
-Deliver a read-only MVP for event impact analysis that calculates basic historical statistics from existing coin_news_history data without any database writes, migrations, or UI changes. Phase 6A focuses on safe, deterministic calculations with policy-safe output wording.
-
-## PHASE 6A SCOPE LIMITATIONS
-
-**Phase 6A is strictly read-only and analytical only:**
-
-- ✅ Read-only calculations using existing coin_news_history data
-- ✅ Deterministic statistical analysis (averages, medians, rates)
-- ✅ Console output for manual analysis
-- ✅ Policy-safe terminology definitions
-- ✅ Safe environment flag controls
-
-**Phase 6A explicitly does NOT include:**
-- ❌ Database migrations or schema changes
-- ❌ Database writes or data persistence
-- ❌ New tables or columns
-- ❌ Public UI changes or displays
-- ❌ Living Articles modifications
-- ❌ Scorecard updates
-- ❌ External API integrations
-- ❌ Cron job automation
-- ❌ AI workflow integration
-- ❌ Public user-facing features
-
-**Future Phase 6B (separate approval required):**
-- Database persistence of analysis results
-- UI integration for historical impact views
-- Automated cron-based analysis updates
-- Advanced statistical modeling
-- AI-enhanced pattern recognition
-
-## REQUIRED TASKS
-
-### T-6A.1 — Verify coin_news_history Field Names
-
-**Task ID:** T-6A.1
-**Title:** Verify coin_news_history Field Names
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Document the exact field names and data types in coin_news_history table that contain the required data for impact analysis calculations.
-
-**Files to inspect:**
-- backend/src/models/market.model.ts — coinNewsHistory table definition
-- SQL schema documentation if available
-
-**Files allowed to modify:**
-- Documentation files (e.g., agent_gedens/PROJECT_STATE.md or THE_NEXUS_HUB.md for findings)
-
-**Forbidden files:**
-- Any code files
-- Migration files
-- Schema files
-
-**Constraints:**
-- Read-only inspection only
-- No code changes unless documenting findings in approved docs
-
-**Step-by-step instructions:**
-1. Review coinNewsHistory table definition in market.model.ts
-2. Identify fields for: change1h, change4h, change24h, change3d, change7d, maxUpsideAfterEvent, maxDrawdownAfterEvent, timeToPeakHours, timeToBottomHours, outcomeClassification
-3. Document exact camelCase field names used in Drizzle model
-4. Note any nullable fields or data type constraints
-
-**Documented Field Mappings:**
-From backend/src/models/market.model.ts (lines 209-248):
-
-- change1h: real('change_1h').nullable() — 1-hour price change percentage
-- change4h: real('change_4h').nullable() — 4-hour price change percentage
-- change24h: real('change_24h').nullable() — 24-hour price change percentage
-- change3d: real('change_3d').nullable() — 3-day price change percentage
-- maxUpsideAfterEvent: real('max_upside_after_event').nullable() — Maximum upside percentage after event
-- maxDrawdownAfterEvent: real('max_drawdown_after_event').nullable() — Maximum drawdown percentage after event
-- timeToPeakHours: integer('time_to_peak_hours').nullable() — Hours to reach maximum upside
-- timeToBottomHours: integer('time_to_bottom_hours').nullable() — Hours to reach maximum drawdown
-- outcomeClassification: varchar('outcome_classification', { length: 30 }).nullable() — POSITIVE/NEGATIVE/NEUTRAL classification
-
-All fields are nullable (no .notNull() constraint), allowing for partial data population.
-
-**Acceptance criteria:**
-- Documented field mapping from SQL to TypeScript
-- Confirmed availability of required fields from Phase 1 schema
-
-**QA checklist:**
-- Fields exist and are populated in historical data
-- Data types match calculation requirements
-
-**Rollback notes:**
-- No changes to revert
-
----
-
-### T-6A.2 — Create Read-Only Event Impact Analysis Service
-
-**Task ID:** T-6A.2
-**Title:** Create Read-Only Event Impact Analysis Service
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Implement backend/src/services/eventImpactAnalysis.service.ts that performs read-only calculations of event impact statistics using existing coin_news_history data.
-
-**Files to inspect:**
-- backend/src/models/market.model.ts — coinNewsHistory schema
-- Existing service patterns in backend/src/services/
-
-**Files allowed to modify:**
-- backend/src/services/eventImpactAnalysis.service.ts (new file)
-
-**Forbidden files:**
-- Migrations
-- Models schema changes
-- Crons
-- Controllers
-- Frontend files
-- Living Articles files
-- Scorecard files
-
-**Constraints:**
-- Zero any types — use explicit TypeScript types
-- Read-only operations only (SELECT queries)
-- No database writes
-- Service must be stateless and deterministic
-
-**Step-by-step instructions:**
-1. Create new service file with proper imports
-2. Define interfaces for input parameters and output statistics
-3. Implement calculation functions for:
-   - change percent per available horizon
-   - sample size
-   - average change
-   - median change
-   - positive/negative/neutral rate
-   - average max upside
-   - average max drawdown
-   - average time to peak
-   - average time to bottom
-4. Use Drizzle queries to fetch historical data
-5. Handle edge cases (no data, small samples) gracefully
-6. Export main analysis function
-
-**Acceptance criteria:**
-- Service compiles without any types
-- Calculations are deterministic and accurate
-- No database modifications performed
-
-**QA checklist:**
-- Test with known historical data sets
-- Verify calculation accuracy against manual checks
-- Confirm no side effects on database
-
-**Rollback notes:**
-- Delete the service file
-- No data cleanup needed
-
----
-
-### T-6A.3 — Create Manual Read-Only Analysis Script
-
-**Task ID:** T-6A.3
-**Title:** Create Manual Read-Only Analysis Script
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Create backend/scripts/analyze-event-impact.js that uses the eventImpactAnalysis service to perform read-only analysis and print console summary.
-
-**Files to inspect:**
-- Existing script patterns in backend/scripts/
-- backend/src/services/eventImpactAnalysis.service.ts (after T-6A.2)
-
-**Files allowed to modify:**
-- backend/scripts/analyze-event-impact.js (new file)
-
-**Forbidden files:**
-- Any files not listed in allowed
-
-**Constraints:**
-- Must use the service from T-6A.2
-- Only print console summary (no file writes, no DB writes)
-- Check EVENT_IMPACT_ENGINE_ENABLED flag
-- Exit safely if flag is false or missing
-
-**Step-by-step instructions:**
-1. Create Node.js script file
-2. Import required dependencies and service
-3. Check EVENT_IMPACT_ENGINE_ENABLED environment variable
-4. If false or missing, print message and exit cleanly
-5. If enabled, call service with sample parameters
-6. Format and print analysis results to console
-7. Handle errors gracefully without crashing
-
-**Acceptance criteria:**
-- Script runs successfully when flag is true
-- Exits safely when flag is false or missing
-- Console output shows readable analysis summary
-
-**QA checklist:**
-- Test with flag enabled/disabled
-- Verify no database modifications
-- Check error handling
-
-**Rollback notes:**
-- Delete the script file
-- No data cleanup needed
-
----
-
-### T-6A.4 — Add EVENT_IMPACT_ENGINE_ENABLED Flag
-
-**Task ID:** T-6A.4
-**Title:** Add EVENT_IMPACT_ENGINE_ENABLED Flag
-**Assigned Agent:** Senior Developer
-**Status:** Pending
-
-**Objective:**
-Add EVENT_IMPACT_ENGINE_ENABLED environment variable configuration with safe defaults.
-
-**Files to inspect:**
-- backend/src/config/env.ts — existing env configuration
-
-**Files allowed to modify:**
-- backend/src/config/env.ts
-
-**Forbidden files:**
-- Any files not listed
-
-**Constraints:**
-- Default value must be false
-- Missing env var must not cause startup crashes
-- Configuration must be accessible by scripts and services
-
-**Step-by-step instructions:**
-1. Locate existing env configuration pattern
-2. Add EVENT_IMPACT_ENGINE_ENABLED with default false
-3. Ensure safe handling when env var is undefined
-4. Export the configuration value
-
-**Acceptance criteria:**
-- Server starts normally with missing env var
-- Configuration defaults to false
-- Can be overridden by setting env var to true
-
-**QA checklist:**
-- Test server startup with env var unset
-- Test with env var set to false/true
-- Verify no crashes or errors
-
-**Rollback notes:**
-- Remove the env configuration
-- No data changes
-
----
-
-### T-6A.5 — Policy-Safe Output Wording
-
-**Task ID:** T-6A.5
-**Title:** Policy-Safe Output Wording
-**Assigned Agent:** Prompt Engineer
-**Status:** Done
-
-**Objective:**
-Define and document policy-safe terminology for historical impact analysis output.
-
-**Files to inspect:**
-- Existing policy-safe mappings in documentation
-
-**Files allowed to modify:**
-- Documentation files (THE_NEXUS_HUB.md or agent_gedens/)
-
-**Forbidden files:**
-- No code changes
-- No public UI changes
-- No prompt integration changes
-
-**Constraints:**
-- Only define terminology mappings
-- No implementation of mappings
-- Focus on historical analysis context
-
-**Step-by-step instructions:**
-1. Define safe terms for output:
-   - historical observed movement
-   - historical pattern
-   - reference price
-2. Avoid prohibited terms:
-   - buy/sell
-   - take profit
-   - stop loss
-   - expected profit
-   - guaranteed
-3. Document the terminology guidelines
-4. Note that this is for future implementation reference
-
-**Policy-Safe Terminology Guidelines:**
-
-For historical impact analysis output, use the following terminology to ensure AdSense compliance and avoid financial advice implications:
-
-**Preferred Safe Terms:**
-- Historical observed movement (instead of "price movement" with predictive context)
-- Historical pattern (instead of "trend" implying future continuation)
-- Reference price (instead of "entry price")
-- Upside target zone (instead of "take profit level")
-- Invalidation zone (instead of "stop loss")
-- Risk zone (instead of "stop loss area")
-- Bullish/Bearish bias (instead of "buy/sell signal")
-- Observed outcome (instead of "successful trade")
-- Historical summary (instead of "performance report")
-- Data-driven market context (instead of "trading opportunity")
-- Not financial advice (disclaimer)
-
-**Prohibited Terms to Avoid:**
-- Buy now / Sell now
-- Enter trade / Take position
-- Take profit / Stop loss (in direct terms)
-- Expected profit / Guaranteed returns
-- This will go up/down
-- Recommended action
-- Investment opportunity
-- Trading strategy advice
-
-**Guidelines:**
-- Always frame analysis as historical observations, not predictions
-- Use "historical observed movement" for price changes after events
-- Reference "market scenarios" instead of "trading signals"
-- Include "Not financial advice" disclaimer in any public output
-- Focus on data patterns and statistical observations
-
-**Acceptance criteria:**
-- Terminology guidelines documented
-- Clear mapping from internal to public-safe language
-
-**QA checklist:**
-- Review terminology for AdSense compliance
-- Confirm no financial advice implications
-
-**Rollback notes:**
-- Remove documentation
-- No code changes
-
----
-
-### T-6A.6 — Documentation Update
-
-**Task ID:** T-6A.6
-**Title:** Documentation Update
-**Assigned Agent:** Prompt Engineer
-**Status:** Done
-
-**Objective:**
-Update project documentation to clarify Phase 6A scope and future phases.
-
-**Files to inspect:**
-- THE_NEXUS_HUB.md — current phase documentation
-
-**Files allowed to modify:**
-- THE_NEXUS_HUB.md
-
-**Forbidden files:**
-- No code files
-
-**Constraints:**
-- Document Phase 6A as read-only
-- Explain limitations (no migrations, no writes, no UI changes)
-- Reference future Phase 6B for persistence
-
-**Step-by-step instructions:**
-1. Add documentation section for Phase 6A
-2. Clearly state read-only nature
-3. List what's NOT included in Phase 6A
-4. Reference future phases for advanced features
-
-**Acceptance criteria:**
-- Documentation accurately reflects Phase 6A scope
-- Clear distinction from future phases
-
-**QA checklist:**
-- Review for accuracy and completeness
-- Ensure no conflicting information
-
-**Rollback notes:**
-- Remove the documentation section
-
 ---
 
-### T-6A.7 — QA Checklist Preparation
+## POST-PHASE 1 NEXT STEPS
 
-**Task ID:** T-6A.7
-**Title:** QA Checklist Preparation
-**Assigned Agent:** Prompt Engineer
-**Status:** Done
+After T-V2-1Q QA PASS:
+1. **Run backfill script** (`scripts/backfill-ohlcv.ts`) if not already run — ensure 90 days of 4H + 180 days Daily + 365 days Weekly data
+2. **Write v2.Phase 1.5 micro-tasks** (Backtesting Framework) — Strategic Planner
+3. **Run backtest** against historical data — validate pass criteria
+4. **If pass:** Proceed to Tranche 2 (Shadow Mode)
+5. **If fail:** Fix TA engine, re-run backtest
 
-**Objective:**
-Prepare comprehensive QA checklist for Phase 6A implementation.
-
-**Files to inspect:**
-- Existing QA patterns in previous phases
-
-**Files allowed to modify:**
-- Documentation files (THE_NEXUS_HUB.md)
-
-**Forbidden files:**
-- No code files
-
-**Constraints:**
-- Prepare checklist for QA & Security Hunter
-- Cover all tasks T-6A.1 through T-6A.6
-- Include testing scenarios and acceptance criteria
-
-**Step-by-step instructions:**
-1. Create QA checklist section
-2. Include test cases for each task
-3. Add verification steps for calculations
-4. Include safety checks (no DB writes, flag behavior)
-5. Prepare for handoff to QA team
-
-**Comprehensive QA Checklist for Phase 6A:**
-
-**Pre-Implementation Checks:**
-- [ ] Review THE_NEXUS_HUB.md for Phase 6A scope limitations
-- [ ] Confirm all assigned tasks (T-6A.1 through T-6A.7) are documented
-- [ ] Verify no forbidden files are modified (no code, no migrations, no UI)
-
-**T-6A.1 Verification (Field Names):**
-- [ ] Inspect backend/src/models/market.model.ts coinNewsHistory table
-- [ ] Verify all required fields exist: change1h, change4h, change24h, change3d, maxUpsideAfterEvent, maxDrawdownAfterEvent, timeToPeakHours, timeToBottomHours, outcomeClassification
-- [ ] Confirm fields are nullable (real('field').nullable())
-- [ ] Check exact camelCase naming matches Drizzle conventions
-- [ ] Document any data type mismatches
-
-**T-6A.2 Verification (Service Implementation):**
-- [ ] Review backend/src/services/eventImpactAnalysis.service.ts
-- [ ] Verify zero 'any' types used
-- [ ] Check explicit TypeScript interfaces for inputs/outputs
-- [ ] Confirm all queries are SELECT-only (no INSERT/UPDATE/DELETE)
-- [ ] Test compilation with `cd backend && npx tsc --noEmit`
-- [ ] Verify deterministic calculations (same input = same output)
-- [ ] Check edge case handling (no data, small samples)
-
-**T-6A.3 Verification (Manual Script):**
-- [ ] Review backend/scripts/analyze-event-impact.js
-- [ ] Confirm EVENT_IMPACT_ENGINE_ENABLED flag check
-- [ ] Verify safe exit when flag is false/missing
-- [ ] Test script execution prints console summary only
-- [ ] Confirm no file writes or DB modifications
-- [ ] Check error handling without crashes
-
-**T-6A.4 Verification (Environment Flag):**
-- [ ] Review backend/src/config/env.ts
-- [ ] Confirm EVENT_IMPACT_ENGINE_ENABLED defaults to false
-- [ ] Test server startup with missing env var (no crashes)
-- [ ] Test with env var set to true/false
-- [ ] Verify configuration is accessible by scripts/services
-
-**T-6A.5 Verification (Policy-Safe Wording):**
-- [ ] Review terminology guidelines in THE_NEXUS_HUB.md
-- [ ] Check all prohibited terms are listed and avoided
-- [ ] Verify safe term mappings are comprehensive
-- [ ] Confirm focus on historical analysis context
-- [ ] Audit for AdSense compliance
-
-**T-6A.6 Verification (Documentation):**
-- [ ] Check Phase 6A scope limitations section exists
-- [ ] Verify read-only nature clearly stated
-- [ ] Confirm list of excluded features is complete
-- [ ] Review future Phase 6B reference
-- [ ] Ensure no conflicting information with existing docs
-
-**T-6A.7 Verification (This Checklist):**
-- [ ] Self-review checklist completeness
-- [ ] Verify alignment with all task requirements
-- [ ] Confirm coverage of all Phase 6A tasks
-- [ ] Check clear pass/fail criteria for each item
-- [ ] Prepare for handoff to QA & Security Hunter
-
-**Integration Testing:**
-- [ ] Run analysis script with flag enabled (if service implemented)
-- [ ] Verify console output uses policy-safe terminology
-- [ ] Check no database writes occur during analysis
-- [ ] Test with various data scenarios (empty, partial, full)
-- [ ] Monitor for any unintended side effects
-
-**Safety Checks:**
-- [ ] Confirm no migrations run
-- [ ] Verify no new tables/columns added
-- [ ] Check no UI changes made
-- [ ] Ensure no external APIs added
-- [ ] Confirm no crons enabled
-- [ ] Test server stability with new flag
-
-**Edge Cases:**
-- [ ] Analysis with zero historical events
-- [ ] Partial data (some horizons missing)
-- [ ] Invalid or extreme price values
-- [ ] Network/API failures (though read-only)
-- [ ] Large datasets performance
-
-**Acceptance criteria:**
-- Comprehensive checklist covering all aspects
-- Clear pass/fail criteria
-- Includes edge cases and error scenarios
-
-**QA checklist:**
-- Self-review checklist completeness
-- Verify alignment with task requirements
-
-**Rollback notes:**
-- Remove the QA checklist section
-
----
-
-## VALIDATION CHECKLIST
-
-| # | Test | Expected Result |
-|---|------|-----------------|
-| 1 | Run field verification | Documented field names match schema |
-| 2 | Service compilation | No TypeScript errors, zero any types |
-| 3 | Sample calculations | Accurate statistics from historical data |
-| 4 | Script execution with flag false | Exits safely without analysis |
-| 5 | Script execution with flag true | Prints analysis summary |
-| 6 | Server startup | No crashes with missing env var |
-| 7 | QA checklist review | Complete coverage of Phase 6A |
-
----
-
-## FILES SUMMARY
-
-| File | Status | Change |
-|------|--------|--------|
-| backend/src/services/eventImpactAnalysis.service.ts | 🔴 TODO | New — read-only analysis service |
-| backend/scripts/analyze-event-impact.js | 🔴 TODO | New — manual analysis script |
-| backend/src/config/env.ts | 🔴 TODO | Add EVENT_IMPACT_ENGINE_ENABLED flag |
-| THE_NEXUS_HUB.md | 🔴 TODO | Documentation updates |
-
-**Total: 3 new files, 1 modified file**
-
----
-
-## PRIORITY ORDER
-
-```
-1. T-6A.1 — Field verification (foundation)
-2. T-6A.2 — Service implementation (core logic)
-3. T-6A.4 — Env flag (enables safe control)
-4. T-6A.3 — Manual script (depends on service + flag)
-5. T-6A.5 — Policy wording (parallel)
-6. T-6A.6 — Documentation (parallel)
-7. T-6A.7 — QA prep (final)
-```
-
----
-
-## RISK NOTES
-
-1. **Read-only constraint** — Must ensure no accidental DB writes in service
-2. **Type safety** — Zero any types required, explicit interfaces needed
-3. **Flag safety** — Missing env var must not crash, defaults to disabled
-4. **Policy compliance** — Output wording must remain analysis-focused, not advice
-
----
-
-*Phase 6A authored: May 3, 2026*
-*Enables: Read-only event impact analysis MVP*
-
----
-
----
-
-# Phase 5 — Level Intelligence Engine
-
-**Status:** DEFERRED — No implementation until gating conditions pass  
-**Date:** May 2, 2026  
-
-## GATING CONDITIONS
-
-**Must pass ALL before implementation:**
-
-1. **Phase 1 Complete:** coin_news_history has outcome data for >1000 events  
-2. **Phase 4 Complete:** price_snapshots has OHLCV data for >30 days  
-3. **SQL Query:** `SELECT COUNT(*) FROM coin_news_history WHERE outcome7d IS NOT NULL` > 1000  
-4. **SQL Query:** `SELECT COUNT(*) FROM price_snapshots WHERE interval = '1h'` > 10000  
-
-## PREREQUISITES
-
-- Historical price data available  
-- Sufficient event-outcome correlations  
-- Level detection algorithms defined  
-
-## FUTURE DETERMINISTIC ALGORITHMS
-
-### Pivot Detection
-- Identify swing highs/lows using zigzag algorithm  
-- Filter by volume and price movement significance  
-
-### Swing High/Low Clustering
-- Group nearby swing points  
-- Calculate support/resistance strength  
-
-### Level Clustering
-- Merge overlapping levels  
-- Weight by touch frequency and volume  
-
-### Touch/Bounce/Break/Fakeout Detection
-- Track price interaction with levels  
-- Classify reaction types  
-
-### Support/Resistance Flip Detection
-- Monitor level breaches  
-- Update level classifications  
-
-## IMPLEMENTATION STATUS
-
-**No implementation tasks created yet.**  
-**Phase remains in planning until gates pass.**  
-**Estimated gate pass date: 2-3 weeks after Phase 1 deployment.**
-
----
-
----
-
-# Phase 5b — Smart Monitoring Cadence
-
-**Status:** PLANNED  
-**Date:** May 2, 2026  
-
-## CADENCE PLAN
-
-### Every 5 Minutes
-**Jobs:** Real-time price monitoring, urgent alerts  
-**Why:** Critical price movements, flash crashes  
-**Cost/Freshness Tradeoff:** High cost, maximum freshness  
-**Redis Lock:** Required (prevent overlap)  
-**API Load:** High (multiple exchanges)  
-
-### Every 15 Minutes
-**Jobs:** News triage, sentiment analysis  
-**Why:** News velocity requires frequent checking  
-**Cost/Freshness Tradeoff:** Medium cost, good freshness  
-**Redis Lock:** Required  
-**API Load:** Medium  
-
-### Every 30 Minutes
-**Jobs:** Event outcome checking, signal updates  
-**Why:** Balance between timeliness and resource usage  
-**Cost/Freshness Tradeoff:** Low cost, acceptable freshness  
-**Redis Lock:** Required  
-**API Load:** Low  
-
-### Hourly
-**Jobs:** Price snapshots, technical analysis updates  
-**Why:** Hourly candles are standard timeframe  
-**Cost/Freshness Tradeoff:** Low cost, sufficient freshness  
-**Redis Lock:** Required  
-**API Load:** Low  
-
-### Daily
-**Jobs:** Deep analytics, strategic updates  
-**Why:** Daily summaries, trend analysis  
-**Cost/Freshness Tradeoff:** Very low cost, periodic freshness  
-**Redis Lock:** Not critical (can run sequentially)  
-**API Load:** Very low  
-
-### Weekly
-**Jobs:** Maintenance, cleanup, long-term analytics  
-**Why:** Weekly cycles for cleanup and reporting  
-**Cost/Freshness Tradeoff:** Minimal cost, maintenance-focused  
-**Redis Lock:** Not required  
-**API Load:** Minimal  
-
----
-
----
-
-# Phase 6 — AI Cost Reduction
-
-**Status:** PLANNED  
-**Date:** May 2, 2026  
-
-## DETERMINISTIC PARTS NEEDING NO AI
-
-- Price movement calculations (arithmetic only)  
-- Volume analysis (statistical formulas)  
-- Time-based expiry (date math)  
-- Simple classification rules (if-then logic)  
-
-## DEEPSEEK DIRECT USAGE
-
-- Primary analysis (already using deepseek-reasoner)  
-- Cost-effective reasoning for complex decisions  
-
-## Z.AI / GLM WEB_SEARCH USAGE
-
-- Fallback for web search when Tavily fails  
-- Cost comparison vs other providers  
-
-## OPENROUTER USAGE REMAINING NECESSARY
-
-- Specialty models (code, math, specific domains)  
-- When DeepSeek doesn't fit requirements  
-
-## CACHING OPPORTUNITIES
-
-- Temporal pattern results (cache per event type + coin)  
-- Level calculation results (cache per timeframe)  
-- Workflow context (cache conversation state)  
-
-## BATCHING OPPORTUNITIES
-
-- Multiple similar analyses in single request  
-- Bulk outcome classifications  
-
-## AVOIDING HUGE JSON RE-SENDS
-
-- Reference IDs instead of full objects  
-- Delta updates for changing data  
-
----
-
----
-
-# Phase 7 — Public Language / Google-Safe Presentation
-
-**Status:** PLANNED  
-**Date:** May 2, 2026  
-
-## PHASE 0.5 COMPLETED WORK
-
-- Scorecard terminology sanitized  
-- Disclaimer language strengthened  
-- Internal verdict values remain raw  
-
-## REMAINING AUDIT TASKS
-
-### Radar Terminology
-- Replace "signals" with "insights" in public UI  
-- Change "BUY/SELL" to "Bullish/Bearish Outlook"  
-
-### Article Prompt Terminology
-- Update AI prompts to use policy-safe language  
-- Avoid financial advice framing  
-
-### Meta Title/Description Rules
-- Remove price predictions from SEO text  
-- Focus on analysis and information  
-
-### Internal vs Public Wording Mapping
-| Internal | Public |
-|----------|--------|
-| BUY | Bullish |
-| SELL | Bearish |
-| Signal | Insight |
-| Prediction | Analysis |
-
-## RULE
-
-**Backend/internal verdict values can remain raw.**  
-**Public UI must be mapped to policy-safe labels.**
-
----
-
----
-
-# Phase 8 — Migration Strategy
-
-**Status:** PLANNED  
-**Date:** May 2, 2026  
-
-## PER-PHASE MIGRATION
-
-### Phase 1
-- **Parallel:** Yes (adds columns, doesn't change logic)  
-- **Replace Old:** No (extends existing tables)  
-- **Rollback:** Drop columns + index  
-- **Backfill:** None (new data only)  
-- **Testing:** 1 week smoke test  
-- **Risks:** Large migration, monitor DB performance  
-- **Safety:** Nullable columns, no breaking changes  
-
-### Phase 2
-- **Parallel:** Yes (expands interfaces, backward compatible)  
-- **Replace Old:** Partial (enhanced temporal logic)  
-- **Rollback:** Revert interface changes  
-- **Backfill:** None  
-- **Testing:** Unit tests for new calculations  
-- **Risks:** AI prompt changes may affect analysis quality  
-- **Safety:** Gradual rollout with monitoring  
-
-### Phase 3
-- **Parallel:** Yes (adds horizon routing)  
-- **Replace Old:** No (extends signal system)  
-- **Rollback:** Remove horizon logic  
-- **Backfill:** Classify existing signals  
-- **Testing:** Signal routing verification  
-- **Risks:** UI changes require frontend deploy  
-- **Safety:** Backward compatible schema changes  
-
-### Phase 4
-- **Parallel:** Yes (new snapshots don't affect existing)  
-- **Replace Old:** No (price_snapshots is new feature)  
-- **Rollback:** Drop OHLCV columns  
-- **Backfill:** None  
-- **Testing:** Cron execution monitoring  
-- **Risks:** Binance rate limits  
-- **Safety:** Independent feature  
-
-### Phase 5
-- **Parallel:** Yes (deterministic algorithms)  
-- **Replace Old:** No (new analysis layer)  
-- **Rollback:** Remove level detection  
-- **Backfill:** None  
-- **Testing:** Algorithm accuracy validation  
-- **Risks:** False signals from level detection  
-- **Safety:** Gating conditions prevent premature deployment  
-
 ---
-
----
-
-# Top 10 Recommended Improvements
-
-| Rank | Improvement | Phase | Impact | Difficulty | Risk | Expected Value | Why | Owner |
-|------|-------------|-------|--------|------------|------|----------------|-----|-------|
-| 1 | Multi-horizon temporal patterns | 2 | 9 | 6 | 3 | High | Enables data-rich analysis context | Prompt Engineer |
-| 2 | Level intelligence engine | 5 | 10 | 8 | 5 | Very High | Automated support/resistance detection | Senior Developer |
-| 3 | Investment vs speculation separation | 3 | 8 | 5 | 4 | High | Clear strategy differentiation | Senior Developer |
-| 4 | OHLCV price snapshots | 4 | 7 | 4 | 2 | Medium | Technical analysis foundation | Senior Developer |
-| 5 | AI cost optimization | 6 | 6 | 7 | 3 | Medium | Reduces operational costs | Prompt Engineer |
-| 6 | Smart monitoring cadence | 5b | 5 | 3 | 1 | Low | Optimizes resource usage | Senior Developer |
-| 7 | Event-price outcome foundation | 1 | 9 | 6 | 4 | High | Core data for all temporal intelligence | Senior Developer |
-| 8 | Public language audit | 7 | 4 | 2 | 1 | Low | AdSense compliance | Prompt Engineer |
-| 9 | Migration strategy documentation | 8 | 3 | 1 | 1 | Very Low | Operational safety | Senior Developer |
-| 10 | Deferred phase gating | 5 | 2 | 1 | 1 | Very Low | Prevents premature implementation | Lead Architect |
-
----
-
----
-
-# Top 10 Questions / Unknowns
 
-| Rank | Question | Why Matters | Options | Recommendation | Cost/Risk | Product Owner Input |
-|------|----------|-------------|---------|----------------|-----------|-------------------|
-| 1 | Should Phase 5 algorithms be AI-assisted or purely deterministic? | Affects accuracy vs cost | Pure deterministic, Hybrid AI+deter, Full AI | Pure deterministic first | Low cost/low risk | Yes |
-| 2 | Which coins for Phase 4 snapshots? | Coverage vs API limits | Top 50 market cap, Top 100, Custom watchlist | Top 50 market cap | Medium cost | Yes |
-| 3 | How to handle conflicting signals in Phase 3? | User experience impact | Suppress conflicts, Show all with warnings, Merge into single | Show all with warnings | Low risk | Yes |
-| 4 | Phase 2 fallback matching quality impact? | Analysis accuracy | Test on sample data, Monitor A/B, Rollback if quality drops | Test extensively first | Medium risk | No |
-| 5 | Should Phase 1 outcomes be user-visible? | Transparency vs complexity | Hide internally, Show as analysis context, Full public disclosure | Show as analysis context | Low risk | Yes |
-| 6 | Migration rollback procedures sufficient? | Operational safety | Add more rollback tests, Trust current plan, Add automated rollback | Trust current plan | Low risk | No |
-| 7 | Phase 6 caching strategy effectiveness? | Cost reduction potential | Measure cache hit rates, Adjust TTLs, Abandon if <50% hit | Measure first | Low cost | No |
-| 8 | Public language mapping completeness? | AdSense approval risk | Audit all UI text, Sample check, Full compliance review | Full compliance review | High cost | Yes |
-| 9 | Phase 5b cadence optimization impact? | Resource savings | Monitor current usage, Implement gradually, Full optimization | Implement gradually | Low risk | No |
-| 10 | Should Phase 3 investment theses have TP/SL? | Strategy completeness | No (ongoing), Yes (with wide targets), Optional | Optional | Medium complexity | Yes |
+*Plan authored: May 7, 2026 | Strategic Planner*
+*Plan source: plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md (v2.1 — APPROVED)*
+*Next: Senior Developer executes T-V2-1A → T-V2-1B → ... → T-V2-1Q*

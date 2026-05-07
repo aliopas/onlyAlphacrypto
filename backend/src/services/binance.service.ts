@@ -2,7 +2,7 @@ import axios from 'axios';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
-const BINANCE_BASE = 'https://api.binance.com/api/v3';
+export const BINANCE_BASE = 'https://api.binance.com/api/v3';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

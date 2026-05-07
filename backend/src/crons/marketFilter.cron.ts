@@ -6,6 +6,7 @@ import { coinIntelligenceCache } from '../models/market.model';
 import { eq } from 'drizzle-orm';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { BINANCE_BASE } from '../services/binance.service';
 
 interface BinanceTicker {
     symbol: string;
@@ -30,7 +31,7 @@ async function fetchMarketFilterData(): Promise<Map<string, MarketData>> {
 
     try {
         // Fetch from Binance: GET /api/v3/ticker/24hr
-        const response = await axios.get('https://api/binance.com/api/v3/ticker/24hr');
+        const response = await axios.get(`${BINANCE_BASE}/ticker/24hr`);
         const tickers = response.data as BinanceTicker[];
 
         for (const coin of TRACKED_COINS) {

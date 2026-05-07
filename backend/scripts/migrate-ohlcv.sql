@@ -1,5 +1,4 @@
--- Guard: INSERT INTO migration_flags (flag_name) VALUES ('ohlcv_tables') ON CONFLICT DO NOTHING;
--- Only proceed if flag not set.
+INSERT INTO migration_flags (flag_name) VALUES ('ohlcv_tables') ON CONFLICT DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS ohlcv_candles (
     id                  SERIAL PRIMARY KEY,
@@ -33,4 +32,4 @@ CREATE TABLE IF NOT EXISTS ohlcv_indicators (
 CREATE UNIQUE INDEX IF NOT EXISTS ohlcv_indicators_unique ON ohlcv_indicators(coin_symbol, timeframe, open_time);
 
 -- Mark migration as executed
--- INSERT INTO migration_flags (flag_name, executed_at) VALUES ('ohlcv_tables', NOW());
+INSERT INTO migration_flags (flag_name, executed_at) VALUES ('ohlcv_tables', NOW());
