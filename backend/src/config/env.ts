@@ -90,6 +90,13 @@ const envSchema = z.object({
     EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false),
     EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED: z.boolean().default(false),
 
+    // v2.Phase 0 — Market Filter
+    MARKET_FILTER_ENABLED: z.boolean().default(false),
+
+    // v2.Phase 0.1 — OHLCV Data Infrastructure
+    OHLCV_SNAPSHOT_ENABLED: z.boolean().default(false),
+    BACKFILL_OHLCV_ENABLED: z.boolean().default(false),
+
     // Monitoring Cron
     MONITORING_CRON_ENABLED: z.boolean().default(false),
 

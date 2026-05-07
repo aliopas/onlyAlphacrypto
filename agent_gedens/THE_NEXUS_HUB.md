@@ -1,3 +1,1294 @@
+# Master Plan v2.1 — Tranche 1: Foundation + Validation
+
+**Status:** 🟡 IN PROGRESS — v2.Phase 0 + v2.Phase 0.1 micro-tasks written, awaiting execution
+**Date:** May 7, 2026
+**Priority:** P0 (Blocks all subsequent v2 phases)
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md`
+**Guiding Principle:** The algorithm reads the market and produces the numbers. The AI explains the why. Never the reverse.
+
+## TRANCHE 1 SCOPE
+
+| v2 Phase | Description | Tasks | Status |
+|---|---|---|---|
+| v2.Phase 0.0 | Coin Constants (`config/coins.ts`) | T-V2-0A | ✅ DONE |
+| v2.Phase 0.0 | Coin Filter — TriageEngine gate | T-V2-0B | ✅ DONE (QA PASSED) |
+| v2.Phase 0.0 | Coin Filter — AiWorkflow gate | T-V2-0C | ✅ DONE (QA PASSED) |
+| v2.Phase 0.0 | Coin Filter — TerminalEngine gate | T-V2-0D | ✅ DONE (QA PASSED) |
+| v2.Phase 0.0 | Market Filter Layer + Cron | T-V2-0E | ✅ DONE (QA PASSED) |
+| v2.Phase 0.0 | Phase 0 Env Flags + Server Registration | T-V2-0F | ✅ DONE (QA PASSED) |
+| v2.Phase 0.1 | OHLCV DB Schema (migration + Drizzle model) | T-V2-01A | ✅ DONE (QA PASSED) |
+| v2.Phase 0.1 | OHLCV Snapshot Service | T-V2-01B | ✅ DONE (QA PASSED) |
+| v2.Phase 0.1 | OHLCV Snapshot Cron | T-V2-01C | ✅ DONE (QA PASSED) |
+| v2.Phase 0.1 | Historical Backfill Script | T-V2-01D | ✅ DONE (QA PASSED) |
+| v2.Phase 0.1 | Phase 0.1 Env Flags + Server Registration | T-V2-01E | ✅ DONE (QA PASSED) |
+| v2.Phase 0 | QA Verification (Phase 0 + 0.1) | T-V2-0Q | ✅ DONE (QA PASSED) |
+
+**Execution Order:**
+```
+T-V2-0A (coins.ts) ──────────────────────────────────────┐
+                                                          ├── T-V2-0B (Triage filter)
+T-V2-0F (Phase 0 flags + server) ────────────────────────┤── T-V2-0C (Workflow filter)
+                                                          ├── T-V2-0D (Terminal filter)
+                                                          └── T-V2-0E (Market Filter + cron)
+                                                              
+T-V2-01E (Phase 0.1 flags) ─────────────────────────────┐
+                                                          ├── T-V2-01A (DB schema)
+T-V2-01B (Snapshot service) ────────────────────────────┤── T-V2-01C (Snapshot cron)
+                                                          └── T-V2-01D (Backfill script)
+                                                              
+T-V2-0Q (QA) — runs after ALL above tasks complete
+```
+
+**Parallelization:**
+- Group A: T-V2-0A + T-V2-0F + T-V2-01E (flags + constants — no code deps)
+- Group B: T-V2-0B + T-V2-0C + T-V2-0D (coin filters — depend on T-V2-0A)
+- Group C: T-V2-0E (market filter — depends on T-V2-0A + T-V2-0F)
+- Group D: T-V2-01A (DB schema — depends on T-V2-01E)
+- Group E: T-V2-01B + T-V2-01C (service + cron — depend on T-V2-01A)
+- Group F: T-V2-01D (backfill — depends on T-V2-01B)
+- Group G: T-V2-0Q (QA — depends on all)
+
+---
+
+## GUARDRAILS (Apply to ALL v2.Phase 0 + 0.1 tasks)
+
+1. **Zero `any` types** across all new/modified files.
+2. **Never hardcode coin symbols** — always import from `config/coins.ts`.
+3. **All DB migrations guarded by `migration_flags`** — run exactly once.
+4. **All new crons flagged** — default `false` in env.ts.
+5. **Backward compatible** — zero changes to existing public API responses.
+6. **No BUY/SELL terminology** — use BULLISH/BEARISH only.
+7. **All DB queries via Drizzle ORM** — zero raw SQL in TypeScript files.
+8. **No new npm packages** — use existing `ioredis`, `bcryptjs`, `node-cron`, `drizzle-orm`, `axios`.
+9. **No modifications to existing crons' behavior** — new code is additive only.
+10. **Commit only after QA PASS** — each task or deploy group individually.
+
+---
+
+## PHASE ARCHITECTURE CONTEXT
+
+**What exists today:**
+- `SYMBOL_PATTERNS` in `aiWorkflow.cron.ts:110-132` — 21 hardcoded coins (BTC, ETH, SOL, BNB, XRP, ADA, DOGE, DOT, AVAX, MATIC, LINK, UNI, ATOM, FIL, APT, SUI, NEAR, OP, ARB, WLD, PEPE)
+- `MAJOR_COINS` in `levelIntelligenceCron.ts:9` — 8 hardcoded coins (BTC, ETH, SOL, ADA, LINK, DOT, AVAX, MATIC)
+- No centralized coin config exists
+- `binance.service.ts` has `getCoinKlinesRange()` (paginated, max 1500 candles) and `getLivePrices()` — production-ready
+- `migration_flags` table in `market.model.ts:283-287` — id, flagName (unique), executedAt
+- `coin_intelligence_cache` in `market.model.ts:195-207` — coinSymbol (PK), ath, athDate, trend8w, week52High, week52Low, priceChange30d, wikiBackground, dexBoostActive, dataSource, cachedAt
+- Redis via `ioredis` (config/redis.ts) — getCache, setCache, deleteCache, deleteCachePattern
+- `bcryptjs` already installed (pure JS, no native dep)
+- `express-rate-limit` NOT installed (use existing `apiLimiter` pattern from market.routes.ts for any rate limiting needs)
+- `express-session` NOT installed (admin dashboard needs it later — NOT needed for Phase 0/0.1)
+
+**What v2.Phase 0 creates:**
+- `backend/src/config/coins.ts` — single source of truth for 11 tracked coins
+- Coin filter wired into 3 cron entry points (Triage, Workflow, Terminal)
+- `backend/src/crons/marketFilter.cron.ts` — market health check every 6 hours
+- `is_tradeable` flag on `coin_intelligence_cache`
+
+**What v2.Phase 0.1 creates:**
+- `ohlcv_candles` table (11 coins x 3 timeframes, ~16,500 rows at steady state)
+- `ohlcv_indicators` table (pre-computed EMA-20/50/200, ATR-14, volume_avg_20)
+- `backend/src/services/ohlcvSnapshot.service.ts` — fetch, store, compute
+- `backend/src/crons/ohlcvSnapshot.cron.ts` — every 4 hours
+- `backend/scripts/backfill-ohlcv.ts` — one-time 90-day historical fill
+
+---
+
+## REQUIRED TASKS
+
+### T-V2-0A — Tracked Coins Constants (`config/coins.ts`)
+
+**Task ID:** T-V2-0A
+**Phase:** v2.Phase 0 — Coin Filter
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** A (no dependencies)
+
+**Objective:**
+Create `backend/src/config/coins.ts` as the single source of truth for all 11 tracked coins. Every service, cron, and controller will import from this file. Zero hardcoding anywhere else.
+
+**File to create:**
+- `backend/src/config/coins.ts`
+
+**Design specification:**
+
+```typescript
+export const TRACKED_COINS = [
+    'BTC', 'ETH', 'SOL', 'BNB', 'XRP',
+    'DOGE', 'ADA', 'AVAX', 'LINK', 'SUI', 'TON',
+] as const;
+
+export type TrackedCoin = typeof TRACKED_COINS[number];
+
+export const TRACKED_COIN_SET: ReadonlySet<string> = new Set(TRACKED_COINS);
+
+export function isTrackedCoin(symbol: string): boolean {
+    return TRACKED_COIN_SET.has(symbol.toUpperCase());
+}
+
+export function isMacroEvent(eventType: string): boolean {
+    const MACRO_TYPES = ['Fed_Rate', 'CPI', 'Geopolitical', 'ETF', 'Regulatory'];
+    return MACRO_TYPES.includes(eventType);
+}
+```
+
+**Macro exception rule:** Macro news (Fed, ETF, regulation) with no specific coin mention → tag as BTC by default. The `isMacroEvent()` helper enables this check.
+
+**Constraints:**
+- `as const` for full literal type inference
+- `ReadonlySet` for O(1) lookups
+- Case-insensitive matching via `.toUpperCase()`
+- Zero `any` types
+- Zero dependencies (no imports from other project files)
+
+**Acceptance criteria:**
+- File created at `backend/src/config/coins.ts`
+- Exports: TRACKED_COINS (readonly array of 11), TrackedCoin (union type), TRACKED_COIN_SET (ReadonlySet), isTrackedCoin(symbol), isMacroEvent(eventType)
+- 11 coins: BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, LINK, SUI, TON
+- `isTrackedCoin('btc')` returns true (case-insensitive)
+- `isTrackedCoin('PEPE')` returns false
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] File exists at correct path
+- [ ] TRACKED_COINS has exactly 11 entries
+- [ ] All 11 coin symbols correct (BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, LINK, SUI, TON)
+- [ ] `as const` assertion present
+- [ ] TrackedCoin type is string literal union (not `string`)
+- [ ] TRACKED_COIN_SET is `ReadonlySet<string>`
+- [ ] isTrackedCoin is case-insensitive
+- [ ] isMacroEvent covers Fed_Rate, CPI, Geopolitical, ETF, Regulatory
+- [ ] Zero `any` types
+- [ ] Zero external imports (no project dependencies)
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** None
+
+**Rollback:** Delete `backend/src/config/coins.ts`
+
+---
+
+### T-V2-0B — Coin Filter: TriageEngine Gate
+
+**Task ID:** T-V2-0B
+**Phase:** v2.Phase 0 — Coin Filter
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** B (depends on T-V2-0A)
+
+**Objective:**
+After AI triage returns `symbolMentions` in `triageEngine.cron.ts`, force `classification: 'NOISE'` for any item whose mentioned symbols are NOT in the tracked coins list. Macro events with no coin mention default to BTC.
+
+**File to modify:**
+- `backend/src/crons/triageEngine.cron.ts`
+
+**Files to inspect:**
+- `backend/src/crons/triageEngine.cron.ts` — lines 54-74 (scored batch processing loop)
+- `backend/src/config/coins.ts` (from T-V2-0A) — isTrackedCoin, isMacroEvent
+
+**Insertion point:**
+After line 54 (`const scoredBatch = await generateLightweightTriage(newsBatch)`) and before the loop that updates DB rows (lines 57-74), add the filter logic inside the per-item loop.
+
+**Design specification:**
+
+Inside the loop that iterates `scoredBatch` results (approximately line 59), add:
+
+```typescript
+import { isTrackedCoin, isMacroEvent } from '../config/coins';
+
+// Inside the loop, after accessing scoredItem.symbolMentions and scoredItem.eventType:
+const hasTrackedCoin = scoredItem.symbolMentions.some((s: string) => isTrackedCoin(s));
+if (!hasTrackedCoin) {
+    if (isMacroEvent(scoredItem.eventType)) {
+        scoredItem.symbolMentions = ['BTC'];
+    } else {
+        scoredItem.classification = 'NOISE';
+        console.log(`[TriageFilter] NOISE — no tracked coin in mentions: ${scoredItem.symbolMentions.join(',')}`);
+    }
+}
+```
+
+**Constraints:**
+- Existing triage AI call is NOT modified
+- If NO symbolMentions exist (empty array) AND event is macro → default to BTC
+- If NO symbolMentions AND NOT macro → force NOISE
+- Log every forced NOISE for observability
+- The `scoredItem` type must allow reassignment (it's a local variable from the AI response)
+- Zero `any` types
+
+**Acceptance criteria:**
+- Import from `config/coins.ts` added
+- Filter logic inside scored batch loop
+- Non-tracked coins → NOISE (unless macro → BTC)
+- Log line present for forced NOISE
+- Macro event with no coins → symbolMentions set to ['BTC']
+- Existing triage behavior unchanged when coins ARE tracked
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] `isTrackedCoin` and `isMacroEvent` imported from config/coins.ts
+- [ ] Filter placed INSIDE the scored item loop (after AI returns, before DB update)
+- [ ] `hasTrackedCoin` checks all items in symbolMentions array
+- [ ] Non-tracked + non-macro → classification forced to 'NOISE'
+- [ ] Non-tracked + macro → symbolMentions overridden to ['BTC']
+- [ ] Log line includes the rejected symbol mentions
+- [ ] Empty symbolMentions handled (no crash)
+- [ ] Existing triage flow for tracked coins unchanged
+- [ ] Zero `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-V2-0A (coins.ts must exist)
+
+**Rollback:** Remove the filter block + import from triageEngine.cron.ts
+
+---
+
+### T-V2-0C — Coin Filter: AiWorkflow Gate
+
+**Task ID:** T-V2-0C
+**Phase:** v2.Phase 0 — Coin Filter
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** B (depends on T-V2-0A)
+
+**Objective:**
+In `aiWorkflow.cron.ts`, after the symbol is resolved (line ~230), if the symbol is NOT in the tracked coins list, skip processing entirely and mark the buffer item as consumed.
+
+**File to modify:**
+- `backend/src/crons/aiWorkflow.cron.ts`
+
+**Files to inspect:**
+- `backend/src/crons/aiWorkflow.cron.ts` — lines 223-235 (item loop, symbol extraction)
+- `backend/src/config/coins.ts` — isTrackedCoin
+
+**Insertion point:**
+After the symbol is determined (approximately line 229, where `symbol` is set from `symbolMentions[0]` or inferred from title), BEFORE the `if (!symbol)` check (line ~231).
+
+**Design specification:**
+
+```typescript
+import { isTrackedCoin } from '../config/coins';
+
+// After symbol is resolved (line ~229), add:
+if (symbol && !isTrackedCoin(symbol)) {
+    console.log(`[AI Workflow] Coin ${symbol} not in tracked list — skipping item ${item.id}`);
+    await markBufferItemConsumed(item.id);
+    continue;
+}
+```
+
+**IMPORTANT:** The function `markBufferItemConsumed` must already exist in the workflow file. Verify the exact function name used to mark buffer items as consumed. If no such function exists, use the existing DB update pattern from the file (likely `db.update(rawNewsBuffer).set({ consumed: true }).where(eq(rawNewsBuffer.id, item.id))`).
+
+**Constraints:**
+- The check happens AFTER symbol resolution but BEFORE any AI calls
+- The buffer item is marked consumed so it is never re-processed
+- Log includes the rejected symbol and item ID
+- Zero impact on tracked coin processing
+- Zero `any` types
+
+**Acceptance criteria:**
+- Import from `config/coins.ts` added
+- Coin check placed after symbol resolution, before AI processing
+- Non-tracked symbols are skipped + marked consumed
+- Log line present
+- Tracked coins process normally
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] `isTrackedCoin` imported from config/coins.ts
+- [ ] Check placed AFTER symbol is determined (not before)
+- [ ] Non-tracked symbol → markBufferItemConsumed called
+- [ ] `continue` skips rest of loop iteration
+- [ ] Log line includes symbol + item ID
+- [ ] No AI calls made for non-tracked coins
+- [ ] Tracked coin flow unchanged
+- [ ] Zero `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-V2-0A
+
+**Rollback:** Remove the filter block + import from aiWorkflow.cron.ts
+
+---
+
+### T-V2-0D — Coin Filter: TerminalEngine Gate
+
+**Task ID:** T-V2-0D
+**Phase:** v2.Phase 0 — Coin Filter
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** B (depends on T-V2-0A)
+
+**Objective:**
+In `terminalEngine.cron.ts`, items with no mention of the 11 tracked coins in their title should never enter the `raw_news_buffer`. Since the terminal engine processes raw RSS items (no AI symbol extraction yet), the filter must be keyword-based.
+
+**File to modify:**
+- `backend/src/crons/terminalEngine.cron.ts`
+
+**Files to inspect:**
+- `backend/src/crons/terminalEngine.cron.ts` — lines 16-40 (RSS fetch + insert loop)
+- `backend/src/config/coins.ts` — TRACKED_COINS
+
+**Insertion point:**
+Inside the `for (const newsItem of newsItems)` loop (line ~27), BEFORE the dedup check and insert into `raw_news_buffer`.
+
+**Design specification:**
+
+```typescript
+import { TRACKED_COINS, isMacroEvent } from '../config/coins';
+
+// Inside the newsItem loop, before dedup/insert:
+const titleUpper = newsItem.title.toUpperCase();
+const mentionsTrackedCoin = TRACKED_COINS.some(coin => titleUpper.includes(coin));
+
+// Also check for macro keywords in title
+const MACRO_KEYWORDS = ['FED', 'RATE', 'ETF', 'REGULATION', 'INFLATION', 'CPI', 'SANCTION', 'CRISIS'];
+const mentionsMacroKeyword = MACRO_KEYWORDS.some(kw => titleUpper.includes(kw));
+
+if (!mentionsTrackedCoin && !mentionsMacroKeyword) {
+    continue; // Skip — not relevant to any tracked coin
+}
+```
+
+**Note:** This is a lightweight pre-filter. It does NOT replace the TriageEngine filter (T-V2-0B) which uses AI-extracted symbols. The terminal filter is a rough keyword gate to reduce noise before items enter the buffer. Some false negatives are acceptable (macro news might not mention a specific coin name in the title).
+
+**Constraints:**
+- Keyword-based only (no AI calls)
+- Checks title only (not description/source)
+- Case-insensitive via `.toUpperCase()`
+- Macro keywords allow macro news to pass through even without a coin name
+- Existing dedup logic unchanged
+- Zero `any` types
+
+**Acceptance criteria:**
+- Import from `config/coins.ts` added
+- Keyword check in news item loop
+- Items without tracked coin OR macro keyword → skipped (not inserted to buffer)
+- Items with tracked coin mention → pass through normally
+- Items with macro keyword → pass through normally
+- Zero impact on existing dedup logic
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] `TRACKED_COINS` imported from config/coins.ts
+- [ ] Check placed INSIDE the newsItem loop
+- [ ] `titleUpper` used for case-insensitive matching
+- [ ] All 11 coins checked against title
+- [ ] Macro keywords array defined (Fed, Rate, ETF, Regulation, Inflation, CPI, Sanction, Crisis)
+- [ ] Items with no match → `continue` (skip insert)
+- [ ] Items with coin match → pass through
+- [ ] Items with macro keyword match → pass through
+- [ ] Existing dedup logic after this check unchanged
+- [ ] Zero `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-V2-0A
+
+**Rollback:** Remove the filter block + import from terminalEngine.cron.ts
+
+---
+
+### T-V2-0E — Market Filter Layer + Cron
+
+**Task ID:** T-V2-0E
+**Phase:** v2.Phase 0 — Market Filter
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** C (depends on T-V2-0A, T-V2-0F)
+
+**Objective:**
+Create `backend/src/crons/marketFilter.cron.ts` that runs every 6 hours. For each of the 11 tracked coins, fetch 24h volume, spread, and price change from Binance. Coins failing any criteria get flagged `is_tradeable = false` in `coin_intelligence_cache`. Runs once at server boot + every 6 hours.
+
+**File to create:**
+- `backend/src/crons/marketFilter.cron.ts`
+
+**Files to inspect:**
+- `backend/src/services/binance.service.ts` — `getLivePrices()`, `getTopMovers()` (may provide volume data)
+- `backend/src/models/market.model.ts` — `coinIntelligenceCache` table (line 195-207)
+- `backend/src/config/coins.ts` — TRACKED_COINS
+- `backend/src/config/env.ts` — env flag pattern
+
+**Files to modify:**
+- `backend/src/models/market.model.ts` — add `isTradeable` column to `coinIntelligenceCache`
+- `backend/src/server.ts` — register cron (conditional on flag)
+- `backend/src/config/env.ts` — add flag (done in T-V2-0F)
+
+**DB Migration needed:**
+New migration script `backend/scripts/migrate-market-filter.sql`:
+```sql
+-- Guarded by migration_flags
+ALTER TABLE coin_intelligence_cache ADD COLUMN IF NOT EXISTS is_tradeable BOOLEAN DEFAULT true;
+```
+
+**Drizzle model change (market.model.ts):**
+Add to `coinIntelligenceCache` table definition:
+```typescript
+isTradeable: boolean('is_tradeable').default(true),
+```
+
+**Design specification:**
+
+The cron fetches market data from Binance for each tracked coin. Binance `/api/v3/ticker/24hr` endpoint provides 24h volume, price change percent, and other stats for all pairs.
+
+```typescript
+import { TRACKED_COINS } from '../config/coins';
+import { db } from '../config/db';
+import { coinIntelligenceCache } from '../models/market.model';
+import { eq } from 'drizzle-orm';
+
+const MARKET_FILTER_CRITERIA = {
+    MIN_VOLUME_USD: 50_000_000,   // $50M
+    MAX_SPREAD_PERCENT: 0.5,       // 0.5%
+    MAX_PRICE_CHANGE_24H: 25,      // 25%
+} as const;
+
+async function fetchMarketFilterData(): Promise<Map<string, { volume: number; spread: number; priceChange: number }>> {
+    // Fetch from Binance: GET /api/v3/ticker/24hr for all USDT pairs
+    // Use axios to call https://api.binance.com/api/v3/ticker/24hr
+    // Filter for TRACKED_COINS (append USDT)
+    // Extract: quoteVolume (24h volume in USDT), spread calculation, priceChangePercent
+}
+
+async function runMarketFilter(): Promise<void> {
+    if (!env.MARKET_FILTER_ENABLED) return;
+
+    const data = await fetchMarketFilterData();
+    let updated = 0;
+
+    for (const coin of TRACKED_COINS) {
+        const coinData = data.get(coin);
+        const isTradeable = coinData !== undefined
+            && coinData.volume >= MARKET_FILTER_CRITERIA.MIN_VOLUME_USD
+            && coinData.spread <= MARKET_FILTER_CRITERIA.MAX_SPREAD_PERCENT
+            && Math.abs(coinData.priceChange) <= MARKET_FILTER_CRITERIA.MAX_PRICE_CHANGE_24H;
+
+        await db.update(coinIntelligenceCache)
+            .set({ isTradeable })
+            .where(eq(coinIntelligenceCache.coinSymbol, coin));
+
+        if (!isTradeable) {
+            console.log(`[MarketFilter] ${coin} flagged NOT tradeable: vol=${coinData?.volume}, spread=${coinData?.spread}%, change=${coinData?.priceChange}%`);
+        }
+        updated++;
+    }
+
+    console.log(`[MarketFilter] Checked ${updated} coins`);
+}
+```
+
+**Boot behavior:** `runMarketFilter()` runs once immediately on server boot (inside `startMarketFilterCron`), then schedules every 6 hours.
+
+**Binance API call:** Use `axios` (already installed) to call `https://api.binance.com/api/v3/ticker/24hr`. This returns ALL tickers — filter client-side for the 11 coins. One API call per tick (not 11 separate calls).
+
+**Spread calculation:** `spread = ((askPrice - bidPrice) / askPrice) * 100` — but Binance 24hr ticker does NOT include bid/ask. Alternative: use `highPrice - lowPrice` as a proxy, or use `priceChangePercent` as the primary volume+volatility check. Simpler approach: just check volume > $50M AND abs(priceChangePercent) < 25%.
+
+**Revised criteria (Binance 24hr ticker compatible):**
+- 24h quote volume (USDT) > $50M
+- abs(priceChangePercent) <= 25% (manipulation flag)
+- Skip spread check (not available from 24hr ticker endpoint without separate book ticker call)
+
+**server.ts registration:**
+Conditional on `env.MARKET_FILTER_ENABLED` (flag added in T-V2-0F). Use same conditional pattern as existing optional crons (lines 128-161).
+
+**Constraints:**
+- Single Binance API call per tick (fetch all tickers, filter client-side)
+- Runs on boot + every 6 hours (`0 */6 * * *`)
+- Updates `coin_intelligence_cache.is_tradeable` for all 11 coins
+- Migration guarded by migration_flags
+- Flag defaults to false
+- Error handling: outer try/catch, individual coin errors don't break loop
+- Zero `any` types
+
+**Acceptance criteria:**
+- Migration script creates `is_tradeable` column on `coin_intelligence_cache`
+- Drizzle model updated
+- Cron created with Binance 24hr ticker fetch
+- All 11 coins checked per tick
+- Volume > $50M AND abs(priceChange) <= 25% → is_tradeable = true
+- Failing coins flagged is_tradeable = false with log
+- Runs on boot + every 6 hours
+- Conditional registration in server.ts
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] Migration script: ALTER TABLE ADD COLUMN IF NOT EXISTS is_tradeable
+- [ ] Migration guarded by migration_flags
+- [ ] Drizzle model has `isTradeable: boolean('is_tradeable').default(true)`
+- [ ] Cron file created at `backend/src/crons/marketFilter.cron.ts`
+- [ ] Single Binance API call (GET /api/v3/ticker/24hr)
+- [ ] Filters for 11 TRACKED_COINS (USDT pairs)
+- [ ] Volume check: quoteVolume > 50,000,000
+- [ ] Price change check: abs(priceChangePercent) <= 25
+- [ ] Updates coin_intelligence_cache.is_tradeable per coin
+- [ ] Logs flagged coins with reasons
+- [ ] Runs on boot (immediate) + scheduled every 6 hours
+- [ ] Outer try/catch with logger.error
+- [ ] Individual coin errors don't break loop (inner try/catch)
+- [ ] server.ts conditional registration (env.MARKET_FILTER_ENABLED)
+- [ ] Zero `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-V2-0A (coins.ts), T-V2-0F (env flag)
+
+**Rollback:** Delete cron file, revert server.ts, revert Drizzle model, DROP COLUMN is_tradeable
+
+---
+
+### T-V2-0F — Phase 0 Env Flags + Server Registration
+
+**Task ID:** T-V2-0F
+**Phase:** v2.Phase 0 — Coin Filter + Market Filter
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** A (no dependencies)
+
+**Objective:**
+Add env flag `MARKET_FILTER_ENABLED` to `env.ts`. No server registration yet — that happens in T-V2-0E when the cron file is created.
+
+**File to modify:**
+- `backend/src/config/env.ts`
+
+**Design specification:**
+
+Add after existing event impact flags (after line 91):
+```typescript
+// v2.Phase 0 — Market Filter
+MARKET_FILTER_ENABLED: z.boolean().default(false),
+```
+
+**Acceptance criteria:**
+- Flag added with Zod schema
+- Default `false`
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] `MARKET_FILTER_ENABLED: z.boolean().default(false)` present
+- [ ] Default false
+- [ ] No other lines changed
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** None
+
+**Rollback:** Remove the added line
+
+---
+
+### T-V2-01A — OHLCV Database Schema (Migration + Drizzle Model)
+
+**Task ID:** T-V2-01A
+**Phase:** v2.Phase 0.1 — OHLCV Data Infrastructure
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** D (depends on T-V2-01E)
+
+**Objective:**
+Create `ohlcv_candles` and `ohlcv_indicators` tables via SQL migration and Drizzle ORM model. These tables store raw candle data and pre-computed technical indicators for all 11 coins across 3 timeframes.
+
+**File to create:**
+- `backend/scripts/migrate-ohlcv.sql`
+
+**File to modify:**
+- `backend/src/models/market.model.ts` — add 2 new tables + re-export
+
+**Migration script:**
+```sql
+-- Guard: INSERT INTO migration_flags (flag_name) VALUES ('ohlcv_tables') ON CONFLICT DO NOTHING;
+-- Only proceed if flag not set.
+
+CREATE TABLE IF NOT EXISTS ohlcv_candles (
+    id                  SERIAL PRIMARY KEY,
+    coin_symbol         VARCHAR(20)    NOT NULL,
+    timeframe           VARCHAR(5)     NOT NULL,  -- '4h', '1d', '1w'
+    open_time           TIMESTAMP      NOT NULL,
+    open                REAL           NOT NULL,
+    high                REAL           NOT NULL,
+    low                 REAL           NOT NULL,
+    close               REAL           NOT NULL,
+    volume              REAL           NOT NULL,
+    close_time          TIMESTAMP      NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ohlcv_candles_unique ON ohlcv_candles(coin_symbol, timeframe, open_time);
+CREATE INDEX IF NOT EXISTS ohlcv_candles_range ON ohlcv_candles(coin_symbol, timeframe, open_time DESC);
+
+CREATE TABLE IF NOT EXISTS ohlcv_indicators (
+    id                  SERIAL PRIMARY KEY,
+    coin_symbol         VARCHAR(20)    NOT NULL,
+    timeframe           VARCHAR(5)     NOT NULL,
+    open_time           TIMESTAMP      NOT NULL,
+    ema_20              REAL,
+    ema_50              REAL,
+    ema_200             REAL,
+    atr_14              REAL,
+    volume_avg_20       REAL,
+    computed_at         TIMESTAMP      DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ohlcv_indicators_unique ON ohlcv_indicators(coin_symbol, timeframe, open_time);
+
+-- Mark migration as executed
+-- INSERT INTO migration_flags (flag_name, executed_at) VALUES ('ohlcv_tables', NOW());
+```
+
+**Drizzle model (add to market.model.ts):**
+
+```typescript
+import { pgTable, serial, varchar, real, timestamp, boolean, text, index, uniqueIndex } from 'drizzle-orm/pg-core';
+
+export const ohlcvCandles = pgTable('ohlcv_candles', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    timeframe: varchar('timeframe', { length: 5 }).notNull(),
+    openTime: timestamp('open_time', { mode: 'date' }).notNull(),
+    open: real('open').notNull(),
+    high: real('high').notNull(),
+    low: real('low').notNull(),
+    close: real('close').notNull(),
+    volume: real('volume').notNull(),
+    closeTime: timestamp('close_time', { mode: 'date' }).notNull(),
+}, (table) => [
+    uniqueIndex('ohlcv_candles_unique').on(table.coinSymbol, table.timeframe, table.openTime),
+    index('ohlcv_candles_range').on(table.coinSymbol, table.timeframe, table.openTime),
+]);
+
+export const ohlcvIndicators = pgTable('ohlcv_indicators', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    timeframe: varchar('timeframe', { length: 5 }).notNull(),
+    openTime: timestamp('open_time', { mode: 'date' }).notNull(),
+    ema20: real('ema_20'),
+    ema50: real('ema_50'),
+    ema200: real('ema_200'),
+    atr14: real('atr_14'),
+    volumeAvg20: real('volume_avg_20'),
+    computedAt: timestamp('computed_at', { mode: 'date' }).defaultNow(),
+}, (table) => [
+    uniqueIndex('ohlcv_indicators_unique').on(table.coinSymbol, table.timeframe, table.openTime),
+]);
+```
+
+**IMPORTANT:** Check if the existing `market.model.ts` already uses `timestamp({ mode: 'date' })` or `timestamp({ mode: 'string' })` or just `timestamp()` for other tables. Match the existing pattern exactly.
+
+**Constraints:**
+- Migration guarded by `migration_flags` (flag name: `ohlcv_tables`)
+- `IF NOT EXISTS` on all DDL for idempotency
+- UNIQUE constraint prevents duplicate candles
+- INDEX on `(coin_symbol, timeframe, open_time DESC)` for fast range queries
+- Match existing Drizzle patterns from market.model.ts
+- Zero `any` types
+
+**Acceptance criteria:**
+- Migration script at `backend/scripts/migrate-ohlcv.sql`
+- Migration uses `migration_flags` guard
+- 2 tables created with correct columns
+- 3 indexes (2 unique, 1 range)
+- Drizzle model added to `market.model.ts`
+- Model re-exported from model index if one exists
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] Migration script at correct path
+- [ ] migration_flags guard present (INSERT ... ON CONFLICT DO NOTHING)
+- [ ] `ohlcv_candles` — 10 columns, all correct types
+- [ ] `ohlcv_indicators` — 9 columns, all correct types
+- [ ] UNIQUE index on ohlcv_candles(coin_symbol, timeframe, open_time)
+- [ ] Range index on ohlcv_candles(coin_symbol, timeframe, open_time DESC)
+- [ ] UNIQUE index on ohlcv_indicators(coin_symbol, timeframe, open_time)
+- [ ] Drizzle model matches SQL exactly
+- [ ] Timestamp mode matches existing tables in market.model.ts
+- [ ] Zero `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-V2-01E (env flags)
+
+**Rollback:** DROP TABLE ohlcv_indicators; DROP TABLE ohlcv_candles; revert Drizzle model
+
+---
+
+### T-V2-01B — OHLCV Snapshot Service
+
+**Task ID:** T-V2-01B
+**Phase:** v2.Phase 0.1 — OHLCV Data Infrastructure
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** E (depends on T-V2-01A)
+
+**Objective:**
+Create `backend/src/services/ohlcvSnapshot.service.ts` — the core service for fetching candle data from Binance, storing it in `ohlcv_candles`, computing EMA/ATR indicators, and storing them in `ohlcv_indicators`. Also provides query helpers for reading candles and indicators.
+
+**File to create:**
+- `backend/src/services/ohlcvSnapshot.service.ts`
+
+**Files to inspect:**
+- `backend/src/services/binance.service.ts` — `getCoinKlinesRange(symbol, interval, startTime, endTime)` (lines 120-187), `BinanceKline` interface (line 22)
+- `backend/src/models/market.model.ts` — ohlcvCandles, ohlcvIndicators (from T-V2-01A)
+- `backend/src/config/coins.ts` — TRACKED_COINS
+- `backend/src/config/redis.ts` — deleteCache for cache invalidation
+
+**Design specification — Exported functions:**
+
+**1. `fetchAndStoreCandles(symbol: string, timeframe: string, limit: number): Promise<number>`**
+- Calls `getCoinKlinesRange(symbol + 'USDT', binanceInterval, startTime, endTime)`
+- Converts BinanceKline[] to ohlcv_candles rows
+- Upserts into ohlcv_candles (ON CONFLICT UPDATE)
+- Returns number of candles stored
+- Binance interval mapping: '4h' → '4h', '1d' → '1d', '1w' → '1w'
+
+**2. `backfillHistoricalCandles(symbol: string, timeframe: string, daysBack: number): Promise<number>`**
+- Fetches historical candles using pagination
+- For 4H: fetch in 500-candle chunks (Binance limit is 1000, use 500 for safety)
+- For Daily: fetch in 500-candle chunks
+- For Weekly: fetch in 200-candle chunks
+- Upserts all candles
+- Returns total candles stored
+- Rate limit: 200ms delay between chunk requests
+
+**3. `computeIndicators(symbol: string, timeframe: string): Promise<number>`**
+- Reads all candles for (symbol, timeframe) from ohlcv_candles, ordered by open_time ASC
+- Computes EMA-20, EMA-50, EMA-200 for each candle
+- Computes ATR-14 using Wilder's smoothing
+- Computes volume_avg_20 (SMA of volume over last 20 candles)
+- Upserts into ohlcv_indicators
+- Returns number of indicator rows computed
+
+**4. `getCandles(symbol: string, timeframe: string, limit: number): Promise<OhlcvCandleRow[]>`**
+- Reads last N candles from ohlcv_candles, ordered by open_time DESC
+- Returns array of candle rows
+
+**5. `getLatestIndicator(symbol: string, timeframe: string): Promise<OhlcvIndicatorRow | null>`**
+- Reads latest row from ohlcv_indicators for (symbol, timeframe)
+- Returns single row or null
+
+**6. `getIndicatorAtTime(symbol: string, timeframe: string, timestamp: Date): Promise<OhlcvIndicatorRow | null>`**
+- Reads indicator row closest to given timestamp (for backtesting)
+- Returns single row or null
+
+**EMA Calculation (critical — must match v2.Phase 1 spec):**
+```
+EMA_today = Price_today × multiplier + EMA_yesterday × (1 - multiplier)
+multiplier = 2 / (period + 1)
+
+For EMA-20: multiplier = 2/21 ≈ 0.0952
+For EMA-50: multiplier = 2/51 ≈ 0.0392
+For EMA-200: multiplier = 2/201 ≈ 0.00995
+```
+
+If insufficient candles exist for EMA-200 (< 200 candles): set ema_200 = null. Never guess.
+If insufficient for EMA-50 (< 50): set ema_50 = null.
+Minimum 20 candles required for EMA-20. Below 20: set ema_20 = null.
+
+**ATR-14 Calculation (Wilder's smoothing — critical):**
+```
+TR = max(high - low, abs(high - prev_close), abs(low - prev_close))
+
+First ATR(14) = SMA(TR, 14)  (average of first 14 TR values)
+
+Subsequent ATR = (prev_ATR × 13 + current_TR) / 14
+(Wilder's exponential smoothing)
+```
+
+If fewer than 15 candles available: set atr_14 = null.
+
+**volume_avg_20:**
+```
+SMA of volume over last 20 candles (including current)
+If fewer than 20 candles: set volume_avg_20 = null
+```
+
+**BinanceKline to ohlcv_candles mapping:**
+```typescript
+const binanceIntervalMap: Record<string, string> = {
+    '4h': '4h',
+    '1d': '1d',
+    '1w': '1w',
+};
+
+// BinanceKline has: open, high, low, close, volume, closeTime
+// openTime needs to be derived from closeTime - interval duration
+// OR use the Binance kline array format which includes openTime at index [0]
+```
+
+**IMPORTANT:** Inspect `getCoinKlinesRange` in `binance.service.ts` to understand exactly what `BinanceKline` contains. The interface at line 22 shows: `{ open, high, low, close, volume, closeTime }`. The `closeTime` is in milliseconds. The `openTime` may need to be computed or the function may return it. Check the actual implementation.
+
+**Upsert pattern (Drizzle):**
+```typescript
+import { db } from '../config/db';
+import { ohlcvCandles, ohlcvIndicators } from '../models/market.model';
+import { eq, sql, asc } from 'drizzle-orm';
+
+// PostgreSQL upsert:
+await db.insert(ohlcvCandles)
+    .values(candleRow)
+    .onConflictDoUpdate({
+        target: [ohlcvCandles.coinSymbol, ohlcvCandles.timeframe, ohlcvCandles.openTime],
+        set: {
+            open: candleRow.open,
+            high: candleRow.high,
+            low: candleRow.low,
+            close: candleRow.close,
+            volume: candleRow.volume,
+            closeTime: candleRow.closeTime,
+        },
+    });
+```
+
+**Constraints:**
+- All queries via Drizzle ORM — zero raw SQL
+- Zero `any` types
+- Proper error handling (Binance API failures logged, don't crash)
+- Rate limiting: 200ms between paginated requests
+- Null handling: EMA/ATR/volume_avg set to null when insufficient data
+- Cache invalidation: after upserting candles/indicators, delete relevant Redis cache keys (e.g., `ohlcv:${symbol}:${timeframe}`)
+- Exports match v2.Phase 1 consumption patterns exactly
+
+**Acceptance criteria:**
+- Service file created at correct path
+- 6 functions exported with correct signatures
+- EMA calculation uses correct multiplier formula
+- EMA returns null when insufficient candles
+- ATR-14 uses Wilder's smoothing (not simple moving average)
+- ATR returns null when fewer than 15 candles
+- volume_avg_20 returns null when fewer than 20 candles
+- Binance candle data correctly mapped to DB rows
+- Upsert uses ON CONFLICT DO UPDATE
+- Rate limiting between paginated requests
+- Redis cache invalidated after writes
+- Zero `any` types
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] File at `backend/src/services/ohlcvSnapshot.service.ts`
+- [ ] `fetchAndStoreCandles` — calls getCoinKlinesRange, upserts candles, returns count
+- [ ] `backfillHistoricalCandles` — paginated fetch, rate limited, upserts
+- [ ] `computeIndicators` — reads candles ASC, computes EMA/ATR/volume_avg, upserts indicators
+- [ ] `getCandles` — reads last N candles DESC
+- [ ] `getLatestIndicator` — reads latest indicator row
+- [ ] `getIndicatorAtTime` — reads closest indicator to timestamp
+- [ ] EMA multiplier correct: 2/(period+1)
+- [ ] EMA null when candles < period
+- [ ] ATR first value = SMA(TR, 14)
+- [ ] ATR subsequent = (prev_ATR × 13 + TR) / 14
+- [ ] ATR null when candles < 15
+- [ ] volume_avg_20 = SMA(volume, 20), null when < 20
+- [ ] TR = max(high-low, abs(high-prev_close), abs(low-prev_close))
+- [ ] Binance interval mapping correct
+- [ ] Upsert ON CONFLICT on (coin_symbol, timeframe, open_time)
+- [ ] 200ms rate limit between paginated requests
+- [ ] Redis cache deleted after writes
+- [ ] Outer try/catch on all exported functions
+- [ ] Zero `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-V2-01A (DB schema must exist)
+
+**Rollback:** Delete service file
+
+---
+
+### T-V2-01C — OHLCV Snapshot Cron
+
+**Task ID:** T-V2-01C
+**Phase:** v2.Phase 0.1 — OHLCV Data Infrastructure
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** E (depends on T-V2-01B)
+
+**Objective:**
+Create `backend/src/crons/ohlcvSnapshot.cron.ts` — runs every 4 hours, fetches latest candles for all 11 coins across 3 timeframes, computes indicators.
+
+**File to create:**
+- `backend/src/crons/ohlcvSnapshot.cron.ts`
+
+**Files to modify:**
+- `backend/src/server.ts` — conditional registration
+
+**Design specification:**
+
+```typescript
+import cron from 'node-cron';
+import { env } from '../config/env';
+import { logger } from '../utils/logger';
+import { fetchAndStoreCandles, computeIndicators } from '../services/ohlcvSnapshot.service';
+import { TRACKED_COINS } from '../config/coins';
+
+const TIMEFRAMES = ['4h', '1d', '1w'] as const;
+const CANDLE_LIMITS: Record<string, number> = { '4h': 5, '1d': 2, '1w': 2 };
+
+export async function runOhlcvSnapshot(): Promise<void> {
+    if (!env.OHLCV_SNAPSHOT_ENABLED) return;
+
+    const startTime = Date.now();
+
+    for (const coin of TRACKED_COINS) {
+        for (const tf of TIMEFRAMES) {
+            try {
+                const stored = await fetchAndStoreCandles(coin, tf, CANDLE_LIMITS[tf]);
+                await computeIndicators(coin, tf);
+                logger.info('[OHLCV] Updated %s %s: %d candles, indicators computed', coin, tf, stored);
+            } catch (err) {
+                logger.error('[OHLCV] Failed for %s %s: %s', coin, tf, err instanceof Error ? err.message : String(err));
+            }
+        }
+    }
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+    logger.info('[OHLCV] Snapshot complete in %ss — %d coins x %d timeframes', duration, TRACKED_COINS.length, TIMEFRAMES.length);
+}
+
+export function startOhlcvSnapshotCron(): void {
+    cron.schedule('0 */4 * * *', () => {
+        runOhlcvSnapshot().catch(err =>
+            logger.error('[OHLCV] Snapshot run failed: %s', err instanceof Error ? err.message : String(err))
+        );
+    });
+    logger.info('[OHLCV] Snapshot cron scheduled — every 4 hours');
+
+    // Run once on startup
+    runOhlcvSnapshot().catch(err =>
+        logger.error('[OHLCV] Initial snapshot failed: %s', err instanceof Error ? err.message : String(err))
+    );
+}
+```
+
+**server.ts registration (conditional, after existing optional crons):**
+```typescript
+import { startOhlcvSnapshotCron } from './crons/ohlcvSnapshot.cron';
+
+if (env.OHLCV_SNAPSHOT_ENABLED) {
+    setTimeout(() => {
+        try {
+            startOhlcvSnapshotCron();
+            logger.info('[Server] Optional cron started: OhlcvSnapshot');
+        } catch (error) {
+            logger.error('[Server] Failed to start optional cron OhlcvSnapshot: %s', error instanceof Error ? error.message : String(error));
+        }
+    }, (crons.length + 3) * cronStartDelay);
+}
+```
+
+**Constraints:**
+- Flag defaults to false
+- Runs on boot + every 4 hours
+- Processes all 11 coins x 3 timeframes = 33 iterations per tick
+- Individual coin/timeframe errors don't break the loop
+- Log per coin/timeframe + summary at end
+- Zero `any` types
+
+**Acceptance criteria:**
+- Cron file created
+- Runs on boot + every 4 hours (`0 */4 * * *`)
+- Processes all 11 coins x 3 timeframes
+- Calls fetchAndStoreCandles then computeIndicators per coin/TF
+- Individual errors caught per coin/TF
+- Summary log with duration
+- Conditional registration in server.ts
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] File at `backend/src/crons/ohlcvSnapshot.cron.ts`
+- [ ] `TRACKED_COINS` imported from config/coins.ts
+- [ ] 3 timeframes: '4h', '1d', '1w'
+- [ ] env.OHLCV_SNAPSHOT_ENABLED check at start
+- [ ] Nested loop: coins x timeframes
+- [ ] fetchAndStoreCandles called with correct limits (4h:5, 1d:2, 1w:2)
+- [ ] computeIndicators called after fetch
+- [ ] Inner try/catch per coin/TF
+- [ ] Summary log with duration
+- [ ] Cron schedule: '0 */4 * * *'
+- [ ] Boot: runOhlcvSnapshot() called in startOhlcvSnapshotCron()
+- [ ] Export: runOhlcvSnapshot + startOhlcvSnapshotCron
+- [ ] server.ts import + conditional registration
+- [ ] Zero `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-V2-01B (snapshot service)
+
+**Rollback:** Delete cron file, revert server.ts
+
+---
+
+### T-V2-01D — Historical Backfill Script
+
+**Task ID:** T-V2-01D
+**Phase:** v2.Phase 0.1 — OHLCV Data Infrastructure
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** F (depends on T-V2-01B)
+
+**Objective:**
+Create `backend/scripts/backfill-ohlcv.ts` — a one-time manual script to fetch 90 days of historical candle data for all 11 coins across 3 timeframes, then compute all indicators.
+
+**File to create:**
+- `backend/scripts/backfill-ohlcv.ts`
+
+**Design specification:**
+
+```typescript
+import { TRACKED_COINS } from '../src/config/coins';
+import { backfillHistoricalCandles, computeIndicators } from '../src/services/ohlcvSnapshot.service';
+import { env } from '../src/config/env';
+
+const BACKFILL_CONFIG = {
+    '4h': { daysBack: 90 },     // ~540 candles
+    '1d': { daysBack: 180 },    // ~180 candles
+    '1w': { daysBack: 365 },    // ~52 candles
+} as const;
+
+async function main(): Promise<void> {
+    if (!env.BACKFILL_OHLCV_ENABLED) {
+        console.log('BACKFILL_OHLCV_ENABLED is not set to true. Exiting.');
+        process.exit(0);
+    }
+
+    console.log(`[Backfill] Starting OHLCV backfill for ${TRACKED_COINS.length} coins...`);
+
+    for (const coin of TRACKED_COINS) {
+        for (const [tf, config] of Object.entries(BACKFILL_CONFIG)) {
+            const startTime = Date.now();
+            try {
+                const count = await backfillHistoricalCandles(coin, tf, config.daysBack);
+                await computeIndicators(coin, tf);
+                const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+                console.log(`[Backfill] ${coin} ${tf}: ${count} candles backfilled (${duration}s)`);
+            } catch (err) {
+                console.error(`[Backfill] FAILED ${coin} ${tf}: ${err instanceof Error ? err.message : String(err)}`);
+            }
+        }
+    }
+
+    console.log('[Backfill] Complete.');
+}
+
+main().catch(err => {
+    console.error('[Backfill] Fatal error:', err);
+    process.exit(1);
+});
+```
+
+**Execution:** `BACKFILL_OHLCV_ENABLED=true npx ts-node backend/scripts/backfill-ohlcv.ts`
+
+**Estimated runtime:** ~5 minutes per coin (33 coin/timeframe combos, rate limited).
+
+**Constraints:**
+- Behind env flag `BACKFILL_OHLCV_ENABLED` (default false)
+- Uses `backfillHistoricalCandles` from the snapshot service (which handles pagination)
+- Rate limited via the service's built-in 200ms delay
+- Per coin/timeframe error handling
+- Progress logging
+- Zero `any` types
+
+**Acceptance criteria:**
+- Script created at correct path
+- Checks env flag before running
+- Iterates all 11 coins x 3 timeframes
+- Calls backfillHistoricalCandles with correct daysBack
+- Calls computeIndicators after backfill per TF
+- Progress logging per coin/TF
+- Error handling per coin/TF (continues on failure)
+- Exits with code 0 on success, 1 on fatal error
+
+**QA checklist:**
+- [ ] Script at `backend/scripts/backfill-ohlcv.ts`
+- [ ] `BACKFILL_OHLCV_ENABLED` check at start
+- [ ] TRACKED_COINS imported
+- [ ] 3 TFs: 4h (90 days), 1d (180 days), 1w (365 days)
+- [ ] backfillHistoricalCandles called per coin/TF
+- [ ] computeIndicators called after backfill per TF
+- [ ] Per coin/TF try/catch
+- [ ] Progress logging with duration
+- [ ] Fatal error handler with process.exit(1)
+- [ ] Zero `any` types
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** T-V2-01B (snapshot service with backfillHistoricalCandles)
+
+**Rollback:** Delete script file
+
+---
+
+### T-V2-01E — Phase 0.1 Env Flags + Server Registration Stub
+
+**Task ID:** T-V2-01E
+**Phase:** v2.Phase 0.1 — OHLCV Data Infrastructure
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** A (no dependencies)
+
+**Objective:**
+Add 2 env flags to `env.ts` for the OHLCV snapshot cron and backfill script.
+
+**File to modify:**
+- `backend/src/config/env.ts`
+
+**Design specification:**
+
+Add after the Phase 0 flag (from T-V2-0F):
+```typescript
+// v2.Phase 0.1 — OHLCV Data Infrastructure
+OHLCV_SNAPSHOT_ENABLED: z.boolean().default(false),
+BACKFILL_OHLCV_ENABLED: z.boolean().default(false),
+```
+
+**Acceptance criteria:**
+- 2 flags added with Zod schema
+- Both default `false`
+- `tsc --noEmit` clean
+
+**QA checklist:**
+- [ ] `OHLCV_SNAPSHOT_ENABLED: z.boolean().default(false)` present
+- [ ] `BACKFILL_OHLCV_ENABLED: z.boolean().default(false)` present
+- [ ] Both default false
+- [ ] No other lines changed
+- [ ] `tsc --noEmit` clean
+
+**Dependencies:** None
+
+**Rollback:** Remove the 2 added lines
+
+---
+
+### T-V2-0Q — QA Verification (Phase 0 + Phase 0.1)
+
+**Task ID:** T-V2-0Q
+**Phase:** v2.Phase 0 + v2.Phase 0.1
+**Assigned Agent:** QA & Security Hunter
+**Status:** ✅ DONE (QA PASSED)
+**Deploy Group:** G (depends on ALL above tasks)
+
+**Objective:**
+Comprehensive QA verification of all Phase 0 + Phase 0.1 deliverables. Full grep sweep, type check, and integration verification.
+
+**QA Checklist:**
+
+**A. Coin Constants (T-V2-0A)**
+- [ ] `backend/src/config/coins.ts` exists
+- [ ] 11 coins: BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, LINK, SUI, TON
+- [ ] Exports: TRACKED_COINS, TrackedCoin, TRACKED_COIN_SET, isTrackedCoin, isMacroEvent
+- [ ] `as const` present
+- [ ] isTrackedCoin case-insensitive
+
+**B. Coin Filter — Triage (T-V2-0B)**
+- [ ] triageEngine.cron.ts imports from config/coins.ts
+- [ ] Non-tracked + non-macro → classification forced to NOISE
+- [ ] Non-tracked + macro → symbolMentions set to ['BTC']
+- [ ] Log line for forced NOISE
+- [ ] Existing triage behavior unchanged for tracked coins
+
+**C. Coin Filter — Workflow (T-V2-0C)**
+- [ ] aiWorkflow.cron.ts imports from config/coins.ts
+- [ ] Non-tracked symbol → skip + mark consumed
+- [ ] No AI calls for non-tracked coins
+
+**D. Coin Filter — Terminal (T-V2-0D)**
+- [ ] terminalEngine.cron.ts imports TRACKED_COINS
+- [ ] Keyword filter in news item loop
+- [ ] Macro keywords allow pass-through
+
+**E. Market Filter (T-V2-0E)**
+- [ ] Migration: is_tradeable column on coin_intelligence_cache
+- [ ] Migration guarded by migration_flags
+- [ ] Drizzle model updated
+- [ ] Cron created at backend/src/crons/marketFilter.cron.ts
+- [ ] Binance 24hr ticker API called once per tick
+- [ ] Volume > $50M check
+- [ ] abs(priceChange) <= 25% check
+- [ ] Updates is_tradeable per coin
+- [ ] server.ts conditional registration
+
+**F. Env Flags (T-V2-0F + T-V2-01E)**
+- [ ] MARKET_FILTER_ENABLED: z.boolean().default(false)
+- [ ] OHLCV_SNAPSHOT_ENABLED: z.boolean().default(false)
+- [ ] BACKFILL_OHLCV_ENABLED: z.boolean().default(false)
+- [ ] All default false
+
+**G. OHLCV DB Schema (T-V2-01A)**
+- [ ] Migration at backend/scripts/migrate-ohlcv.sql
+- [ ] migration_flags guard
+- [ ] ohlcv_candles: 10 columns, 2 indexes
+- [ ] ohlcv_indicators: 9 columns, 1 index
+- [ ] Drizzle model matches SQL
+
+**H. OHLCV Snapshot Service (T-V2-01B)**
+- [ ] Service at backend/src/services/ohlcvSnapshot.service.ts
+- [ ] 6 exported functions
+- [ ] EMA multiplier: 2/(period+1)
+- [ ] EMA null when insufficient data
+- [ ] ATR Wilder's smoothing
+- [ ] volume_avg_20 null when < 20 candles
+- [ ] Upsert ON CONFLICT
+
+**I. OHLCV Snapshot Cron (T-V2-01C)**
+- [ ] Cron at backend/src/crons/ohlcvSnapshot.cron.ts
+- [ ] Schedule: every 4 hours
+- [ ] Boot: runs on startup
+- [ ] 11 coins x 3 timeframes
+- [ ] server.ts conditional registration
+
+**J. Backfill Script (T-V2-01D)**
+- [ ] Script at backend/scripts/backfill-ohlcv.ts
+- [ ] BACKFILL_OHLCV_ENABLED check
+- [ ] 4h: 90 days, 1d: 180 days, 1w: 365 days
+
+**K. Cross-cutting**
+- [ ] `tsc --noEmit` clean on entire backend
+- [ ] Zero `any` types in all new/modified files
+- [ ] No hardcoded coin symbols outside config/coins.ts
+- [ ] All migrations use migration_flags
+- [ ] All new crons have env flags (default false)
+- [ ] server.ts registrations are conditional
+
+---
+
+## TRANCHE 1 EXIT GATE CHECKLIST
+
+After T-V2-0Q passes, verify the following before marking Phase 0 + 0.1 complete:
+
+- [ ] `config/coins.ts` created and imported by 3 crons + market filter
+- [ ] Coin filters active in Triage, Workflow, Terminal
+- [ ] Market filter cron running (is_tradeable flag being set)
+- [ ] `ohlcv_candles` table exists with correct schema
+- [ ] `ohlcv_indicators` table exists with correct schema
+- [ ] Backfill script executed successfully: 90 days 4H + 180 days Daily + 365 days Weekly for all 11 coins
+- [ ] Verified: `SELECT coin_symbol, timeframe, count(*) FROM ohlcv_candles GROUP BY coin_symbol, timeframe ORDER BY coin_symbol, timeframe;` returns 33 rows (11 x 3)
+- [ ] Verified: `SELECT coin_symbol, timeframe, count(*) FROM ohlcv_indicators GROUP BY coin_symbol, timeframe;` returns 33 rows
+- [ ] All EMA/ATR/volume_avg values are non-null for most recent candles (oldest may be null due to insufficient history)
+- [ ] AGENT_LOGS.md updated with all task verdicts
+- [ ] PROJECT_STATE.md updated: v2.Phase 0 → COMPLETE, v2.Phase 0.1 → COMPLETE
+
+**Only after exit gate passes can v2.Phase 1 (Technical Analysis Engine) micro-tasks be written.**
+
+---
+
+## FILES SUMMARY
+
+| File | Status | Change |
+|------|--------|--------|
+| `backend/src/config/coins.ts` | ✅ DONE | Coin constants (T-V2-0A) |
+| `backend/src/crons/triageEngine.cron.ts` | ✅ DONE | Coin filter (T-V2-0B) |
+| `backend/src/crons/aiWorkflow.cron.ts` | ✅ DONE | Coin filter (T-V2-0C) |
+| `backend/src/crons/terminalEngine.cron.ts` | ✅ DONE | Coin filter (T-V2-0D) |
+| `backend/src/crons/marketFilter.cron.ts` | ✅ DONE | Market health check (T-V2-0E) |
+| `backend/scripts/migrate-market-filter.sql` | ✅ DONE | is_tradeable migration (T-V2-0E) |
+| `backend/src/models/market.model.ts` | ✅ DONE | is_tradeable + ohlcv tables (T-V2-01A) |
+| `backend/scripts/migrate-ohlcv.sql` | ✅ DONE | OHLCV tables migration (T-V2-01A) |
+| `backend/src/services/ohlcvSnapshot.service.ts` | ✅ DONE | OHLCV fetch+compute (T-V2-01B) |
+| `backend/src/crons/ohlcvSnapshot.cron.ts` | ✅ DONE | OHLCV refresh cron (T-V2-01C) |
+| `backend/scripts/backfill-ohlcv.ts` | ✅ DONE | Historical backfill (T-V2-01D) |
+| `backend/src/config/env.ts` | ✅ DONE | 3 new flags (T-V2-0F + T-V2-01E) |
+| `backend/src/server.ts` | ✅ DONE | Register 2 new crons (T-V2-0E + T-V2-01C) |
+
+**Total: 4 new files, 5 modified files, 3 new scripts/migrations**
+
+---
+
+*Plan authored: May 7, 2026 | Strategic Planner*
+*Plan source: plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md (v2.1 — APPROVED)*
+*Next: After T-V2-0Q PASS + Exit Gate → Strategic Planner writes v2.Phase 1 (Technical Analysis Engine) micro-tasks*
+
+---
+
+---
+
 # Phase 7 — Public Language / Google-Safe Presentation
 
 **Status:** ✅ COMPLETE — Phase 7A Audit + Phase 7B Implementation all done, QA PASSED (commit f1e6535)

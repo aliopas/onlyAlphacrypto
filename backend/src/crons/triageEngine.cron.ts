@@ -3,6 +3,7 @@ import { db } from '../config/db';
 import { rawNewsBuffer } from '../models/market.model';
 import { generateLightweightTriage } from '../services/openai.service';
 import { eq } from 'drizzle-orm';
+import { isTrackedCoin, isMacroEvent } from '../config/coins';
 
 // Lock to prevent concurrent runs
 let isTriageRunning = false;
@@ -57,6 +58,17 @@ export async function runTriageEngine(): Promise<void> {
                 for (let j = 0; j < batch.length; j++) {
                     const item = batch[j];
                     const scoredItem = scoredBatch[j];
+
+                    // Coin filter: force NOISE for non-tracked coins, default BTC for macro events
+                    const hasTrackedCoin = scoredItem.symbolMentions.some((s: string) => isTrackedCoin(s));
+                    if (!hasTrackedCoin) {
+                        if (isMacroEvent(scoredItem.eventType)) {
+                            scoredItem.symbolMentions = ['BTC'];
+                        } else {
+                            scoredItem.classification = 'NOISE';
+                            console.log(`[TriageFilter] NOISE — no tracked coin in mentions: ${scoredItem.symbolMentions.join(',')}`);
+                        }
+                    }
 
                     await db.update(rawNewsBuffer)
                         .set({

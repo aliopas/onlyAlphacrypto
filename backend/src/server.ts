@@ -27,6 +27,8 @@ import { startScenarioOutcomeCheckerCron } from './crons/scenarioOutcomeChecker.
 import { startMonitoringCron } from './crons/monitoringCron';
 import { startEventImpactSyncCron } from './crons/eventImpactSync.cron';
 import { startEventImpactOutcomeCheckerCron } from './crons/eventImpactOutcomeChecker.cron';
+import { startMarketFilterCron } from './crons/marketFilter.cron';
+import { startOhlcvSnapshotCron } from './crons/ohlcvSnapshot.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -158,6 +160,30 @@ async function bootstrap(): Promise<void> {
                     logger.error('[Server] Failed to start optional cron EventImpactOutcomeChecker: %s', error instanceof Error ? error.message : String(error));
                 }
             }, (crons.length + 2) * cronStartDelay);
+        }
+
+        // Optional Market Filter cron
+        if (env.MARKET_FILTER_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startMarketFilterCron();
+                    logger.info('[Server] Optional cron started: MarketFilter');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron MarketFilter: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 3) * cronStartDelay);
+        }
+
+        // Optional OHLCV Snapshot cron
+        if (env.OHLCV_SNAPSHOT_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startOhlcvSnapshotCron();
+                    logger.info('[Server] Optional cron started: OhlcvSnapshot');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron OhlcvSnapshot: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 4) * cronStartDelay);
         }
     } catch (error) {
         logger.error('[Server] Failed to start: %s', error instanceof Error ? error.message : String(error));

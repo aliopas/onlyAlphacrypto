@@ -204,7 +204,39 @@ export const coinIntelligenceCache = pgTable('coin_intelligence_cache', {
     dexBoostActive: boolean('dex_boost_active').default(false).notNull(),
     dataSource:     varchar('data_source', { length: 20 }),
     cachedAt:       timestamp('cached_at').defaultNow().notNull(),
+    isTradeable:    boolean('is_tradeable').default(true).notNull(),
 });
+
+export const ohlcvCandles = pgTable('ohlcv_candles', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    timeframe: varchar('timeframe', { length: 5 }).notNull(),
+    openTime: timestamp('open_time').notNull(),
+    open: real('open').notNull(),
+    high: real('high').notNull(),
+    low: real('low').notNull(),
+    close: real('close').notNull(),
+    volume: real('volume').notNull(),
+    closeTime: timestamp('close_time').notNull(),
+}, (table) => [
+    uniqueIndex('ohlcv_candles_unique').on(table.coinSymbol, table.timeframe, table.openTime),
+    index('ohlcv_candles_range').on(table.coinSymbol, table.timeframe, table.openTime),
+]);
+
+export const ohlcvIndicators = pgTable('ohlcv_indicators', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    timeframe: varchar('timeframe', { length: 5 }).notNull(),
+    openTime: timestamp('open_time').notNull(),
+    ema20: real('ema_20'),
+    ema50: real('ema_50'),
+    ema200: real('ema_200'),
+    atr14: real('atr_14'),
+    volumeAvg20: real('volume_avg_20'),
+    computedAt: timestamp('computed_at').defaultNow(),
+}, (table) => [
+    uniqueIndex('ohlcv_indicators_unique').on(table.coinSymbol, table.timeframe, table.openTime),
+]);
 
 export const coinNewsHistory = pgTable('coin_news_history', {
     id:            serial('id').primaryKey(),

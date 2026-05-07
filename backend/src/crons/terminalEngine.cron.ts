@@ -4,6 +4,7 @@ import { db } from '../config/db';
 import { coinNews, rawNewsBuffer } from '../models/market.model';
 import { fetchAllRSSNews } from '../services/rssNews.service';
 import { eq, isNotNull, desc, and } from 'drizzle-orm';
+import { TRACKED_COINS } from '../config/coins';
 
 function hashTitle(title: string): string {
     return crypto.createHash('sha256').update(title.trim().toLowerCase()).digest('hex');
@@ -26,6 +27,18 @@ export async function runTerminalEngine(): Promise<void> {
 
     for (const newsItem of newsItems) {
         try {
+            // Coin filter: keyword-based pre-filter for tracked coins and macro events
+            const titleUpper = newsItem.title.toUpperCase();
+            const mentionsTrackedCoin = TRACKED_COINS.some(coin => titleUpper.includes(coin));
+
+            // Also check for macro keywords in title
+            const MACRO_KEYWORDS = ['FED', 'RATE', 'ETF', 'REGULATION', 'INFLATION', 'CPI', 'SANCTION', 'CRISIS'];
+            const mentionsMacroKeyword = MACRO_KEYWORDS.some(kw => titleUpper.includes(kw));
+
+            if (!mentionsTrackedCoin && !mentionsMacroKeyword) {
+                continue; // Skip — not relevant to any tracked coin
+            }
+
             const rawText = newsItem.title;
             const hash = hashTitle(rawText);
 

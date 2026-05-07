@@ -13,6 +13,7 @@ import { getHistoricalEventStats } from '../services/historicalEventStats.servic
 import { compareWithHistoricalEvents } from '../services/historicalEventComparison.service';
 import { updateEventImpactConfidence } from '../services/eventImpactPersistence.service';
 import { PromptFactory } from '../services/ai/prompt-factory';
+import { isTrackedCoin } from '../config/coins';
 import { AIRateLimitError } from '../services/ai/ai-gateway';
 import { validateFactualGrounding } from '../services/ai/factual-grounding';
 import { env } from '../config/env';
@@ -226,6 +227,13 @@ export async function runAiWorkflow(): Promise<void> {
 
             if (!symbol) {
                 symbol = inferSymbolFromTitle(item.title);
+            }
+
+            // Coin filter: skip non-tracked coins
+            if (symbol && !isTrackedCoin(symbol)) {
+                console.log(`[AI Workflow] Coin ${symbol} not in tracked list — skipping item ${item.id}`);
+                await markBufferItemConsumed(item.id);
+                continue;
             }
 
             if (!symbol) {
