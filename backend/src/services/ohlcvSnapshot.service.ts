@@ -261,3 +261,18 @@ export async function getIndicatorAtTime(symbol: string, timeframe: string, time
         .limit(1);
     return result[0] || null;
 }
+
+export async function getCandlesAtTime(symbol: string, timeframe: string, beforeDate: Date, limit: number): Promise<typeof ohlcvCandles.$inferSelect[]> {
+    return await db.select()
+        .from(ohlcvCandles)
+        .where(sql`${ohlcvCandles.coinSymbol} = ${symbol} AND ${ohlcvCandles.timeframe} = ${timeframe} AND ${ohlcvCandles.openTime} < ${beforeDate}`)
+        .orderBy(desc(ohlcvCandles.openTime))
+        .limit(limit);
+}
+
+export async function getIndicatorsRange(symbol: string, timeframe: string, startDate: Date, endDate: Date): Promise<typeof ohlcvIndicators.$inferSelect[]> {
+    return await db.select()
+        .from(ohlcvIndicators)
+        .where(sql`${ohlcvIndicators.coinSymbol} = ${symbol} AND ${ohlcvIndicators.timeframe} = ${timeframe} AND ${ohlcvIndicators.openTime} >= ${startDate} AND ${ohlcvIndicators.openTime} <= ${endDate}`)
+        .orderBy(ohlcvIndicators.openTime);
+}

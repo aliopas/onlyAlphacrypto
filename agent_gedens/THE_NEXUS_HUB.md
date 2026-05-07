@@ -1197,3 +1197,627 @@ After T-V2-1Q QA PASS:
 *Plan authored: May 7, 2026 | Strategic Planner*
 *Plan source: plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md (v2.1 — APPROVED)*
 *Next: Senior Developer executes T-V2-1A → T-V2-1B → ... → T-V2-1Q*
+
+---
+
+# Master Plan v2.1 — v2.Phase 1.5: Backtesting Framework
+
+**Status:** 📋 PLANNED — Awaiting Senior Developer
+**Date:** May 8, 2026
+**Priority:** P0 (Tranche 1 Exit Gate — BLOCKS Shadow Mode + ALL Tranche 2+)
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md` (lines 339-365)
+**Guiding Principle:** The algorithm reads the market and produces the numbers. The AI explains the why. Never the reverse.
+
+## PHASE SCOPE
+
+| Sub-Task | Description | Task ID | Status |
+|---|---|---|---|
+| Env Flag | `BACKTEST_TECHNICAL_ENABLED` env flag | T-V2-1R | ⬜ NOT STARTED |
+| Historical Query Helper | `getCandlesAtTime()` + `getCandlesRange()` in ohlcvSnapshot.service.ts | T-V2-1S | ⬜ NOT STARTED |
+| Backtest Engine | Core backtest logic + historical TA replay in `scripts/backtest-technical.ts` | T-V2-1T | ⬜ NOT STARTED |
+| Metrics + Validation | Output metrics, pass/fail criteria, console report | T-V2-1U | ⬜ NOT STARTED |
+| QA | Audit backtest script for correctness | T-V2-1V | ⬜ NOT STARTED |
+
+## GUARDRAILS (Apply to ALL v2.Phase 1.5 tasks)
+
+1. **Zero `any` types** — strict TypeScript throughout.
+2. **Zero modifications to `technicalAnalysis.service.ts`** — the TA engine is QA PASSED and frozen. The backtest script calls its exported functions; it does NOT modify them.
+3. **Zero modifications to existing crons** — this is a standalone manual script, not a cron.
+4. **Zero modifications to routes/controllers** — no API exposure.
+5. **No new DB tables** — backtest reads from existing `ohlcv_candles` + `ohlcv_indicators`. Results printed to console, not stored in DB.
+6. **No new npm packages** — use existing dependencies only.
+7. **Zero BUY/SELL terminology** — all labels BULLISH/BEARISH only.
+8. **Backward compatible** — zero impact on production code. New file + 2 new query helpers only.
+9. **All DB queries via Drizzle ORM** — zero raw SQL.
+10. **Commit only after QA PASS**.
+
+## PHASE ARCHITECTURE CONTEXT
+
+**What exists today (from v2.Phase 1 — COMPLETE, QA PASSED):**
+- `backend/src/services/technicalAnalysis.service.ts` — 771 lines, fully production-ready
+  - Exported functions: `analyzeTechnicals(symbol)` → `TechnicalAnalysisFullResult | null`
+  - Exported functions: `detectTrend(symbol)` → `TrendLabel`
+  - Exported functions: `detectSupportResistance(symbol)` → `{ supportLevels, resistanceLevels }`
+  - Exported functions: `analyzeMarketStructure(symbol)` → `MarketStructureResult`
+  - Exported functions: `detectCandlePattern(symbol, supportLevels, resistanceLevels)` → `CandlePatternResult`
+  - Exported functions: `analyzeVolumeConfirmation(symbol)` → `VolumeConfirmationResult`
+  - Exported functions: `calculateQualityScore(params)` → `QualityScoreResult`
+  - Exported functions: `checkSignalHealth()` → `SignalHealthResult`
+  - Exported helpers: `isNearLevel(price, level, thresholdPercent)` → `boolean`
+  - Exported helpers: `priceDistancePercent(price, level)` → `number`
+  - **CRITICAL LIMITATION:** `analyzeTechnicals()` and all sub-engines call `getLatestIndicator()` and `getCandles()` which fetch the MOST RECENT data. They do NOT accept a timestamp parameter. For backtesting historical points, we need a way to feed them historical data.
+
+**What exists in ohlcvSnapshot.service.ts:**
+- `getCandles(symbol, timeframe, limit)` → latest N candles, DESC by openTime
+- `getLatestIndicator(symbol, timeframe)` → latest indicator row
+- `getIndicatorAtTime(symbol, timeframe, timestamp)` → indicator at or before timestamp
+- **MISSING:** No way to get candles at a specific timestamp (needed for sliding window backtest)
+
+**Backtest Challenge:**
+The existing TA engine reads from the DB using current-time queries. To backtest, we need either:
+- (Option A) Add timestamp-aware query variants to ohlcvSnapshot.service.ts, then temporarily mock/override the DB reads
+- (Option B) Refactor TA engine to accept optional data injection (violates "zero modifications" rule)
+- (Option C) **Create a backtest-specific replay function** that loads historical candle data into memory, computes indicators inline (same algorithm as ohlcvSnapshot), then calls the pure-logic parts of the TA engine
+
+**SELECTED APPROACH: Option C — In-Memory Replay**
+- The backtest script loads ALL required historical candles upfront (90 days x 11 coins x 2 timeframes = manageable)
+- For each historical date point, it slices the candle array to create a "window" ending at that date
+- It computes EMA/ATR indicators in-memory using the same algorithm from `computeIndicators()`
+- It then calls modified versions of the TA sub-engines that accept arrays instead of DB queries
+- **KEY RULE:** The backtest script duplicates the indicator computation logic (copied from computeIndicators) but does NOT duplicate the TA engine logic. Instead, it will import and call the pure analytical functions directly by creating a thin adapter layer that feeds them in-memory data.
+
+**CORRECTION — SIMPLER APPROACH:**
+After analysis, the cleanest approach is:
+1. Add `getCandlesAtTime(symbol, timeframe, timestamp, limit)` to ohlcvSnapshot.service.ts — returns N candles ending at or before timestamp
+2. Add `getIndicatorAtTimeRange(symbol, timeframe, startTimestamp, endTimestamp)` to ohlcvSnapshot.service.ts — returns indicators in a time range (for pre-computed indicator lookup)
+3. The backtest script creates a **mock module override** at the top of the script that temporarily replaces `getCandles` and `getLatestIndicator` with historical versions using `jest-style` module interception (or simpler: pass the data directly by calling sub-engine logic inline)
+4. **FINAL DECISION:** The backtest script will NOT call `analyzeTechnicals()`. Instead, it will import the **individual pure-logic helper functions** (EMA comparison logic, swing detection logic, etc.) and build its own `backtestAnalyzeAtPoint(symbol, date)` that mirrors the orchestration of `analyzeTechnicals` but uses historical data. This avoids modifying the frozen TA engine.
+
+**WAIT — SIMPLEST CORRECT APPROACH:**
+Re-reading the spec carefully: "For each day, for each coin: a. Run v2.Phase 1 engine (EMA, S/R, Structure, Volume, Quality Score)". The spec says to run the engine. The practical approach:
+1. Add `getCandlesAtTime(symbol, timeframe, beforeTimestamp, limit)` to ohlcvSnapshot.service.ts
+2. In the backtest script, dynamically override `getCandles` and `getLatestIndicator` via a **runtime swap pattern** — set module-level variables that the TA engine reads. BUT the TA engine doesn't support this.
+
+**FINAL FINAL DECISION — Practical & Clean:**
+The backtest script will:
+1. Load all historical candles for each coin into memory (一次性 bulk query)
+2. For each historical date point, construct the indicator data in-memory (same algorithm as computeIndicators)
+3. Call the TA sub-engine functions directly by **monkey-patching** the ohlcvSnapshot service's exported functions at runtime using `jest.mock`-style approach — OR simpler: **the backtest script will re-implement the orchestration loop** calling the pure-analysis functions from technicalAnalysis.service.ts where possible, and re-implementing the DB-dependent parts (trend detection from in-memory EMA, S/R from in-memory candles, etc.)
+
+**ACTUAL IMPLEMENTATION DECISION:**
+Given the constraints (zero modifications to TA engine), the backtest will:
+1. Query all 4H candles for each coin (last 90 days) in a single bulk DB read
+2. Query all corresponding indicators in a single bulk DB read
+3. For each historical day in the range, use the indicators that existed at that point in time
+4. Re-implement the orchestration logic (a simplified version of `analyzeTechnicals`) inside the backtest script that uses the historical indicator data directly
+5. This means the backtest is a **faithful re-implementation** of the TA logic using the same formulas but reading from in-memory arrays instead of DB queries
+
+**WHY THIS IS ACCEPTABLE:**
+- The backtest doesn't need to be the TA engine. It needs to validate the TA engine's algorithms produce reasonable results on historical data.
+- The EMA comparison logic, swing detection logic, quality score formula are all documented in the spec and can be faithfully re-implemented
+- The backtest runs once (manual), not in production — it's a validation tool
+- After backtest passes, the TA engine itself goes into shadow mode for the real validation
+
+---
+
+## REQUIRED TASKS
+
+### T-V2-1R — Backtest Env Flag
+
+**Task ID:** T-V2-1R
+**Phase:** v2.Phase 1.5 — Backtesting Framework
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** A (no dependencies)
+
+**Objective:**
+Add `BACKTEST_TECHNICAL_ENABLED` env flag to `env.ts`. Default `false`. This flag gates execution of the backtest script.
+
+**File to modify:**
+- `backend/src/config/env.ts`
+
+**Exact change:**
+Add after the existing `BACKFILL_OHLCV_ENABLED` line (line 98):
+```typescript
+BACKTEST_TECHNICAL_ENABLED: z.boolean().default(false),
+```
+
+**Constraints:**
+- Default `false` — backtest only runs when explicitly enabled
+- Follows existing pattern (zod boolean with default false)
+- Zero `any` types
+
+**Dependencies:** None
+
+**Rollback:** Remove the line from env.ts
+
+---
+
+### T-V2-1S — Historical Query Helpers in ohlcvSnapshot.service.ts
+
+**Task ID:** T-V2-1S
+**Phase:** v2.Phase 1.5 — Backtesting Framework
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** B (depends on T-V2-1R)
+
+**Objective:**
+Add two new query helper functions to `ohlcvSnapshot.service.ts` that allow the backtest script to fetch historical candle and indicator data for a specific point in time. These functions are also useful for future features (e.g., historical signal analysis).
+
+**File to modify:**
+- `backend/src/services/ohlcvSnapshot.service.ts`
+
+**Function 1 signature:**
+```typescript
+export async function getCandlesAtTime(
+    symbol: string,
+    timeframe: string,
+    beforeTimestamp: Date,
+    limit: number
+): Promise<typeof ohlcvCandles.$inferSelect[]>
+```
+
+**Function 1 logic:**
+- Query `ohlcv_candles` WHERE `coinSymbol = symbol AND timeframe = timeframe AND openTime <= beforeTimestamp`
+- ORDER BY `openTime DESC`
+- LIMIT `limit`
+- Returns the N most recent candles at or before the given timestamp
+- Same return type as existing `getCandles()` — DESC order
+
+**Function 2 signature:**
+```typescript
+export async function getIndicatorsRange(
+    symbol: string,
+    timeframe: string,
+    startTimestamp: Date,
+    endTimestamp: Date
+): Promise<typeof ohlcvIndicators.$inferSelect[]>
+```
+
+**Function 2 logic:**
+- Query `ohlcv_indicators` WHERE `coinSymbol = symbol AND timeframe = timeframe AND openTime >= startTimestamp AND openTime <= endTimestamp`
+- ORDER BY `openTime ASC`
+- No limit (returns all indicators in the range — needed for bulk historical analysis)
+- Returns all indicator rows in the time range, ASC order
+
+**Constraints:**
+- Zero raw SQL — Drizzle ORM only
+- Zero `any` types
+- Additive only — zero modifications to existing functions
+- Use the same import pattern as existing functions (`sql`, `desc`, `asc` from `drizzle-orm`)
+
+**Dependencies:** T-V2-1R (env flag pattern established)
+
+**Rollback:** Remove the 2 new functions from ohlcvSnapshot.service.ts
+
+---
+
+### T-V2-1T — Backtest Engine Core (`scripts/backtest-technical.ts`)
+
+**Task ID:** T-V2-1T
+**Phase:** v2.Phase 1.5 — Backtesting Framework
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** C (depends on T-V2-1S)
+
+**Objective:**
+Create the main backtest script that replays the v2.Phase 1 Technical Analysis engine against 90 days of historical data for all 11 tracked coins. The script validates the TA algorithms produce reasonable results before shadow mode is authorized.
+
+**File to create:**
+- `backend/scripts/backtest-technical.ts`
+
+**Spec reference:** nextstep2-v2.md lines 339-365
+
+**Script execution pattern:**
+Follow existing pattern from `backend/scripts/backfill-ohlcv.ts` — standalone ts-node script with env flag check at top.
+
+**High-level flow:**
+
+```
+1. Check BACKTEST_TECHNICAL_ENABLED === true, else exit
+2. Import TRACKED_COINS from config/coins.ts
+3. Import db from config/db
+4. Import { ohlcvCandles, ohlcvIndicators } from models/market.model
+5. Import { getCandlesAtTime, getIndicatorsRange } from services/ohlcvSnapshot.service
+6. Log: "[BACKTEST] Starting technical analysis backtest..."
+
+7. Load all historical data upfront (minimize DB round-trips):
+   For each coin in TRACKED_COINS:
+     a. Fetch all 4H candles from last 90 days → store in Map<string, CandleRow[]>
+        Query: getCandlesAtTime(symbol, '4h', new Date(), 540) // 90 days * 6 candles/day
+        Reverse to ASC order for processing
+     b. Fetch all 4H indicators from last 90 days → store in Map<string, IndicatorRow[]>
+        Query: getIndicatorsRange(symbol, '4h', 90DaysAgo, now)
+        Already in ASC order
+
+8. Walk through history day by day:
+   startDate = oldest candle date + 14 days (need 14 days for EMA warmup)
+   endDate = newest candle date - 3 days (need 3 days forward for P&L check)
+
+   For each day from startDate to endDate:
+     For each coin:
+       a. Get the indicator row closest to this day's timestamp
+       b. If no indicator exists for this coin on this day → SKIP
+       c. Extract: ema20, ema50 (from 4H), ema200 (from 1d — if available)
+       d. Get the candle at this day's timestamp
+       e. Run inline TA analysis (re-implemented orchestration):
+          - detectTrendAtPoint(ema20, ema50, ema200, price)
+          - detectSupportResistanceAtPoint(candlesUpToThisPoint)
+          - analyzeVolumeConfirmationAtPoint(currentCandle, volumeAvg20)
+          - calculateQualityScore(...) — reuse imported function directly
+       f. Record result:
+          {
+            coin, date, trend, qualityScore, isRejected,
+            nearestSupport, nearestResistance,
+            patternFound, volumeConfirmed,
+            priceAtPoint, price72hLater
+          }
+
+9. After all days processed → call computeMetrics(results)
+10. Print report to console
+11. Evaluate pass/fail criteria → print VERDICT
+```
+
+**Critical implementation detail — Re-implemented TA functions in the backtest script:**
+
+The backtest script CANNOT call `analyzeTechnicals()` or `detectTrend()` directly because those functions call `getLatestIndicator()` which always returns the CURRENT data. Instead, the backtest re-implements the pure-logic parts:
+
+```typescript
+// ─── In-Memory Trend Detection (same algorithm as detectTrend) ───
+function backtestDetectTrend(
+    price: number,
+    ema20: number | null,
+    ema50: number | null,
+    ema200: number | null
+): TrendLabel {
+    // Exact same logic as technicalAnalysis.service.ts detectTrend()
+    // but takes parameters directly instead of querying DB
+}
+
+// ─── In-Memory S/R Detection (same algorithm as detectSupportResistance) ───
+function backtestDetectSR(
+    candles: CandleRow[]  // ASC order, sliced to window ending at backtest point
+): { supportLevels: SRLevel[]; resistanceLevels: SRLevel[] } {
+    // Exact same swing detection, clustering, and strength scoring
+    // but operates on in-memory array instead of DB query
+}
+
+// ─── In-Memory Volume Confirmation ───
+function backtestAnalyzeVolume(
+    currentCandle: CandleRow,
+    volumeAvg20: number | null
+): VolumeConfirmationResult {
+    // Exact same ratio/spike logic
+}
+
+// ─── Quality Score ───
+// Import calculateQualityScore directly from technicalAnalysis.service.ts
+// It's a pure function — no DB calls
+import { calculateQualityScore } from '../src/services/technicalAnalysis.service';
+```
+
+**Key imports to use directly from technicalAnalysis.service.ts (pure functions, no DB):**
+- `calculateQualityScore(params)` — pure function, no DB calls
+- `TrendLabel` type
+- `SRLevel` interface
+- `QualityScoreResult` interface
+- `VolumeConfirmationResult` interface
+- `CandlePatternResult` interface
+
+**In-memory EMA computation (for backtest indicator warmup):**
+The backtest loads pre-computed indicators from `ohlcv_indicators`. If indicators don't exist for a given historical date (e.g., early in the 90-day window), it computes EMA inline:
+```typescript
+function computeEMAInline(closes: number[], period: number): number | null {
+    if (closes.length < period) return null;
+    const multiplier = 2 / (period + 1);
+    let ema = closes.slice(0, period).reduce((a, b) => a + b, 0) / period; // SMA seed
+    for (let i = period; i < closes.length; i++) {
+        ema = closes[i] * multiplier + ema * (1 - multiplier);
+    }
+    return ema;
+}
+```
+
+**Data structures for results:**
+
+```typescript
+interface BacktestDayResult {
+    coin: string;
+    date: Date;
+    price: number;
+    price72h: number | null;
+    trend: TrendLabel;
+    qualityScore: number;
+    isRejected: boolean;
+    rejectionReason: string | null;
+    nearestSupport: number | null;
+    nearestResistance: number | null;
+    patternFound: string | null;
+    volumeConfirmed: boolean;
+    volumeSpike: boolean;
+    hypotheticalPnl72h: number | null;
+    hypotheticalWin72h: boolean | null;
+    trendPredictedCorrectly: boolean | null;
+    supportHit72h: boolean | null;
+    resistanceHit72h: boolean | null;
+}
+```
+
+**Hypothetical P&L calculation:**
+For each day where qualityScore >= 60:
+- If trend is BULLISH or STRONG_BULLISH: hypothetical long entry at price
+- If trend is BEARISH or STRONG_BEARISH: hypothetical short entry at price
+- If SIDEWAYS: skip (no directional signal)
+- Calculate P&L at 72h: `(price72h - price) / price * 100` for long, `(price - price72h) / price * 100` for short
+- Win if P&L > 0
+
+**Trend accuracy check:**
+- For each day, record the trend label
+- Check if next 24h direction matches: if BULLISH and price24h > price → correct
+- Accuracy = correct predictions / total predictions (excluding SIDEWAYS)
+
+**S/R hit rate check:**
+- For each day where nearestSupport or nearestResistance is identified
+- Check if price reached within 1% of that level in the next 72h
+- Hit rate = levels reached / levels identified
+
+**Constraints:**
+- Zero `any` types
+- Zero modifications to existing files (except T-V2-1S additions)
+- Console output only — zero DB writes
+- Progress logging every 10 coin-days: `[BACKTEST] Processing BTC day 15/60...`
+- Total runtime target: < 2 minutes for all 11 coins x 90 days
+- Use `import` from `../src/services/technicalAnalysis.service` for pure functions
+
+**Dependencies:** T-V2-1S (historical query helpers)
+
+**Rollback:** Delete `backend/scripts/backtest-technical.ts`
+
+---
+
+### T-V2-1U — Backtest Metrics + Pass/Fail Validation
+
+**Task ID:** T-V2-1U
+**Phase:** v2.Phase 1.5 — Backtesting Framework
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** D (depends on T-V2-1T)
+
+**Objective:**
+Implement the metrics computation and pass/fail validation logic within the backtest script. This produces the final report that determines whether the TA engine is validated for shadow mode.
+
+**File to modify:**
+- `backend/scripts/backtest-technical.ts` (add computeMetrics + printReport functions)
+
+**Spec reference:** nextstep2-v2.md lines 353-365
+
+**Function 1: `computeMetrics(results: BacktestDayResult[])`**
+
+Returns:
+```typescript
+interface BacktestMetrics {
+    totalCoinDays: number;
+    daysWithQuality60Plus: number;
+    qualityPassRate: number;          // daysWithQuality60Plus / totalCoinDays
+
+    // Per-coin breakdown
+    perCoin: Map<string, {
+        totalDays: number;
+        quality60PlusDays: number;
+        avgQualityScore: number;
+        trendDistribution: Record<TrendLabel, number>;
+        bullishDays: number;
+        bearishDays: number;
+        sidewaysDays: number;
+    }>;
+
+    // Aggregate metrics
+    winRate72h: number | null;         // % of quality>=60 signals that were profitable at 72h
+    totalHypotheticalSignals: number;  // quality>=60 AND not SIDEWAYS
+    hypotheticalWins: number;
+
+    trendAccuracy: number | null;      // % of trend labels that predicted next 24h direction
+    trendPredictions: number;          // total directional predictions (excl SIDEWAYS)
+    trendCorrect: number;
+
+    srHitRate: number | null;          // % of identified S/R levels reached within 72h
+    srLevelsIdentified: number;
+    srLevelsHit: number;
+
+    qualityScoreHistogram: Record<string, number>;  // "0-20": count, "20-40": count, etc.
+
+    directionalDiversity: boolean;     // both BULLISH and BEARISH signals exist
+}
+```
+
+**Pass Criteria (ALL 5 must be met — from spec lines 358-363):**
+
+| # | Criterion | Threshold | Metric Field |
+|---|---|---|---|
+| 1 | Win rate estimate | > 40% | `winRate72h > 0.40` |
+| 2 | Quality score >= 60 days | >= 20% of coin-days | `qualityPassRate >= 0.20` |
+| 3 | Directional diversity | Both BULLISH and BEARISH exist | `directionalDiversity === true` |
+| 4 | Trend accuracy | > 55% | `trendAccuracy > 0.55` |
+| 5 | S/R hit rate | > 50% | `srHitRate > 0.50` |
+
+**Function 2: `printReport(metrics: BacktestMetrics, results: BacktestDayResult[])`**
+
+Console output format (structured, readable):
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║           ONLYALPHA — TECHNICAL ANALYSIS BACKTEST           ║
+║                    v2.Phase 1.5 Validation                   ║
+╚══════════════════════════════════════════════════════════════╝
+
+Data Range: [startDate] → [endDate] (90 days)
+Coins Analyzed: 11
+Total Coin-Days: {totalCoinDays}
+
+── PER-COIN BREAKDOWN ──────────────────────────────────────────
+Coin         Days  QS≥60  AvgQS  Bull  Bear  Side
+BTC            60     18   72.3    22    15    23
+ETH            60     14   68.1    20    12    28
+...
+
+── AGGREGATE METRICS ───────────────────────────────────────────
+Quality Pass Rate (QS≥60):    {qualityPassRate}%  (threshold: 20%)
+Win Rate 72h (hypothetical):  {winRate72h}%      (threshold: 40%)
+Trend Accuracy:               {trendAccuracy}%    (threshold: 55%)
+S/R Hit Rate:                 {srHitRate}%        (threshold: 50%)
+Directional Diversity:        {directionalDiversity ? 'YES' : 'NO'}
+
+── QUALITY SCORE HISTOGRAM ────────────────────────────────────
+0-20:   ██░░░░░░░░  12 (3.3%)
+20-40:  ████░░░░░░  45 (12.5%)
+40-60:  ██████░░░░  89 (24.7%)
+60-80:  █████████░  134 (37.2%)  ← PASS THRESHOLD
+80-100: ████████░░  80 (22.2%)
+
+── PASS/FAIL VERDICT ──────────────────────────────────────────
+[✅ PASS] Win Rate > 40%          → {winRate72h}%
+[✅ PASS] Quality≥60 ≥ 20%       → {qualityPassRate}%
+[✅ PASS] Directional Diversity   → {directionalDiversity}
+[✅ PASS] Trend Accuracy > 55%    → {trendAccuracy}%
+[✅ PASS] S/R Hit Rate > 50%      → {srHitRate}%
+
+══════════════════════════════════════════════════════════════
+  FINAL VERDICT: ✅ ALL CRITERIA PASSED — Shadow mode authorized
+══════════════════════════════════════════════════════════════
+```
+
+If ANY criterion fails:
+```
+══════════════════════════════════════════════════════════════
+  FINAL VERDICT: ❌ FAILED — {N} criteria not met
+  Action: Fix TA engine before proceeding to shadow mode.
+  Failed: {list of failed criteria with actual vs threshold}
+══════════════════════════════════════════════════════════════
+```
+
+**Process exit code:**
+- All pass: `process.exit(0)`
+- Any fail: `process.exit(1)`
+
+**Constraints:**
+- Zero `any` types
+- All percentage calculations use proper rounding (2 decimal places)
+- Per-coin table sorted by avgQualityScore DESC
+- Histogram ranges: 0-20, 20-40, 40-60, 60-80, 80-100
+- If insufficient data (e.g., < 30 coin-days with indicators), warn and exit with code 2
+
+**Dependencies:** T-V2-1T (backtest engine produces results)
+
+**Rollback:** Part of T-V2-1T rollback (same file)
+
+---
+
+### T-V2-1V — QA Verification (v2.Phase 1.5)
+
+**Task ID:** T-V2-1V
+**Phase:** v2.Phase 1.5 — Backtesting Framework
+**Assigned Agent:** QA & Security Hunter
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** E (depends on ALL above tasks)
+
+**Objective:**
+Full audit of the backtest script and new query helpers. Verify the backtest faithfully represents the TA engine's algorithms and produces valid results.
+
+**Audit checklist:**
+
+**Code Quality:**
+1. Zero `any` types — grep entire backtest script
+2. Zero BUY/SELL terminology — grep for `buy`, `sell`, `BUY`, `SELL`
+3. Zero modifications to `technicalAnalysis.service.ts` — verify file unchanged
+4. Zero modifications to existing cron files
+5. Zero new DB tables or writes
+
+**Algorithmic Faithfulness:**
+6. **Trend detection logic** — verify backtest's `backtestDetectTrend()` matches the exact algorithm in `detectTrend()` (5 states, EMA-200 fallback, 1% intertwined check)
+7. **S/R detection logic** — verify swing point detection uses same 2-candle lookback/lookahead, same clustering threshold (1.5%), same strength formula (30/30/20/10/10 weights)
+8. **Volume confirmation** — verify same thresholds (1.2x = above, 2.0x = spike, 0.5x = low)
+9. **Quality score** — verify `calculateQualityScore()` is called directly (imported) NOT re-implemented
+10. **EMA computation** — verify inline EMA uses same multiplier formula: `2 / (period + 1)`
+
+**Data Integrity:**
+11. **Candle ordering** — verify DESC from DB is reversed to ASC before processing
+12. **Date window** — verify backtest starts at least 14 days after oldest candle (EMA warmup)
+13. **72h P&L** — verify hypothetical P&L correctly handles both long (BULLISH) and short (BEARISH) directions
+14. **Null handling** — verify null indicators (early window) are handled gracefully (SKIP day)
+15. **Edge case:** coins with < 30 days of data → verify handled
+
+**Performance:**
+16. **DB queries** — verify data loaded upfront (not N+1 per coin-day)
+17. **Memory** — verify no unbounded arrays (candles capped per coin)
+18. **Runtime** — verify no unnecessary recomputation
+
+**Output Validation:**
+19. **Pass criteria thresholds** — verify exactly match spec (>40%, >=20%, >55%, >50%, both directions)
+20. **Exit codes** — verify 0 (pass), 1 (fail), 2 (insufficient data)
+21. **Histogram** — verify 5 bins, correct ranges, percentages add up to 100%
+
+**New Query Helpers (T-V2-1S):**
+22. `getCandlesAtTime()` — verify correct WHERE clause (<= beforeTimestamp), DESC order, limit applied
+23. `getIndicatorsRange()` — verify correct WHERE clause (>= start AND <= end), ASC order, no limit
+24. Both functions — verify Drizzle ORM used (no raw SQL), proper TypeScript types
+
+**Result:** PASS or REJECT with specific corrections.
+
+**Dependencies:** ALL Phase 1.5 tasks (T-V2-1R through T-V2-1U)
+
+---
+
+## EXECUTION GROUPS (Dependency Order)
+
+```
+Group A: T-V2-1R (env flag — 1 minute task)
+    ↓
+Group B: T-V2-1S (historical query helpers — ohlcvSnapshot.service.ts)
+    ↓
+Group C: T-V2-1T (backtest engine core — scripts/backtest-technical.ts)
+    ↓
+Group D: T-V2-1U (metrics + validation — same file as T-V2-1T)
+    ↓
+Group E: T-V2-1V (QA — depends on ALL)
+```
+
+**Minimum sequential steps:** 5 (Groups A→B→C→D→E)
+
+Note: T-V2-1T and T-V2-1U can be combined into a single Senior Developer session since they're the same file.
+
+---
+
+## FILES SUMMARY (Phase 1.5)
+
+| File | Status | Change |
+|------|--------|--------|
+| `backend/src/config/env.ts` | ⬜ NEW TASK | Add 1 env flag (T-V2-1R) |
+| `backend/src/services/ohlcvSnapshot.service.ts` | ⬜ NEW TASK | Add 2 query helpers (T-V2-1S) |
+| `backend/scripts/backtest-technical.ts` | ⬜ NEW TASK | New backtest script (T-V2-1T + T-V2-1U) |
+
+**Total: 1 new file, 2 modified files**
+
+---
+
+## TRANCHE 1 EXIT GATE REMINDER
+
+After T-V2-1V QA PASS:
+
+1. **Run backfill script** (`scripts/backfill-ohlcv.ts`) if not already run
+   - Verify 90 days of 4H data for all 11 coins
+   - Verify indicators computed for all coin x timeframe combinations
+2. **Run backtest** (`BACKTEST_TECHNICAL_ENABLED=true npx ts-node scripts/backtest-technical.ts`)
+3. **Verify ALL 5 pass criteria:**
+   - [ ] Win rate > 40%
+   - [ ] Quality ≥ 60 on ≥ 20% of coin-days
+   - [ ] Both BULLISH and BEARISH signals produced
+   - [ ] Trend accuracy > 55%
+   - [ ] S/R hit rate > 50%
+4. **If ALL pass:** Update PROJECT_STATE.md → v2.Phase 1.5 COMPLETE → Unblock Tranche 2
+5. **If ANY fail:** Fix TA engine, re-run backtest. DO NOT proceed to shadow mode.
+
+---
+
+*Plan authored: May 8, 2026 | Strategic Planner*
+*Plan source: plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md (v2.1 — APPROVED)*
+*Next: Senior Developer executes T-V2-1R → T-V2-1S → T-V2-1T → T-V2-1U → T-V2-1V*

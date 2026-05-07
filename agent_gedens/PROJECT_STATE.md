@@ -1,9 +1,9 @@
 # ONLYALPHA — PROJECT STATE
 
 **Last Updated:** May 8, 2026
-**Current Focus:** v2.Phase 1.5 — Backtesting Framework (awaiting Strategic Planner)
+**Current Focus:** v2.Phase 1.5 — Backtesting Framework (QA PASSED — awaiting backfill + backtest execution)
 **Active Plan Source:** plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md
-**Next Step:** Strategic Planner writes v2.Phase 1.5 micro-tasks
+**Next Step:** Run backfill-ohlcv.ts, then run backtest-technical.ts to validate exit gate criteria
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -36,7 +36,7 @@
 | Phase | Description | Status | Dependency |
 |---|---|---|---|
 | v2.Phase 1 | Technical Analysis Engine | ✅ COMPLETE (QA PASSED Round 3) | v2.Phase 0.1 |
-| v2.Phase 1.5 | Backtesting Framework | ⬜ NOT STARTED | v2.Phase 1 |
+| v2.Phase 1.5 | Backtesting Framework | ✅ COMPLETE (QA PASSED Round 4) | v2.Phase 1 |
 
 **Tranche 1 Exit Gate:**
 - [ ] 90 days of candle data stored for all 11 coins x 3 timeframes
@@ -83,7 +83,10 @@
 | OHLCV Snapshot Cron | `backend/src/crons/ohlcvSnapshot.cron.ts` | Every 4H refresh |
 | Historical Backfill | `backend/scripts/backfill-ohlcv.ts` | One-time 90-day backfill |
 | Market Filter Cron | `backend/src/crons/marketFilter.cron.ts` | Every 6H, coin health check |
-| Technical Analysis | `backend/src/services/technicalAnalysis.service.ts` | ✅ COMPLETE — Full rewrite per v2 spec (765 lines, 8 sub-engines, QA PASSED) |
+| Technical Analysis | `backend/src/services/technicalAnalysis.service.ts` | ✅ COMPLETE — Full rewrite per v2 spec (771 lines, 8 sub-engines, QA PASSED Round 3) |
+| Backtesting Script | `backend/scripts/backtest-technical.ts` | ✅ COMPLETE — Historical TA replay, 5 exit gate metrics, QA PASSED Round 4 |
+| Historical Query Helpers | `backend/src/services/ohlcvSnapshot.service.ts` | getCandlesAtTime + getIndicatorsRange (QA PASSED) |
+| Backtest Env Flag | `backend/src/config/env.ts` | BACKTEST_TECHNICAL_ENABLED (default false) |
 
 ---
 
