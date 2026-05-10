@@ -25,8 +25,10 @@ import { storeEmbedding } from '../services/embedding.service';
 import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates, signalPerformance, coinNewsHistory } from '../models/market.model';
 import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } from '../services/strategicOutlook.service';
 import { decideSignalAction, executeSignalDecision } from '../services/signalManager.service';
-import { classifySignalOutcome } from '../services/signalClassification.service';
+import { classifySignalOutcome, classifySignal } from '../services/signalClassification.service';
 import { calculateTpsl } from '../services/tpslCalculator.service';
+import { calculateTpslV2 } from '../services/tpslCalculatorV2.service';
+import { validateTpslSanity } from '../services/tpslSanityGate.service';
 import { analyzeTechnicals } from '../services/technicalAnalysis.service';
 import { insertShadowSignal } from '../services/shadowSignals.service';
 import type { TrendLabel } from '../services/technicalAnalysis.service';
@@ -655,41 +657,110 @@ export async function runAiWorkflow(): Promise<void> {
                         const decision = await decideSignalAction(symbol, analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL');
                         console.log(`[AI Workflow] Signal decision for ${symbol}: ${decision.action} — ${decision.reason}`);
 
-                        const tpslData = calculateTpsl({
-                            entryPrice: price?.price ?? 0,
-                            verdict: analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL',
-                            supportLevels: analysisResult.supportLevels,
-                            resistanceLevels: analysisResult.resistanceLevels,
-                        });
+                        if (!price?.price) {
+                            console.warn(`[AI Workflow] No price for ${symbol}, skipping signal`);
+                        } else {
+                            let tpslData: { takeProfitPrice: number; stopLossPrice: number } | null = null;
 
-                        const signalId = await executeSignalDecision(
-                            symbol,
-                            analysisResult.signalText,
-                            analysisResult.sentiment,
-                            analysisResult.impactScore,
-                            decision,
-                            tpslData
-                        );
+                            const taResult = await analyzeTechnicals(symbol);
 
-                        if (decision.action === 'close_and_replace' && decision.closedSignal) {
-                            const closedSignalId = decision.closedSignal.id;
-                            (async () => {
-                                try {
-                                    await classifySignalOutcome(closedSignalId);
-                                } catch (err) {
-                                    console.error(`[AI Workflow] Signal classification failed for ${closedSignalId}:`, err instanceof Error ? err.message : String(err));
+                            const signalTypeFromEvent = eventType.toLowerCase() === 'ETF_approval' || eventType.toLowerCase() === 'ETF_rejection' || eventType.toLowerCase() === 'regulation' || eventType.toLowerCase() === 'hack' || eventType.toLowerCase() === 'delisting'
+                                ? 'strategic'
+                                : eventType.toLowerCase() === 'mainnet_launch' || eventType.toLowerCase() === 'major_funding' || eventType.toLowerCase() === 'protocol_upgrade'
+                                    ? 'strategic'
+                                    : 'tactical';
+
+                            if (env.TPSL_V2_ENABLED && taResult) {
+                                const direction = verdictToDirection(analysisResult.verdict);
+                                if (direction !== 'neutral') {
+                                    const tpslV2 = await calculateTpslV2({
+                                        entryPrice: price.price,
+                                        direction,
+                                        signalType: signalTypeFromEvent,
+                                        taResult,
+                                    });
+
+                                    const sanity = validateTpslSanity({
+                                        entryPrice: price.price,
+                                        direction,
+                                        tpPrice: tpslV2.takeProfitPrice,
+                                        slPrice: tpslV2.stopLossPrice,
+                                        rrRatio: tpslV2.riskRewardRatio,
+                                        signalType: signalTypeFromEvent,
+                                    });
+
+                                    if (!sanity.isValid) {
+                                        logger.warn(`[TPSLv2] Signal rejected for ${symbol}: ${sanity.failures.join(', ')}`);
+                                    } else {
+                                        tpslData = {
+                                            takeProfitPrice: tpslV2.takeProfitPrice,
+                                            stopLossPrice: tpslV2.stopLossPrice,
+                                        };
+                                    }
                                 }
-                            })();
-                        }
+                            }
 
-                        // Shadow Mode Integration (fire-and-forget)
-                        if (env.SHADOW_MODE_ENABLED && signalId !== null) {
-                            (async () => {
+                            if (!tpslData) {
+                                tpslData = calculateTpsl({
+                                    entryPrice: price.price,
+                                    verdict: analysisResult.verdict as 'STRONG_BUY' | 'STRONG_SELL' | 'BUY' | 'SELL',
+                                    supportLevels: analysisResult.supportLevels,
+                                    resistanceLevels: analysisResult.resistanceLevels,
+                                });
+                            }
+
+                            const signalId = await executeSignalDecision(
+                                symbol,
+                                analysisResult.signalText,
+                                analysisResult.sentiment,
+                                analysisResult.impactScore,
+                                decision,
+                                tpslData
+                            );
+
+                            let classification: ReturnType<typeof classifySignal> | null = null;
+
+                            if (decision.action === 'close_and_replace' && decision.closedSignal) {
+                                const closedSignalId = decision.closedSignal.id;
+                                (async () => {
+                                    try {
+                                        await classifySignalOutcome(closedSignalId);
+                                    } catch (err) {
+                                        console.error(`[AI Workflow] Signal classification failed for ${closedSignalId}:`, err instanceof Error ? err.message : String(err));
+                                    }
+                                })();
+                            }
+
+                            if (env.SIGNAL_CLASSIFICATION_ENABLED && signalId !== null && taResult) {
                                 try {
-                                    const taResult = await analyzeTechnicals(symbol);
-                                    if (taResult && !taResult.qualityScore.isRejected) {
+                                    classification = classifySignal({ eventType, taResult, currentPrice: price.price });
+
+                                    if (!classification.meetsMinimumRR) {
+                                        logger.warn(`[Classification] Signal rejected: RR ${classification.riskRewardRatio.toFixed(2)} below minimum for ${symbol}`);
+                                    } else {
+                                        await db.update(radarSignals).set({
+                                            signalType: classification.signalType,
+                                            horizonDays: classification.horizonDays,
+                                            qualityScore: taResult.qualityScore.score,
+                                            trendContext: taResult.trend,
+                                            entryZoneLow: classification.entryZoneLow,
+                                            entryZoneHigh: classification.entryZoneHigh,
+                                            invalidationLevel: classification.invalidationLevel,
+                                            invalidationReason: classification.invalidationReason,
+                                        }).where(eq(radarSignals.id, signalId));
+
+                                        logger.info(`[Classification] Signal ${signalId} classified as ${classification.signalType} (horizon: ${classification.horizonDays}d, RR: ${classification.riskRewardRatio.toFixed(2)})`);
+                                    }
+                                } catch (classErr) {
+                                    logger.error(`[Classification] Failed for signal ${signalId}:`, classErr instanceof Error ? classErr.message : String(classErr));
+                                }
+                            }
+
+                            // Shadow Mode Integration (fire-and-forget)
+                            if (env.SHADOW_MODE_ENABLED && signalId !== null && taResult) {
+                                (async () => {
+                                    try {
                                         const algoVerdict = mapTrendToVerdict(taResult.trend);
-                                        const entryPrice = price.price;
                                         const aiVerdict = analysisResult.verdict;
                                         const algoDirection = trendToDirection(taResult.trend);
                                         const aiDirection = verdictToDirection(aiVerdict);
@@ -699,21 +770,21 @@ export async function runAiWorkflow(): Promise<void> {
                                             coinSymbol: symbol,
                                             algorithmVerdict: algoVerdict,
                                             aiVerdict: aiVerdict,
-                                            algorithmEntry: entryPrice,
-                                            aiEntry: entryPrice,
-                                            algorithmTp: taResult.nearestResistance?.price ?? null,
-                                            algorithmSl: taResult.nearestSupport?.price ?? null,
+                                            algorithmEntry: price.price,
+                                            aiEntry: price.price,
+                                            algorithmTp: taResult.nearestResistance?.price ?? undefined,
+                                            algorithmSl: taResult.nearestSupport?.price ?? undefined,
                                             aiTp: tpslData.takeProfitPrice,
                                             aiSl: tpslData.stopLossPrice,
                                             qualityScore: taResult.qualityScore.score,
                                             trendContext: taResult.trend,
                                             agreement,
                                         });
+                                    } catch (err) {
+                                        logger.error('[ShadowMode] Failed to insert shadow signal: %s', err instanceof Error ? err.message : String(err));
                                     }
-                                } catch (err) {
-                                    logger.error('[ShadowMode] Failed to insert shadow signal: %s', err instanceof Error ? err.message : String(err));
-                                }
-                            })();
+                                })();
+                            }
                         }
                     } catch (sigErr) {
                         console.error(`[AI Workflow] Signal management failed for ${symbol}:`, sigErr instanceof Error ? sigErr.message : String(sigErr));

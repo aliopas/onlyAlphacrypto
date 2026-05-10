@@ -1821,3 +1821,972 @@ After T-V2-1V QA PASS:
 *Plan authored: May 8, 2026 | Strategic Planner*
 *Plan source: plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md (v2.1 — APPROVED)*
 *Next: Senior Developer executes T-V2-1R → T-V2-1S → T-V2-1T → T-V2-1U → T-V2-1V*
+
+---
+---
+
+# Master Plan v2.1 — Tranche 2: Shadow Mode + Classification + Regime + TP/SL
+
+**Status:** ⬜ PLANNED — Awaiting Tranche 1 Exit Gate (backfill + backtest execution)
+**Date:** May 8, 2026
+**Priority:** P0 (Validates algorithm before replacing AI signal generation)
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep2.md` (lines 22-148, 150-237, 199-306, 228-237)
+**Guiding Principle:** The algorithm reads the market and produces the numbers. The AI explains the why. Never the reverse.
+
+## TRANCHE 2 SCOPE
+
+| v2 Phase | Description | Tasks | Status |
+|---|---|---|---|
+| v2.Phase 0.5 | Shadow Mode + Admin Dashboard | T-V2-05A → T-V2-05Q | ⬜ PLANNED |
+| v2.Phase 3 | Signal Classification System | T-V2-3A → T-V2-3Q | ⬜ PLANNED |
+| v2.Phase 2 | Market Regime Detection | T-V2-2A → T-V2-2Q | ⬜ PLANNED |
+| v2.Phase 4 | TP/SL Engine Overhaul | T-V2-4A → T-V2-4Q | ⬜ PLANNED |
+| v2.Phase 6 | AI Role Refinement [DEFERRED] | T-V2-6A → T-V2-6Q | ⬜ BLOCKED until shadow exit gate |
+
+**Tranche 2 Exit Gate:**
+- [ ] Shadow mode running minimum 2 weeks
+- [ ] 20+ resolved shadow signals
+- [ ] Algorithm disagreement win rate > 60%
+- [ ] Phase 6 activation only after exit gate passes
+
+## GLOBAL GUARDRAILS (Apply to ALL Tranche 2 tasks)
+
+1. **Zero `any` types** — strict TypeScript throughout.
+2. **Never hardcode coin symbols** — always import from `config/coins.ts`.
+3. **All DB migrations guarded by `migration_flags`** — run exactly once.
+4. **All new crons flagged** — default `false` in `env.ts`.
+5. **Backward compatible** — zero changes to existing public API responses.
+6. **No BUY/SELL terminology** — use BULLISH/BEARISH only.
+7. **All DB queries via Drizzle ORM** — zero raw SQL in TypeScript files.
+8. **No new npm packages** — use existing dependencies only.
+9. **Existing signal pipeline untouched until explicitly authorized** — shadow mode is purely additive.
+10. **Admin routes return 404 (not 401) for unauthenticated** — security by obscurity.
+11. **Admin session never stored in DB** — memory only with 24h expiry.
+12. **shadow_signals read-only for users** — never exposed via public API.
+13. **Zero modifications to existing cron schedules** — new crons are additive.
+14. **Commit only after QA PASS** — each task or deploy group individually.
+
+## PHASE ARCHITECTURE CONTEXT
+
+**What exists today (Tranche 1 COMPLETE):**
+- `backend/src/config/coins.ts` — 11 tracked coins (BTC, ETH, SOL, BNB, XRP, DOGE, ADA, AVAX, LINK, SUI, TON)
+- `backend/src/services/technicalAnalysis.service.ts` — 771 lines, full TA engine (QA PASSED)
+  - `analyzeTechnicals(symbol)` → `TechnicalAnalysisFullResult | null`
+  - `detectTrend(symbol)` → `TrendLabel`
+  - `detectSupportResistance(symbol)` → `{ supportLevels: SRLevel[], resistanceLevels: SRLevel[] }`
+  - `analyzeMarketStructure(symbol)` → `MarketStructureResult`
+  - `detectCandlePattern(symbol, supportLevels, resistanceLevels)` → `CandlePatternResult`
+  - `analyzeVolumeConfirmation(symbol)` → `VolumeConfirmationResult`
+  - `calculateQualityScore(params)` → `QualityScoreResult`
+  - `checkSignalHealth()` → `SignalHealthResult`
+  - `isNearLevel(price, level, thresholdPercent)` → `boolean`
+- `backend/src/services/ohlcvSnapshot.service.ts` — OHLCV data + query helpers
+- `backend/src/crons/ohlcvSnapshot.cron.ts` — every 4H refresh
+- `backend/src/crons/marketFilter.cron.ts` — every 6H coin health check
+- `backend/scripts/backtest-technical.ts` — backtesting framework (QA PASSED)
+
+**Signal pipeline (aiWorkflow.cron.ts):**
+- Line 245-247: `eventType` and `classification` extracted from buffer item
+- Line 376-421: MAJOR path — `callDeepSeekAnalysis()` generates full verdict
+- Line 423-435: Factual grounding sanitizes AI S/R levels
+- Line 622-647: Signal generation — `decideSignalAction()` → `calculateTpsl()` → `executeSignalDecision()`
+- `signalManager.service.ts`: Manages create/upgrade/close_and_replace/skip decisions
+- `tpslCalculator.service.ts`: Pure math TP/SL from support/resistance arrays (no ATR, no RR check)
+
+**DB tables (market.model.ts):**
+- `radarSignals` (line 100): id, coinSymbol, signalText, sentiment, impactScore, newsId, createdAt
+- `signalPerformance` (line 111): id, signalId, coinSymbol, verdict, sentiment, entryPrice, entryAt, price24h/7d/30d, pnl24h/7d/30d, isWin7d/30d, isActive, closedAt, exitPrice, realizedPnl, stopLossPrice, takeProfitPrice, autoClosedReason, createdAt
+- `coinIntelligenceCache` (line 195): coinSymbol (PK), ath, athDate, trend8w, week52High, week52Low, priceChange30d, wikiBackground, dexBoostActive, dataSource, cachedAt, isTradeable
+- `migrationFlags` (line 315): id, flagName (unique), executedAt
+
+**No admin infrastructure exists** — no admin routes, no admin middleware, no admin auth.
+
+---
+
+## EXECUTION GROUPS (Dependency Order)
+
+```
+Group A: T-V2-05A, T-V2-05B, T-V2-3A, T-V2-2A (DB migrations + env flags — 4 tasks, parallel)
+    ↓
+Group B: T-V2-05C, T-V2-05D, T-V2-2B, T-V2-3B (service layer — 4 tasks, parallel)
+    ↓
+Group C: T-V2-05E, T-V2-05F, T-V2-05G, T-V2-2C, T-V2-3C (cron + route + signalManager — 5 tasks, parallel)
+    ↓
+Group D: T-V2-05H, T-V2-3D, T-V2-4A (aiWorkflow integration + TP/SL service — 3 tasks)
+    ↓
+Group E: T-V2-4B, T-V2-4C (TP/SL gate + wiring — 2 tasks, sequential)
+    ↓
+Group F: T-V2-05I (admin frontend — 1 task)
+    ↓
+Group G: T-V2-2Q, T-V2-3Q, T-V2-4Q, T-V2-05Q (per-phase QA — 4 tasks, parallel)
+    ↓
+Group H: T-V2-6A, T-V2-6B, T-V2-6C, T-V2-6Q (Phase 6 — DEFERRED until shadow exit gate)
+    ↓
+Group I: T-V2-T2Q (Tranche 2 combined QA)
+```
+
+**Minimum sequential steps:** 9 (Groups A→B→C→D→E→F→G→H→I)
+
+---
+
+---
+
+## PHASE 0.5 SCOPE
+
+| Task ID | Description | Status |
+|---|---|---|
+| T-V2-05A | shadow_signals DB table (migration + Drizzle model) | ⬜ |
+| T-V2-05B | SHADOW_MODE_ENABLED env flag | ⬜ |
+| T-V2-05C | Shadow Signals Service (`shadowSignals.service.ts`) | ⬜ |
+| T-V2-05D | Shadow Checker Cron (`shadowChecker.cron.ts`) | ⬜ |
+| T-V2-05E | Admin Auth Middleware (`adminAuth.middleware.ts`) | ⬜ |
+| T-V2-05F | Admin Routes (`admin.routes.ts`) | ⬜ |
+| T-V2-05G | AiWorkflow Shadow Integration (signal generation hook) | ⬜ |
+| T-V2-05H | Admin Dashboard Frontend (`admin/shadow/page.tsx`) | ⬜ |
+| T-V2-05Q | Phase 0.5 QA | ⬜ |
+
+---
+
+### T-V2-05A — shadow_signals DB Table (Migration + Drizzle Model)
+
+**Task ID:** T-V2-05A
+**Phase:** v2.Phase 0.5 — Shadow Mode
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** A (no dependencies)
+
+**Objective:**
+Create the `shadow_signals` table via SQL migration and add it to the Drizzle model in `market.model.ts`. This table stores dual verdicts (algorithm + AI) for parallel comparison during shadow mode.
+
+**Files created/modified:**
+- `backend/scripts/migrate-shadow-signals.sql` (new)
+- `backend/src/models/market.model.ts` (add `shadowSignals` table)
+
+**Table schema:**
+```sql
+CREATE TABLE shadow_signals (
+    id                  SERIAL PRIMARY KEY,
+    coin_symbol         VARCHAR(20) NOT NULL,
+    algorithm_verdict   VARCHAR(20) NOT NULL,
+    ai_verdict          VARCHAR(20) NOT NULL,
+    algorithm_entry     REAL NOT NULL,
+    ai_entry            REAL NOT NULL,
+    algorithm_tp       REAL,
+    algorithm_sl       REAL,
+    ai_tp              REAL,
+    ai_sl              REAL,
+    quality_score      INT,
+    trend_context      VARCHAR(20),
+    agreement          BOOLEAN NOT NULL DEFAULT false,
+    price_72h          REAL,
+    price_7d           REAL,
+    algorithm_pnl_72h  REAL,
+    ai_pnl_72h         REAL,
+    algorithm_win_72h  BOOLEAN,
+    ai_win_72h         BOOLEAN,
+    algorithm_pnl_7d   REAL,
+    ai_pnl_7d          REAL,
+    algorithm_win_7d   BOOLEAN,
+    ai_win_7d          BOOLEAN,
+    winner             VARCHAR(20),
+    created_at         TIMESTAMP NOT NULL DEFAULT NOW(),
+    resolved_at        TIMESTAMP
+);
+```
+
+**Migration guard:** Insert into `migration_flags` with `flagName = 'shadow_signals_table'`.
+
+**Drizzle model:** Add `shadowSignals` table to `market.model.ts` with columns matching the schema above.
+
+**Constraints:** Zero `any` types. All column types exact. Migration idempotent. `agreement` defaults to `false`. `created_at` defaults to `NOW()`.
+
+**Dependencies:** None
+
+**Rollback:** DROP TABLE shadow_signals; DELETE FROM migration_flags WHERE flagName = 'shadow_signals_table';
+
+---
+
+### T-V2-05B — SHADOW_MODE_ENABLED Env Flag
+
+**Task ID:** T-V2-05B
+**Phase:** v2.Phase 0.5 — Shadow Mode
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** A (no dependencies)
+
+**Objective:** Add `SHADOW_MODE_ENABLED` env flag to `env.ts`. Default `false`.
+
+**File to modify:** `backend/src/config/env.ts`
+
+**Exact change:**
+```typescript
+SHADOW_MODE_ENABLED: z.boolean().default(false),
+```
+
+**Dependencies:** None
+
+**Rollback:** Remove the line from env.ts
+
+---
+
+### T-V2-05C — Shadow Signals Service
+
+**Task ID:** T-V2-05C
+**Phase:** v2.Phase 0.5 — Shadow Mode
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** B (depends on T-V2-05A, T-V2-05B)
+
+**Objective:** Create `backend/src/services/shadowSignals.service.ts` — service layer for shadow signal management. Handles insertion, resolution, and statistical queries.
+
+**File to create:** `backend/src/services/shadowSignals.service.ts`
+
+**Exported functions:**
+```typescript
+export async function insertShadowSignal(params: {
+    coinSymbol: string;
+    algorithmVerdict: string;
+    aiVerdict: string;
+    algorithmEntry: number;
+    aiEntry: number;
+    algorithmTp?: number;
+    algorithmSl?: number;
+    aiTp?: number;
+    aiSl?: number;
+    qualityScore: number;
+    trendContext: string;
+    agreement: boolean;
+}): Promise<number>
+
+export async function resolveShadowSignal72h(id: number, price72h: number): Promise<void>
+export async function resolveShadowSignal7d(id: number, price7d: number): Promise<void>
+export async function getUnresolvedShadowSignals(): Promise<ShadowSignalRow[]>
+export async function getShadowStats(): Promise<ShadowStats>
+```
+
+**ShadowStats interface:**
+```typescript
+interface ShadowStats {
+    totalSignals: number;
+    resolved72h: number;
+    algorithmWins72h: number;
+    aiWins72h: number;
+    resolved7d: number;
+    algorithmWins7d: number;
+    aiWins7d: number;
+    agreeingSignals: number;
+    disagreeingSignals: number;
+    algorithmDisagreementWinRate: number | null;
+}
+```
+
+**P&L calculation:** Bullish: `((price72h - entryPrice) / entryPrice) * 100`. Bearish: `((entryPrice - price72h) / entryPrice) * 100`. Win = P&L > 0.
+
+**Winner:** Higher P&L wins. Both <= 0 → NEITHER. 7d: update winner if changed, set resolved_at when complete.
+
+**Constraints:** Zero `any` types. All DB via Drizzle ORM. Zero live Binance calls.
+
+**Dependencies:** T-V2-05A (shadowSignals table), T-V2-05B (env flag)
+
+**Rollback:** Delete `backend/src/services/shadowSignals.service.ts`
+
+---
+
+### T-V2-05D — Shadow Checker Cron
+
+**Task ID:** T-V2-05D
+**Phase:** v2.Phase 0.5 — Shadow Mode
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** B (depends on T-V2-05C)
+
+**Objective:** Create `backend/src/crons/shadowChecker.cron.ts` — runs every 15 minutes to resolve shadow signals at 72h and 7d checkpoints.
+
+**File to create:** `backend/src/crons/shadowChecker.cron.ts`
+
+**Schedule:** `*/15 * * * *`
+
+**Algorithm:**
+```
+1. If SHADOW_MODE_ENABLED === false: exit
+2. Fetch all unresolved shadow signals
+3. For each shadow signal:
+   a. age = now - created_at
+   b. If age >= 72h AND price_72h IS NULL:
+      - Fetch live price, fill price_72h, calculate P&L, set win flags, determine winner
+   c. If age >= 7d AND price_7d IS NULL:
+      - Fetch live price, fill price_7d, calculate P&L, set win flags, update winner, set resolved_at
+```
+
+**Price fetching:** Use `getLivePrices()` from `priceService` — batch by coin first. If fetch fails: log error, skip signal, continue.
+
+**Dependencies:** T-V2-05C (shadowSignals service), T-V2-05B (env flag)
+
+**Rollback:** Delete `backend/src/crons/shadowChecker.cron.ts`
+
+---
+
+### T-V2-05E — Admin Auth Middleware
+
+**Task ID:** T-V2-05E
+**Phase:** v2.Phase 0.5 — Shadow Mode
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** C (depends on T-V2-05B)
+
+**Objective:** Create `backend/src/middleware/adminAuth.middleware.ts` — protects admin routes with email/password auth. Session in memory (Map), 24h expiry.
+
+**File to create:** `backend/src/middleware/adminAuth.middleware.ts`
+
+**Design:** In-memory session store (Map<sessionId, { email, expiresAt }>), bcrypt hashing, 64-char random session ID, 404 for unauthenticated requests.
+
+**Env vars to add:**
+```typescript
+ADMIN_EMAIL: z.string().email().default('admin@onlyalpha.io'),
+ADMIN_PASSWORD: z.string().min(12).default('change_me_in_prod'),
+ADMIN_SESSION_SECRET: z.string().length(32).default('00000000000000000000000000000000'),
+```
+
+**Exported:** `adminLogin`, `adminLogout`, `adminAuth` (middleware), `cleanupExpiredSessions`
+
+**Dependencies:** T-V2-05B (env flag)
+
+**Rollback:** Delete middleware file, remove env vars
+
+---
+
+### T-V2-05F — Admin Routes
+
+**Task ID:** T-V2-05F
+**Phase:** v2.Phase 0.5 — Shadow Mode
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** C (depends on T-V2-05C, T-V2-05E)
+
+**Objective:** Create `backend/src/routes/admin.routes.ts` — protected admin API routes for shadow mode statistics.
+
+**File to create:** `backend/src/routes/admin.routes.ts`
+
+**Routes:**
+| Method | Path | Handler | Auth |
+|---|---|---|---|
+| POST | /admin/login | adminLogin | No |
+| POST | /admin/logout | adminLogout | No |
+| GET | /admin/shadow/stats | getShadowStats | Yes |
+| GET | /admin/shadow/signals | getShadowSignals | Yes |
+| GET | /admin/shadow/signals/:id | getShadowSignalById | Yes |
+
+**Filters:** coin, agreement, status, date range, page, limit. Controller: `backend/src/controllers/admin.controller.ts`.
+
+**Dependencies:** T-V2-05C (shadowSignals service), T-V2-05E (auth middleware)
+
+**Rollback:** Delete admin.routes.ts, delete admin.controller.ts
+
+---
+
+### T-V2-05G — AiWorkflow Shadow Integration
+
+**Task ID:** T-V2-05G
+**Phase:** v2.Phase 0.5 — Shadow Mode
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** D (depends on T-V2-05C)
+
+**Objective:** In `aiWorkflow.cron.ts`, after `executeSignalDecision` call, insert shadow signal record. Fire-and-forget — does not block existing flow.
+
+**File to modify:** `backend/src/crons/aiWorkflow.cron.ts`
+
+**Location:** After line 643 where `signalId` is set.
+
+**Injection:**
+```typescript
+if (env.SHADOW_MODE_ENABLED && signalId !== null) {
+    (async () => {
+        try {
+            const taResult = await analyzeTechnicals(symbol);
+            if (taResult && !taResult.qualityScore.isRejected) {
+                const algoVerdict = mapTrendToVerdict(taResult.trend);
+                const entryPrice = price.price;
+                const aiVerdict = analysisResult.verdict;
+                const algoDirection = trendToDirection(taResult.trend);
+                const aiDirection = verdictToDirection(aiVerdict);
+                const agreement = algoDirection === aiDirection;
+                
+                await insertShadowSignal({
+                    coinSymbol: symbol,
+                    algorithmVerdict: algoVerdict,
+                    aiVerdict: aiVerdict,
+                    algorithmEntry: entryPrice,
+                    aiEntry: entryPrice,
+                    algorithmTp: taResult.nearestResistance?.price ?? null,
+                    algorithmSl: taResult.nearestSupport?.price ?? null,
+                    aiTp: tpslData.takeProfitPrice,
+                    aiSl: tpslData.stopLossPrice,
+                    qualityScore: taResult.qualityScore.score,
+                    trendContext: taResult.trend,
+                    agreement,
+                });
+            }
+        } catch (err) {
+            logger.error('[ShadowMode] Failed to insert shadow signal: %s', err);
+        }
+    })();
+}
+```
+
+**New imports:**
+```typescript
+import { analyzeTechnicals } from '../services/technicalAnalysis.service';
+import { insertShadowSignal } from '../services/shadowSignals.service';
+import type { TrendLabel } from '../services/technicalAnalysis.service';
+```
+
+**Helper functions:**
+```typescript
+function trendToDirection(trend: TrendLabel): 'bullish' | 'bearish' | 'neutral' {
+    if (trend === 'STRONG_BULLISH' || trend === 'BULLISH') return 'bullish';
+    if (trend === 'STRONG_BEARISH' || trend === 'BEARISH') return 'bearish';
+    return 'neutral';
+}
+
+function verdictToDirection(verdict: string): 'bullish' | 'bearish' | 'neutral' {
+    if (verdict === 'STRONG_BUY' || verdict === 'BUY') return 'bullish';
+    if (verdict === 'STRONG_SELL' || verdict === 'SELL') return 'bearish';
+    return 'neutral';
+}
+
+function mapTrendToVerdict(trend: TrendLabel): string {
+    switch (trend) {
+        case 'STRONG_BULLISH': return 'STRONG_BUY';
+        case 'BULLISH': return 'BUY';
+        case 'STRONG_BEARISH': return 'STRONG_SELL';
+        case 'BEARISH': return 'SELL';
+        default: return 'BUY';
+    }
+}
+```
+
+**Key constraint:** Existing flow 100% untouched. Fire-and-forget only.
+
+**Dependencies:** T-V2-05C (shadowSignals service), T-V2-05B (env flag)
+
+**Rollback:** Remove shadow block + new imports
+
+---
+
+### T-V2-05H — Admin Dashboard Frontend
+
+**Task ID:** T-V2-05H
+**Phase:** v2.Phase 0.5 — Shadow Mode
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** E (depends on T-V2-05F)
+
+**Objective:** Create `frontend/src/app/admin/shadow/page.tsx` — admin dashboard for shadow mode statistics.
+
+**File to create:** `frontend/src/app/admin/shadow/page.tsx`
+
+**Layout:** 6 stat cards (Algorithm WIN Rate 72h, AI WIN Rate 72h, Total Signals, Agreeing, Disagreeing, Algorithm Disagreement WIN Rate). Decision Helper Banner (shows at 20+ resolved). Signals table (10 columns). Filters (coin, agreement, status, date range).
+
+**Constraints:** Zero `any` types. All data via `/admin/shadow/*` API routes. No modifications to public frontend.
+
+**Dependencies:** T-V2-05F (admin routes)
+
+**Rollback:** Delete admin directory
+
+---
+
+### T-V2-05Q — Phase 0.5 QA
+
+**Task ID:** T-V2-05Q
+**Phase:** v2.Phase 0.5 — Shadow Mode
+**Assigned Agent:** QA & Security Hunter
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** F (depends on ALL above tasks)
+
+**Audit checklist:** Schema, migration guards, admin auth security (404, memory session, bcrypt, 24h expiry), shadow logic (72h/7d resolution), aiWorkflow integration (fire-and-forget), admin routes (5 routes), frontend (6 cards, filters).
+
+**Dependencies:** T-V2-05A through T-V2-05H
+
+---
+
+---
+
+# Phase 3 — Signal Classification System
+
+## PHASE 3 SCOPE
+
+| Task ID | Description | Status |
+|---|---|---|
+| T-V2-3A | radar_signals + signal_performance DB additions | ✅ DONE |
+| T-V2-3B | Signal Classification Service | ✅ DONE |
+| T-V2-3C | aiWorkflow Classification Integration | ✅ DONE |
+| T-V2-3Q | Phase 3 QA | ✅ DONE (QA PASSED — Round 2) |
+
+---
+
+### T-V2-3A — Signal Classification DB Additions
+
+**Task ID:** T-V2-3A
+**Phase:** v2.Phase 3 — Signal Classification
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED — Round 2)
+**Deploy Group:** A (parallel with T-V2-05A/B)
+
+**Objective:** Add classification columns to `radar_signals` and `signal_performance` tables.
+
+**Files created/modified:** `backend/scripts/migrate-signal-classification.sql` (new), `backend/src/models/market.model.ts`
+
+**Migration SQL:**
+```sql
+ALTER TABLE radar_signals ADD COLUMN signal_type VARCHAR(20);
+ALTER TABLE radar_signals ADD COLUMN horizon_days INT;
+ALTER TABLE radar_signals ADD COLUMN quality_score INT;
+ALTER TABLE radar_signals ADD COLUMN trend_context VARCHAR(20);
+ALTER TABLE radar_signals ADD COLUMN entry_zone_low REAL;
+ALTER TABLE radar_signals ADD COLUMN entry_zone_high REAL;
+ALTER TABLE radar_signals ADD COLUMN invalidation_level REAL;
+ALTER TABLE radar_signals ADD COLUMN invalidation_reason TEXT;
+
+ALTER TABLE signal_performance ADD COLUMN signal_state VARCHAR(30) DEFAULT 'NEW';
+ALTER TABLE signal_performance ADD COLUMN price72h REAL;
+ALTER TABLE signal_performance ADD COLUMN pnl72h REAL;
+ALTER TABLE signal_performance ADD COLUMN is_win72h BOOLEAN;
+ALTER TABLE signal_performance ADD COLUMN partial_tp_hit_at TIMESTAMP;
+ALTER TABLE signal_performance ADD COLUMN breakeven_moved_at TIMESTAMP;
+ALTER TABLE signal_performance ADD COLUMN close_reason VARCHAR(50);
+```
+
+**Migration guard:** Insert `signal_classification_schema` into `migration_flags`. All new columns nullable or with defaults (backward compatible).
+
+**Dependencies:** None
+
+**Rollback:** Revert ALTER TABLE statements
+
+---
+
+### T-V2-3B — Signal Classification Service
+
+**Task ID:** T-V2-3B
+**Phase:** v2.Phase 3 — Signal Classification
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED — Round 2)
+**Deploy Group:** B (depends on T-V2-3A)
+
+**Objective:** Create `backend/src/services/signalClassification.service.ts` — determines signal type, horizon, entry zones, and invalidation levels.
+
+**File to create:** `backend/src/services/signalClassification.service.ts`
+
+**Event → Signal Type Mapping:**
+
+| Signal Type | Horizon | Triggered By |
+|---|---|---|
+| TACTICAL | 3 days | Listing, whale movement, partnership, price action, volume spike |
+| STRATEGIC | 14 days | ETF approval/rejection, regulation, hack, delisting |
+| STRATEGIC | 21 days | Mainnet launch, major funding, protocol upgrade |
+
+**Exported function:**
+```typescript
+export async function classifySignal(params: {
+    eventType: string;
+    taResult: TechnicalAnalysisFullResult;
+}): Promise<ClassificationResult>
+```
+
+**ClassificationResult:**
+```typescript
+interface ClassificationResult {
+    signalType: 'tactical' | 'strategic';
+    horizonDays: 3 | 14 | 21;
+    entryZoneLow: number;
+    entryZoneHigh: number;
+    invalidationLevel: number;
+    invalidationReason: string;
+    riskRewardRatio: number;
+    meetsMinimumRR: boolean;  // TACTICAL >= 2, STRATEGIC >= 3
+}
+```
+
+**Algorithm:** Map eventType → signalType + horizonDays. Entry zone from nearest S/R ± buffer. Invalidation from structure break point. RR = TP_distance / SL_distance. Reject if RR below minimum (not downgrade — reject).
+
+**Dependencies:** T-V2-3A (schema), Phase 1 TA engine
+
+**Rollback:** Delete service file
+
+---
+
+### T-V2-3C — aiWorkflow Classification Integration
+
+**Task ID:** T-V2-3C
+**Phase:** v2.Phase 3 — Signal Classification
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED — Round 2)
+**Deploy Group:** C (depends on T-V2-3B)
+
+**Objective:** Wire signal classification into `aiWorkflow.cron.ts` after signal creation.
+
+**File to modify:** `backend/src/crons/aiWorkflow.cron.ts`
+
+**Location:** After `executeSignalDecision` call (line 643).
+
+**Flow:**
+```typescript
+if (env.SIGNAL_CLASSIFICATION_ENABLED && taResult && signalId !== null) {
+    const classification = await classifySignal({ eventType, taResult });
+    
+    if (!classification.meetsMinimumRR) {
+        logger.warn(`[Classification] Signal rejected: RR ${classification.riskRewardRatio.toFixed(2)} below minimum`);
+        // Close just-created signal, clear radar signal
+    } else {
+        await db.update(radarSignals).set({...}).where(eq(radarSignals.id, signalId));
+    }
+}
+```
+
+**Env flag:** `SIGNAL_CLASSIFICATION_ENABLED: z.boolean().default(false)`
+
+**Key constraint:** RR rejection = signal rejected entirely, not downgraded.
+
+**Dependencies:** T-V2-3B (classification service)
+
+**Rollback:** Remove classification block + env flag
+
+---
+
+### T-V2-3Q — Phase 3 QA
+
+**Task ID:** T-V2-3Q
+**Phase:** v2.Phase 3 — Signal Classification
+**Assigned Agent:** QA & Security Hunter
+**Status:** ✅ DONE (QA PASSED — Round 2)
+**Deploy Group:** D (depends on ALL above tasks)
+
+**Audit checklist:** All 8 radar_signals columns, all 7 signal_performance columns, eventType mapping (8 types), horizonDays correct, RR calculation correct, rejection when RR < minimum.
+
+**Dependencies:** T-V2-3A through T-V2-3C
+
+---
+
+---
+
+# Phase 2 — Market Regime Detection
+
+## PHASE 2 SCOPE
+
+| Task ID | Description | Status |
+|---|---|---|
+| T-V2-2A | Regime DB field + env flags | ⬜ |
+| T-V2-2B | Market Regime Service | ⬜ |
+| T-V2-2C | Regime Update Cron | ⬜ |
+| T-V2-2Q | Phase 2 QA | ⬜ |
+
+---
+
+### T-V2-2A — Regime DB Field + Env Flags
+
+**Task ID:** T-V2-2A
+**Phase:** v2.Phase 2 — Market Regime Detection
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** A (parallel with T-V2-05A/B)
+
+**Objective:** Add `currentRegime` field to `coin_intelligence_cache` and regime-related env flags.
+
+**Files created/modified:** `backend/scripts/migrate-regime.sql` (new), `backend/src/models/market.model.ts`, `backend/src/config/env.ts`
+
+**Migration SQL:**
+```sql
+ALTER TABLE coin_intelligence_cache ADD COLUMN current_regime VARCHAR(20) DEFAULT 'SIDEWAYS';
+```
+
+**Migration guard:** Insert `market_regime_schema` into `migration_flags`.
+
+**Env flags:**
+```typescript
+MARKET_REGIME_ENABLED: z.boolean().default(false),
+MARKET_REGIME_REFRESH_INTERVAL_MS: z.number().default(4 * 60 * 60 * 1000),
+```
+
+**Dependencies:** None
+
+**Rollback:** Revert ALTER TABLE
+
+---
+
+### T-V2-2B — Market Regime Service
+
+**Task ID:** T-V2-2B
+**Phase:** v2.Phase 2 — Market Regime Detection
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** B (depends on T-V2-2A)
+
+**Objective:** Create `backend/src/services/marketRegime.service.ts` — determines regime (RISK_ON, RISK_OFF, TRENDING, SIDEWAYS, VOLATILE) per coin.
+
+**File to create:** `backend/src/services/marketRegime.service.ts`
+
+**Regime Types:**
+
+| Regime | Conditions | Modifier |
+|---|---|---|
+| RISK_ON | Low volatility + strong volume + bullish structure | 0 |
+| RISK_OFF | Macro fear + declining volume + bearish structure | -20 |
+| TRENDING | Clear EMA alignment + BOS confirmed | 0 |
+| SIDEWAYS | EMAs intertwined + low volume + no BOS | -10 |
+| VOLATILE | Price change > 8% in 4h + volume spike | -30 |
+
+**Exported functions:**
+```typescript
+export async function detectRegime(symbol: string): Promise<RegimeResult>
+export async function detectAllRegimes(): Promise<Map<string, RegimeResult>>
+```
+
+**RegimeResult:**
+```typescript
+type RegimeType = 'RISK_ON' | 'RISK_OFF' | 'TRENDING' | 'SIDEWAYS' | 'VOLATILE';
+
+interface RegimeResult {
+    regime: RegimeType;
+    confidence: number;
+    regimeModifier: number;
+    reasoning: string;
+    keyIndicators: {
+        priceChange4h: number;
+        volumeRatio: number;
+        emaAlignment: 'bullish' | 'bearish' | 'neutral';
+        bosConfirmed: boolean;
+        fearGreedIndex: number | null;
+        macroKeywordsDetected: string[];
+    };
+}
+```
+
+**Algorithm:**
+```
+1. VOLATILE check first (priority): priceChange4h > 8% → return VOLATILE, -30
+2. MACRO KEYWORDS check: detected → return RISK_OFF, -20
+3. RISK_ON: volumeRatio > 1.2 AND bullish alignment AND bosConfirmed → 0
+4. TRENDING: EMA20 > EMA50 > EMA200 AND bosConfirmed → 0
+5. Default: SIDEWAYS → -10
+```
+
+**Dependencies:** T-V2-2A (schema), Phase 1 TA engine
+
+**Rollback:** Delete service file
+
+---
+
+### T-V2-2C — Regime Update Cron
+
+**Task ID:** T-V2-2C
+**Phase:** v2.Phase 2 — Market Regime Detection
+**Assigned Agent:** Senior Developer
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** C (depends on T-V2-2B)
+
+**Objective:** Create `backend/src/crons/regimeUpdate.cron.ts` — runs every 4 hours to refresh regime for all 11 tracked coins.
+
+**File to create:** `backend/src/crons/regimeUpdate.cron.ts`
+
+**Schedule:** `0 */4 * * *`
+
+**Algorithm:**
+```
+1. If MARKET_REGIME_ENABLED === false: exit
+2. For each coin in TRACKED_COINS:
+   a. detectRegime(coin)
+   b. Update coin_intelligence_cache.currentRegime
+```
+
+**Dependencies:** T-V2-2B (regime service), T-V2-2A (env flag)
+
+**Rollback:** Delete cron file
+
+---
+
+### T-V2-2Q — Phase 2 QA
+
+**Task ID:** T-V2-2Q
+**Phase:** v2.Phase 2 — Market Regime Detection
+**Assigned Agent:** QA & Security Hunter
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** D (depends on T-V2-2A, T-V2-2B, T-V2-2C)
+
+**Audit checklist:** Schema column, 5 regime types, VOLATILE priority, macro keywords → RISK_OFF, RISK_ON conditions, TRENDING conditions, SIDEWAYS default, modifier values, cron schedule.
+
+**Dependencies:** T-V2-2A through T-V2-2C
+
+---
+
+---
+
+# Phase 4 — TP/SL Engine Overhaul
+
+## PHASE 4 SCOPE
+
+| Task ID | Description | Status |
+|---|---|---|
+| T-V2-4A | New TP/SL Calculator Service | ✅ DONE |
+| T-V2-4B | TP/SL Sanity Gate | ✅ DONE |
+| T-V2-4C | aiWorkflow TP/SL Wiring | ✅ DONE |
+| T-V2-4Q | Phase 4 QA | ✅ DONE (QA PASSED — Round 2) |
+
+---
+
+### T-V2-4A — New TP/SL Calculator Service
+
+**Task ID:** T-V2-4A
+**Phase:** v2.Phase 4 — TP/SL Engine Overhaul
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED — Round 2)
+**Deploy Group:** A (depends on T-V2-3B)
+
+**Objective:** Create `backend/src/services/tpslCalculatorV2.service.ts` — algorithm-driven TP/SL from Phase 1 S/R engine with RR-gated rejection.
+
+**File to create:** `backend/src/services/tpslCalculatorV2.service.ts`
+
+**Exported function:**
+```typescript
+export async function calculateTpslV2(params: {
+    entryPrice: number;
+    direction: 'bullish' | 'bearish';
+    signalType: 'tactical' | 'strategic';
+    taResult: TechnicalAnalysisFullResult;
+}): Promise<TpslV2Result>
+```
+
+**TpslV2Result:**
+```typescript
+interface TpslV2Result {
+    takeProfitPrice: number;
+    stopLossPrice: number;
+    tpSource: 'resistance' | 'liquidity' | 'atr';
+    slSource: 'invalidation' | 'support' | 'atr';
+    riskRewardRatio: number;
+    isRejected: boolean;
+    rejectionReason: string | null;
+    entryZoneLow: number;
+    entryZoneHigh: number;
+}
+```
+
+**TP Priority:** resistance → liquidity → ATR (1.5x). **SL Priority:** invalidation → support (strength>=60) → ATR (1x). **RR Gate:** TACTICAL < 2 → rejected. STRATEGIC < 3 → rejected.
+
+**Dependencies:** T-V2-3B (classification service), Phase 1 TA engine
+
+**Rollback:** Delete service file
+
+---
+
+### T-V2-4B — TP/SL Sanity Gate
+
+**Task ID:** T-V2-4B
+**Phase:** v2.Phase 4 — TP/SL Engine Overhaul
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED — Round 2)
+**Deploy Group:** B (depends on T-V2-4A)
+
+**Objective:** Create `backend/src/services/tpslSanityGate.service.ts` — validates TP/SL before any signal is saved.
+
+**File to create:** `backend/src/services/tpslSanityGate.service.ts`
+
+**Exported function:**
+```typescript
+export function validateTpslSanity(params: {
+    entryPrice: number;
+    direction: 'bullish' | 'bearish';
+    tpPrice: number;
+    slPrice: number;
+    rrRatio: number;
+    signalType: 'tactical' | 'strategic';
+}): SanityValidationResult
+```
+
+**SanityValidationResult:**
+```typescript
+interface SanityValidationResult {
+    isValid: boolean;
+    failures: string[];
+}
+```
+
+**Checks:** Bullish TP > entry, Bullish SL < entry, Bearish TP < entry, Bearish SL > entry, TP distance 1-40%, SL distance 1-40%, RR meets minimum.
+
+**Dependencies:** T-V2-4A (V2 calculator)
+
+**Rollback:** Delete service file
+
+---
+
+### T-V2-4C — aiWorkflow TP/SL Wiring
+
+**Task ID:** T-V2-4C
+**Phase:** v2.Phase 4 — TP/SL Engine Overhaul
+**Assigned Agent:** Senior Developer
+**Status:** ✅ DONE (QA PASSED — Round 2)
+**Deploy Group:** C (depends on T-V2-4B)
+
+**Objective:** Wire the V2 TP/SL calculator into `aiWorkflow.cron.ts`, replacing the old call.
+
+**File to modify:** `backend/src/crons/aiWorkflow.cron.ts`
+
+**Changes:** Add imports for `calculateTpslV2` and `validateTpslSanity`. Replace old `calculateTpsl` call with V2 flow (calculateTpslV2 → validateTpslSanity → reject if invalid else use V2 TP/SL). Old `calculateTpsl` remains as fallback when `TPSL_V2_ENABLED === false`.
+
+**Env flag:** `TPSL_V2_ENABLED: z.boolean().default(false)`
+
+**Key constraint:** Sanity gate rejection = signal not saved (not downgraded).
+
+**Dependencies:** T-V2-4A (V2 calculator), T-V2-4B (sanity gate)
+
+**Rollback:** Revert aiWorkflow changes, remove env flag
+
+---
+
+### T-V2-4Q — Phase 4 QA
+
+**Task ID:** T-V2-4Q
+**Phase:** v2.Phase 4 — TP/SL Engine Overhaul
+**Assigned Agent:** QA & Security Hunter
+**Status:** ✅ DONE (QA PASSED — Round 2)
+**Deploy Group:** D (depends on T-V2-4A, T-V2-4B, T-V2-4C)
+
+**Audit checklist:** TP priority (resistance→liquidity→ATR), SL priority (invalidation→support→ATR), RR gates (tactical<2 rejected, strategic<3 rejected), sanity checks (6 checks), fallback when flag off.
+
+**Dependencies:** T-V2-4A through T-V2-4C
+
+---
+
+---
+
+## FILES SUMMARY (Tranche 2)
+
+| File | Tasks |
+|---|---|
+| `backend/scripts/migrate-shadow-signals.sql` | T-V2-05A |
+| `backend/scripts/migrate-signal-classification.sql` | T-V2-3A |
+| `backend/scripts/migrate-regime.sql` | T-V2-2A |
+| `backend/src/models/market.model.ts` | T-V2-05A, T-V2-3A, T-V2-2A |
+| `backend/src/config/env.ts` | T-V2-05B, T-V2-05E, T-V2-2A |
+| `backend/src/services/shadowSignals.service.ts` | T-V2-05C |
+| `backend/src/crons/shadowChecker.cron.ts` | T-V2-05D |
+| `backend/src/middleware/adminAuth.middleware.ts` | T-V2-05E |
+| `backend/src/routes/admin.routes.ts` | T-V2-05F |
+| `backend/src/controllers/admin.controller.ts` | T-V2-05F |
+| `backend/src/services/signalClassification.service.ts` | T-V2-3B |
+| `backend/src/services/marketRegime.service.ts` | T-V2-2B |
+| `backend/src/crons/regimeUpdate.cron.ts` | T-V2-2C |
+| `backend/src/services/tpslCalculatorV2.service.ts` | T-V2-4A |
+| `backend/src/services/tpslSanityGate.service.ts` | T-V2-4B |
+| `backend/src/crons/aiWorkflow.cron.ts` | T-V2-05G, T-V2-3C, T-V2-4C |
+| `frontend/src/app/admin/shadow/page.tsx` | T-V2-05H |
+
+**Total: 10 new files, 4 modified files, 3 migration scripts**
+
+---
+
+*Plan authored: May 10, 2026 | Strategic Planner*
+*Plan source: plans/THE SUPREME REVIEWER_plans/nextstep2.md (v2.0 — APPROVED)*
+*Next: Senior Developer executes Phase 0.5 → Phase 3 → Phase 2 → Phase 4*
+
+## PHASE 0.5 SCOPE
+

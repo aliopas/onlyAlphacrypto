@@ -1,9 +1,9 @@
 # ONLYALPHA — PROJECT STATE
 
 **Last Updated:** May 10, 2026
-**Current Focus:** Tranche 2 — Phase 0.5/2/3 QA PASSED, Phase 4 remaining
+**Current Focus:** Tranche 2 — Phase 3/4 COMPLETE (QA PASSED Round 2). All Phase 0.5, 2, 3, 4 tasks done. Awaiting next directive.
 **Active Plan Source:** plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md
-**Next Step:** Continue Tranche 2 — Phase 4 (TP/SL Engine Overhaul) or Phase 0.5 (Shadow Mode)
+**Next Step:** Awaiting next directive from Tech Lead. Tranche 2 all phases complete. Tranche 2 Exit Gate pending (shadow mode validation).
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -22,7 +22,7 @@
 
 ## Current Mission: Master Plan v2.1 — Algorithmic Signal Engine
 
-**Status:** Tranche 1 COMPLETE. Tranche 2 Phase 0.5/2/3 COMPLETE. Phase 4 remaining.
+**Status:** Tranche 1 COMPLETE. Tranche 2 Phase 0.5/2/3/4 COMPLETE (QA PASSED Round 2). Tranche 2 Exit Gate pending.
 **Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md`
 **Guiding Principle:** The algorithm reads the market and produces the numbers. The AI explains the why. Never the reverse.
 
@@ -48,7 +48,7 @@
 | v2.Phase 0.5 | Shadow Mode + Admin Dashboard | ⬜ PLANNED (T-V2-05A→05Q) | v2.Phase 1.5 PASSED |
 | v2.Phase 3 | Signal Classification System | ✅ COMPLETE (QA PASSED Round 3) | v2.Phase 1 |
 | v2.Phase 2 | Market Regime Detection | ✅ COMPLETE (QA PASSED Round 2) | v2.Phase 1 |
-| v2.Phase 4 | TP/SL Engine Overhaul | ⬜ PLANNED (T-V2-4A→4Q) | v2.Phase 1 + v2.Phase 3 |
+| v2.Phase 4 | TP/SL Engine Overhaul | ✅ COMPLETE (QA PASSED Round 2) | v2.Phase 1 + v2.Phase 3 |
 
 **Tranche 2 Exit Gate:**
 - [ ] Shadow mode running minimum 2 weeks
@@ -92,6 +92,9 @@
 | Market Regime Cron | `backend/src/crons/regimeUpdate.cron.ts` | ✅ COMPLETE — Every 4H, batch DB update, Redis cache (QA PASSED) |
 | Market Regime Migration | `backend/scripts/migrate-market-regime.sql` | ✅ COMPLETE — migration_flags guard, current_regime VARCHAR(20) on coin_intelligence_cache (QA PASSED) |
 | Regime Env Flag | `backend/src/config/env.ts` | MARKET_REGIME_ENABLED (default false) |
+| TP/SL V2 Calculator | `backend/src/services/tpslCalculatorV2.service.ts` | ✅ COMPLETE — calculateTpslV2 with RR gate, TP/SL source tracking (QA PASSED) |
+| TP/SL Sanity Gate | `backend/src/services/tpslSanityGate.service.ts` | ✅ COMPLETE — validateTpslSanity, 7 checks, pure function (QA PASSED) |
+| TPSL V2 Env Flag | `backend/src/config/env.ts` | TPSL_V2_ENABLED (default false) |
 
 ---
 

@@ -106,6 +106,12 @@ const envSchema = z.object({
     // v2.Phase 0.5 — Shadow Mode
     SHADOW_MODE_ENABLED: z.boolean().default(false),
 
+    // v2.Phase 3 — Signal Classification
+    SIGNAL_CLASSIFICATION_ENABLED: z.boolean().default(false),
+
+    // v2.Phase 4 — TP/SL V2
+    TPSL_V2_ENABLED: z.boolean().default(false),
+
     // Admin Authentication
     ADMIN_EMAIL: z.string().email().default('admin@onlyalpha.io'),
     ADMIN_PASSWORD: z.string().min(12).default('change_me_in_prod'),

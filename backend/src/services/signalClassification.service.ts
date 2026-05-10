@@ -1,6 +1,145 @@
 import { db } from '../config/db';
-import { radarSignals, signalPerformance } from '../models/market.model';
+import { signalPerformance } from '../models/market.model';
 import { eq, sql } from 'drizzle-orm';
+import type { TechnicalAnalysisFullResult } from './technicalAnalysis.service';
+
+export type SignalType = 'tactical' | 'strategic';
+export type HorizonDays = 3 | 14 | 21;
+
+export interface ClassificationResult {
+    signalType: SignalType;
+    horizonDays: HorizonDays;
+    entryZoneLow: number;
+    entryZoneHigh: number;
+    invalidationLevel: number;
+    invalidationReason: string;
+    riskRewardRatio: number;
+    meetsMinimumRR: boolean;
+}
+
+const TACTICAL_EVENTS = new Set(['listing', 'whale_movement', 'partnership', 'price_action', 'volume_spike']);
+const STRATEGIC_14_EVENTS = new Set(['ETF_approval', 'ETF_rejection', 'regulation', 'hack', 'delisting']);
+const STRATEGIC_21_EVENTS = new Set(['mainnet_launch', 'major_funding', 'protocol_upgrade']);
+
+const MIN_RR_TACTICAL = 2;
+const MIN_RR_STRATEGIC = 3;
+const ENTRY_BUFFER_PERCENT = 0.01;
+
+function mapEventTypeToSignalType(eventType: string): { signalType: SignalType; horizonDays: HorizonDays } {
+    const normalized = eventType.toLowerCase();
+    if (TACTICAL_EVENTS.has(normalized)) {
+        return { signalType: 'tactical', horizonDays: 3 };
+    }
+    if (STRATEGIC_14_EVENTS.has(normalized)) {
+        return { signalType: 'strategic', horizonDays: 14 };
+    }
+    if (STRATEGIC_21_EVENTS.has(normalized)) {
+        return { signalType: 'strategic', horizonDays: 21 };
+    }
+    return { signalType: 'tactical', horizonDays: 3 };
+}
+
+function findNearestSRLevel(
+    price: number,
+    direction: 'bullish' | 'bearish',
+    taResult: TechnicalAnalysisFullResult
+): { level: number; type: 'support' | 'resistance' } | null {
+    const levels = direction === 'bullish'
+        ? taResult.resistanceLevels
+        : taResult.supportLevels;
+
+    if (!levels || levels.length === 0) {
+        return null;
+    }
+
+    let best: { level: number; type: 'support' | 'resistance' } | null = null;
+    let bestDistance = Infinity;
+
+    for (const lvl of levels) {
+        const distance = Math.abs(price - lvl.price);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = { level: lvl.price, type: lvl.type };
+        }
+    }
+
+    return best;
+}
+
+function calculateEntryZone(entryPrice: number, bufferPercent: number): { low: number; high: number } {
+    const buffer = entryPrice * bufferPercent;
+    return {
+        low: entryPrice - buffer,
+        high: entryPrice + buffer,
+    };
+}
+
+function calculateRiskReward(
+    entryPrice: number,
+    direction: 'bullish' | 'bearish',
+    tpPrice: number,
+    slPrice: number
+): number {
+    const tpDistance = Math.abs(tpPrice - entryPrice);
+    const slDistance = Math.abs(entryPrice - slPrice);
+
+    if (slDistance === 0) return 0;
+    return tpDistance / slDistance;
+}
+
+export function classifySignal(params: {
+    eventType: string;
+    taResult: TechnicalAnalysisFullResult;
+    currentPrice: number;
+}): ClassificationResult {
+    const { eventType, taResult, currentPrice } = params;
+    const entryPrice = currentPrice;
+
+    if (entryPrice <= 0) {
+        return {
+            signalType: 'tactical',
+            horizonDays: 3,
+            entryZoneLow: 0,
+            entryZoneHigh: 0,
+            invalidationLevel: 0,
+            invalidationReason: 'No reference price available',
+            riskRewardRatio: 0,
+            meetsMinimumRR: false,
+        };
+    }
+
+    const { signalType, horizonDays } = mapEventTypeToSignalType(eventType);
+    const direction: 'bullish' | 'bearish' = 'bullish';
+
+    const nearestSR = findNearestSRLevel(entryPrice, direction, taResult);
+    const takeProfitPrice = nearestSR?.level ?? entryPrice * 1.15;
+
+    const invalidationLevel = signalType === 'tactical'
+        ? taResult.structure.lastSwingLow ?? entryPrice * 0.92
+        : taResult.structure.lastSwingLow ?? entryPrice * 0.85;
+    const stopLossPrice = invalidationLevel;
+
+    const entryZone = calculateEntryZone(entryPrice, ENTRY_BUFFER_PERCENT);
+    const rr = calculateRiskReward(entryPrice, direction, takeProfitPrice, stopLossPrice);
+    const minRR = signalType === 'tactical' ? MIN_RR_TACTICAL : MIN_RR_STRATEGIC;
+
+    const invalidationReason = taResult.structure.isChocho
+        ? 'CHoCH detected - structure shift'
+        : taResult.structure.isFailedBos
+            ? 'Failed BOS'
+            : 'Structure break point';
+
+    return {
+        signalType,
+        horizonDays,
+        entryZoneLow: entryZone.low,
+        entryZoneHigh: entryZone.high,
+        invalidationLevel,
+        invalidationReason,
+        riskRewardRatio: rr,
+        meetsMinimumRR: rr >= minRR,
+    };
+}
 
 export type OutcomeClassification = 'favorable' | 'unfavorable' | 'neutral' | 'invalidated' | 'insufficient_data';
 

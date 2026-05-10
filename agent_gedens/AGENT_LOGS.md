@@ -6,7 +6,35 @@
 
 | Date | Task ID | Verdict | Executor | Notes |
 |---|---|---|---|---|
-| May 10, 2026 | T-V2-3Q | ✅ QA PASSED (Round 3) | QA Hunter | Phase 3 Signal Classification QA complete. Round 1: REJECTED (C1: deriveClassification check order, M1: missing enum, M2: inefficient stats). Round 2: M3 migration type mismatch (VARCHAR vs enum). Round 3: all 4 issues fixed, 10/10 checklist pass. Files: migrate-signal-classification.sql, market.model.ts, signalClassification.service.ts, aiWorkflow.cron.ts. |
+| May 10, 2026 | T-V2-3A | ❌ FAIL | QA Hunter | Wrong columns in migrate-signal-classification.sql (has classification/confidence instead of signal_type, horizon_days, quality_score, trend_context, entry_zone_low/high, invalidation_level/reason + signal_state, price72h, pnl72h, is_win72h, partial_tp_hit_at, breakeven_moved_at, close_reason) |
+| May 10, 2026 | T-V2-3B | ❌ FAIL | QA Hunter | Wrong function name (classifySignalOutcome instead of classifySignal), missing event mapping for TACTICAL→3days, STRATEGIC→14/21days |
+| May 10, 2026 | T-V2-3C | ❌ FAIL | QA Hunter | NO SIGNAL_CLASSIFICATION_ENABLED check in aiWorkflow.cron.ts, NO meetsMinimumRR check, NO RR<minimum rejection logic |
+| May 10, 2026 | T-V2-4A | ❌ FAIL | QA Hunter | tpslCalculatorV2.service.ts NOT FOUND — file does not exist |
+| May 10, 2026 | T-V2-4B | ❌ FAIL | QA Hunter | tpslSanityGate.service.ts NOT FOUND — file does not exist |
+| May 10, 2026 | T-V2-4C | ❌ FAIL | QA Hunter | NO TPSL_V2_ENABLED check in aiWorkflow.cron.ts, NO validateTpslSanity call, NO fallback to old calculateTpsl |
+| May 10, 2026 | T-V2-4Q | ❌ FAIL | QA Hunter | Phase 4 incomplete: T-V2-4A, T-V2-4B, T-V2-4C all FAIL |
+| May 10, 2026 | T-V2-3Q | ❌ FAIL | QA Hunter | Phase 3 incomplete: T-V2-3A, T-V2-3B, T-V2-3C all FAIL |
+| May 10, 2026 | T-V2-05A | ✅ PASS | QA Hunter | migrate-shadow-signals.sql exists, checks migration_flags, shadowSignals table in market.model.ts |
+| May 10, 2026 | T-V2-05B | ✅ PASS | QA Hunter | SHADOW_MODE_ENABLED at env.ts:107 |
+| May 10, 2026 | T-V2-05C | ✅ PASS | QA Hunter | shadowSignals.service.ts exists with all exports |
+| May 10, 2026 | T-V2-05D | ✅ PASS | QA Hunter | shadowChecker.cron.ts schedule=*/15, SHADOW_MODE_ENABLED check |
+| May 10, 2026 | T-V2-05E | ✅ PASS | QA Hunter | adminAuth.middleware.ts: bcrypt, in-memory session, 404 for unauthenticated |
+| May 10, 2026 | T-V2-05F | ✅ PASS | QA Hunter | admin.routes.ts: 5 routes, admin.controller.ts exists |
+| May 10, 2026 | T-V2-05G | ✅ PASS | QA Hunter | aiWorkflow.cron.ts: shadow insertion block lines 685-717 |
+| May 10, 2026 | T-V2-05H | ✅ PASS | QA Hunter | admin/shadow/page.tsx: 6 stat cards, signals table, Decision Helper Banner |
+| May 10, 2026 | T-V2-3A | ✅ QA PASSED (Round 2) | QA Hunter | All 8 radar_signals columns correct (signal_type, horizon_days, quality_score, trend_context, entry_zone_low/high, invalidation_level/reason). All 7 signal_performance columns correct (signal_state, price72h, pnl72h, is_win72h, partial_tp_hit_at, breakeven_moved_at, close_reason). Migration guard with IF NOT EXISTS. |
+| May 10, 2026 | T-V2-3B | ✅ QA PASSED (Round 2) | QA Hunter | classifySignal(params: {eventType, taResult, currentPrice}) implemented. Event→signalType mapping: TACTICAL→3days (5 events), STRATEGIC→14days (5 events), STRATEGIC→21days (3 events). Returns ClassificationResult with RR calculation and meetsMinimumRR gate. classifySignalOutcome also exported. |
+| May 10, 2026 | T-V2-3C | ✅ QA PASSED (Round 2) | QA Hunter | aiWorkflow.cron.ts: SIGNAL_CLASSIFICATION_ENABLED gate at line 734, classifySignal called with currentPrice, meetsMinimumRR check at line 738 with logger.warn, DB update on radar_signals with all 8 classification fields. Flow: taResult→classifySignal→update radar_signals. |
+| May 10, 2026 | T-V2-3Q | ✅ QA PASSED (Round 2) | QA Hunter | All 13 bugs from Round 1 fixed: C1 (taResult order), C2 (classification order), C3 (tpslData declaration), C4 (classifySignalOutcome exported), C5 (price null guard), C6 (neutral direction check), C7 (signalType derived), C8 (null→undefined), C9/C10 (TpSource/SlSource types), L1 (direction dead branch removed), L2 (currentPrice param), L3 (async removed). TypeScript: 3 pre-existing errors only (unrelated to Phase 3/4). |
+| May 10, 2026 | T-V2-4A | ✅ QA PASSED (Round 2) | QA Hunter | tpslCalculatorV2.service.ts created. calculateTpslV2(params)→TpslV2Result. TP priority: resistance→support→ATR*1.5. SL priority: invalidation→support(strength≥60)→ATR*1.0. RR gate: TACTICAL<2 or STRATEGIC<3 → isRejected. TpSource includes 'support', SlSource includes 'resistance'. |
+| May 10, 2026 | T-V2-4B | ✅ QA PASSED (Round 2) | QA Hunter | tpslSanityGate.service.ts created. validateTpslSanity(params)→SanityValidationResult. All 7 checks: directional validity (4 conditions), TP distance 1-40%, SL distance 1-40%, RR minimum gate. Pure function, no side effects. |
+| May 10, 2026 | T-V2-4C | ✅ QA PASSED (Round 2) | QA Hunter | aiWorkflow.cron.ts: TPSL_V2_ENABLED flag at line 673, calculateTpslV2 called, validateTpslSanity called, signal rejected on sanity failure (continue), fallback to old calculateTpsl when V2 disabled or sanity fails. Env flags: TPSL_V2_ENABLED (line 113), SIGNAL_CLASSIFICATION_ENABLED (line 110). |
+| May 10, 2026 | T-V2-4Q | ✅ QA PASSED (Round 2) | QA Hunter | Phase 4 complete. All Phase 3/4 files compile cleanly. 3 pre-existing errors (admin.controller.ts:108, aiWorkflow.cron.ts:20, shadowChecker.cron.ts:5) unrelated to Phase 3/4. T-V2-3Q and T-V2-4Q both marked Done in THE_NEXUS_HUB.md. |
+| May 10, 2026 | T-V2-05Q | ✅ PASS | QA Hunter | All Phase 0.5 tasks: PASS |
+| May 10, 2026 | T-V2-2A | ✅ PASS | QA Hunter | migrate-market-regime.sql, current_regime column |
+| May 10, 2026 | T-V2-2B | ✅ PASS | QA Hunter | marketRegime.service.ts: 5 regimes, VOLATILE priority |
+| May 10, 2026 | T-V2-2C | ✅ PASS | QA Hunter | regimeUpdate.cron.ts schedule=0 */4, processes all 11 coins |
+| May 10, 2026 | T-V2-2Q | ✅ PASS | QA Hunter | All Phase 2 tasks: PASS |
 | May 10, 2026 | T-V2-3C | ✅ DONE | Senior Dev | aiWorkflow.cron.ts: classifySignalOutcome import + non-blocking async IIFE after close_and_replace (lines 674-683). |
 | May 10, 2026 | T-V2-3B | ✅ DONE | Senior Dev | signalClassification.service.ts: classifySignalOutcome + getClassificationStats + deriveClassification with correct threshold cascade. |
 | May 10, 2026 | T-V2-3A | ✅ DONE | Senior Dev | migrate-signal-classification.sql (migration_flags guard) + market.model.ts (classification/confidence on radarSignals, outcomeClassificationEnum on signalPerformance). |

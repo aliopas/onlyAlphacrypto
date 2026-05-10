@@ -104,8 +104,14 @@ export const radarSignals = pgTable('radar_signals', {
     sentiment: varchar('sentiment', { length: 20 }),
     impactScore: real('impact_score'),
     newsId: integer('news_id').references(() => coinNews.id),
-    classification: varchar('classification', { length: 10 }),
-    confidence: real('confidence'),
+    signalType: varchar('signal_type', { length: 20 }),
+    horizonDays: integer('horizon_days'),
+    qualityScore: integer('quality_score'),
+    trendContext: varchar('trend_context', { length: 20 }),
+    entryZoneLow: real('entry_zone_low'),
+    entryZoneHigh: real('entry_zone_high'),
+    invalidationLevel: real('invalidation_level'),
+    invalidationReason: text('invalidation_reason'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -140,6 +146,14 @@ export const signalPerformance = pgTable('signal_performance', {
     autoClosedReason: varchar('auto_closed_reason', { length: 20 }),
     outcomeClassification: outcomeClassificationEnum('outcome_classification'),
     classificationConfidence: real('classification_confidence'),
+
+    signalState: varchar('signal_state', { length: 30 }).default('NEW'),
+    price72h: real('price_72h'),
+    pnl72h: real('pnl_72h'),
+    isWin72h: boolean('is_win_72h'),
+    partialTpHitAt: timestamp('partial_tp_hit_at'),
+    breakevenMovedAt: timestamp('breakeven_moved_at'),
+    closeReason: varchar('close_reason', { length: 50 }),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });

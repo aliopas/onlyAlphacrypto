@@ -615,8 +615,8 @@ export function calculateQualityScore(params: {
 }): QualityScoreResult {
     // Base scoring
     const trendConfirmed = ['BULLISH', 'STRONG_BULLISH', 'BEARISH', 'STRONG_BEARISH'].includes(params.trend);
-    const nearSR = (params.nearestSupport && isNearLevel(params.currentPrice, params.nearestSupport.price, 2)) ||
-                   (params.nearestResistance && isNearLevel(params.currentPrice, params.nearestResistance.price, 2));
+    const nearSR = ((params.nearestSupport && isNearLevel(params.currentPrice, params.nearestSupport.price, 2)) ||
+                   (params.nearestResistance && isNearLevel(params.currentPrice, params.nearestResistance.price, 2))) ?? false;
     const volumeConfirmed = params.volumeConfirmed;
     const patternAtSR = params.patternAtSR;
 
