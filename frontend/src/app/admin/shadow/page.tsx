@@ -77,6 +77,8 @@ export default function ShadowDashboard() {
         setLoading(false);
     }, []);
 
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+
     const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
         const controller = new AbortController();
         const headers: Record<string, string> = {
@@ -87,7 +89,7 @@ export default function ShadowDashboard() {
             headers['Authorization'] = `Bearer ${sessionToken}`;
         }
 
-        const response = await fetch(url, {
+        const response = await fetch(`${API_BASE}${url}`, {
             ...options,
             headers,
             signal: controller.signal,
@@ -105,7 +107,7 @@ export default function ShadowDashboard() {
 
     const fetchStats = useCallback(async () => {
         try {
-            const response = await fetchWithAuth('/api/admin/shadow/stats');
+            const response = await fetchWithAuth('/admin/shadow/stats');
             if (!response.ok) throw new Error('Failed to fetch stats');
             const data = await response.json();
             setStats(data);
@@ -129,7 +131,7 @@ export default function ShadowDashboard() {
             params.append('page', String(currentPage));
             params.append('limit', '50');
 
-            const response = await fetchWithAuth(`/api/admin/shadow/signals?${params}`);
+            const response = await fetchWithAuth(`/admin/shadow/signals?${params}`);
             if (!response.ok) throw new Error('Failed to fetch signals');
             const data = await response.json();
             setSignals(data.signals);
@@ -151,7 +153,7 @@ export default function ShadowDashboard() {
         setLoginError(null);
 
         try {
-            const response = await fetch('/api/admin/login', {
+            const response = await fetch(`${API_BASE}/admin/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: loginEmail, password: loginPassword }),
@@ -175,7 +177,7 @@ export default function ShadowDashboard() {
 
     const handleLogout = async () => {
         try {
-            await fetch('/api/admin/logout', {
+            await fetch(`${API_BASE}/admin/logout`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${sessionToken}`,
