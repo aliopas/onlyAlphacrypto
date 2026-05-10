@@ -29,6 +29,7 @@ import { startEventImpactSyncCron } from './crons/eventImpactSync.cron';
 import { startEventImpactOutcomeCheckerCron } from './crons/eventImpactOutcomeChecker.cron';
 import { startMarketFilterCron } from './crons/marketFilter.cron';
 import { startOhlcvSnapshotCron } from './crons/ohlcvSnapshot.cron';
+import { startShadowChecker } from './crons/shadowChecker.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -184,6 +185,18 @@ async function bootstrap(): Promise<void> {
                     logger.error('[Server] Failed to start optional cron OhlcvSnapshot: %s', error instanceof Error ? error.message : String(error));
                 }
             }, (crons.length + 4) * cronStartDelay);
+        }
+
+        // Optional Shadow Checker cron
+        if (env.SHADOW_MODE_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startShadowChecker();
+                    logger.info('[Server] Optional cron started: ShadowChecker');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron ShadowChecker: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 5) * cronStartDelay);
         }
     } catch (error) {
         logger.error('[Server] Failed to start: %s', error instanceof Error ? error.message : String(error));

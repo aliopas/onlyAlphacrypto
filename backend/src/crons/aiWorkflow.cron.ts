@@ -17,6 +17,7 @@ import { isTrackedCoin } from '../config/coins';
 import { AIRateLimitError } from '../services/ai/ai-gateway';
 import { validateFactualGrounding } from '../services/ai/factual-grounding';
 import { env } from '../config/env';
+import { logger } from '../config/logger';
 import { auditArticleQuality } from '../services/ai/quality-auditor';
 import { saveMemory } from '../services/coin-memory.service';
 import { isDuplicateByEmbedding } from '../services/similarity.service';
@@ -24,7 +25,11 @@ import { storeEmbedding } from '../services/embedding.service';
 import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates, signalPerformance, coinNewsHistory } from '../models/market.model';
 import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } from '../services/strategicOutlook.service';
 import { decideSignalAction, executeSignalDecision } from '../services/signalManager.service';
+import { classifySignalOutcome } from '../services/signalClassification.service';
 import { calculateTpsl } from '../services/tpslCalculator.service';
+import { analyzeTechnicals } from '../services/technicalAnalysis.service';
+import { insertShadowSignal } from '../services/shadowSignals.service';
+import type { TrendLabel } from '../services/technicalAnalysis.service';
 import { getNearbyLevels } from '../services/levelIntelligence.service';
 import { ScenarioTrackerService } from '../services/scenarioTracker.service';
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
@@ -58,6 +63,30 @@ const TRIGGER_TYPE_MAP: Record<string, string> = {
     'Token_Unlock': 'protocol',
     'Exchange_Netflow': 'whale',
 };
+
+// ─── Shadow Mode Helper Functions ─────────────────────────────────────────────
+
+function trendToDirection(trend: TrendLabel): 'bullish' | 'bearish' | 'neutral' {
+    if (trend === 'STRONG_BULLISH' || trend === 'BULLISH') return 'bullish';
+    if (trend === 'STRONG_BEARISH' || trend === 'BEARISH') return 'bearish';
+    return 'neutral';
+}
+
+function verdictToDirection(verdict: string): 'bullish' | 'bearish' | 'neutral' {
+    if (verdict === 'STRONG_BUY' || verdict === 'BUY') return 'bullish';
+    if (verdict === 'STRONG_SELL' || verdict === 'SELL') return 'bearish';
+    return 'neutral';
+}
+
+function mapTrendToVerdict(trend: TrendLabel): string {
+    switch (trend) {
+        case 'STRONG_BULLISH': return 'STRONG_BUY';
+        case 'BULLISH': return 'BUY';
+        case 'STRONG_BEARISH': return 'STRONG_SELL';
+        case 'BEARISH': return 'SELL';
+        default: return 'BUY';
+    }
+}
 
 function generateSlug(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
@@ -641,6 +670,51 @@ export async function runAiWorkflow(): Promise<void> {
                             decision,
                             tpslData
                         );
+
+                        if (decision.action === 'close_and_replace' && decision.closedSignal) {
+                            const closedSignalId = decision.closedSignal.id;
+                            (async () => {
+                                try {
+                                    await classifySignalOutcome(closedSignalId);
+                                } catch (err) {
+                                    console.error(`[AI Workflow] Signal classification failed for ${closedSignalId}:`, err instanceof Error ? err.message : String(err));
+                                }
+                            })();
+                        }
+
+                        // Shadow Mode Integration (fire-and-forget)
+                        if (env.SHADOW_MODE_ENABLED && signalId !== null) {
+                            (async () => {
+                                try {
+                                    const taResult = await analyzeTechnicals(symbol);
+                                    if (taResult && !taResult.qualityScore.isRejected) {
+                                        const algoVerdict = mapTrendToVerdict(taResult.trend);
+                                        const entryPrice = price.price;
+                                        const aiVerdict = analysisResult.verdict;
+                                        const algoDirection = trendToDirection(taResult.trend);
+                                        const aiDirection = verdictToDirection(aiVerdict);
+                                        const agreement = algoDirection === aiDirection;
+
+                                        await insertShadowSignal({
+                                            coinSymbol: symbol,
+                                            algorithmVerdict: algoVerdict,
+                                            aiVerdict: aiVerdict,
+                                            algorithmEntry: entryPrice,
+                                            aiEntry: entryPrice,
+                                            algorithmTp: taResult.nearestResistance?.price ?? null,
+                                            algorithmSl: taResult.nearestSupport?.price ?? null,
+                                            aiTp: tpslData.takeProfitPrice,
+                                            aiSl: tpslData.stopLossPrice,
+                                            qualityScore: taResult.qualityScore.score,
+                                            trendContext: taResult.trend,
+                                            agreement,
+                                        });
+                                    }
+                                } catch (err) {
+                                    logger.error('[ShadowMode] Failed to insert shadow signal: %s', err instanceof Error ? err.message : String(err));
+                                }
+                            })();
+                        }
                     } catch (sigErr) {
                         console.error(`[AI Workflow] Signal management failed for ${symbol}:`, sigErr instanceof Error ? sigErr.message : String(sigErr));
                     }

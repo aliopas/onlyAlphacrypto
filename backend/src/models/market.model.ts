@@ -104,6 +104,8 @@ export const radarSignals = pgTable('radar_signals', {
     sentiment: varchar('sentiment', { length: 20 }),
     impactScore: real('impact_score'),
     newsId: integer('news_id').references(() => coinNews.id),
+    classification: varchar('classification', { length: 10 }),
+    confidence: real('confidence'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -136,6 +138,8 @@ export const signalPerformance = pgTable('signal_performance', {
     stopLossPrice:  real('stop_loss_price'),
     takeProfitPrice: real('take_profit_price'),
     autoClosedReason: varchar('auto_closed_reason', { length: 20 }),
+    outcomeClassification: outcomeClassificationEnum('outcome_classification'),
+    classificationConfidence: real('classification_confidence'),
 
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
@@ -540,4 +544,38 @@ export const eventImpactOutcomes = pgTable('event_impact_outcomes', {
     statusIdx: index('idx_event_impact_outcomes_status').on(table.status),
     dueAtIdx: index('idx_event_impact_outcomes_due_at').on(table.dueAt),
     eventImpactIdIdx: index('idx_event_impact_outcomes_event_impact_id').on(table.eventImpactId),
+}));
+
+// ─── SHADOW SIGNALS (Phase 0.5 — Shadow Mode Parallel Tracking) ──────────────────
+export const shadowSignals = pgTable('shadow_signals', {
+    id: serial('id').primaryKey(),
+    coinSymbol: varchar('coin_symbol', { length: 20 }).notNull(),
+    algorithmVerdict: varchar('algorithm_verdict', { length: 20 }).notNull(),
+    aiVerdict: varchar('ai_verdict', { length: 20 }).notNull(),
+    algorithmEntry: real('algorithm_entry').notNull(),
+    aiEntry: real('ai_entry').notNull(),
+    algorithmTp: real('algorithm_tp'),
+    algorithmSl: real('algorithm_sl'),
+    aiTp: real('ai_tp'),
+    aiSl: real('ai_sl'),
+    qualityScore: integer('quality_score'),
+    trendContext: varchar('trend_context', { length: 20 }),
+    agreement: boolean('agreement').notNull().default(false),
+    price72h: real('price_72h'),
+    price7d: real('price_7d'),
+    algorithmPnl72h: real('algorithm_pnl_72h'),
+    aiPnl72h: real('ai_pnl_72h'),
+    algorithmWin72h: boolean('algorithm_win_72h'),
+    aiWin72h: boolean('ai_win_72h'),
+    algorithmPnl7d: real('algorithm_pnl_7d'),
+    aiPnl7d: real('ai_pnl_7d'),
+    algorithmWin7d: boolean('algorithm_win_7d'),
+    aiWin7d: boolean('ai_win_7d'),
+    winner: varchar('winner', { length: 20 }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    resolvedAt: timestamp('resolved_at'),
+}, (table) => ({
+    coinIdx: index('idx_shadow_signals_coin').on(table.coinSymbol),
+    createdIdx: index('idx_shadow_signals_created').on(table.createdAt),
+    unresolvedIdx: index('idx_shadow_signals_unresolved').on(table.resolvedAt),
 }));

@@ -100,6 +100,14 @@ const envSchema = z.object({
     // v2.Phase 1.5 — Backtesting Framework
     BACKTEST_TECHNICAL_ENABLED: z.boolean().default(false),
 
+    // v2.Phase 0.5 — Shadow Mode
+    SHADOW_MODE_ENABLED: z.boolean().default(false),
+
+    // Admin Authentication
+    ADMIN_EMAIL: z.string().email().default('admin@onlyalpha.io'),
+    ADMIN_PASSWORD: z.string().min(12).default('change_me_in_prod'),
+    ADMIN_SESSION_SECRET: z.string().length(32).default('00000000000000000000000000000000'),
+
     // Monitoring Cron
     MONITORING_CRON_ENABLED: z.boolean().default(false),
 
