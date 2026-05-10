@@ -203,12 +203,13 @@ export const coinIntelligenceCache = pgTable('coin_intelligence_cache', {
     trend8w:        varchar('trend_8w', { length: 20 }),
     week52High:     real('week_52_high'),
     week52Low:      real('week_52_low'),
-    priceChange30d: real('price_change_30d'),
+    priceChange30d:  real('price_change_30d'),
     wikiBackground: text('wiki_background'),
     dexBoostActive: boolean('dex_boost_active').default(false).notNull(),
     dataSource:     varchar('data_source', { length: 20 }),
     cachedAt:       timestamp('cached_at').defaultNow().notNull(),
     isTradeable:    boolean('is_tradeable').default(true).notNull(),
+    currentRegime:  varchar('current_regime', { length: 20 }),
 });
 
 export const ohlcvCandles = pgTable('ohlcv_candles', {

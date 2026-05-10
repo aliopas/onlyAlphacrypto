@@ -29,6 +29,7 @@ import { startEventImpactSyncCron } from './crons/eventImpactSync.cron';
 import { startEventImpactOutcomeCheckerCron } from './crons/eventImpactOutcomeChecker.cron';
 import { startMarketFilterCron } from './crons/marketFilter.cron';
 import { startOhlcvSnapshotCron } from './crons/ohlcvSnapshot.cron';
+import { startRegimeUpdateCron } from './crons/regimeUpdate.cron';
 import { startShadowChecker } from './crons/shadowChecker.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
@@ -187,6 +188,18 @@ async function bootstrap(): Promise<void> {
             }, (crons.length + 4) * cronStartDelay);
         }
 
+        // Optional Market Regime Detection cron
+        if (env.MARKET_REGIME_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startRegimeUpdateCron();
+                    logger.info('[Server] Optional cron started: RegimeUpdate');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron RegimeUpdate: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 5) * cronStartDelay);
+        }
+
         // Optional Shadow Checker cron
         if (env.SHADOW_MODE_ENABLED) {
             setTimeout(() => {
@@ -196,7 +209,7 @@ async function bootstrap(): Promise<void> {
                 } catch (error) {
                     logger.error('[Server] Failed to start optional cron ShadowChecker: %s', error instanceof Error ? error.message : String(error));
                 }
-            }, (crons.length + 5) * cronStartDelay);
+            }, (crons.length + 6) * cronStartDelay);
         }
     } catch (error) {
         logger.error('[Server] Failed to start: %s', error instanceof Error ? error.message : String(error));

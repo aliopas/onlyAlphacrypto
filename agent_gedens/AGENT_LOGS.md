@@ -10,6 +10,7 @@
 | May 10, 2026 | T-V2-3C | ✅ DONE | Senior Dev | aiWorkflow.cron.ts: classifySignalOutcome import + non-blocking async IIFE after close_and_replace (lines 674-683). |
 | May 10, 2026 | T-V2-3B | ✅ DONE | Senior Dev | signalClassification.service.ts: classifySignalOutcome + getClassificationStats + deriveClassification with correct threshold cascade. |
 | May 10, 2026 | T-V2-3A | ✅ DONE | Senior Dev | migrate-signal-classification.sql (migration_flags guard) + market.model.ts (classification/confidence on radarSignals, outcomeClassificationEnum on signalPerformance). |
+| May 10, 2026 | T-V2-2Q | ✅ QA PASSED (Round 2) | QA Hunter | Phase 2 Market Regime Detection QA complete. Round 1: 3 critical (C2: N+1 DB loop→batch inArray, C3: exhaustive switch never, M2: RSS 24h staleness filter). Round 2: all 3 fixes verified, 15/15 checklist pass. Files: migrate-market-regime.sql, marketRegime.service.ts, regimeUpdate.cron.ts, market.model.ts, env.ts, server.ts. Advisory tech debt: C1 (btcAnalysis null log), M3 (empty catch), m1 (VARCHAR vs pgEnum), m2 (dead vars), m3 (Redis TTL gap). |
 | May 10, 2026 | PLAN-V2-TRANCHE2 | 📋 PLANNED | Strategic Planner | Tranche 2 micro-task breakdown: 21 tasks across Phase 0.5 (9), Phase 3 (4), Phase 2 (4), Phase 4 (4). 10 new files, 4 modified, 3 migration scripts. |
 
 ## Master Plan v2.1 — Tranche 1: Foundation + Validation (COMPLETE)

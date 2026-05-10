@@ -97,6 +97,9 @@ const envSchema = z.object({
     OHLCV_SNAPSHOT_ENABLED: z.boolean().default(false),
     BACKFILL_OHLCV_ENABLED: z.boolean().default(false),
 
+    // v2.Phase 2 — Market Regime Detection
+    MARKET_REGIME_ENABLED: z.boolean().default(false),
+
     // v2.Phase 1.5 — Backtesting Framework
     BACKTEST_TECHNICAL_ENABLED: z.boolean().default(false),
 

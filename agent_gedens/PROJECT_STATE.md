@@ -1,9 +1,9 @@
 # ONLYALPHA — PROJECT STATE
 
 **Last Updated:** May 10, 2026
-**Current Focus:** Tranche 2 — Phase 3 QA PASSED, Phase 0.5/2/4 remaining
+**Current Focus:** Tranche 2 — Phase 0.5/2/3 QA PASSED, Phase 4 remaining
 **Active Plan Source:** plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md
-**Next Step:** Continue Tranche 2 — Phase 0.5 (Shadow Mode), Phase 2 (Regime), or Phase 4 (TP/SL)
+**Next Step:** Continue Tranche 2 — Phase 4 (TP/SL Engine Overhaul) or Phase 0.5 (Shadow Mode)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -22,7 +22,7 @@
 
 ## Current Mission: Master Plan v2.1 — Algorithmic Signal Engine
 
-**Status:** Tranche 1 COMPLETE. Tranche 2 BLOCKED until v2.Phase 1 + backtesting pass.
+**Status:** Tranche 1 COMPLETE. Tranche 2 Phase 0.5/2/3 COMPLETE. Phase 4 remaining.
 **Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md`
 **Guiding Principle:** The algorithm reads the market and produces the numbers. The AI explains the why. Never the reverse.
 
@@ -47,7 +47,7 @@
 |---|---|---|---|
 | v2.Phase 0.5 | Shadow Mode + Admin Dashboard | ⬜ PLANNED (T-V2-05A→05Q) | v2.Phase 1.5 PASSED |
 | v2.Phase 3 | Signal Classification System | ✅ COMPLETE (QA PASSED Round 3) | v2.Phase 1 |
-| v2.Phase 2 | Market Regime Detection | ⬜ PLANNED (T-V2-2A→2Q) | v2.Phase 1 |
+| v2.Phase 2 | Market Regime Detection | ✅ COMPLETE (QA PASSED Round 2) | v2.Phase 1 |
 | v2.Phase 4 | TP/SL Engine Overhaul | ⬜ PLANNED (T-V2-4A→4Q) | v2.Phase 1 + v2.Phase 3 |
 
 **Tranche 2 Exit Gate:**
@@ -88,6 +88,10 @@
 | Backtest Env Flag | `backend/src/config/env.ts` | BACKTEST_TECHNICAL_ENABLED (default false) |
 | Signal Classification | `backend/src/services/signalClassification.service.ts` | ✅ COMPLETE — classifySignalOutcome + getClassificationStats (QA PASSED Round 3) |
 | Signal Classification Migration | `backend/scripts/migrate-signal-classification.sql` | ✅ COMPLETE — migration_flags guard, enum type for outcome_classification (QA PASSED) |
+| Market Regime Detection | `backend/src/services/marketRegime.service.ts` | ✅ COMPLETE — 5 regimes (RISK_ON/OFF, TRENDING, SIDEWAYS, VOLATILE), BTC 4H + Fear&Greed + RSS macro scan (QA PASSED Round 2) |
+| Market Regime Cron | `backend/src/crons/regimeUpdate.cron.ts` | ✅ COMPLETE — Every 4H, batch DB update, Redis cache (QA PASSED) |
+| Market Regime Migration | `backend/scripts/migrate-market-regime.sql` | ✅ COMPLETE — migration_flags guard, current_regime VARCHAR(20) on coin_intelligence_cache (QA PASSED) |
+| Regime Env Flag | `backend/src/config/env.ts` | MARKET_REGIME_ENABLED (default false) |
 
 ---
 
