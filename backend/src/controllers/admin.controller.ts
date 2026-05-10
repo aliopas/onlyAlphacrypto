@@ -105,7 +105,8 @@ export async function getShadowSignalsHandler(req: Request, res: Response): Prom
 export async function getShadowSignalByIdHandler(req: Request, res: Response): Promise<void> {
     try {
         const { id } = req.params;
-        const signalId = parseInt(id, 10);
+        const idParam = Array.isArray(id) ? id[0] : id;
+        const signalId = parseInt(idParam, 10);
 
         if (isNaN(signalId)) {
             res.status(400).json({ error: 'Invalid signal ID' });
