@@ -1,12 +1,18 @@
 # ONLYALPHA — AGENT LOGS
 
-**Last Updated:** May 8, 2026
+**Last Updated:** May 10, 2026
 
-## Master Plan v2.1 — Tranche 1: Foundation + Validation
+## Master Plan v2.1 — Tranche 2: Shadow Mode + Classification + Regime + TP/SL
 
 | Date | Task ID | Verdict | Executor | Notes |
 |---|---|---|---|---|
-| May 8, 2026 | T-V2-1V | ✅ QA PASSED (Round 4) | QA Hunter | Complete rewrite of backtest-technical.ts (583 lines). Imports QA-passed TA engine functions directly with pre-fetched historical data. 24/24 checklist pass. All 22 critical/high bugs from Rounds 1-3 resolved. LOW notes: orderBy convention (L1), getCandlesAtTime boundary (L2), missing per-coin table (L4). Zero `any`, zero BUY/SELL, zero DB writes, correct exit codes 0/1/2. |
+| May 10, 2026 | T-V2-3Q | ✅ QA PASSED (Round 3) | QA Hunter | Phase 3 Signal Classification QA complete. Round 1: REJECTED (C1: deriveClassification check order, M1: missing enum, M2: inefficient stats). Round 2: M3 migration type mismatch (VARCHAR vs enum). Round 3: all 4 issues fixed, 10/10 checklist pass. Files: migrate-signal-classification.sql, market.model.ts, signalClassification.service.ts, aiWorkflow.cron.ts. |
+| May 10, 2026 | T-V2-3C | ✅ DONE | Senior Dev | aiWorkflow.cron.ts: classifySignalOutcome import + non-blocking async IIFE after close_and_replace (lines 674-683). |
+| May 10, 2026 | T-V2-3B | ✅ DONE | Senior Dev | signalClassification.service.ts: classifySignalOutcome + getClassificationStats + deriveClassification with correct threshold cascade. |
+| May 10, 2026 | T-V2-3A | ✅ DONE | Senior Dev | migrate-signal-classification.sql (migration_flags guard) + market.model.ts (classification/confidence on radarSignals, outcomeClassificationEnum on signalPerformance). |
+| May 10, 2026 | PLAN-V2-TRANCHE2 | 📋 PLANNED | Strategic Planner | Tranche 2 micro-task breakdown: 21 tasks across Phase 0.5 (9), Phase 3 (4), Phase 2 (4), Phase 4 (4). 10 new files, 4 modified, 3 migration scripts. |
+
+## Master Plan v2.1 — Tranche 1: Foundation + Validation (COMPLETE)
 | May 8, 2026 | T-V2-1V-R3 | ❌ REJECTED (Round 3) | QA Hunter | Score 14/24. File won't compile: duplicate declarations of all interfaces/functions, orphaned module-level code with `return` statements. All Round 2 bugs also present in active code (old copies overwrite improved copies). |
 | May 8, 2026 | T-V2-1V-R2 | ❌ REJECTED (Round 2) | QA Hunter | Score 15/24. Build-breaking: `import { config }` (should be `env`), `TRACKED_COINS.includes()` won't compile. 14 spec algorithm violations: no EMA fallback/intertwined/price comparison, single-factor S/R, simplified structure, wrong volume threshold, no spike bonus/low penalty, SIDEWAYS→BEARISH, wrong S/R hit rate, missing histogram. |
 | May 8, 2026 | T-V2-1V-R1 | ❌ REJECTED (Round 1) | QA Hunter | Score 4/24. 16 critical bugs. Architecture fundamentally wrong: called `analyzeTechnicals()` directly (not historical), created 2 new DB tables (violated guardrail #5), wrote results to DB, 4 extra files not in spec, `qualityScore.total` (wrong property), N+1 DB inserts. |

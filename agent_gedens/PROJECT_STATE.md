@@ -1,9 +1,9 @@
 # ONLYALPHA — PROJECT STATE
 
-**Last Updated:** May 8, 2026
-**Current Focus:** v2.Phase 1.5 — Backtesting Framework (QA PASSED — awaiting backfill + backtest execution)
+**Last Updated:** May 10, 2026
+**Current Focus:** Tranche 2 — Phase 3 QA PASSED, Phase 0.5/2/4 remaining
 **Active Plan Source:** plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md
-**Next Step:** Run backfill-ohlcv.ts, then run backtest-technical.ts to validate exit gate criteria
+**Next Step:** Continue Tranche 2 — Phase 0.5 (Shadow Mode), Phase 2 (Regime), or Phase 4 (TP/SL)
 
 ## Global Architecture
 1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
@@ -42,14 +42,13 @@
 - [ ] 90 days of candle data stored for all 11 coins x 3 timeframes
 - [ ] Backtesting pass criteria ALL met (win rate >40%, quality >=60 on 20%+ days, directional diversity, trend accuracy >55%, S/R hit rate >50%)
 
-### Tranche 2 — Shadow Mode + Classification (BLOCKED)
+### Tranche 2 — Shadow Mode + Classification + Regime + TP/SL (PLANNED)
 | Phase | Description | Status | Dependency |
 |---|---|---|---|
-| v2.Phase 0.5 | Shadow Mode + Admin Dashboard | ⬜ BLOCKED | v2.Phase 1.5 PASSED |
-| v2.Phase 3 | Signal Classification System | ⬜ BLOCKED | v2.Phase 1 |
-| v2.Phase 2 | Market Regime Detection | ⬜ BLOCKED | v2.Phase 1 |
-| v2.Phase 4 | TP/SL Engine Overhaul | ⬜ BLOCKED | v2.Phase 1 + v2.Phase 1.6 |
-| v2.Phase 6 | AI Role Refinement | ⬜ BLOCKED | v2.Phase 1 + v2.Phase 2 |
+| v2.Phase 0.5 | Shadow Mode + Admin Dashboard | ⬜ PLANNED (T-V2-05A→05Q) | v2.Phase 1.5 PASSED |
+| v2.Phase 3 | Signal Classification System | ✅ COMPLETE (QA PASSED Round 3) | v2.Phase 1 |
+| v2.Phase 2 | Market Regime Detection | ⬜ PLANNED (T-V2-2A→2Q) | v2.Phase 1 |
+| v2.Phase 4 | TP/SL Engine Overhaul | ⬜ PLANNED (T-V2-4A→4Q) | v2.Phase 1 + v2.Phase 3 |
 
 **Tranche 2 Exit Gate:**
 - [ ] Shadow mode running minimum 2 weeks
@@ -87,6 +86,8 @@
 | Backtesting Script | `backend/scripts/backtest-technical.ts` | ✅ COMPLETE — Historical TA replay, 5 exit gate metrics, QA PASSED Round 4 |
 | Historical Query Helpers | `backend/src/services/ohlcvSnapshot.service.ts` | getCandlesAtTime + getIndicatorsRange (QA PASSED) |
 | Backtest Env Flag | `backend/src/config/env.ts` | BACKTEST_TECHNICAL_ENABLED (default false) |
+| Signal Classification | `backend/src/services/signalClassification.service.ts` | ✅ COMPLETE — classifySignalOutcome + getClassificationStats (QA PASSED Round 3) |
+| Signal Classification Migration | `backend/scripts/migrate-signal-classification.sql` | ✅ COMPLETE — migration_flags guard, enum type for outcome_classification (QA PASSED) |
 
 ---
 
