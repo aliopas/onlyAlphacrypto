@@ -100,14 +100,21 @@ export async function adminLogin(req: Request, res: Response): Promise<void> {
         return;
     }
 
-    // Compare password against stored hash
+    // Compare password
+    const passwordHash = env.ADMIN_PASSWORD;
     let isValidPassword = false;
-    try {
-        isValidPassword = await bcrypt.compare(password, env.ADMIN_PASSWORD);
-    } catch {
-        // If comparison fails (e.g., not a valid hash), fall back to direct comparison
-        // This handles the case where ADMIN_PASSWORD might be stored in different formats
-        isValidPassword = password === env.ADMIN_PASSWORD;
+
+    // Check if stored password is a bcrypt hash (starts with $2) or plaintext
+    if (passwordHash.startsWith('$2')) {
+        // It's a bcrypt hash
+        try {
+            isValidPassword = await bcrypt.compare(password, passwordHash);
+        } catch {
+            isValidPassword = false;
+        }
+    } else {
+        // It's plaintext - direct comparison
+        isValidPassword = password === passwordHash;
     }
 
     if (!isValidPassword) {
