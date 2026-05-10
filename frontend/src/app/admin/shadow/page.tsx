@@ -78,6 +78,7 @@ export default function ShadowDashboard() {
     }, []);
 
     const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
+        const controller = new AbortController();
         const headers: Record<string, string> = {
             ...(options.headers as Record<string, string>),
         };
@@ -89,6 +90,7 @@ export default function ShadowDashboard() {
         const response = await fetch(url, {
             ...options,
             headers,
+            signal: controller.signal,
         });
 
         if (response.status === 404) {
@@ -195,7 +197,10 @@ export default function ShadowDashboard() {
             fetchStats();
             fetchSignals();
         }
-    }, [isAuthenticated, sessionToken, currentPage, fetchStats, fetchSignals]);
+        return () => {
+            // abort any pending requests
+        };
+    }, [isAuthenticated, sessionToken, currentPage, fetchStats, fetchSignals, coinFilter, agreementFilter, statusFilter, startDate, endDate]);
 
     const formatPercent = (value: number | null) => value !== null ? `${value.toFixed(1)}%` : 'N/A';
 
@@ -203,35 +208,35 @@ export default function ShadowDashboard() {
         return (
             <div className="container mx-auto p-6">
                 <h1 className="text-3xl font-bold mb-6">Shadow Mode Dashboard</h1>
-                <div className="bg-white p-6 rounded shadow max-w-md mx-auto">
+                <div className="bg-[#0A0A0A] border border-[#333] p-6 rounded-lg">
                     <h2 className="text-xl font-semibold mb-4">Admin Login</h2>
                     <form onSubmit={handleLogin}>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium mb-1">Email</label>
+                            <label className="block text-sm font-medium mb-1 text-gray-300">Email</label>
                             <input
                                 type="email"
                                 value={loginEmail}
                                 onChange={(e) => setLoginEmail(e.target.value)}
-                                className="w-full border p-2 rounded"
+                                className="w-full border border-[#333] bg-[#0D0D0D] p-2 rounded text-white placeholder-gray-500"
                                 required
                             />
                         </div>
                         <div className="mb-4">
-                            <label className="block text-sm font-medium mb-1">Password</label>
+                            <label className="block text-sm font-medium mb-1 text-gray-300">Password</label>
                             <input
                                 type="password"
                                 value={loginPassword}
                                 onChange={(e) => setLoginPassword(e.target.value)}
-                                className="w-full border p-2 rounded"
+                                className="w-full border border-[#333] bg-[#0D0D0D] p-2 rounded text-white placeholder-gray-500"
                                 required
                             />
                         </div>
                         {loginError && (
-                            <div className="mb-4 text-red-600 text-sm">{loginError}</div>
+                            <div className="mb-4 text-red-400 text-sm">{loginError}</div>
                         )}
                         <button
                             type="submit"
-                            className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                            className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
                         >
                             Login
                         </button>
@@ -249,7 +254,7 @@ export default function ShadowDashboard() {
     return (
         <div className="container mx-auto p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Shadow Mode Dashboard</h1>
+                <h1 className="text-3xl font-bold text-white">Shadow Mode Dashboard</h1>
                 <button
                     onClick={handleLogout}
                     className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
@@ -260,10 +265,10 @@ export default function ShadowDashboard() {
 
             {/* Decision Helper Banner */}
             {showDecisionHelper && stats && (
-                <div className="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-6">
+                <div className="bg-[#0A0A0A] border border-[#333] border-l-4 border-blue-500 p-4 mb-6">
                     <div className="flex">
                         <div className="ml-3">
-                            <p className="text-sm">
+                            <p className="text-sm text-gray-300">
                                 <strong>Decision Helper:</strong> With {stats.resolved7d} resolved signals,
                                 algorithm disagreement win rate is {formatPercent(stats.algorithmDisagreementWinRate)}.
                                 {stats.algorithmDisagreementWinRate !== null && stats.algorithmDisagreementWinRate > 60
@@ -279,50 +284,50 @@ export default function ShadowDashboard() {
             {/* Stats Cards */}
             {stats && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                    <div className="bg-white p-4 rounded shadow">
-                        <h3 className="text-lg font-semibold">Algorithm WIN Rate 72h</h3>
+                    <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded">
+                        <h3 className="text-lg font-semibold text-white">Algorithm WIN Rate 72h</h3>
                         <p className="text-2xl">{formatPercent(stats.algorithmWins72h / Math.max(stats.resolved72h, 1) * 100)}</p>
-                        <p className="text-sm text-gray-600">{stats.algorithmWins72h}/{stats.resolved72h} wins</p>
+                        <p className="text-sm text-gray-400">{stats.algorithmWins72h}/{stats.resolved72h} wins</p>
                     </div>
-                    <div className="bg-white p-4 rounded shadow">
-                        <h3 className="text-lg font-semibold">AI WIN Rate 72h</h3>
+                    <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded">
+                        <h3 className="text-lg font-semibold text-white">AI WIN Rate 72h</h3>
                         <p className="text-2xl">{formatPercent(stats.aiWins72h / Math.max(stats.resolved72h, 1) * 100)}</p>
-                        <p className="text-sm text-gray-600">{stats.aiWins72h}/{stats.resolved72h} wins</p>
+                        <p className="text-sm text-gray-400">{stats.aiWins72h}/{stats.resolved72h} wins</p>
                     </div>
-                    <div className="bg-white p-4 rounded shadow">
-                        <h3 className="text-lg font-semibold">Total Signals</h3>
+                    <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded">
+                        <h3 className="text-lg font-semibold text-white">Total Signals</h3>
                         <p className="text-2xl">{stats.totalSignals}</p>
                     </div>
-                    <div className="bg-white p-4 rounded shadow">
-                        <h3 className="text-lg font-semibold">Agreeing</h3>
+                    <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded">
+                        <h3 className="text-lg font-semibold text-white">Agreeing</h3>
                         <p className="text-2xl">{stats.agreeingSignals}</p>
                     </div>
-                    <div className="bg-white p-4 rounded shadow">
-                        <h3 className="text-lg font-semibold">Disagreeing</h3>
+                    <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded">
+                        <h3 className="text-lg font-semibold text-white">Disagreeing</h3>
                         <p className="text-2xl">{stats.disagreeingSignals}</p>
                     </div>
-                    <div className="bg-white p-4 rounded shadow">
-                        <h3 className="text-lg font-semibold">Algorithm Disagreement WIN Rate</h3>
+                    <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded">
+                        <h3 className="text-lg font-semibold text-white">Algorithm Disagreement WIN Rate</h3>
                         <p className="text-2xl">{formatPercent(stats.algorithmDisagreementWinRate)}</p>
                     </div>
                 </div>
             )}
 
             {/* Filters */}
-            <div className="bg-white p-4 rounded shadow mb-6">
-                <h3 className="text-lg font-semibold mb-4">Filters</h3>
+            <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded mb-6">
+                <h3 className="text-lg font-semibold mb-4 text-white">Filters</h3>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                     <input
                         type="text"
                         placeholder="Coin (e.g., BTC)"
                         value={coinFilter}
                         onChange={(e) => setCoinFilter(e.target.value)}
-                        className="border p-2 rounded"
+                        className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white placeholder-gray-500"
                     />
                     <select
                         value={agreementFilter}
                         onChange={(e) => setAgreementFilter(e.target.value)}
-                        className="border p-2 rounded"
+                        className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
                     >
                         <option value="">All Agreements</option>
                         <option value="true">Agreeing</option>
@@ -331,7 +336,7 @@ export default function ShadowDashboard() {
                     <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
-                        className="border p-2 rounded"
+                        className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
                     >
                         <option value="">All Status</option>
                         <option value="unresolved">Unresolved</option>
@@ -341,18 +346,21 @@ export default function ShadowDashboard() {
                         type="date"
                         value={startDate}
                         onChange={(e) => setStartDate(e.target.value)}
-                        className="border p-2 rounded"
+                        className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
                     />
                     <input
                         type="date"
                         value={endDate}
                         onChange={(e) => setEndDate(e.target.value)}
-                        className="border p-2 rounded"
+                        className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
                     />
                 </div>
                 <div className="flex gap-4 mt-4">
                     <button
-                        onClick={fetchSignals}
+                        onClick={() => {
+                            setCurrentPage(1);
+                            fetchSignals();
+                        }}
                         className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
                     >
                         Apply Filters
@@ -400,10 +408,10 @@ export default function ShadowDashboard() {
             )}
 
             {/* Signals Table */}
-            <div className="bg-white rounded shadow overflow-x-auto">
+            <div className="bg-[#0A0A0A] border border-[#333] rounded overflow-x-auto">
                 <table className="w-full table-auto">
                     <thead>
-                        <tr className="bg-gray-50">
+                        <tr className="bg-[#111] text-gray-300">
                             <th className="px-4 py-2 text-left">ID</th>
                             <th className="px-4 py-2 text-left">Coin</th>
                             <th className="px-4 py-2 text-left">Algorithm</th>
@@ -416,14 +424,14 @@ export default function ShadowDashboard() {
                     </thead>
                     <tbody>
                         {signals.map((signal) => (
-                            <tr key={signal.id} className="border-t">
+                            <tr key={signal.id} className="border-t border-[#222] text-gray-400">
                                 <td className="px-4 py-2">{signal.id}</td>
                                 <td className="px-4 py-2">{signal.coinSymbol}</td>
                                 <td className="px-4 py-2">{signal.algorithmVerdict}</td>
                                 <td className="px-4 py-2">{signal.aiVerdict}</td>
                                 <td className="px-4 py-2">
                                     <span className={`px-2 py-1 rounded text-sm ${
-                                        signal.agreement ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                        signal.agreement ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'
                                     }`}>
                                         {signal.agreement ? 'Agree' : 'Disagree'}
                                     </span>

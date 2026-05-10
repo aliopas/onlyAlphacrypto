@@ -73,6 +73,10 @@ const envSchema = z.object({
     // Agent Workflow — Coder model via OpenRouter
     OPENROUTER_CODER_MODEL: z.string().default('meta-llama/llama-3-8b-instruct:free'),
 
+    // BINNS (AI News Verification)
+    BINNS_SECRET_KEY: z.string().min(10, 'BINNS_SECRET_KEY is required'),
+    BINNS_API_KEY: z.string().min(10, 'BINNS_API_KEY is required'),
+
     // Level Intelligence Cron
     LEVEL_INTELLIGENCE_ENABLED: z.boolean().default(false),
     LEVEL_INTELLIGENCE_MAX_COINS: z.number().default(8),
