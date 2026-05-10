@@ -181,7 +181,8 @@ export async function executeSignalDecision(
                 entryAt: new Date(),
                 isActive: true,
                 stopLossPrice: tpslData?.stopLossPrice,
-                takeProfitPrice: tpslData?.takeProfitPrice
+                takeProfitPrice: tpslData?.takeProfitPrice,
+                signalState: 'NEW',
             });
 
             console.log(`[SignalManager] Created ${decision.verdict} signal for ${coinSymbol}: entryPrice=$${price.price}, signalId=${insertedRadar[0].id}`);

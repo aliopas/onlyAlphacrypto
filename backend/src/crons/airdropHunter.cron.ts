@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
-import { airdropProjects, airdropTasks, airdropPipelineRuns } from '../models/index';
+import { airdropProjects, airdropPipelineRuns } from '../models/index';
 import { validateAirdrop } from '../services/openai.service';
 import { deleteCache, deleteCachePattern } from '../config/redis';
 import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
@@ -37,25 +37,6 @@ async function runRoutineSync(): Promise<void> {
                     updatedAt: new Date(),
                 })
                 .where(eq(airdropProjects.id, project.id));
-
-            if (validation.tasks.length > 0) {
-                await db
-                    .delete(airdropTasks)
-                    .where(eq(airdropTasks.projectId, project.id));
-
-                const taskValues = validation.tasks.map((task, index) => ({
-                    projectId: project.id,
-                    description: task.description,
-                    contractAddress: task.contractAddress ?? null,
-                    minAmount: task.minAmount ?? null,
-                    tokenSymbol: task.tokenSymbol ?? null,
-                    chain: task.chain ?? null,
-                    isAutoVerifiable: task.isAutoVerifiable,
-                    orderIndex: index,
-                }));
-
-                await db.insert(airdropTasks).values(taskValues);
-            }
 
             console.log(
                 `[AirdropHunter] Synced: ${project.name} — risk=${validation.riskVerdict}, legitimate=${validation.isLegitimate}`

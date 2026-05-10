@@ -27,6 +27,10 @@ export type AirdropProject = {
     updatedAt: string;
     tasks?: AirdropTask[];
     progressPercent?: number;
+    ecosystem?: string;
+    effortLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
+    rewardConfidence?: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNVERIFIED';
+    qualityScore?: number;
 };
 
 export type UserProgress = {

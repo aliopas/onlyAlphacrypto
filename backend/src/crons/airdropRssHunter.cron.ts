@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
-import { airdropProjects, airdropTasks, airdropPipelineRuns } from '../models/index';
+import { airdropProjects, airdropPipelineRuns } from '../models/index';
 import { validateAirdropFromArticle } from '../services/openai.service';
 import {
     fetchAirdropRSSFeeds,
@@ -10,6 +10,7 @@ import {
 } from '../services/airdropRss.service';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
+import { insertProjectWithQuality } from '../controllers/airdrop.controller';
 
 const MAX_AI_CALLS_PER_RUN = 5;
 const PROCESSED_HASHES_MAX = 1000;
@@ -111,43 +112,31 @@ async function runAirdropRSSDiscovery(): Promise<void> {
             const snapshotAt = parseOptionalDate(validation.snapshotDate);
             const tgeAt = parseOptionalDate(validation.tgeDate);
 
-            const [insertedProject] = await db
-                .insert(airdropProjects)
-                .values({
-                    name: validation.projectName.slice(0, 100),
-                    network: validation.network.slice(0, 50),
-                    estValue: validation.estValue.slice(0, 255),
+            try {
+                await insertProjectWithQuality({
+                    name: validation.projectName,
+                    network: validation.network,
+                    estValue: validation.estValue,
                     aiReport: validation.aiReport,
                     riskVerdict: validation.riskVerdict,
                     snapshotAt,
                     tgeAt,
-                    isActive: true,
-                })
-                .onConflictDoNothing({ target: airdropProjects.name })
-                .returning();
+                });
+                existingProjectNames.add(normalizedName);
+                await addProcessedHash(article.hash);
+                projectsInserted++;
 
-            if (insertedProject && validation.tasks.length > 0) {
-                const taskValues = validation.tasks.map((task, index) => ({
-                    projectId: insertedProject.id,
-                    description: task.description,
-                    contractAddress: task.contractAddress?.slice(0, 100) ?? null,
-                    minAmount: task.minAmount ?? null,
-                    tokenSymbol: task.tokenSymbol?.slice(0, 20) ?? null,
-                    chain: task.chain?.slice(0, 50) ?? null,
-                    isAutoVerifiable: task.isAutoVerifiable,
-                    orderIndex: index,
-                }));
-
-                await db.insert(airdropTasks).values(taskValues);
+                console.log(
+                    `[AirdropRSS] Inserted project: "${validation.projectName}" (${validation.network})`
+                );
+            } catch (err) {
+                if (err instanceof Error && err.message.includes('quality threshold')) {
+                    console.log(`[AirdropRSS] Rejected by quality filter: "${validation.projectName}"`);
+                    rejections++;
+                } else {
+                    throw err;
+                }
             }
-
-            existingProjectNames.add(normalizedName);
-            await addProcessedHash(article.hash);
-            projectsInserted++;
-
-            console.log(
-                `[AirdropRSS] Inserted project: "${validation.projectName}" (${validation.network}) with ${validation.tasks.length} tasks`
-            );
         } catch (error) {
             console.error(
                 `[AirdropRSS] Error processing article "${article.title}":`,

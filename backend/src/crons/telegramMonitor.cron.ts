@@ -1,11 +1,12 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
 import { rawNewsBuffer } from '../models/market.model';
-import { airdropProjects, airdropTasks } from '../models/index';
+import { airdropProjects } from '../models/index';
 import { fetchNewsFromTelegram, fetchAirdropsFromTelegram } from '../services/telegram.service';
 import { filterAirdropRelevant, getExistingProjectNames } from '../services/airdropRss.service';
 import { validateAirdropFromArticle } from '../services/openai.service';
 import { deleteCache, deleteCachePattern } from '../config/redis';
+import { insertProjectWithQuality } from '../controllers/airdrop.controller';
 import { env } from '../config/env';
 
 const MAX_AIRDROP_AI_CALLS = 3;
@@ -76,32 +77,24 @@ async function telegramAirdropJob(): Promise<void> {
                 if (!validation.isLegitimate || validation.riskVerdict === 'SCAM') continue;
                 if (existingNames.has(validation.projectName.toLowerCase())) continue;
 
-                const [proj] = await db.insert(airdropProjects).values({
-                    name: validation.projectName.slice(0, 100),
-                    network: validation.network.slice(0, 50),
-                    estValue: validation.estValue.slice(0, 255),
-                    aiReport: validation.aiReport,
-                    riskVerdict: validation.riskVerdict,
-                    isActive: true,
-                }).onConflictDoNothing({ target: airdropProjects.name }).returning();
-
-                if (proj && validation.tasks.length > 0) {
-                    const taskValues = validation.tasks.map((task, index) => ({
-                        projectId: proj.id,
-                        description: task.description,
-                        contractAddress: task.contractAddress?.slice(0, 100) ?? null,
-                        minAmount: task.minAmount ?? null,
-                        tokenSymbol: task.tokenSymbol?.slice(0, 20) ?? null,
-                        chain: task.chain?.slice(0, 50) ?? null,
-                        isAutoVerifiable: task.isAutoVerifiable,
-                        orderIndex: index,
-                    }));
-                    await db.insert(airdropTasks).values(taskValues);
+                try {
+                    await insertProjectWithQuality({
+                        name: validation.projectName,
+                        network: validation.network,
+                        estValue: validation.estValue,
+                        aiReport: validation.aiReport,
+                        riskVerdict: validation.riskVerdict,
+                    });
+                    existingNames.add(validation.projectName.toLowerCase());
+                    inserted++;
+                    console.log(`[TelegramMonitor] Inserted airdrop: ${validation.projectName}`);
+                } catch (err) {
+                    if (err instanceof Error && err.message.includes('quality threshold')) {
+                        console.log(`[TelegramMonitor] Rejected by quality filter: "${validation.projectName}"`);
+                    } else {
+                        throw err;
+                    }
                 }
-
-                existingNames.add(validation.projectName.toLowerCase());
-                inserted++;
-                console.log(`[TelegramMonitor] Inserted airdrop: ${validation.projectName}`);
             } catch (err) {
                 console.error(`[TelegramMonitor] Error processing airdrop:`, err instanceof Error ? err.message : String(err));
             }

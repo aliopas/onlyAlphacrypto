@@ -22,6 +22,10 @@ export const airdropProjects = pgTable('airdrop_projects', {
     isActive: boolean('is_active').default(true),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    ecosystem: varchar('ecosystem', { length: 20 }),
+    effortLevel: varchar('effort_level', { length: 10 }),
+    rewardConfidence: varchar('reward_confidence', { length: 20 }),
+    qualityScore: integer('quality_score').default(0),
 });
 
 // ─── AIRDROP TASKS ────────────────────────────────────────────────────────────

@@ -2,6 +2,24 @@
 
 **Last Updated:** May 10, 2026
 
+## Phase 5 + 7.1 + 9 (Signal Lifecycle + Daily Trend + Airdrop Redesign)
+
+| Date | Task ID | Verdict | Executor | Notes |
+|---|---|---|---|---|
+| May 10, 2026 | T-V2-5A | ✅ PASS | QA Hunter | migrate-signal-lifecycle.sql: IF NOT EXISTS guards on all 7 columns, migration_flags guard, signalState default='NEW'. |
+| May 10, 2026 | T-V2-5B | ✅ PASS | QA Hunter | signalLifecycle.service.ts: 5 exported functions, SignalState type (NEW/WAITING_CONFIRMATION/ACTIVE/PARTIAL_TP/BREAKEVEN/CLOSED), checkPartialTp logic (50% TP distance), moveStopToBreakeven, autoCloseSignal, getSignalsByState, processActiveSignals, checkExpiredSignals. Zero `any` types. |
+| May 10, 2026 | T-V2-5C | ✅ PASS | QA Hunter | signalLifecycle.cron.ts: schedule=*/15, isRunning guard, calls processActiveSignals+checkExpiredSignals, SIGNAL_LIFECYCLE_ENABLED check. |
+| May 10, 2026 | T-V2-5D | ✅ PASS | QA Hunter | signalManager.service.ts: signalState='NEW' set on signal creation at line 185. aiWorkflow.cron.ts: no explicit lifecycle wiring needed (state machine via cron). |
+| May 10, 2026 | T-V2-71A | ✅ PASS | QA Hunter | migrate-daily-trend.sql: IF NOT EXISTS, migration_flags guard, daily_trend VARCHAR(20) DEFAULT 'SIDEWAYS'. market.model.ts: dailyTrend field on coinIntelligenceCache. |
+| May 10, 2026 | T-V2-71B | ✅ PASS | QA Hunter | dailyTrend.service.ts: calculateDailyTrend(symbol) reads EMA-20/50/200 from ohlcv_indicators (timeframe='1d'), same algorithm as detectTrend. Zero `any` types. |
+| May 10, 2026 | T-V2-71C | ✅ PASS | QA Hunter | dailyTrend.cron.ts: schedule=0 */6, iterates all 11 TRACKED_COINS, updates coinIntelligenceCache.dailyTrend, DAILY_TREND_ENABLED check. |
+| May 10, 2026 | T-V2-71D | ✅ PASS | QA Hunter | aiWorkflow.cron.ts: DAILY_TREND_ENABLED check at line 665, calculateDailyTrend called, BEARISH/STRONG_BEARISH coins skipped before signal generation (line 669-671). |
+| May 10, 2026 | T-V2-9A | ✅ PASS | QA Hunter | migrate-airdrop-redesign.sql: DROP TABLE IF EXISTS user_progress + airdrop_tasks, 4 new columns (ecosystem, effort_level, reward_confidence, quality_score), migration_flags guard. |
+| May 10, 2026 | T-V2-9B | ✅ PASS | QA Hunter | airdropQuality.service.ts: calculateAirdropQuality(project)→AirdropQualityResult. Weighted scoring: ecosystem 30%, funding 25%, community 20%, effort/reward 15%, risk 10%. isEligible = qualityScore >= 60. Zero `any` types. |
+| May 10, 2026 | T-V2-9C | ✅ PASS | QA Hunter | airdrop.controller.ts: getProgress→returns {percent:0} (wallet stripped), triggerVerification→410 Gone, getStats→walletCount=0/txCount=0/completedTasks=0 (wallet stripped), getActivity→[] (wallet stripped), insertProjectWithQuality→quality gate (quality < 60 throws), all new columns inserted. |
+| May 10, 2026 | T-V2-9D | ✅ PASS | QA Hunter | AirdropCard.tsx: ecosystem badge, effort level indicator, quality score, reward confidence, deadline display. No wallet/progress/task references. AirdropsPageClient.tsx: uses new AirdropCard. |
+| May 10, 2026 | T-V2-5Q+71Q+9Q | ✅ PASS | QA Hunter | TypeScript: 1 pre-existing error (admin.controller.ts:108, unrelated). Zero `any` types in all Phase 5/7.1/9 files. DB queries: all via Drizzle ORM, no raw SQL in service/cron files. State machine: NEW→ACTIVE confirmed at signalManager.service.ts:185. |
+
 ## Master Plan v2.1 — Tranche 2: Shadow Mode + Classification + Regime + TP/SL
 
 | Date | Task ID | Verdict | Executor | Notes |

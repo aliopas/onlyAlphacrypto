@@ -5,6 +5,7 @@ import { airdropApi, AirdropStats, AirdropActivity, AirdropDeadline } from '@/fe
 import { AirdropProject } from '@/features/airdrop/types';
 import Link from 'next/link';
 import { TrendingUp, X, AlertTriangle, DollarSign } from 'lucide-react';
+import { AirdropCard } from './AirdropCard';
 import { FarmingStreak } from '@/features/airdrop/components/FarmingStreak';
 
 type CardState = 'CRITICAL_DEADLINE' | 'NEEDS_ATTENTION' | 'NEWLY_DISCOVERED' | 'ON_TRACK';
@@ -355,67 +356,9 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
 
                 {!gridLoading && !fetchError && projects.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {projects.map((p) => {
-                        const verdict = p.riskVerdict || 'SAFE';
-                        const c = STATUS_COLOR[verdict] || STATUS_COLOR.SAFE;
-                        const progressPct = p.progressPercent ?? 0;
-                        const meta = resolveCardState(p, progressPct);
-                        const networkChip = NETWORK_CHIP[p.network] ?? { text: 'text-[#888]', bg: 'bg-[#888]/10' };
-                        const snapshotRelative = p.snapshotAt ? formatRelativeTime(p.snapshotAt) : null;
-
-                        return (
-                            <Link key={p.id} href={`/airdrops/${p.id}`}
-                                className={`bg-[#0A0A0A] border p-6 hover:border-[#444] transition-all group block ${meta.borderClass} ${meta.bgClass} ${meta.shadowClass}`}>
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <h3 className="text-xl font-bold tracking-tight uppercase text-white">{p.name}</h3>
-                                            {meta.badge}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className={`text-[9px] font-mono px-2 py-0.5 border ${c.border} ${c.text} ${c.bg} tracking-wider uppercase`}>
-                                                {verdict}
-                                            </span>
-                                            <span className={`text-[8px] font-mono px-1.5 py-0.5 ${networkChip.text} ${networkChip.bg}`}>
-                                                {p.network}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <span className="text-[10px] font-mono text-[#555] block">EST. VALUE</span>
-                                        <span className="text-lg font-mono-nums font-bold text-white">{formatEstValue(p.estValue)}</span>
-                                    </div>
-                                </div>
-
-                                <div className="mb-4">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="text-[10px] font-mono text-[#888] uppercase tracking-wider">Farming Progress</span>
-                                        <span className="text-[10px] font-mono-nums text-white">{progressPct}%</span>
-                                    </div>
-                                    <div className="h-1.5 w-full bg-[#1A1A1A] rounded-full overflow-hidden">
-                                        <div
-                                            className={`h-full rounded-full transition-all duration-700 ${meta.progressColor}`}
-                                            style={{ width: `${Math.min(progressPct, 100)}%` }}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    <h4 className="text-[10px] font-mono text-[#555] uppercase tracking-[0.1em] border-b border-[#222] pb-1">
-                                        Network: {p.network}
-                                    </h4>
-                                    {p.snapshotAt && (
-                                        <p className="text-[11px] font-mono text-[#555]">
-                                            Snapshot:{' '}
-                                            <span className="text-[#888]">
-                                                {snapshotRelative ?? new Date(p.snapshotAt).toLocaleDateString()}
-                                            </span>
-                                        </p>
-                                    )}
-                                </div>
-                            </Link>
-                        );
-                    })}
+                    {projects.map((p) => (
+                        <AirdropCard key={p.id} project={p} />
+                    ))}
                 </div>
                 )}
             </div>

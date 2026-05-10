@@ -224,6 +224,7 @@ export const coinIntelligenceCache = pgTable('coin_intelligence_cache', {
     cachedAt:       timestamp('cached_at').defaultNow().notNull(),
     isTradeable:    boolean('is_tradeable').default(true).notNull(),
     currentRegime:  varchar('current_regime', { length: 20 }),
+    dailyTrend:     varchar('daily_trend', { length: 20 }),
 });
 
 export const ohlcvCandles = pgTable('ohlcv_candles', {

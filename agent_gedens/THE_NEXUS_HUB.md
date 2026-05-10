@@ -2790,3 +2790,431 @@ interface SanityValidationResult {
 
 ## PHASE 0.5 SCOPE
 
+## REQUIRED TASKS
+
+---
+
+# Phase 5 — Signal Lifecycle System
+
+## PHASE 5 SCOPE
+
+| Task ID | Description | Status |
+|---|---|---|
+| T-V2-5A | signal_performance lifecycle columns + migration | ✅ DONE (QA PASSED) |
+| T-V2-5B | Signal Lifecycle Service (lifecycle state machine) | ✅ DONE (QA PASSED) |
+| T-V2-5C | Lifecycle State Cron (partial_tp, breakeven, auto-close) | ✅ DONE (QA PASSED) |
+| T-V2-5D | aiWorkflow Lifecycle Integration (signal_state field) | ✅ DONE (QA PASSED) |
+| T-V2-5Q | Phase 5 QA | ✅ DONE (QA PASSED) |
+
+---
+
+### T-V2-5A — signal_performance Lifecycle Columns
+
+**Task ID:** T-V2-5A
+**Phase:** v2.Phase 5 — Signal Lifecycle
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** A
+
+**Files:** backend/scripts/migrate-signal-lifecycle.sql (new) + backend/src/models/market.model.ts
+
+**Migration SQL:**
+```sql
+ALTER TABLE signal_performance ADD COLUMN signal_state VARCHAR(30) DEFAULT 'NEW';
+ALTER TABLE signal_performance ADD COLUMN price72h REAL;
+ALTER TABLE signal_performance ADD COLUMN pnl72h REAL;
+ALTER TABLE signal_performance ADD COLUMN is_win72h BOOLEAN;
+ALTER TABLE signal_performance ADD COLUMN partial_tp_hit_at TIMESTAMP;
+ALTER TABLE signal_performance ADD COLUMN breakeven_moved_at TIMESTAMP;
+ALTER TABLE signal_performance ADD COLUMN close_reason VARCHAR(50);
+```
+
+**Migration guard:** INSERT INTO migration_flags VALUES ('signal_lifecycle_schema')
+
+**Drizzle model:** Update signalPerformance — add signalState, price72h, pnl72h, isWin72h, partialTpHitAt, breakevenMovedAt, closeReason
+**Rollback:** Revert ALTER TABLE
+
+---
+
+### T-V2-5B — Signal Lifecycle Service
+
+**Task ID:** T-V2-5B
+**Phase:** v2.Phase 5 — Signal Lifecycle
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** B
+
+**File:** backend/src/services/signalLifecycle.service.ts (new)
+
+**Exported functions:**
+```typescript
+export async function updateSignalState(signalId: number, newState: SignalState): Promise<void>
+export async function checkPartialTp(signalId: number, currentPrice: number, entryPrice: number, tp: number): Promise<boolean>
+export async function moveStopToBreakeven(signalId: number): Promise<void>
+export async function autoCloseSignal(signalId: number, reason: CloseReason): Promise<void>
+export async function getSignalsByState(state: SignalState): Promise<SignalPerformanceRow[]>
+```
+
+**SignalState enum:** 'NEW' | 'WAITING_CONFIRMATION' | 'ACTIVE' | 'PARTIAL_TP' | 'BREAKEVEN' | 'CLOSED'
+
+**State machine:**
+- NEW → WAITING_CONFIRMATION (quality >= 60 but not at entry zone)
+- WAITING_CONFIRMATION → ACTIVE (price enters entry zone)
+- ACTIVE → PARTIAL_TP (price reaches 50% of TP distance)
+- PARTIAL_TP → BREAKEVEN (SL moved to entry)
+- ANY → CLOSED (TP hit / SL hit / Expired / Thesis reversed)
+
+**Checkpoint schedule:** 24h (all), 72h (TACTICAL), 7d (STRATEGIC), 30d (STRATEGIC)
+
+**Dependencies:** T-V2-5A
+**Rollback:** Delete service file
+
+---
+
+### T-V2-5C — Lifecycle State Cron
+
+**Task ID:** T-V2-5C
+**Phase:** v2.Phase 5 — Signal Lifecycle
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** C
+
+**File:** backend/src/crons/signalLifecycle.cron.ts (new)
+
+**Schedule:** */15 * * * * (every 15 minutes)
+
+**Logic:**
+1. Fetch all ACTIVE signals
+2. For each: check if PARTIAL_TP or BREAKEVEN conditions met
+3. Check 72h checkpoint for TACTICAL signals
+4. Check 7d checkpoint for STRATEGIC signals
+5. Auto-close expired signals (72h TACTICAL, 21d STRATEGIC)
+
+**Env flag:** SIGNAL_LIFECYCLE_ENABLED (default false)
+**Dependencies:** T-V2-5B, env flag
+**Rollback:** Delete cron file
+
+---
+
+### T-V2-5D — aiWorkflow Lifecycle Integration
+
+**Task ID:** T-V2-5D
+**Phase:** v2.Phase 5 — Signal Lifecycle
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** D
+
+**File:** backend/src/crons/aiWorkflow.cron.ts
+
+**Change:** After executeSignalDecision, set signal_state = 'NEW' on the new signal_performance row.
+
+**Dependencies:** T-V2-5B
+**Rollback:** Revert aiWorkflow changes
+
+---
+
+### T-V2-5Q — Phase 5 QA
+
+**Task ID:** T-V2-5Q
+**Phase:** v2.Phase 5 — Signal Lifecycle
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** E
+
+**Audit:** signal_state enum values, state machine transitions, auto-close rules, checkpoint schedule.
+
+**Dependencies:** T-V2-5A through T-V2-5D
+
+---
+
+---
+
+# Phase 7.1 — Daily Trend Context
+
+## PHASE 7.1 SCOPE
+
+| Task ID | Description | Status |
+|---|---|---|
+| T-V2-71A | daily_trend column in coin_intelligence_cache + env flag | ✅ DONE (QA PASSED) |
+| T-V2-71B | Daily Trend Service (EMA from 1d candles) | ✅ DONE (QA PASSED) |
+| T-V2-71C | Daily Trend Cron (refresh every 6h) | ✅ DONE (QA PASSED) |
+| T-V2-71D | aiWorkflow Daily Trend Integration | ✅ DONE (QA PASSED) |
+| T-V2-71Q | Phase 7.1 QA | ✅ DONE (QA PASSED) |
+
+---
+
+### T-V2-71A — daily_trend Column
+
+**Task ID:** T-V2-71A
+**Phase:** v2.Phase 7.1 — Daily Trend Context
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** A
+
+**Files:** backend/scripts/migrate-daily-trend.sql (new) + backend/src/models/market.model.ts + backend/src/config/env.ts
+
+**Migration SQL:**
+```sql
+ALTER TABLE coin_intelligence_cache ADD COLUMN daily_trend VARCHAR(20) DEFAULT 'SIDEWAYS';
+```
+
+**Env flag:** DAILY_TREND_ENABLED: z.boolean().default(false)
+
+**Migration guard:** INSERT INTO migration_flags VALUES ('daily_trend_column')
+**Rollback:** Revert ALTER TABLE
+
+---
+
+### T-V2-71B — Daily Trend Service
+
+**Task ID:** T-V2-71B
+**Phase:** v2.Phase 7.1 — Daily Trend Context
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** B
+
+**File:** backend/src/services/dailyTrend.service.ts (new)
+
+**Exported function:**
+```typescript
+export async function calculateDailyTrend(symbol: string): Promise<TrendLabel>
+```
+
+**Logic:**
+- Read EMA-20, EMA-50, EMA-200 from ohlcv_indicators (timeframe='1d')
+- Apply same trend detection algorithm as detectTrend() in technicalAnalysis.service.ts
+- Return: STRONG_BULLISH | BULLISH | SIDEWAYS | BEARISH | STRONG_BEARISH
+
+**Rule:** Uptrend signals ONLY generate when daily_trend is BULLISH or STRONG_BULLISH
+
+**Dependencies:** T-V2-71A, Phase 1 TA engine
+**Rollback:** Delete service file
+
+---
+
+### T-V2-71C — Daily Trend Cron
+
+**Task ID:** T-V2-71C
+**Phase:** v2.Phase 7.1 — Daily Trend Context
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** C
+
+**File:** backend/src/crons/dailyTrend.cron.ts (new)
+
+**Schedule:** 0 */6 * * * (every 6 hours)
+
+**Logic:**
+1. If DAILY_TREND_ENABLED === false: exit
+2. For each coin in TRACKED_COINS:
+   a. calculateDailyTrend(coin)
+   b. Update coin_intelligence_cache.daily_trend for that coin
+
+**Dependencies:** T-V2-71B, T-V2-71A (env flag)
+**Rollback:** Delete cron file
+
+---
+
+### T-V2-71D — aiWorkflow Daily Trend Integration
+
+**Task ID:** T-V2-71D
+**Phase:** v2.Phase 7.1 — Daily Trend Context
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** D
+
+**File:** backend/src/crons/aiWorkflow.cron.ts
+
+**Change:** Before generating signal, check coin_intelligence_cache for daily_trend. If BEARISH or STRONG_BEARISH for the coin, skip signal generation (reduced confidence mode).
+
+**New import:** calculateDailyTrend from dailyTrend.service.ts
+
+**Dependencies:** T-V2-71B, T-V2-71C
+**Rollback:** Revert aiWorkflow changes
+
+---
+
+### T-V2-71Q — Phase 7.1 QA
+
+**Task ID:** T-V2-71Q
+**Phase:** v2.Phase 7.1 — Daily Trend Context
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** E
+
+**Audit:** daily_trend column, EMA calculation from 1d indicators, 6h refresh, aiWorkflow integration (skip if BEARISH/STRONG_BEARISH).
+
+**Dependencies:** T-V2-71A through T-V2-71D
+
+---
+
+---
+
+# Phase 9 — Airdrop System Redesign
+
+## PHASE 9 SCOPE
+
+| Task ID | Description | Status |
+|---|---|---|
+| T-V2-9A | airdrop_projects schema changes + migration | ✅ DONE (QA PASSED) |
+| T-V2-9B | Airdrop Quality Scoring Service | ✅ DONE (QA PASSED) |
+| T-V2-9C | Airdrop Service Updates (remove tasks/wallet/auto-verify) | ✅ DONE (QA PASSED) |
+| T-V2-9D | Airdrop Frontend Card Redesign | ✅ DONE (QA PASSED) |
+| T-V2-9Q | Phase 9 QA | ✅ DONE (QA PASSED) |
+
+---
+
+### T-V2-9A — airdrop_projects Schema Changes
+
+**Task ID:** T-V2-9A
+**Phase:** v2.Phase 9 — Airdrop System Redesign
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** A
+
+**Files:** backend/scripts/migrate-airdrop-redesign.sql (new) + backend/src/models/market.model.ts
+
+**REMOVED tables:**
+- airdrop_tasks table (DROP TABLE airdrop_tasks)
+- user_progress table (DROP TABLE user_progress)
+
+**ADDED columns to airdrop_projects:**
+```sql
+ALTER TABLE airdrop_projects ADD COLUMN ecosystem VARCHAR(20);
+ALTER TABLE airdrop_projects ADD COLUMN effort_level VARCHAR(10);
+ALTER TABLE airdrop_projects ADD COLUMN reward_confidence VARCHAR(20);
+ALTER TABLE airdrop_projects ADD COLUMN quality_score INT DEFAULT 0;
+```
+
+**ecosystem mapping:**
+- ETH: L2s, DeFi protocols, restaking
+- SOL: DePIN, Gaming, consumer apps
+- TON: Telegram-native projects only
+- BNB: BSC DeFi, GameFi
+- Others: Direct project airdrops only
+
+**Migration guard:** INSERT INTO migration_flags VALUES ('airdrop_redesign_schema')
+**Rollback:** Revert changes + recreate dropped tables if needed
+
+---
+
+### T-V2-9B — Airdrop Quality Scoring Service
+
+**Task ID:** T-V2-9B
+**Phase:** v2.Phase 9 — Airdrop System Redesign
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** B
+
+**File:** backend/src/services/airdropQuality.service.ts (new)
+
+**Exported function:**
+```typescript
+export function calculateAirdropQuality(project: AirdropProjectInput): AirdropQualityResult
+```
+
+**AirdropQualityResult:**
+```typescript
+{
+  qualityScore: number;
+  ecosystem: string;
+  effortLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  rewardConfidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNVERIFIED';
+  isEligible: boolean;
+}
+```
+
+**Quality Scoring (weighted):**
+- Ecosystem connection to 11 coins: 30%
+- Verified funding or backing: 25%
+- Real community size: 20%
+- Effort vs reward ratio: 15%
+- Risk level: 10%
+
+**Hard rule:** Score < 60 → never reaches database. Score < 75 → marked low confidence.
+
+**Dependencies:** T-V2-9A
+**Rollback:** Delete service file
+
+---
+
+### T-V2-9C — Airdrop Service Updates
+
+**Task ID:** T-V2-9C
+**Phase:** v2.Phase 9 — Airdrop System Redesign
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** C
+
+**Files:** backend/src/services/airdrop.service.ts (modify)
+
+**Changes:**
+1. Remove wallet verification logic
+2. Remove auto-verification system
+3. Remove user_progress tracking
+4. Remove airdrop_tasks table references
+5. Add quality score calculation on project insertion
+6. Add ecosystem badge logic
+
+**Frontend card should show:** Effort indicator, ecosystem badge, risk verdict, deadline urgency, reward confidence, quality score. NO tasks, NO progress bars, NO wallet connection.
+
+**Dependencies:** T-V2-9A, T-V2-9B
+**Rollback:** Revert airdrop.service.ts changes
+
+---
+
+### T-V2-9D — Airdrop Frontend Card Redesign
+
+**Task ID:** T-V2-9D
+**Phase:** v2.Phase 9 — Airdrop System Redesign
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** D
+
+**Files:** frontend/src/features/airdrops/components/AirdropCard.tsx (modify)
+
+**New card shows:**
+- Effort indicator (LOW/MEDIUM/HIGH)
+- Ecosystem badge (ETH/SOL/TON/BNB/Other)
+- Risk verdict
+- Deadline urgency
+- Reward confidence (HIGH/MEDIUM/LOW/UNVERIFIED)
+- Quality score (0-100, color coded)
+
+**Removed:**
+- Task list
+- Progress bar
+- Wallet connection
+
+**Dependencies:** T-V2-9C
+**Rollback:** Revert frontend changes
+
+---
+
+### T-V2-9Q — Phase 9 QA
+
+**Task ID:** T-V2-9Q
+**Phase:** v2.Phase 9 — Airdrop System Redesign
+**Status:** ⬜ NOT STARTED
+**Deploy Group:** E
+
+**Audit:** Removed tables (airdrop_tasks, user_progress), new columns, quality scoring formula, ecosystem filtering, frontend card redesign.
+
+**Dependencies:** T-V2-9A through T-V2-9D
+
+---
+
+---
+
+## FILES SUMMARY (Tranche 3 — Can Start Now)
+
+| File | Tasks |
+|---|---|
+| backend/scripts/migrate-signal-lifecycle.sql | T-V2-5A |
+| backend/scripts/migrate-daily-trend.sql | T-V2-71A |
+| backend/scripts/migrate-airdrop-redesign.sql | T-V2-9A |
+| backend/src/models/market.model.ts | T-V2-5A, T-V2-71A, T-V2-9A |
+| backend/src/config/env.ts | T-V2-5A, T-V2-71A |
+| backend/src/services/signalLifecycle.service.ts | T-V2-5B |
+| backend/src/services/dailyTrend.service.ts | T-V2-71B |
+| backend/src/services/airdropQuality.service.ts | T-V2-9B |
+| backend/src/services/airdrop.service.ts | T-V2-9C |
+| backend/src/crons/signalLifecycle.cron.ts | T-V2-5C |
+| backend/src/crons/dailyTrend.cron.ts | T-V2-71C |
+| backend/src/crons/aiWorkflow.cron.ts | T-V2-5D, T-V2-71D |
+| frontend/src/features/airdrops/components/AirdropCard.tsx | T-V2-9D |
+
+**Total: 8 new files, 4 modified files, 3 migration scripts**
+
+---
+
+*Plan authored: May 10, 2026 | Strategic Planner*
+*Plan source: plans/THE SUPREME REVIEWER_plans/nextstep2.md*
+*Next: Senior Developer executes Phase 5 + Phase 7.1 + Phase 9 in parallel (Groups A→B→C→D→E)*
+

@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { env } from '../config/env';
 import { getUnresolvedShadowSignals, resolveShadowSignal72h, resolveShadowSignal7d } from '../services/shadowSignals.service';
 import { getLivePrices } from '../services/binance.service';
-import { logger } from '../config/logger';
+import { logger } from '../utils/logger';
 
 // Lock to prevent concurrent runs
 let isShadowCheckerRunning = false;

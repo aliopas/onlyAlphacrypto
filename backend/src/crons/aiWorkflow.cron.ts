@@ -17,7 +17,7 @@ import { isTrackedCoin } from '../config/coins';
 import { AIRateLimitError } from '../services/ai/ai-gateway';
 import { validateFactualGrounding } from '../services/ai/factual-grounding';
 import { env } from '../config/env';
-import { logger } from '../config/logger';
+import { logger } from '../utils/logger';
 import { auditArticleQuality } from '../services/ai/quality-auditor';
 import { saveMemory } from '../services/coin-memory.service';
 import { isDuplicateByEmbedding } from '../services/similarity.service';
@@ -34,6 +34,8 @@ import { insertShadowSignal } from '../services/shadowSignals.service';
 import type { TrendLabel } from '../services/technicalAnalysis.service';
 import { getNearbyLevels } from '../services/levelIntelligence.service';
 import { ScenarioTrackerService } from '../services/scenarioTracker.service';
+import { calculateDailyTrend } from '../services/dailyTrend.service';
+import type { TrendLabel as DailyTrendLabel } from '../services/dailyTrend.service';
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 
@@ -660,6 +662,19 @@ export async function runAiWorkflow(): Promise<void> {
                         if (!price?.price) {
                             console.warn(`[AI Workflow] No price for ${symbol}, skipping signal`);
                         } else {
+                            if (env.DAILY_TREND_ENABLED) {
+                                try {
+                                    const dailyTrend = await calculateDailyTrend(symbol) as DailyTrendLabel;
+                                    const bearishTrends = new Set(['BEARISH', 'STRONG_BEARISH']);
+                                    if (bearishTrends.has(dailyTrend)) {
+                                        console.log(`[AI Workflow] Skipping signal for ${symbol}: daily trend=${dailyTrend} (below bullish threshold)`);
+                                        continue;
+                                    }
+                                } catch (err) {
+                                    logger.warn(`[AI Workflow] Daily trend check failed for ${symbol}:`, err);
+                                }
+                            }
+
                             let tpslData: { takeProfitPrice: number; stopLossPrice: number } | null = null;
 
                             const taResult = await analyzeTechnicals(symbol);

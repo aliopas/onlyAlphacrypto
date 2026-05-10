@@ -1,9 +1,10 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
-import { airdropProjects, airdropTasks, airdropPipelineRuns } from '../models/index';
+import { airdropProjects, airdropPipelineRuns } from '../models/index';
 import { validateAirdrop } from '../services/openai.service';
-import { deleteCache, deleteCachePattern } from '../config/redis';
 import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
+import { insertProjectWithQuality } from '../controllers/airdrop.controller';
+import { deleteCache, deleteCachePattern } from '../config/redis';
 import {
     fetchTokenlessProtocols,
     buildAirdropCandidates,
@@ -174,8 +175,6 @@ async function runAirdropDiscovery(): Promise<void> {
                 rejections++;
                 continue;
             }
-
-            const normalizedName = validation.estValue.slice(0, 100);
             const projectName = candidate.name;
             const network = candidate.source === 'defillama'
                 ? 'Multi-chain'
@@ -187,38 +186,30 @@ async function runAirdropDiscovery(): Promise<void> {
                 continue;
             }
 
-            const [insertedProject] = await db
-                .insert(airdropProjects)
-                .values({
-                    name: projectName.slice(0, 100),
-                    network: network.slice(0, 50),
-                    estValue: validation.estValue.slice(0, 255),
+            try {
+                await insertProjectWithQuality({
+                    name: projectName,
+                    network,
+                    estValue: validation.estValue,
                     aiReport: validation.aiReport,
                     riskVerdict: validation.riskVerdict,
-                    isActive: true,
-                })
-                .onConflictDoNothing({ target: airdropProjects.name })
-                .returning();
-
-            if (insertedProject && validation.tasks.length > 0) {
-                const taskValues = validation.tasks.map((task, index) => ({
-                    projectId: insertedProject.id,
-                    description: task.description,
-                    contractAddress: task.contractAddress?.slice(0, 100) ?? null,
-                    minAmount: task.minAmount ?? null,
-                    tokenSymbol: task.tokenSymbol?.slice(0, 20) ?? null,
-                    chain: task.chain?.slice(0, 50) ?? null,
-                    isAutoVerifiable: task.isAutoVerifiable,
-                    orderIndex: index,
-                }));
-
-                await db.insert(airdropTasks).values(taskValues);
+                    fundingRound: undefined,
+                    twitterUrl: undefined,
+                    discordUrl: undefined,
+                    websiteUrl: undefined,
+                });
+                existingProjectNames.add(projectName.toLowerCase());
+                projectsInserted++;
+            } catch (err) {
+                if (err instanceof Error && err.message.includes('quality threshold')) {
+                    console.log(`[AirdropDiscovery] Rejected by quality filter: "${projectName}"`);
+                    rejections++;
+                } else {
+                    throw err;
+                }
             }
 
-            existingProjectNames.add(projectName.toLowerCase());
-            projectsInserted++;
-
-            console.log(`[AirdropDiscovery] Inserted: "${projectName}" (${candidate.source}) with ${validation.tasks.length} tasks`);
+            console.log(`[AirdropDiscovery] Inserted: "${projectName}" (${candidate.source})`);
         } catch (err) {
             errors++;
             console.error(`[AirdropDiscovery] Error processing "${candidate.name}":`, err instanceof Error ? err.message : String(err));

@@ -31,6 +31,8 @@ import { startMarketFilterCron } from './crons/marketFilter.cron';
 import { startOhlcvSnapshotCron } from './crons/ohlcvSnapshot.cron';
 import { startRegimeUpdateCron } from './crons/regimeUpdate.cron';
 import { startShadowChecker } from './crons/shadowChecker.cron';
+import { startSignalLifecycleCron } from './crons/signalLifecycle.cron';
+import { startDailyTrendCron } from './crons/dailyTrend.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -210,6 +212,30 @@ async function bootstrap(): Promise<void> {
                     logger.error('[Server] Failed to start optional cron ShadowChecker: %s', error instanceof Error ? error.message : String(error));
                 }
             }, (crons.length + 6) * cronStartDelay);
+        }
+
+        // Optional Signal Lifecycle cron
+        if (env.SIGNAL_LIFECYCLE_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startSignalLifecycleCron();
+                    logger.info('[Server] Optional cron started: SignalLifecycle');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron SignalLifecycle: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 7) * cronStartDelay);
+        }
+
+        // Optional Daily Trend cron
+        if (env.DAILY_TREND_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startDailyTrendCron();
+                    logger.info('[Server] Optional cron started: DailyTrend');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron DailyTrend: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 8) * cronStartDelay);
         }
     } catch (error) {
         logger.error('[Server] Failed to start: %s', error instanceof Error ? error.message : String(error));
