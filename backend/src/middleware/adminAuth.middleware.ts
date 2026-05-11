@@ -17,7 +17,52 @@ interface AdminSession {
 }
 
 // In-memory session store (not persistent across restarts)
+// NOTE: In-memory only — sessions are lost on server restart.
+// This is acceptable for Shadow Mode admin dashboard (single user, low traffic).
+// TODO: Migrate to Redis-backed sessions when moving to production-grade auth.
+// See: Phase 0.5 admin auth redesign in Master Plan.
 const sessions = new Map<string, AdminSession>();
+
+// ─── Rate Limiting ───────────────────────────────────────────────────────────
+const MAX_LOGIN_ATTEMPTS = 5;
+const BLOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+interface LoginAttempt {
+    count: number;
+    blockedUntil: number;
+}
+
+const loginAttempts = new Map<string, LoginAttempt>();
+
+function isIpBlocked(ip: string): boolean {
+    const entry = loginAttempts.get(ip);
+    if (!entry) return false;
+    if (Date.now() >= entry.blockedUntil) {
+        loginAttempts.delete(ip);
+        return false;
+    }
+    return entry.count >= MAX_LOGIN_ATTEMPTS;
+}
+
+function recordFailedAttempt(ip: string): void {
+    const entry = loginAttempts.get(ip) ?? { count: 0, blockedUntil: 0 };
+    entry.count++;
+    if (entry.count >= MAX_LOGIN_ATTEMPTS) {
+        entry.blockedUntil = Date.now() + BLOCK_DURATION_MS;
+    }
+    loginAttempts.set(ip, entry);
+}
+
+function resetLoginAttempts(ip: string): void {
+    loginAttempts.delete(ip);
+}
+
+function getClientIp(req: Request): string {
+    return (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
+        ?? (req.headers['x-real-ip'] as string | undefined)
+        ?? req.socket.remoteAddress
+        ?? 'unknown';
+}
 
 // Session expiry time (24 hours)
 const SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000;
@@ -87,6 +132,13 @@ export function cleanupExpiredSessions(): void {
  * Admin login handler
  */
 export async function adminLogin(req: Request, res: Response): Promise<void> {
+    const clientIp = getClientIp(req);
+
+    if (isIpBlocked(clientIp)) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+    }
+
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -96,6 +148,7 @@ export async function adminLogin(req: Request, res: Response): Promise<void> {
 
     // Validate email
     if (email !== env.ADMIN_EMAIL) {
+        recordFailedAttempt(clientIp);
         res.status(401).json({ error: 'Invalid credentials' });
         return;
     }
@@ -113,14 +166,18 @@ export async function adminLogin(req: Request, res: Response): Promise<void> {
             isValidPassword = false;
         }
     } else {
-        // It's plaintext - direct comparison
-        isValidPassword = password === passwordHash;
+        // It's plaintext - timing-safe comparison
+        isValidPassword = safeCompare(password, passwordHash);
     }
 
     if (!isValidPassword) {
+        recordFailedAttempt(clientIp);
         res.status(401).json({ error: 'Invalid credentials' });
         return;
     }
+
+    // Successful login - reset rate limit
+    resetLoginAttempts(clientIp);
 
     // Generate session
     const sessionToken = generateSessionToken();
@@ -136,6 +193,19 @@ export async function adminLogin(req: Request, res: Response): Promise<void> {
         sessionToken,
         expiresAt: expiresAt.toISOString(),
     });
+}
+
+/**
+ * Timing-safe string comparison to prevent timing attacks
+ */
+function safeCompare(a: string, b: string): boolean {
+    const bufA = Buffer.from(a, 'utf8');
+    const bufB = Buffer.from(b, 'utf8');
+    if (bufA.length !== bufB.length) {
+        // Constant-time comparison to avoid leaking length
+        return crypto.timingSafeEqual(bufA, bufA);
+    }
+    return crypto.timingSafeEqual(bufA, bufB);
 }
 
 /**
