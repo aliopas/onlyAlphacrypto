@@ -62,6 +62,13 @@ export default function ShadowDashboard() {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
+    // Filter refs to prevent keystroke-triggered API calls
+    const coinFilterRef = useRef('');
+    const agreementFilterRef = useRef('');
+    const statusFilterRef = useRef('');
+    const startDateRef = useRef('');
+    const endDateRef = useRef('');
+
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
@@ -78,14 +85,8 @@ export default function ShadowDashboard() {
     }, []);
 
     const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-    const abortControllerRef = useRef<AbortController | null>(null);
 
     const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-        }
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
         const headers: Record<string, string> = {
             ...(options.headers as Record<string, string>),
         };
@@ -97,7 +98,6 @@ export default function ShadowDashboard() {
         const response = await fetch(`${API_BASE}${url}`, {
             ...options,
             headers,
-            signal: controller.signal,
         });
 
         if (response.status === 404) {
@@ -128,11 +128,11 @@ export default function ShadowDashboard() {
     const fetchSignals = useCallback(async () => {
         try {
             const params = new URLSearchParams();
-            if (coinFilter) params.append('coin', coinFilter);
-            if (agreementFilter) params.append('agreement', agreementFilter);
-            if (statusFilter) params.append('status', statusFilter);
-            if (startDate) params.append('startDate', startDate);
-            if (endDate) params.append('endDate', endDate);
+            if (coinFilterRef.current) params.append('coin', coinFilterRef.current);
+            if (agreementFilterRef.current) params.append('agreement', agreementFilterRef.current);
+            if (statusFilterRef.current) params.append('status', statusFilterRef.current);
+            if (startDateRef.current) params.append('startDate', startDateRef.current);
+            if (endDateRef.current) params.append('endDate', endDateRef.current);
             params.append('page', String(currentPage));
             params.append('limit', '50');
 
@@ -151,7 +151,7 @@ export default function ShadowDashboard() {
         } finally {
             setLoading(false);
         }
-    }, [fetchWithAuth, coinFilter, agreementFilter, statusFilter, startDate, endDate, currentPage]);
+    }, [fetchWithAuth, currentPage]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -204,10 +204,7 @@ export default function ShadowDashboard() {
             fetchStats();
             fetchSignals();
         }
-        return () => {
-            abortControllerRef.current?.abort();
-        };
-    }, [isAuthenticated, sessionToken, currentPage, fetchStats, fetchSignals, coinFilter, agreementFilter, statusFilter, startDate, endDate]);
+    }, [isAuthenticated, sessionToken, currentPage, coinFilter, agreementFilter, statusFilter, startDate, endDate, fetchStats, fetchSignals]);
 
     const formatPercent = (value: number | null) => value !== null ? `${value.toFixed(1)}%` : 'N/A';
 
@@ -328,12 +325,18 @@ export default function ShadowDashboard() {
                         type="text"
                         placeholder="Coin (e.g., BTC)"
                         value={coinFilter}
-                        onChange={(e) => setCoinFilter(e.target.value)}
+                        onChange={(e) => {
+                            setCoinFilter(e.target.value);
+                            coinFilterRef.current = e.target.value;
+                        }}
                         className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white placeholder-gray-500"
                     />
                     <select
                         value={agreementFilter}
-                        onChange={(e) => setAgreementFilter(e.target.value)}
+                        onChange={(e) => {
+                            setAgreementFilter(e.target.value);
+                            agreementFilterRef.current = e.target.value;
+                        }}
                         className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
                     >
                         <option value="">All Agreements</option>
@@ -342,7 +345,10 @@ export default function ShadowDashboard() {
                     </select>
                     <select
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
+                        onChange={(e) => {
+                            setStatusFilter(e.target.value);
+                            statusFilterRef.current = e.target.value;
+                        }}
                         className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
                     >
                         <option value="">All Status</option>
@@ -352,13 +358,19 @@ export default function ShadowDashboard() {
                     <input
                         type="date"
                         value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
+                        onChange={(e) => {
+                            setStartDate(e.target.value);
+                            startDateRef.current = e.target.value;
+                        }}
                         className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
                     />
                     <input
                         type="date"
                         value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
+                        onChange={(e) => {
+                            setEndDate(e.target.value);
+                            endDateRef.current = e.target.value;
+                        }}
                         className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
                     />
                 </div>
@@ -379,6 +391,11 @@ export default function ShadowDashboard() {
                                 setStatusFilter('');
                                 setStartDate('');
                                 setEndDate('');
+                                coinFilterRef.current = '';
+                                agreementFilterRef.current = '';
+                                statusFilterRef.current = '';
+                                startDateRef.current = '';
+                                endDateRef.current = '';
                                 setCurrentPage(1);
                             }}
                             className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
