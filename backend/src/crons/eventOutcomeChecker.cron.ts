@@ -3,7 +3,8 @@ import { db } from '../config/db';
 import { coinNewsHistory } from '../models/market.model';
 import { getCoinKlinesRange } from '../services/binance.service';
 import { logger } from '../utils/logger';
-import { eq, isNotNull, isNull, and, lt, gte, sql } from 'drizzle-orm';
+import { eq, isNotNull, isNull, and, lt, gte, sql, inArray } from 'drizzle-orm';
+import { TRACKED_COINS } from '../config/coins';
 
 const HORIZONS = {
     '1h': 3600000, // 1 hour in ms
@@ -37,7 +38,8 @@ export async function runEventOutcomeChecker(): Promise<void> {
             .where(and(
                 isNotNull(coinNewsHistory.priceAtTime),
                 isNull(coinNewsHistory.outcomeClassification),
-                lt(coinNewsHistory.publishedAt, oneHourAgo)
+                lt(coinNewsHistory.publishedAt, oneHourAgo),
+                inArray(coinNewsHistory.coinSymbol, [...TRACKED_COINS])
             ))
             .limit(10);
 
