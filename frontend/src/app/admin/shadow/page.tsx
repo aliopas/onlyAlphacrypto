@@ -73,6 +73,7 @@ export default function ShadowDashboard() {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalSignals, setTotalSignals] = useState(0);
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
     // Fetch trigger counter — manual trigger for Apply/Clear (bypasses pagination staleness)
     const [fetchTrigger, setFetchTrigger] = useState(0);
@@ -145,6 +146,7 @@ export default function ShadowDashboard() {
             setSignals(data.signals);
             setTotalSignals(data.pagination.total);
             setTotalPages(data.pagination.totalPages);
+            setLastUpdated(new Date());
         } catch (err) {
             if ((err as Error).message === 'Not authenticated') {
                 setError('Please login to view shadow mode statistics');
@@ -209,6 +211,15 @@ export default function ShadowDashboard() {
         }
     }, [isAuthenticated, sessionToken, currentPage, fetchTrigger, fetchStats, fetchSignals]);
 
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                fetchSignals();
+            }
+        }, 5 * 60 * 1000);
+        return () => clearInterval(interval);
+    }, [fetchSignals]);
+
     const formatPercent = (value: number | null) => value !== null ? `${value.toFixed(1)}%` : 'N/A';
 
     if (!isAuthenticated) {
@@ -261,7 +272,14 @@ export default function ShadowDashboard() {
     return (
         <div className="container mx-auto p-6">
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-white">Shadow Mode Dashboard</h1>
+                <div>
+                    <h1 className="text-3xl font-bold text-white">Shadow Mode Dashboard</h1>
+                    {lastUpdated && (
+                        <p className="text-sm text-gray-400 mt-1">
+                            Last updated: {lastUpdated.toLocaleTimeString()}
+                        </p>
+                    )}
+                </div>
                 <button
                     onClick={handleLogout}
                     className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"

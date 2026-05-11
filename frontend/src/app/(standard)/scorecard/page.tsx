@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { apiClient } from '@/features/shared/api/client';
+import ScorecardPopupWrapper from './ScorecardPopupWrapper';
 
 export const revalidate = 360;
 
@@ -203,6 +204,7 @@ export default async function ScorecardPage() {
 
     return (
         <div className="min-h-screen bg-black text-white">
+            <ScorecardPopupWrapper />
             <div className="max-w-6xl mx-auto px-4 py-8 md:py-12">
                 <div className="mb-8">
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Market Intelligence Scorecard</h1>
