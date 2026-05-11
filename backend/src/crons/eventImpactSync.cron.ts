@@ -4,8 +4,9 @@ import { coinNewsHistory, eventImpacts } from '../models/market.model';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { persistEventImpact, persistEventImpactOutcomes } from '../services/eventImpactPersistence.service';
-import { eq, and, isNull, isNotNull, asc, desc, gte, sql } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, asc, desc, gte, sql, inArray } from 'drizzle-orm';
 import type { CoinNewsHistoryRecord } from '../services/eventImpactPersistence.service';
+import { TRACKED_COINS } from '../config/coins';
 
 const BATCH_SIZE = 100;
 
@@ -63,6 +64,7 @@ export async function runEventImpactSync(): Promise<void> {
                 isNull(eventImpacts.id),
                 isNotNull(coinNewsHistory.eventSeverity),
                 gte(coinNewsHistory.publishedAt, sql`NOW() - INTERVAL '48 hours'`),
+                inArray(coinNewsHistory.coinSymbol, [...TRACKED_COINS])
             ))
             .orderBy(desc(coinNewsHistory.publishedAt))
             .limit(BATCH_SIZE);

@@ -5,6 +5,7 @@ import { eq, desc, max } from 'drizzle-orm';
 import { getCache, setCache } from '../config/redis';
 import { calculateIncrementalConviction, type ConvictionResult } from '../services/conviction.service';
 import { logger } from '../utils/logger';
+import { TRACKED_COIN_SET } from '../config/coins';
 
 const REDIS_LAST_RUN_KEY = 'cron:last-conviction-run';
 const CRON_SCHEDULE = '0 */6 * * *';
@@ -45,13 +46,15 @@ async function runConvictionUpdate(): Promise<void> {
             })
             .from(coinMasterArticles);
 
+        const trackedMasters = masters.filter(m => TRACKED_COIN_SET.has(m.coinSymbol));
+
         const lastRun = await getLastCronRun();
-        logger.info('[ConvictionCron] Processing %d coins, events since %s', masters.length, lastRun.toISOString());
+        logger.info('[ConvictionCron] Processing %d tracked coins (filtered from %d total), events since %s', trackedMasters.length, masters.length, lastRun.toISOString());
 
         let updated = 0;
         let errors = 0;
 
-        for (const master of masters) {
+        for (const master of trackedMasters) {
             try {
                 const currentScore = master.convictionScore ?? 50;
                 const result: ConvictionResult = await calculateIncrementalConviction(

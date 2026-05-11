@@ -1,9 +1,10 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
 import { signalPerformance } from '../models/market.model';
-import { eq, and, isNotNull, sql, lt } from 'drizzle-orm';
+import { eq, and, isNotNull, sql, lt, inArray } from 'drizzle-orm';
 import { getPriceWithFallback } from '../services/priceService';
 import { deleteCache } from '../config/redis';
+import { TRACKED_COINS } from '../config/coins';
 
 async function monitorTpsl(): Promise<void> {
     try {
@@ -11,7 +12,8 @@ async function monitorTpsl(): Promise<void> {
             .from(signalPerformance)
             .where(and(
                 eq(signalPerformance.isActive, true),
-                sql`(${signalPerformance.takeProfitPrice} IS NOT NULL OR ${signalPerformance.stopLossPrice} IS NOT NULL)`
+                sql`(${signalPerformance.takeProfitPrice} IS NOT NULL OR ${signalPerformance.stopLossPrice} IS NOT NULL)`,
+                inArray(signalPerformance.coinSymbol, [...TRACKED_COINS])
             ))
             .limit(50);
 

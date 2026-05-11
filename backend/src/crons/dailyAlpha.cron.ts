@@ -3,6 +3,7 @@ import { db } from '../config/db';
 import { coinMasterArticles, dailyAlphaFocus } from '../models/index';
 import { deleteCache } from '../config/redis';
 import { desc, sql, lt } from 'drizzle-orm';
+import { TRACKED_COIN_SET } from '../config/coins';
 
 export async function selectDailyAlpha(): Promise<void> {
     console.log('⭐ [DailyAlpha] Running alpha selection...');
@@ -25,12 +26,14 @@ export async function selectDailyAlpha(): Promise<void> {
         posture: coinMasterArticles.posture,
     };
 
-    const candidates = await db
+    let candidates = await db
         .select(candidateFields)
         .from(coinMasterArticles)
         .where(
             sql`${coinMasterArticles.verdict} IN ('STRONG_BUY', 'BUY') AND ${coinMasterArticles.confidenceScore} >= 60`
         );
+
+    candidates = candidates.filter(c => TRACKED_COIN_SET.has(c.coinSymbol));
 
     if (!candidates.length) {
         console.log('[DailyAlpha] No STRONG_BUY/BUY candidates — using fallback');

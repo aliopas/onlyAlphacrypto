@@ -1,8 +1,9 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
 import { signalPerformance } from '../models/market.model';
-import { eq, isNull, lte, and, sql } from 'drizzle-orm';
+import { eq, isNull, lte, and, sql, inArray } from 'drizzle-orm';
 import { getPriceWithFallback } from '../services/priceService';
+import { TRACKED_COINS } from '../config/coins';
 
 async function updateSignalPerformance(): Promise<void> {
     try {
@@ -13,7 +14,8 @@ async function updateSignalPerformance(): Promise<void> {
         .where(and(
             eq(signalPerformance.isActive, true),
             isNull(signalPerformance.price24h),
-            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '24 hours'`)
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '24 hours'`),
+            inArray(signalPerformance.coinSymbol, [...TRACKED_COINS])
         ))
         .limit(50);
 
@@ -35,7 +37,8 @@ async function updateSignalPerformance(): Promise<void> {
         .where(and(
             eq(signalPerformance.isActive, true),
             isNull(signalPerformance.price7d),
-            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '7 days'`)
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '7 days'`),
+            inArray(signalPerformance.coinSymbol, [...TRACKED_COINS])
         ))
         .limit(50);
 
@@ -60,7 +63,8 @@ async function updateSignalPerformance(): Promise<void> {
         .where(and(
             eq(signalPerformance.isActive, true),
             isNull(signalPerformance.price30d),
-            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '30 days'`)
+            lte(signalPerformance.entryAt, sql`NOW() - INTERVAL '30 days'`),
+            inArray(signalPerformance.coinSymbol, [...TRACKED_COINS])
         ))
         .limit(50);
 

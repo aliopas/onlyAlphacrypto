@@ -5,8 +5,7 @@ import { fetchCandles, calculateLevelsAndInteractions, saveLevels, saveInteracti
 import { db } from '../config/db';
 import { levelIntelligence } from '../models/market.model';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
-
-const MAJOR_COINS = ['BTC', 'ETH', 'SOL', 'ADA', 'LINK', 'DOT', 'AVAX', 'MATIC'];
+import { TRACKED_COINS } from '../config/coins';
 
 export async function runLevelIntelligenceCron(): Promise<void> {
     logger.info('[LevelIntelligenceCron] Starting run...');
@@ -18,7 +17,7 @@ export async function runLevelIntelligenceCron(): Promise<void> {
 
     const timeframes = env.LEVEL_INTELLIGENCE_TIMEFRAMES.split(',').map(t => t.trim() as '1h' | '4h' | '1d' | '1w');
     const maxCoins = env.LEVEL_INTELLIGENCE_MAX_COINS;
-    const selectedCoins = MAJOR_COINS.slice(0, maxCoins);
+    const selectedCoins = [...TRACKED_COINS].slice(0, maxCoins);
 
     logger.info('[LevelIntelligenceCron] Processing %d coins across %d timeframes', selectedCoins.length, timeframes.length);
 
