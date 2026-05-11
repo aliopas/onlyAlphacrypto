@@ -76,6 +76,10 @@ function trendToDirection(trend: TrendLabel): 'bullish' | 'bearish' | 'neutral' 
     return 'neutral';
 }
 
+/**
+ * Maps AI output verdict (BUY/SELL/STRONG_BUY/STRONG_SELL) to internal direction.
+ * This receives AI output — BUY/SELL terminology is expected here (AI returns these values).
+ */
 function verdictToDirection(verdict: string): 'bullish' | 'bearish' | 'neutral' {
     if (verdict === 'STRONG_BUY' || verdict === 'BUY') return 'bullish';
     if (verdict === 'STRONG_SELL' || verdict === 'SELL') return 'bearish';
@@ -84,11 +88,11 @@ function verdictToDirection(verdict: string): 'bullish' | 'bearish' | 'neutral' 
 
 function mapTrendToVerdict(trend: TrendLabel): string {
     switch (trend) {
-        case 'STRONG_BULLISH': return 'STRONG_BUY';
-        case 'BULLISH': return 'BUY';
-        case 'STRONG_BEARISH': return 'STRONG_SELL';
-        case 'BEARISH': return 'SELL';
-        default: return 'BUY';
+        case 'STRONG_BULLISH': return 'BULLISH';
+        case 'BULLISH': return 'BULLISH';
+        case 'STRONG_BEARISH': return 'BEARISH';
+        case 'BEARISH': return 'BEARISH';
+        default: return 'NEUTRAL';
     }
 }
 
@@ -746,7 +750,7 @@ export async function runAiWorkflow(): Promise<void> {
                                         await db.update(radarSignals).set({
                                             signalType: classification.signalType,
                                             horizonDays: classification.horizonDays,
-                                            qualityScore: taResult.qualityScore.score,
+                                            qualityScore: taResult.qualityScore?.score ?? 0,
                                             trendContext: taResult.trend,
                                             entryZoneLow: classification.entryZoneLow,
                                             entryZoneHigh: classification.entryZoneHigh,
@@ -765,6 +769,7 @@ export async function runAiWorkflow(): Promise<void> {
                             if (env.SHADOW_MODE_ENABLED && signalId !== null && taResult) {
                                 (async () => {
                                     try {
+                                        if (!taResult?.qualityScore) return;
                                         const algoVerdict = mapTrendToVerdict(taResult.trend);
                                         const aiVerdict = analysisResult.verdict;
                                         const algoDirection = trendToDirection(taResult.trend);
@@ -781,7 +786,7 @@ export async function runAiWorkflow(): Promise<void> {
                                             algorithmSl: taResult.nearestSupport?.price ?? undefined,
                                             aiTp: tpslData.takeProfitPrice,
                                             aiSl: tpslData.stopLossPrice,
-                                            qualityScore: taResult.qualityScore.score,
+                                            qualityScore: taResult.qualityScore?.score ?? 0,
                                             trendContext: taResult.trend,
                                             agreement,
                                         });

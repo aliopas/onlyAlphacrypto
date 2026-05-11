@@ -180,17 +180,23 @@ export async function getShadowStats(): Promise<ShadowStats> {
 // ─── Helper Functions ───────────────────────────────────────────────────────────
 
 /**
+ * Centralized verdict direction resolver — handles both old (BUY/SELL)
+ * and new (BULLISH/BEARISH) formats for backward compatibility.
+ */
+export function getVerdictDirection(verdict: string): 'bullish' | 'bearish' | 'neutral' {
+    const upper = verdict.toUpperCase();
+    if (['BUY', 'STRONG_BUY', 'BULLISH', 'STRONG_BULLISH'].includes(upper)) return 'bullish';
+    if (['SELL', 'STRONG_SELL', 'BEARISH', 'STRONG_BEARISH'].includes(upper)) return 'bearish';
+    return 'neutral';
+}
+
+/**
  * Calculate P&L percentage for a verdict
  */
 function calculatePnl(verdict: string, entryPrice: number, exitPrice: number): number {
-    const isBullish = verdict.includes('BUY') || verdict.includes('BULLISH');
-    const isBearish = verdict.includes('SELL') || verdict.includes('BEARISH');
-
-    if (isBullish) {
-        return ((exitPrice - entryPrice) / entryPrice) * 100;
-    } else if (isBearish) {
-        return ((entryPrice - exitPrice) / entryPrice) * 100;
-    } else {
-        return 0;
-    }
+    if (entryPrice <= 0) return 0;
+    const direction = getVerdictDirection(verdict);
+    if (direction === 'bullish') return ((exitPrice - entryPrice) / entryPrice) * 100;
+    if (direction === 'bearish') return ((entryPrice - exitPrice) / entryPrice) * 100;
+    return 0;
 }
