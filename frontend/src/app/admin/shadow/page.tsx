@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface ShadowStats {
     totalSignals: number;
@@ -78,9 +78,14 @@ export default function ShadowDashboard() {
     }, []);
 
     const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+    const abortControllerRef = useRef<AbortController | null>(null);
 
     const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
         const controller = new AbortController();
+        abortControllerRef.current = controller;
         const headers: Record<string, string> = {
             ...(options.headers as Record<string, string>),
         };
@@ -200,7 +205,7 @@ export default function ShadowDashboard() {
             fetchSignals();
         }
         return () => {
-            // abort any pending requests
+            abortControllerRef.current?.abort();
         };
     }, [isAuthenticated, sessionToken, currentPage, fetchStats, fetchSignals, coinFilter, agreementFilter, statusFilter, startDate, endDate]);
 
@@ -361,7 +366,6 @@ export default function ShadowDashboard() {
                     <button
                         onClick={() => {
                             setCurrentPage(1);
-                            fetchSignals();
                         }}
                         className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
                     >
@@ -376,7 +380,6 @@ export default function ShadowDashboard() {
                                 setStartDate('');
                                 setEndDate('');
                                 setCurrentPage(1);
-                                fetchSignals();
                             }}
                             className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
                         >
