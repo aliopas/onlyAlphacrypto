@@ -78,49 +78,49 @@ const envSchema = z.object({
     BINNS_API_KEY: z.string().min(10, 'BINNS_API_KEY is required'),
 
     // Level Intelligence Cron
-    LEVEL_INTELLIGENCE_ENABLED: z.boolean().default(false),
-    LEVEL_INTELLIGENCE_MAX_COINS: z.number().default(8),
+    LEVEL_INTELLIGENCE_ENABLED: z.coerce.boolean().default(false),
+    LEVEL_INTELLIGENCE_MAX_COINS: z.coerce.number().default(8),
     LEVEL_INTELLIGENCE_TIMEFRAMES: z.string().default('1h,4h,1d,1w'),
 
     // Scenario Tracker
-    SCENARIO_TRACKER_ENABLED: z.boolean().default(false),
+    SCENARIO_TRACKER_ENABLED: z.coerce.boolean().default(false),
 
     // Event Impact Engine
-    EVENT_IMPACT_ENGINE_ENABLED: z.boolean().default(false),
-    EVENT_IMPACT_PERSISTENCE_ENABLED: z.boolean().default(false),
-    EVENT_IMPACT_BACKFILL_ENABLED: z.boolean().default(false),
-    EVENT_IMPACT_BACKFILL_DRY_RUN: z.boolean().default(true),
-    EVENT_IMPACT_SYNC_ENABLED: z.boolean().default(false),
-    EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.boolean().default(false),
-    EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED: z.boolean().default(false),
+    EVENT_IMPACT_ENGINE_ENABLED: z.coerce.boolean().default(false),
+    EVENT_IMPACT_PERSISTENCE_ENABLED: z.coerce.boolean().default(false),
+    EVENT_IMPACT_BACKFILL_ENABLED: z.coerce.boolean().default(false),
+    EVENT_IMPACT_BACKFILL_DRY_RUN: z.coerce.boolean().default(true),
+    EVENT_IMPACT_SYNC_ENABLED: z.coerce.boolean().default(false),
+    EVENT_IMPACT_OUTCOME_CHECKER_ENABLED: z.coerce.boolean().default(false),
+    EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED: z.coerce.boolean().default(false),
 
     // v2.Phase 0 — Market Filter
-    MARKET_FILTER_ENABLED: z.boolean().default(false),
+    MARKET_FILTER_ENABLED: z.coerce.boolean().default(false),
 
     // v2.Phase 0.1 — OHLCV Data Infrastructure
-    OHLCV_SNAPSHOT_ENABLED: z.boolean().default(false),
-    BACKFILL_OHLCV_ENABLED: z.boolean().default(false),
+    OHLCV_SNAPSHOT_ENABLED: z.coerce.boolean().default(false),
+    BACKFILL_OHLCV_ENABLED: z.coerce.boolean().default(false),
 
     // v2.Phase 2 — Market Regime Detection
-    MARKET_REGIME_ENABLED: z.boolean().default(false),
+    MARKET_REGIME_ENABLED: z.coerce.boolean().default(false),
 
     // v2.Phase 1.5 — Backtesting Framework
-    BACKTEST_TECHNICAL_ENABLED: z.boolean().default(false),
+    BACKTEST_TECHNICAL_ENABLED: z.coerce.boolean().default(false),
 
     // v2.Phase 0.5 — Shadow Mode
-    SHADOW_MODE_ENABLED: z.boolean().default(false),
+    SHADOW_MODE_ENABLED: z.coerce.boolean().default(false),
 
     // v2.Phase 3 — Signal Classification
-    SIGNAL_CLASSIFICATION_ENABLED: z.boolean().default(false),
+    SIGNAL_CLASSIFICATION_ENABLED: z.coerce.boolean().default(false),
 
     // v2.Phase 4 — TP/SL V2
-    TPSL_V2_ENABLED: z.boolean().default(false),
+    TPSL_V2_ENABLED: z.coerce.boolean().default(false),
 
     // v2.Phase 5 — Signal Lifecycle
-    SIGNAL_LIFECYCLE_ENABLED: z.boolean().default(false),
+    SIGNAL_LIFECYCLE_ENABLED: z.coerce.boolean().default(false),
 
     // v2.Phase 7.1 — Daily Trend
-    DAILY_TREND_ENABLED: z.boolean().default(false),
+    DAILY_TREND_ENABLED: z.coerce.boolean().default(false),
 
     // Admin Authentication
     ADMIN_EMAIL: z.string().email().default('admin@onlyalpha.io'),
