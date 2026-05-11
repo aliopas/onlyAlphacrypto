@@ -56,13 +56,20 @@ export async function insertShadowSignal(params: {
 }
 
 /**
- * Resolve a shadow signal at 72h checkpoint
+ * Resolve a shadow signal at 72h checkpoint — uses pre-fetched signal row to avoid redundant SELECT
  */
-export async function resolveShadowSignal72h(id: number, price72h: number): Promise<void> {
-    const signal = await db.select().from(shadowSignals).where(eq(shadowSignals.id, id)).limit(1);
-    if (!signal.length) return;
+export async function resolveShadowSignal72h(
+    id: number,
+    price72h: number,
+    signalRow?: ShadowSignalRow
+): Promise<void> {
+    let row = signalRow;
+    if (!row) {
+        const signal = await db.select().from(shadowSignals).where(eq(shadowSignals.id, id)).limit(1);
+        if (!signal.length) return;
+        row = signal[0];
+    }
 
-    const row = signal[0];
     const algorithmPnl = calculatePnl(row.algorithmVerdict, row.algorithmEntry, price72h);
     const aiPnl = calculatePnl(row.aiVerdict, row.aiEntry, price72h);
 
@@ -76,13 +83,55 @@ export async function resolveShadowSignal72h(id: number, price72h: number): Prom
 }
 
 /**
- * Resolve a shadow signal at 7d checkpoint and finalize
+ * Resolve shadow signals at 72h checkpoint — batch version (no redundant SELECTs)
  */
-export async function resolveShadowSignal7d(id: number, price7d: number): Promise<void> {
-    const signal = await db.select().from(shadowSignals).where(eq(shadowSignals.id, id)).limit(1);
-    if (!signal.length) return;
+export async function resolveShadowSignals72hBatch(
+    signals: Array<{ id: number; coinSymbol: string; algorithmVerdict: string; algorithmEntry: number; aiVerdict: string; aiEntry: number }>,
+    priceByCoin: Record<string, number>
+): Promise<void> {
+    const updates = signals
+        .map(signal => {
+            const price = priceByCoin[signal.coinSymbol];
+            if (price === undefined) return null;
+            const algorithmPnl = calculatePnl(signal.algorithmVerdict, signal.algorithmEntry, price);
+            const aiPnl = calculatePnl(signal.aiVerdict, signal.aiEntry, price);
+            return {
+                id: signal.id,
+                price72h: price,
+                algorithmPnl72h: algorithmPnl,
+                aiPnl72h: aiPnl,
+                algorithmWin72h: algorithmPnl > 0,
+                aiWin72h: aiPnl > 0,
+            };
+        })
+        .filter((u): u is NonNullable<typeof u> => u !== null);
 
-    const row = signal[0];
+    for (const update of updates) {
+        await db.update(shadowSignals).set({
+            price72h: update.price72h,
+            algorithmPnl72h: update.algorithmPnl72h,
+            aiPnl72h: update.aiPnl72h,
+            algorithmWin72h: update.algorithmWin72h,
+            aiWin72h: update.aiWin72h,
+        }).where(eq(shadowSignals.id, update.id));
+    }
+}
+
+/**
+ * Resolve a shadow signal at 7d checkpoint and finalize — uses pre-fetched signal row to avoid redundant SELECT
+ */
+export async function resolveShadowSignal7d(
+    id: number,
+    price7d: number,
+    signalRow?: ShadowSignalRow
+): Promise<void> {
+    let row = signalRow;
+    if (!row) {
+        const signal = await db.select().from(shadowSignals).where(eq(shadowSignals.id, id)).limit(1);
+        if (!signal.length) return;
+        row = signal[0];
+    }
+
     const algorithmPnl7d = calculatePnl(row.algorithmVerdict, row.algorithmEntry, price7d);
     const aiPnl7d = calculatePnl(row.aiVerdict, row.aiEntry, price7d);
 
@@ -107,6 +156,53 @@ export async function resolveShadowSignal7d(id: number, price7d: number): Promis
 }
 
 /**
+ * Resolve shadow signals at 7d checkpoint — batch version (no redundant SELECTs)
+ */
+export async function resolveShadowSignals7dBatch(
+    signals: Array<{ id: number; coinSymbol: string; algorithmVerdict: string; algorithmEntry: number; aiVerdict: string; aiEntry: number }>,
+    priceByCoin: Record<string, number>
+): Promise<void> {
+    const updates = signals
+        .map(signal => {
+            const price = priceByCoin[signal.coinSymbol];
+            if (price === undefined) return null;
+            const algorithmPnl7d = calculatePnl(signal.algorithmVerdict, signal.algorithmEntry, price);
+            const aiPnl7d = calculatePnl(signal.aiVerdict, signal.aiEntry, price);
+            let winner: string | null = null;
+            if (algorithmPnl7d > aiPnl7d) {
+                winner = 'algorithm';
+            } else if (aiPnl7d > algorithmPnl7d) {
+                winner = 'ai';
+            } else {
+                winner = 'tie';
+            }
+            return {
+                id: signal.id,
+                price7d: price,
+                algorithmPnl7d,
+                aiPnl7d,
+                algorithmWin7d: algorithmPnl7d > 0,
+                aiWin7d: aiPnl7d > 0,
+                winner,
+                resolvedAt: new Date(),
+            };
+        })
+        .filter((u): u is NonNullable<typeof u> => u !== null);
+
+    for (const update of updates) {
+        await db.update(shadowSignals).set({
+            price7d: update.price7d,
+            algorithmPnl7d: update.algorithmPnl7d,
+            aiPnl7d: update.aiPnl7d,
+            algorithmWin7d: update.algorithmWin7d,
+            aiWin7d: update.aiWin7d,
+            winner: update.winner,
+            resolvedAt: update.resolvedAt,
+        }).where(eq(shadowSignals.id, update.id));
+    }
+}
+
+/**
  * Get all unresolved shadow signals (no price7d set) with limit
  */
 export async function getUnresolvedShadowSignals(): Promise<ShadowSignalRow[]> {
@@ -118,7 +214,7 @@ export async function getUnresolvedShadowSignals(): Promise<ShadowSignalRow[]> {
 }
 
 /**
- * Get statistical overview of shadow signals using SQL aggregates
+ * Get statistical overview of shadow signals — single query with SQL aggregates
  */
 export async function getShadowStats(): Promise<ShadowStats> {
     const stats = await db
@@ -132,6 +228,7 @@ export async function getShadowStats(): Promise<ShadowStats> {
             aiWins7d: sql<number>`count(*) FILTER (WHERE ${shadowSignals.aiWin7d} = true)`,
             agreeingSignals: sql<number>`count(*) FILTER (WHERE ${shadowSignals.agreement} = true)`,
             disagreeingSignals: sql<number>`count(*) FILTER (WHERE ${shadowSignals.agreement} = false)`,
+            algorithmDisagreementWins: sql<number>`count(*) FILTER (WHERE ${shadowSignals.agreement} = false AND ${shadowSignals.winner} = 'algorithm')`,
         })
         .from(shadowSignals);
 
@@ -151,17 +248,10 @@ export async function getShadowStats(): Promise<ShadowStats> {
         };
     }
 
-    let algorithmDisagreementWinRate: number | null = null;
-    if (row.disagreeingSignals > 0) {
-        const disagreementWins = await db
-            .select({
-                count: sql<number>`count(*)`,
-            })
-            .from(shadowSignals)
-            .where(sql`${shadowSignals.agreement} = false AND ${shadowSignals.winner} = 'algorithm'`);
-
-        algorithmDisagreementWinRate = (disagreementWins[0]?.count || 0) / row.disagreeingSignals * 100;
-    }
+    const disagreeingSignals = Number(row.disagreeingSignals);
+    const algorithmDisagreementWinRate = disagreeingSignals > 0
+        ? (Number(row.algorithmDisagreementWins) / disagreeingSignals) * 100
+        : null;
 
     return {
         totalSignals: Number(row.totalSignals),
@@ -172,7 +262,7 @@ export async function getShadowStats(): Promise<ShadowStats> {
         algorithmWins7d: Number(row.algorithmWins7d),
         aiWins7d: Number(row.aiWins7d),
         agreeingSignals: Number(row.agreeingSignals),
-        disagreeingSignals: Number(row.disagreeingSignals),
+        disagreeingSignals,
         algorithmDisagreementWinRate,
     };
 }

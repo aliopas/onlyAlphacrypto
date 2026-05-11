@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { env } from '../config/env';
-import { getUnresolvedShadowSignals, resolveShadowSignal72h, resolveShadowSignal7d } from '../services/shadowSignals.service';
+import { getUnresolvedShadowSignals, resolveShadowSignals72hBatch, resolveShadowSignals7dBatch } from '../services/shadowSignals.service';
 import { getLivePrices } from '../services/binance.service';
 import { logger } from '../utils/logger';
 
@@ -46,47 +46,57 @@ export async function runShadowChecker(): Promise<void> {
         }
 
         const now = new Date();
-        let processed72h = 0;
-        let processed7d = 0;
 
-        // Process each signal
-        for (const signal of unresolvedSignals) {
-            const ageHours = (now.getTime() - signal.createdAt.getTime()) / (1000 * 60 * 60);
+        // Collect signals ready for 72h and 7d resolution
+        const signals72h = unresolvedSignals
+            .filter(s => {
+                const ageHours = (now.getTime() - s.createdAt.getTime()) / (1000 * 60 * 60);
+                return ageHours >= 72 && s.price72h === null && livePrices[s.coinSymbol] !== undefined;
+            })
+            .map(s => ({
+                id: s.id,
+                coinSymbol: s.coinSymbol,
+                algorithmVerdict: s.algorithmVerdict,
+                algorithmEntry: s.algorithmEntry,
+                aiVerdict: s.aiVerdict,
+                aiEntry: s.aiEntry,
+            }));
 
-            // Check if 72h resolution is due and not yet resolved
-            if (ageHours >= 72 && signal.price72h === null) {
-                const price72h = livePrices[signal.coinSymbol];
-                if (price72h !== undefined) {
-                    try {
-                        await resolveShadowSignal72h(signal.id, price72h);
-                        processed72h++;
-                        console.log(`[ShadowChecker] Resolved 72h for signal ${signal.id} (${signal.coinSymbol})`);
-                    } catch (error) {
-                        logger.error('[ShadowChecker] Failed to resolve 72h for signal %d: %s', signal.id, error instanceof Error ? error.message : String(error));
-                    }
-                } else {
-                    logger.warn('[ShadowChecker] No price available for %s at 72h check', signal.coinSymbol);
-                }
-            }
+        const signals7d = unresolvedSignals
+            .filter(s => {
+                const ageHours = (now.getTime() - s.createdAt.getTime()) / (1000 * 60 * 60);
+                return ageHours >= (7 * 24) && s.price7d === null && livePrices[s.coinSymbol] !== undefined;
+            })
+            .map(s => ({
+                id: s.id,
+                coinSymbol: s.coinSymbol,
+                algorithmVerdict: s.algorithmVerdict,
+                algorithmEntry: s.algorithmEntry,
+                aiVerdict: s.aiVerdict,
+                aiEntry: s.aiEntry,
+            }));
 
-            // Check if 7d resolution is due and not yet resolved
-            if (ageHours >= (7 * 24) && signal.price7d === null) {
-                const price7d = livePrices[signal.coinSymbol];
-                if (price7d !== undefined) {
-                    try {
-                        await resolveShadowSignal7d(signal.id, price7d);
-                        processed7d++;
-                        console.log(`[ShadowChecker] Resolved 7d for signal ${signal.id} (${signal.coinSymbol})`);
-                    } catch (error) {
-                        logger.error('[ShadowChecker] Failed to resolve 7d for signal %d: %s', signal.id, error instanceof Error ? error.message : String(error));
-                    }
-                } else {
-                    logger.warn('[ShadowChecker] No price available for %s at 7d check', signal.coinSymbol);
-                }
+        // Batch resolve 72h signals — no redundant SELECTs
+        if (signals72h.length > 0) {
+            try {
+                await resolveShadowSignals72hBatch(signals72h, livePrices);
+                console.log(`[ShadowChecker] Resolved ${signals72h.length} signals at 72h`);
+            } catch (error) {
+                logger.error('[ShadowChecker] Failed to resolve 72h batch: %s', error instanceof Error ? error.message : String(error));
             }
         }
 
-        console.log(`[ShadowChecker] Completed — ${processed72h} signals resolved at 72h, ${processed7d} signals resolved at 7d`);
+        // Batch resolve 7d signals — no redundant SELECTs
+        if (signals7d.length > 0) {
+            try {
+                await resolveShadowSignals7dBatch(signals7d, livePrices);
+                console.log(`[ShadowChecker] Resolved ${signals7d.length} signals at 7d`);
+            } catch (error) {
+                logger.error('[ShadowChecker] Failed to resolve 7d batch: %s', error instanceof Error ? error.message : String(error));
+            }
+        }
+
+        console.log(`[ShadowChecker] Completed — ${signals72h.length} signals resolved at 72h, ${signals7d.length} signals resolved at 7d`);
 
     } catch (error) {
         logger.error('[ShadowChecker] Unexpected error: %s', error instanceof Error ? error.message : String(error));

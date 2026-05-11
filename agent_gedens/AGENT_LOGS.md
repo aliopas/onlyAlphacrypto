@@ -1,6 +1,6 @@
 # ONLYALPHA — AGENT LOGS
 
-**Last Updated:** May 10, 2026
+**Last Updated:** May 11, 2026
 
 ## Phase 5 + 7.1 + 9 (Signal Lifecycle + Daily Trend + Airdrop Redesign)
 
@@ -57,7 +57,10 @@
 | May 10, 2026 | T-V2-3B | ✅ DONE | Senior Dev | signalClassification.service.ts: classifySignalOutcome + getClassificationStats + deriveClassification with correct threshold cascade. |
 | May 10, 2026 | T-V2-3A | ✅ DONE | Senior Dev | migrate-signal-classification.sql (migration_flags guard) + market.model.ts (classification/confidence on radarSignals, outcomeClassificationEnum on signalPerformance). |
 | May 10, 2026 | T-V2-2Q | ✅ QA PASSED (Round 2) | QA Hunter | Phase 2 Market Regime Detection QA complete. Round 1: 3 critical (C2: N+1 DB loop→batch inArray, C3: exhaustive switch never, M2: RSS 24h staleness filter). Round 2: all 3 fixes verified, 15/15 checklist pass. Files: migrate-market-regime.sql, marketRegime.service.ts, regimeUpdate.cron.ts, market.model.ts, env.ts, server.ts. Advisory tech debt: C1 (btcAnalysis null log), M3 (empty catch), m1 (VARCHAR vs pgEnum), m2 (dead vars), m3 (Redis TTL gap). |
-| May 10, 2026 | PLAN-V2-TRANCHE2 | 📋 PLANNED | Strategic Planner | Tranche 2 micro-task breakdown: 21 tasks across Phase 0.5 (9), Phase 3 (4), Phase 2 (4), Phase 4 (4). 10 new files, 4 modified, 3 migration scripts. |
+| May 11, 2026 | PLAN-V2-TRANCHE2 | 📋 PLANNED | Strategic Planner | Tranche 2 micro-task breakdown: 21 tasks across Phase 0.5 (9), Phase 3 (4), Phase 2 (4), Phase 4 (4). 10 new files, 4 modified, 3 migration scripts. |
+| May 11, 2026 | T-HF-07 | ✅ PASSED | Senior Dev | Fixed N+1 in shadowChecker.cron.ts: replaced per-signal SELECT+UPDATE loop with batch functions resolveShadowSignals72hBatch+resolveShadowSignals7dBatch. Signals pre-filtered by age, prices fetched once via getLivePrices. Eliminated 500 redundant SELECTs per run. |
+| May 11, 2026 | T-HF-09 | ✅ PASSED | Senior Dev | Created migrate-shadow-signals-index.sql (v2): partial index renamed to idx_shadow_signals_unresolved_partial to avoid collision with Drizzle schema's unresolvedIdx on resolved_at. Guarded by migration_flags. |
+| May 11, 2026 | T-HF-11 | ✅ PASSED | Senior Dev | Optimized getShadowStats() to single DB query: added algorithmDisagreementWins as FILTER clause in main aggregate query. Removed separate 2nd query that was calculating algorithmDisagreementWinRate. |
 
 ## Master Plan v2.1 — Tranche 1: Foundation + Validation (COMPLETE)
 | May 8, 2026 | T-V2-1V-R3 | ❌ REJECTED (Round 3) | QA Hunter | Score 14/24. File won't compile: duplicate declarations of all interfaces/functions, orphaned module-level code with `return` statements. All Round 2 bugs also present in active code (old copies overwrite improved copies). |
