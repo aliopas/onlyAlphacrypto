@@ -107,9 +107,11 @@ const tables: TableOp[] = [
 ];
 
 async function cleanCascades(): Promise<void> {
+    const notInList = sql`NOT IN (${sql.join(TRACKED.map(t => sql`${t}`), sql`, `)})`;
+
     const nonTrackedScenarios = await db.select({ id: marketScenarios.scenarioId })
         .from(marketScenarios)
-        .where(sql`${marketScenarios.coinSymbol} NOT IN (${sql.join(TRACKED.map(t => sql`${t}`), sql`, `)})`);
+        .where(sql`${marketScenarios.coinSymbol} ${notInList}`);
     if (nonTrackedScenarios.length > 0) {
         const ids = nonTrackedScenarios.map(r => r.id);
         await db.delete(scenarioStatusHistory).where(inArray(scenarioStatusHistory.scenarioId, ids));
@@ -119,7 +121,7 @@ async function cleanCascades(): Promise<void> {
 
     const nonTrackedLevels = await db.select({ id: levelIntelligence.id })
         .from(levelIntelligence)
-        .where(sql`${levelIntelligence.coinSymbol} NOT IN (${sql.join(TRACKED.map(t => sql`${t}`), sql`, `)})`);
+        .where(sql`${levelIntelligence.coinSymbol} ${notInList}`);
     if (nonTrackedLevels.length > 0) {
         const ids = nonTrackedLevels.map(r => r.id);
         await db.delete(levelInteractions).where(inArray(levelInteractions.levelId, ids));
@@ -128,11 +130,30 @@ async function cleanCascades(): Promise<void> {
 
     const nonTrackedImpacts = await db.select({ id: eventImpacts.id })
         .from(eventImpacts)
-        .where(sql`${eventImpacts.coinSymbol} NOT IN (${sql.join(TRACKED.map(t => sql`${t}`), sql`, `)})`);
+        .where(sql`${eventImpacts.coinSymbol} ${notInList}`);
     if (nonTrackedImpacts.length > 0) {
         const ids = nonTrackedImpacts.map(r => r.id);
         await db.delete(eventImpactOutcomes).where(inArray(eventImpactOutcomes.eventImpactId, ids));
         console.log(`✅ event_impact_outcomes: cleaned ${ids.length} impacts`);
+    }
+
+    const nonTrackedRadarIds = await db.select({ id: radarSignals.id })
+        .from(radarSignals)
+        .where(sql`${radarSignals.coinSymbol} IS NOT NULL AND ${radarSignals.coinSymbol} ${notInList}`);
+    if (nonTrackedRadarIds.length > 0) {
+        const ids = nonTrackedRadarIds.map(r => r.id);
+        await db.delete(signalPerformance).where(inArray(signalPerformance.signalId, ids));
+        console.log(`✅ signal_performance (FK to radar): cleaned ${ids.length} references`);
+    }
+
+    const nonTrackedMasterIds = await db.select({ id: coinMasterArticles.id })
+        .from(coinMasterArticles)
+        .where(sql`${coinMasterArticles.coinSymbol} ${notInList}`);
+    if (nonTrackedMasterIds.length > 0) {
+        const ids = nonTrackedMasterIds.map(r => r.id);
+        await db.delete(coinTimelineUpdates).where(inArray(coinTimelineUpdates.masterArticleId, ids));
+        await db.delete(dailyAlphaFocus).where(inArray(dailyAlphaFocus.masterArticleId, ids));
+        console.log(`✅ timeline_updates + alpha_focus (FK to masters): cleaned ${ids.length} references`);
     }
 }
 
