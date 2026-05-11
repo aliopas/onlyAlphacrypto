@@ -4,7 +4,8 @@ import { eventImpactOutcomes, eventImpacts } from '../models/market.model';
 import { env } from '../config/env';
 import { getCoinKlinesRange } from '../services/binance.service';
 import { logger } from '../utils/logger';
-import { eq, and, lte } from 'drizzle-orm';
+import { eq, and, lte, inArray } from 'drizzle-orm';
+import { TRACKED_COINS } from '../config/coins';
 
 const HORIZON_MS: Record<string, number> = {
     '1h': 3_600_000,
@@ -64,6 +65,7 @@ export async function runEventImpactOutcomeChecker(): Promise<void> {
             .where(and(
                 eq(eventImpactOutcomes.status, 'pending'),
                 lte(eventImpactOutcomes.dueAt, now),
+                inArray(eventImpacts.coinSymbol, [...TRACKED_COINS]),
             ))
             .limit(BATCH_SIZE);
 

@@ -149,20 +149,10 @@ const SYMBOL_PATTERNS: Record<string, RegExp> = {
     XRP: /\b(ripple|xrp)\b/i,
     ADA: /\b(cardano|ada)\b/i,
     DOGE: /\b(dogecoin|doge)\b/i,
-    DOT: /\b(polkadot|dot)\b/i,
     AVAX: /\b(avalanche|avax)\b/i,
-    MATIC: /\b(polygon|matic)\b/i,
     LINK: /\b(chainlink|link)\b/i,
-    UNI: /\b(uniswap|uni)\b/i,
-    ATOM: /\b(cosmos|atom)\b/i,
-    FIL: /\b(filecoin|fil)\b/i,
-    APT: /\b(aptos|apt)\b/i,
     SUI: /\b(sui)\b/i,
-    NEAR: /\b(near\b)/i,
-    OP: /\b(optimism|op\b)/i,
-    ARB: /\b(arbitrum|arb)\b/i,
-    WLD: /\b(worldcoin|wld)\b/i,
-    PEPE: /\b(pepe)\b/i,
+    TON: /\b(ton\b)/i,
 };
 
 function inferSymbolFromTitle(title: string): string | null {

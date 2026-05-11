@@ -3,7 +3,8 @@ import { db } from '../config/db';
 import { scenarioHorizonOutcomes, marketScenarios } from '../models/market.model';
 import { getCoinKlinesRange } from '../services/binance.service';
 import { logger } from '../utils/logger';
-import { eq, lte, and, sql } from 'drizzle-orm';
+import { eq, lte, and, sql, inArray } from 'drizzle-orm';
+import { TRACKED_COINS } from '../config/coins';
 
 export async function runScenarioOutcomeChecker(): Promise<void> {
     if (process.env.SCENARIO_TRACKER_ENABLED !== 'true') {
@@ -28,7 +29,8 @@ export async function runScenarioOutcomeChecker(): Promise<void> {
             .from(scenarioHorizonOutcomes)
             .where(and(
                 eq(scenarioHorizonOutcomes.status, 'pending'),
-                lte(scenarioHorizonOutcomes.dueAt, now)
+                lte(scenarioHorizonOutcomes.dueAt, now),
+                inArray(scenarioHorizonOutcomes.coinSymbol, [...TRACKED_COINS]),
             ))
             .limit(100);
 
