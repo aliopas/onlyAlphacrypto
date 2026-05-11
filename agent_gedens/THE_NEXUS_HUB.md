@@ -3218,3 +3218,86 @@ export function calculateAirdropQuality(project: AirdropProjectInput): AirdropQu
 *Plan source: plans/THE SUPREME REVIEWER_plans/nextstep2.md*
 *Next: Senior Developer executes Phase 5 + Phase 7.1 + Phase 9 in parallel (Groups A→B→C→D→E)*
 
+---
+---
+
+# HOTFIX — Shadow Mode Dashboard Fixes + Scorecard Soft-Launch Popup
+
+**Status:** 🟡 IN PROGRESS — Group 1 DONE (T-HF-01, T-HF-02, T-HF-05 ✅ QA PASSED) | Group 2 STARTED
+**Date:** May 11, 2026
+**Priority:** P0 (Hotfix — post-QA fixes for existing Shadow Mode dashboard)
+**Plan Source:** `plans/THE SUPREME REVIEWER_plans/hotfix-shadow-mode-scorecard.md`
+**Assigned Agent:** Senior Developer
+
+> **⚠️ IMPORTANT:** These are NEW tasks (T-HF-01 through T-HF-12, T-SC-01, T-SC-02, T-HF-QA).
+> Do NOT confuse with old tasks (HF-1 through HF-5) which are from a different plan and already DONE.
+
+## SCOPE — 15 Micro-Tasks
+
+| # | Task ID | Description | File | Status |
+|---|---|---|---|---|
+| 1 | T-HF-01 | Fix BUY/SELL in `mapTrendToVerdict()` | `aiWorkflow.cron.ts:85-93` | ✅ DONE (QA PASSED) |
+| 2 | T-HF-02 | Extract `getVerdictDirection()` helper + refactor `calculatePnl()` | `shadowSignals.service.ts:185-196` | ✅ DONE (QA PASSED) |
+| 3 | T-HF-03 | Fix frontend double-fetch on Apply/Clear Filters | `admin/shadow/page.tsx:362-379` | ✅ DONE |
+| 4 | T-HF-04 | Fix AbortController leak | `admin/shadow/page.tsx:83-84,203` | ✅ DONE |
+| 5 | T-HF-05 | Fix `taResult.qualityScore.score` null guard | `aiWorkflow.cron.ts:784` | ✅ DONE (QA PASSED) |
+| 6 | T-HF-06 | Add rate limiting to admin login | `adminAuth.middleware.ts:~89` | ⬜ NOT STARTED |
+| 7 | T-HF-07 | Fix N+1 in shadow resolution (eliminate redundant SELECTs) | `shadowChecker.cron.ts:52-87` + `shadowSignals.service.ts` | ⬜ NOT STARTED |
+| 8 | T-HF-08 | Fix plaintext password comparison (timing-safe) | `adminAuth.middleware.ts:117` | ⬜ NOT STARTED |
+| 9 | T-HF-09 | Add partial index for unresolved signals query | New: `migrate-shadow-signals-index.sql` | ⬜ NOT STARTED |
+| 10 | T-HF-10 | Add Redis migration comment to session store | `adminAuth.middleware.ts` | ⬜ NOT STARTED |
+| 11 | T-HF-11 | Optimize `getShadowStats()` to single query | `shadowSignals.service.ts:123-178` | ⬜ NOT STARTED |
+| 12 | T-HF-12 | Add auto-refresh to shadow dashboard | `admin/shadow/page.tsx` | ⬜ NOT STARTED |
+| 13 | T-SC-01 | Create ScorecardSoftLaunchPopup component | New: `scorecard/ScorecardSoftLaunchPopup.tsx` | ⬜ NOT STARTED |
+| 14 | T-SC-02 | Integrate popup into scorecard page | `scorecard/page.tsx` | ⬜ NOT STARTED |
+| 15 | T-HF-QA | Final QA — full verification | All modified files | ⬜ NOT STARTED |
+
+## EXECUTION GROUPS (Parallel Where Possible)
+
+```
+Group 1 — Backend Critical (SEQUENTIAL within group):
+  T-HF-01 → T-HF-02 → T-HF-05
+
+Group 2 — Frontend Critical (PARALLEL with Group 1):
+  T-HF-03 + T-HF-04
+
+─── Groups 1+2 must complete before Groups 3+4+5 ───
+
+Group 3 — Security (PARALLEL):
+  T-HF-06 + T-HF-08
+
+Group 4 — Performance (PARALLEL with Group 3):
+  T-HF-07 + T-HF-09 + T-HF-11
+
+Group 5 — Medium + Scorecard (PARALLEL with Groups 3+4):
+  T-HF-10 + T-HF-12 + T-SC-01 + T-SC-02
+
+─── All groups must complete before QA ───
+
+Group 6 — Final QA:
+  T-HF-QA
+```
+
+## HARD RULES
+
+1. **No new packages** — everything uses existing dependencies
+2. **Zero `any` types** in any modified file
+3. **All DB migrations** guarded by `migration_flags`
+4. **BUY/SELL** terminology only allowed in AI-input mapping functions (with comment)
+5. **Admin routes** return 404 for unauthenticated/blocked (never 401/429)
+6. **Scorecard popup** is client-only — no SSR impact
+7. **Backward compatible** — old shadow signals with BUY/SELL verdicts must still resolve correctly
+
+## DETAILED TASK SPECS
+
+Full implementation details for each task are in:
+**`plans/THE SUPREME REVIEWER_plans/hotfix-shadow-mode-scorecard.md`**
+
+The Senior Developer MUST read that file before starting execution.
+
+---
+
+*Plan authored: May 11, 2026 | Strategic Planner*
+*Plan source: plans/THE SUPREME REVIEWER_plans/hotfix-shadow-mode-scorecard.md*
+*Next: Senior Developer executes Group 1 (T-HF-01 → T-HF-02 → T-HF-05)*
+
