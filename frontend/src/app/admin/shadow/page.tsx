@@ -74,6 +74,9 @@ export default function ShadowDashboard() {
     const [totalPages, setTotalPages] = useState(1);
     const [totalSignals, setTotalSignals] = useState(0);
 
+    // Fetch trigger counter — manual trigger for Apply/Clear (bypasses pagination staleness)
+    const [fetchTrigger, setFetchTrigger] = useState(0);
+
     // Load session from localStorage on mount
     useEffect(() => {
         const stored = localStorage.getItem('adminSessionToken');
@@ -204,7 +207,7 @@ export default function ShadowDashboard() {
             fetchStats();
             fetchSignals();
         }
-    }, [isAuthenticated, sessionToken, currentPage, coinFilter, agreementFilter, statusFilter, startDate, endDate, fetchStats, fetchSignals]);
+    }, [isAuthenticated, sessionToken, currentPage, fetchTrigger, fetchStats, fetchSignals]);
 
     const formatPercent = (value: number | null) => value !== null ? `${value.toFixed(1)}%` : 'N/A';
 
@@ -378,6 +381,7 @@ export default function ShadowDashboard() {
                     <button
                         onClick={() => {
                             setCurrentPage(1);
+                            setFetchTrigger(t => t + 1);
                         }}
                         className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
                     >
@@ -397,6 +401,7 @@ export default function ShadowDashboard() {
                                 startDateRef.current = '';
                                 endDateRef.current = '';
                                 setCurrentPage(1);
+                                setFetchTrigger(t => t + 1);
                             }}
                             className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
                         >
