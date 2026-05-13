@@ -1,9 +1,26 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE_URL } from '@/lib/constants';
 
 export const metadata: Metadata = {
   title: 'Terms of Service',
   description: 'OnlyAlpha Terms of Service — rules and guidelines for using our platform.',
+  openGraph: {
+    title: 'Terms of Service',
+    description: 'OnlyAlpha Terms of Service — rules and guidelines for using our platform.',
+    url: `${SITE_URL}/terms`,
+    siteName: 'OnlyAlpha',
+    type: 'website',
+    images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'Terms of Service — OnlyAlpha' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Terms of Service',
+    description: 'OnlyAlpha Terms of Service — rules and guidelines for using our platform.',
+  },
+  alternates: {
+    canonical: `${SITE_URL}/terms`,
+  },
 };
 
 export default function TermsOfService() {

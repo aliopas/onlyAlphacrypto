@@ -1,19 +1,20 @@
 import type { Metadata } from 'next';
 import { apiClient } from '@/features/shared/api/client';
 import ScorecardPopupWrapper from './ScorecardPopupWrapper';
+import { SITE_URL } from '@/lib/constants';
 
 export const revalidate = 360;
-
-const SITE_URL = 'https://onlyalphacrypto.com';
 
 export const metadata: Metadata = {
     title: 'Market Intelligence Scorecard — OnlyAlpha',
     description: 'Data-driven market scenario tracking. Historical outcomes, reference prices, and pattern analysis for cryptocurrency markets.',
+    keywords: ['crypto scorecard', 'market intelligence', 'crypto scenarios', 'trading signals', 'market regime', 'OnlyAlpha scorecard'],
     openGraph: {
         title: 'Market Intelligence Scorecard — OnlyAlpha',
         description: 'Data-driven market scenario tracking with historical outcomes and pattern analysis per coin.',
         url: `${SITE_URL}/scorecard`,
         type: 'website',
+        images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'Market Intelligence Scorecard — OnlyAlpha' }],
     },
     twitter: {
         card: 'summary_large_image',
@@ -186,9 +187,34 @@ export default async function ScorecardPage() {
         data = null;
     }
 
+    const scorecardJsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: 'Market Intelligence Scorecard',
+        description: 'Real-time market intelligence scorecard tracking crypto market health, sentiment, and regime.',
+        url: `${SITE_URL}/scorecard`,
+        breadcrumb: {
+            '@type': 'BreadcrumbList',
+            itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+                { '@type': 'ListItem', position: 2, name: 'Scorecard', item: `${SITE_URL}/scorecard` },
+            ],
+        },
+        publisher: {
+            '@type': 'Organization',
+            name: 'OnlyAlpha',
+            url: SITE_URL,
+        },
+    };
+
     if (!data || (data.overall.activePositions === 0 && data.overall.totalClosed === 0)) {
         return (
-            <div className="min-h-screen bg-black flex items-center justify-center px-4">
+            <>
+                <script
+                    type="application/ld+json"
+                    dangerouslySetInnerHTML={{ __html: JSON.stringify(scorecardJsonLd) }}
+                />
+                <div className="min-h-screen bg-black flex items-center justify-center px-4">
                 <div className="text-center max-w-md">
                     <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-[#0A0A0A] border border-[#222] flex items-center justify-center">
                         <span className="material-symbols-outlined text-3xl text-[var(--color-primary)]">leaderboard</span>
@@ -199,11 +225,17 @@ export default async function ScorecardPage() {
                     </p>
                 </div>
             </div>
+            </>
         );
     }
 
     return (
-        <div className="min-h-screen bg-black text-white">
+        <>
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(scorecardJsonLd) }}
+            />
+            <div className="min-h-screen bg-black text-white">
             <ScorecardPopupWrapper />
             <div className="max-w-6xl mx-auto px-4 py-8 md:py-12">
                 <div className="mb-8">
@@ -407,6 +439,7 @@ export default async function ScorecardPage() {
                     </div>
                 </div>
             </div>
-        </div>
+            </div>
+        </>
     );
 }

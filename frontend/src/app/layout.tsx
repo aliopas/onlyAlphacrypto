@@ -68,6 +68,8 @@ export const metadata: Metadata = {
     title: 'OnlyAlpha — AI-Powered Crypto Intelligence',
     description: 'Real-time AI market analysis, airdrop tracking and on-chain intelligence for crypto market participants.',
     images: ['/opengraph-image.png'],
+    site: '@OnlyAlphaCrypto',
+    creator: '@OnlyAlphaCrypto',
   },
 };
 

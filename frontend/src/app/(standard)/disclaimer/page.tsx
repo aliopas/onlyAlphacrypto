@@ -1,9 +1,26 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE_URL } from '@/lib/constants';
 
 export const metadata: Metadata = {
   title: 'Financial Disclaimer',
   description: 'OnlyAlpha Financial Disclaimer — important risk disclosures about AI-generated crypto intelligence.',
+  openGraph: {
+    title: 'Financial Disclaimer',
+    description: 'OnlyAlpha Financial Disclaimer — important risk disclosures about AI-generated crypto intelligence.',
+    url: `${SITE_URL}/disclaimer`,
+    siteName: 'OnlyAlpha',
+    type: 'website',
+    images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'Financial Disclaimer — OnlyAlpha' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Financial Disclaimer',
+    description: 'OnlyAlpha Financial Disclaimer — important risk disclosures about AI-generated crypto intelligence.',
+  },
+  alternates: {
+    canonical: `${SITE_URL}/disclaimer`,
+  },
 };
 
 export default function DisclaimerPage() {

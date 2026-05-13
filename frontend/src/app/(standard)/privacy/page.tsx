@@ -1,9 +1,26 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE_URL } from '@/lib/constants';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
   description: 'OnlyAlpha Privacy Policy — how we collect, use, and protect your data.',
+  openGraph: {
+    title: 'Privacy Policy',
+    description: 'OnlyAlpha Privacy Policy — how we collect, use, and protect your data.',
+    url: `${SITE_URL}/privacy`,
+    siteName: 'OnlyAlpha',
+    type: 'website',
+    images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'Privacy Policy — OnlyAlpha' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Privacy Policy',
+    description: 'OnlyAlpha Privacy Policy — how we collect, use, and protect your data.',
+  },
+  alternates: {
+    canonical: `${SITE_URL}/privacy`,
+  },
 };
 
 export default function PrivacyPolicy() {

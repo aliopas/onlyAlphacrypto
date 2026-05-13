@@ -3,10 +3,10 @@ import { airdropApi } from '@/features/airdrop/api';
 import { AirdropProject, ProgressResponse } from '@/features/airdrop/types';
 import { AirdropDetailClient } from '@/features/airdrop/components/AirdropDetailClient';
 import { notFound } from 'next/navigation';
+import { SITE_URL } from '@/lib/constants';
+import { sanitizeForJsonLd } from '@/lib/json-ld';
 
 export const revalidate = 60;
-
-const SITE_URL = 'https://onlyalphacrypto.com';
 
 type Params = Promise<{ id: string }>;
 
@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     const numId = Number(id);
 
     if (isNaN(numId)) {
-        return { title: 'Airdrop Not Found' };
+        return { title: 'Airdrop Not Found', robots: { index: false, follow: false } };
     }
 
     let project: AirdropProject | null = null;
@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     }
 
     if (!project) {
-        return { title: 'Airdrop Not Found' };
+        return { title: 'Airdrop Not Found', robots: { index: false, follow: false } };
     }
 
     return {
@@ -37,6 +37,9 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
             description: `Complete airdrop guide for ${project.name}. Tasks, progress, and AI risk assessment.`,
             url: `${SITE_URL}/airdrops/${id}`,
             type: 'article',
+            images: project.logoUrl
+                ? [{ url: project.logoUrl, width: 1200, height: 630, alt: `${project.name} logo` }]
+                : [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: `${project.name} — OnlyAlpha` }],
         },
         twitter: {
             card: 'summary_large_image',
@@ -75,5 +78,31 @@ export default async function AirdropDetailsPage({ params }: { params: Params })
         notFound();
     }
 
-    return <AirdropDetailClient project={project} progress={progress} />;
+    const airdropJsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: sanitizeForJsonLd(project.name),
+        description: project.aiReport
+            ? sanitizeForJsonLd(project.aiReport).substring(0, 160)
+            : sanitizeForJsonLd(`${project.name} free airdrop on ${project.network || 'multiple networks'}`),
+        image: project.logoUrl ? sanitizeForJsonLd(project.logoUrl) : undefined,
+        brand: { '@type': 'Brand', name: sanitizeForJsonLd(project.name) },
+        offers: {
+            '@type': 'Offer',
+            price: '0',
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+            description: `Free airdrop on ${project.network || 'multiple networks'}`,
+        },
+    };
+
+    return (
+        <>
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(airdropJsonLd) }}
+            />
+            <AirdropDetailClient project={project} progress={progress} />
+        </>
+    );
 }

@@ -1,14 +1,50 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE_URL } from '@/lib/constants';
 
 export const metadata: Metadata = {
   title: 'About OnlyAlpha',
   description: 'Learn about OnlyAlpha — AI-powered crypto intelligence for market participants.',
+  keywords: ['OnlyAlpha about', 'AI crypto platform', 'crypto intelligence', 'about OnlyAlpha'],
+  openGraph: {
+    title: 'About OnlyAlpha',
+    description: 'Learn about OnlyAlpha — AI-powered crypto intelligence for market participants.',
+    url: `${SITE_URL}/about`,
+    siteName: 'OnlyAlpha',
+    type: 'website',
+    images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'About OnlyAlpha' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'About OnlyAlpha',
+    description: 'Learn about OnlyAlpha — AI-powered crypto intelligence for market participants.',
+  },
+  alternates: {
+    canonical: `${SITE_URL}/about`,
+  },
+};
+
+const aboutJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'AboutPage',
+  name: 'About OnlyAlpha',
+  description: 'AI-powered cryptocurrency intelligence platform for market participants.',
+  url: `${SITE_URL}/about`,
+  publisher: {
+    '@type': 'Organization',
+    name: 'OnlyAlpha',
+    url: SITE_URL,
+  },
 };
 
 export default function AboutPage() {
   return (
-    <div className="max-w-3xl mx-auto py-8 px-4">
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutJsonLd) }}
+      />
+      <div className="max-w-3xl mx-auto py-8 px-4">
       <Link href="/" className="text-[#555] hover:text-[var(--color-primary)] text-sm font-mono block mb-6">
         ← Back to Home
       </Link>
@@ -31,7 +67,7 @@ export default function AboutPage() {
             <li className="flex items-start gap-3">
               <span className="material-symbols-outlined text-[var(--color-primary)] text-base mt-0.5">trending_up</span>
               <span className="text-sm text-[#888] leading-relaxed">
-                <span className="text-white font-medium">Real-time AI Market Analysis</span> — Comprehensive analysis across 30+ cryptocurrencies with continuous monitoring
+                <span className="text-white font-medium">Real-time AI Market Analysis</span> — Comprehensive analysis across 11 tracked cryptocurrencies with continuous monitoring
               </span>
             </li>
             <li className="flex items-start gap-3">
@@ -136,5 +172,6 @@ export default function AboutPage() {
         </p>
       </section>
     </div>
+    </>
   );
 }

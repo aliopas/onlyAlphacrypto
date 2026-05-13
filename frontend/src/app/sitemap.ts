@@ -18,6 +18,12 @@ const STATIC_PAGES: MetadataRoute.Sitemap = [
         priority: 0.9,
     },
     {
+        url: `${SITE_URL}/scorecard`,
+        lastModified: new Date(),
+        changeFrequency: 'daily',
+        priority: 0.7,
+    },
+    {
         url: `${SITE_URL}/airdrops`,
         lastModified: new Date(),
         changeFrequency: 'hourly',

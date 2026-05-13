@@ -453,9 +453,10 @@ export default function ShadowDashboard() {
             )}
 
             {/* Signals Table */}
-            <div className="bg-[#0A0A0A] border border-[#333] rounded overflow-x-auto">
-                <table className="w-full table-auto">
-                    <thead>
+            <div className="bg-[#0A0A0A] border border-[#333] rounded overflow-hidden">
+                <div className="max-h-[600px] overflow-y-auto">
+                    <table className="w-full table-auto">
+                        <thead className="sticky top-0 z-10">
                         <tr className="bg-[#111] text-gray-300">
                             <th className="px-4 py-2 text-left">ID</th>
                             <th className="px-4 py-2 text-left">Coin</th>
@@ -488,6 +489,7 @@ export default function ShadowDashboard() {
                         ))}
                     </tbody>
                 </table>
+                </div>
             </div>
         </div>
     );

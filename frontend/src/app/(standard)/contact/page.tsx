@@ -1,9 +1,26 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE_URL } from '@/lib/constants';
 
 export const metadata: Metadata = {
   title: 'Contact Us',
   description: 'Get in touch with the OnlyAlpha team — questions, feedback, and partnership inquiries.',
+  openGraph: {
+    title: 'Contact Us',
+    description: 'Get in touch with the OnlyAlpha team — questions, feedback, and partnership inquiries.',
+    url: `${SITE_URL}/contact`,
+    siteName: 'OnlyAlpha',
+    type: 'website',
+    images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'Contact OnlyAlpha' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Contact Us',
+    description: 'Get in touch with the OnlyAlpha team — questions, feedback, and partnership inquiries.',
+  },
+  alternates: {
+    canonical: `${SITE_URL}/contact`,
+  },
 };
 
 export default function ContactPage() {

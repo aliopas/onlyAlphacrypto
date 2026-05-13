@@ -4,6 +4,7 @@ import { LivingArticle } from '@/features/terminal/components/LivingArticle';
 import { terminalApi } from '@/features/terminal/api';
 import { MasterArticle } from '@/features/terminal/types';
 import { COINS, SITE_URL } from '@/lib/constants';
+import { sanitizeForJsonLd } from '@/lib/json-ld';
 
 export const revalidate = 60;
 export const dynamicParams = true;
@@ -35,8 +36,12 @@ function buildArticleJsonLd(symbol: string, masterArticle: MasterArticle | null)
     return {
         '@context': 'https://schema.org',
         '@type': 'Article',
-        headline: masterArticle.metaTitle || `${symbol} Alpha Intelligence Report`,
-        description: masterArticle.metaDescription || `Deep AI intelligence report for ${symbol}. Comprehensive analysis with conviction scores, posture, and timeline.`,
+        headline: masterArticle.metaTitle
+            ? sanitizeForJsonLd(masterArticle.metaTitle)
+            : `${symbol} Alpha Intelligence Report`,
+        description: masterArticle.metaDescription
+            ? sanitizeForJsonLd(masterArticle.metaDescription)
+            : `Deep AI intelligence report for ${symbol}. Comprehensive analysis with conviction scores, posture, and timeline.`,
         author: { '@type': 'Organization', name: 'OnlyAlpha' },
         publisher: {
             '@type': 'Organization',
@@ -95,11 +100,13 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
             description,
             url: `${SITE_URL}/terminal/${coin}/alpha`,
             type: 'article',
+            images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: `${symbol} Alpha Intelligence Report` }],
         },
         twitter: {
             card: 'summary_large_image',
             title,
             description,
+            images: [`${SITE_URL}/opengraph-image.png`],
         },
         alternates: {
             canonical: `${SITE_URL}/terminal/${coin}/alpha`,
