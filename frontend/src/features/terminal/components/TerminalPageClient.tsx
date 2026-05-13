@@ -9,6 +9,8 @@ import { CoinNews } from '@/features/terminal/types';
 import { RadarSignal } from '@/features/home/types';
 import { apiClient } from '@/features/shared/api/client';
 
+const DEFAULT_COIN = 'SOL';
+
 interface Props {
     initialNews: CoinNews[];
     coin?: string;
@@ -79,7 +81,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const [selectedRadarId, setSelectedRadarId] = useState<number | null>(finalDefaultRadarId);
     const [activeMobileTab, setActiveMobileTab] = useState<'wire' | 'stream' | 'chat'>('wire');
 
-    const baseCoin = coin || 'SOL';
+    const baseCoin = coin || DEFAULT_COIN;
 
     useEffect(() => {
         if (selectedRadarId !== null) return;
@@ -145,7 +147,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
         if (isLoadingMoreWire || !hasMoreWire) return;
         setIsLoadingMoreWire(true);
         try {
-            const coinFilter = baseCoin !== 'SOL' ? baseCoin : undefined;
+            const coinFilter = baseCoin !== DEFAULT_COIN ? baseCoin : undefined;
             const url = coinFilter ? `/market/wire?coin=${coinFilter}&offset=${wireOffset}&limit=20` : `/market/wire?offset=${wireOffset}&limit=20`;
             const { data } = await apiClient.get<CoinNews[]>(url);
             if (Array.isArray(data)) {
@@ -170,7 +172,7 @@ export function TerminalPageClient({ initialNews, coin, radarSignals = [], initi
     const activeRadar = signals.find(r => r.id === selectedRadarId);
 
     const activeItemCoin = activeTab === 'WIRE' ? activeArticle?.coin : activeRadar?.coin;
-    const selectedCoin = activeItemCoin || coin || 'SOL';
+    const selectedCoin = activeItemCoin || coin || DEFAULT_COIN;
 
     return (
         <div className="flex-1 flex flex-col lg:flex-row gap-4 h-full lg:overflow-hidden pb-0">

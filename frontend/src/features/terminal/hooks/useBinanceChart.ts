@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiClient } from '@/features/shared/api/client';
 
+const BINANCE_WS_URL = 'wss://stream.binance.com:9443/ws';
+const LOG_SCALE_THRESHOLD = 0.01;
+const MICRO_PRICE_THRESHOLD = 1;
+const PRICE_DECIMAL_PLACES = 6;
+const PRICE_WHOLE_PLACES = 2;
+
 interface ChartCandle {
     time: number;
     open: number;
@@ -61,7 +67,7 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
                 options: Record<string, unknown>
             ) => ChartApi;
             const ColorType = lightweightCharts.ColorType as { Solid: string };
-            const PriceScaleMode = lightweightCharts.PriceScaleMode as unknown as { Logarithmic: string };
+            const PriceScaleMode = lightweightCharts.PriceScaleMode as unknown as { Logarithmic: number };
 
             if (!isMounted || !chartContainerRef.current) return;
 
@@ -80,7 +86,7 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
 
             const hasCandles = response.candles.length > 0;
             const lastClose = hasCandles ? response.candles[response.candles.length - 1].close : 0;
-            const isLogScale = lastClose > 0 && lastClose < 0.01;
+            const isLogScale = lastClose > 0 && lastClose < LOG_SCALE_THRESHOLD;
 
             chart = createChart(chartContainerRef.current, {
                 layout: {
@@ -116,7 +122,7 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
             }
 
             if (response.source === 'binance') {
-                const wsUrl = `wss://stream.binance.com:9443/ws/${coin.toLowerCase()}usdt@kline_1h`;
+                const wsUrl = `${BINANCE_WS_URL}/${coin.toLowerCase()}usdt@kline_1h`;
                 ws = new WebSocket(wsUrl);
                 ws.onmessage = (event) => {
                     if (!isMounted) return;
@@ -132,7 +138,7 @@ export function useBinanceChart({ coin }: UseBinanceChartProps) {
                                 close: parseFloat(k.c),
                             };
                             if (series) series.update(bar);
-                            setPrice(bar.close < 1 ? bar.close.toFixed(6) : bar.close.toFixed(2));
+                            setPrice(bar.close < MICRO_PRICE_THRESHOLD ? bar.close.toFixed(PRICE_DECIMAL_PLACES) : bar.close.toFixed(PRICE_WHOLE_PLACES));
                         }
                     } catch (err) {
                         console.error('[WS] parse error', err);

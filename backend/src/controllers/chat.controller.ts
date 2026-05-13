@@ -1,4 +1,5 @@
 import { Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { db } from '../config/db';
 import { redis } from '../config/redis';
@@ -7,16 +8,23 @@ import { eq, desc, and, gt } from 'drizzle-orm';
 import { streamChatResponse } from '../services/openai.service';
 import { getLivePrice } from '../services/binance.service';
 import { AppError } from '../middleware/errorHandler';
+import { logger } from '../utils/logger';
+
+const chatBodySchema = z.object({
+    coin: z.string().min(1),
+    messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })).min(1),
+    mode: z.enum(['general', 'private', 'context']).optional(),
+    articleId: z.number().int().positive().optional(),
+    articleType: z.enum(['WIRE', 'RADAR']).optional(),
+});
 
 export async function chatStream(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-        const { coin, messages, mode, articleId, articleType } = req.body as {
-            coin: string;
-            messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-            mode?: 'general' | 'private' | 'context';
-            articleId?: number;
-            articleType?: 'WIRE' | 'RADAR';
-        };
+        const parsed = chatBodySchema.safeParse(req.body);
+        if (!parsed.success) {
+            throw new AppError(`Invalid request: ${parsed.error.issues.map(i => i.message).join(', ')}`, 400);
+        }
+        const { coin, messages, mode, articleId, articleType } = parsed.data;
 
         const isContextRoute = req.originalUrl?.includes('/context') ?? false;
 
@@ -31,11 +39,13 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
         const symbol = coin.toUpperCase();
         const resolvedMode = isContextRoute || mode === 'context' ? 'private' : (mode || 'general');
         let contextText = '';
-        let currentPrice: number | null = 0;
-        
+        let currentPrice: number | null = null;
+
         try {
             currentPrice = await getLivePrice(symbol);
-        } catch { /* ignore */ }
+        } catch (err) {
+            logger.warn(`[Chat] getLivePrice failed for ${symbol}: ${err instanceof Error ? err.message : String(err)}`);
+        }
 
         if (resolvedMode === 'private' && articleId && articleType) {
             // Context Aware / Private Mode
@@ -67,7 +77,7 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
             if (articleType === 'WIRE') {
                 const [newsItem] = await db.select().from(coinNews).where(eq(coinNews.id, articleId)).limit(1);
                 if (newsItem) {
-                    baseArticleTime = newsItem.publishedAt;
+                    baseArticleTime = newsItem.publishedAt ?? new Date();
                     contextText += `[PRIMARY FOCUS - RECENT NEWS]: ${newsItem.headline}\nSummary: ${newsItem.summary}\n`;
                 }
             } else if (articleType === 'RADAR') {
@@ -129,7 +139,7 @@ export async function chatStream(req: AuthRequest, res: Response, next: NextFunc
             const memoryStr = memory.length > 0 ? memory.map(m => `[${m.eventType}] ${m.eventSummary}`).join(' | ') : 'No recent memory';
             contextText = `[MASTER ARTICLE]: ${master ? master.headline : 'No master article available'}\n[TIMELINE UPDATES]: ${timelineStr}\n[HISTORICAL MEMORY]: ${memoryStr}\n[RECENT NEWS]: ${newsStr}\n[INSIGHT VERDICT]: ${insight?.verdict || 'None'}`;
 
-            if (!currentPrice) currentPrice = insight?.priceAtAnalysis || 0;
+            if (currentPrice === null) currentPrice = insight?.priceAtAnalysis ?? null;
 
             if (articleId && articleType) {
                 try {

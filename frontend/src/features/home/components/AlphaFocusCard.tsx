@@ -93,9 +93,9 @@ export function AlphaFocusCard({ data }: Props) {
                 </div>
                 <div className="text-right">
                     <span className="text-[10px] font-mono text-[#888] uppercase block mb-1">Current Price</span>
-                    <div className="text-3xl font-mono-nums font-bold text-white tracking-tight">${data.price?.toLocaleString()}</div>
+                    <div className="text-3xl font-mono-nums font-bold text-white tracking-tight">${data.price != null ? data.price.toLocaleString() : '—'}</div>
                     <div className={`text-[12px] font-mono-nums ${isUp ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
-                        {isUp ? '+' : ''}{data.priceChange24h?.toFixed(2)}% (24H)
+                        {isUp ? '+' : ''}{data.priceChange24h != null ? data.priceChange24h.toFixed(2) : '0.00'}% (24H)
                     </div>
                 </div>
             </div>
