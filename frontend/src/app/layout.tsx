@@ -122,7 +122,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <TickerBar />
 
           {/* Page content — rendered by route group layouts */}
-          {children}
+          <div className="flex-1 overflow-y-auto">
+            {children}
+          </div>
         </main>
         <CookieBanner />
       </body>
