@@ -1,135 +1,151 @@
 # ONLYALPHA — PROJECT STATE
 
-**Last Updated:** May 10, 2026
-**Current Focus:** Tranche 2 — Phase 3/4 COMPLETE (QA PASSED Round 2). All Phase 0.5, 2, 3, 4 tasks done. Awaiting next directive.
-**Active Plan Source:** plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md
-**Next Step:** Awaiting next directive from Tech Lead. Tranche 2 all phases complete. Tranche 2 Exit Gate pending (shadow mode validation).
-
-## Global Architecture
-1. **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL.
-2. **Frontend:** Next.js (App Router), Tailwind CSS.
-3. **Data Sources:** Binance, Moralis, RSS feeds, Telegram. (Neon Serverless & Reddit API: DELETED).
-4. **AI Routing:** `AIGateway` (OpenRouter) & `PromptFactory`.
-   - **Models:** DeepSeek-r1 (Deep Analysis), Gemini 2.5 Flash (Article Writing), GPT-5-nano (SEO/Minor).
-
-## Key Development Rules
-1. **Zero `any` Types:** Strict TypeScript enforcement.
-2. **Modular Boundaries:** Cache logic → `CacheManager`. AI calls → `AIGateway`. Prompts → `PromptFactory`.
-3. **Backward Compatibility:** All existing backend exports must remain unchanged unless explicitly authorized.
-4. **Zero BUY/SELL Terminology:** All verdicts use BULLISH/BEARISH internally.
+**Last Updated:** May 14, 2026
+**Current Focus:** Phase A Bug Fix Batch (7 fixes, 10 tasks — FIX-7 split into 4 sub-tasks)
+**Active Plan Sources:** plans/ALGORITHM-INTELLIGENCE-UPGRADE.md, plans/SEO-META-TAGS-PHASE.md
 
 ---
 
-## Current Mission: Master Plan v2.1 — Algorithmic Signal Engine
+## Architecture
 
-**Status:** Tranche 1 COMPLETE. Tranche 2 Phase 0.5/2/3/4 COMPLETE (QA PASSED Round 2). Tranche 2 Exit Gate pending.
-**Plan Source:** `plans/THE SUPREME REVIEWER_plans/nextstep2-v2.md`
-**Guiding Principle:** The algorithm reads the market and produces the numbers. The AI explains the why. Never the reverse.
+- **Backend:** Node.js, Express, TypeScript, Drizzle ORM, PostgreSQL
+- **Frontend:** Next.js (App Router), Tailwind CSS
+- **Data Sources:** Binance, Moralis, RSS feeds, Telegram
+- **AI Routing:** AIGateway (OpenRouter) — DeepSeek-r1, Gemini 2.5 Flash, GPT-5-nano
+- **Cache:** Redis (ioredis)
 
-### Tranche 1 — Foundation + Validation (COMPLETE ✅)
-| Phase | Description | Status |
+---
+
+## Current Mission: Algorithm Intelligence Upgrade — Phase A
+
+**Status:** Phase A IN PROGRESS — 7 bug fixes (10 tasks) to unblock algorithm signal generation + shadow mode
+**Source Plan:** plans/ALGORITHM-INTELLIGENCE-UPGRADE.md
+**Decisions:** DEC-021 to DEC-026, DEC-028
+
+### Phase A: Bug Fix Batch (7 Fixes)
+
+| Fix | File | Decision | Description |
+|---|---|---|---|
+| FIX-1 | tpslCalculatorV2.service.ts | DEC-021 | RR fallback math: ATR TP×2.0/SL×1.0 |
+| FIX-2 | signalClassification.service.ts | DEC-022 | Direction derived from verdict, not hardcoded |
+| FIX-3 | technicalAnalysis.service.ts | DEC-023 | S/R filter lowered 60→40 for quality scoring |
+| FIX-4 | aiWorkflow.cron.ts | DEC-024 | Daily trend allows trend-aligned signals |
+| FIX-5 | marketRegime.service.ts | DEC-025 | VOLATILE threshold raised 3%→5% |
+| FIX-6 | signalClassification.service.ts | DEC-026 | Deduplicate triple RR check |
+| FIX-7 | aiWorkflow.cron.ts | DEC-028 | Composite algorithm verdict (4 sub-tasks: 7A/7B/7C/7Q) |
+
+### Phase A Exit Gate
+
+- [ ] All 7 fixes deployed
+- [ ] Shadow mode running minimum 1 week
+- [ ] Algorithm produces >= 10 non-NEUTRAL signals per week
+- [ ] Shadow mode shows >= 30% non-NEUTRAL algorithm verdicts
+- [ ] Algorithm disagreement win rate measurable
+- [ ] No regression in AI signal quality
+
+### Phase B: TBD (blocked by Phase A exit gate)
+Single intelligence engine (candidate: Momentum Layer RSI+MACD)
+
+---
+
+## Current Mission (Parallel Track): SEO & Meta Tags Remediation
+
+**Status:** APPROVED — 13 tasks, frontend only
+**Source Plan:** plans/SEO-META-TAGS-PHASE.md
+**Decision:** DEC-027
+
+### Execution Order
+
+| Order | ID | Task | Priority |
+|---|---|---|---|
+| 1 | SEO-9 | SITE_URL hardcoded cleanup | Infrastructure |
+| 2 | SEO-4 | Airdrop 404 noindex fix | Critical |
+| 3 | SEO-10 | twitter:site in root layout | Infrastructure |
+| 4 | SEO-1 | Home page full metadata + JSON-LD | Critical |
+| 5 | SEO-6 | Terminal index metadata | Critical |
+| 6 | SEO-2 | Airdrops listing OG image + JSON-LD | Critical |
+| 7 | SEO-3 | Airdrop detail JSON-LD + OG image | Critical |
+| 8 | SEO-5 | Scorecard JSON-LD + OG image | Important |
+| 9 | SEO-7 | About page OG + JSON-LD | Important |
+| 10 | SEO-8 | Static pages OG + canonical (4 pages) | Important |
+| 11 | SEO-11 | Scorecard added to sitemap | Infrastructure |
+| 12 | SEO-12 | Alpha page OG image | Polish |
+| 13 | SEO-13 | Home sitemap verification | Polish |
+
+### SEO Phase Exit Gate
+
+- [ ] Lighthouse SEO >= 95 on `/`, `/airdrops`, `/terminal`
+- [ ] All public pages: unique title + description + canonical + OG tags
+- [ ] Zero hardcoded SITE_URL outside constants.ts
+- [ ] Airdrop 404 = noindex
+- [ ] JSON-LD on home, airdrops, scorecard, archive
+
+---
+
+## Completed Tranches (Master Plan v2.1)
+
+### Tranche 1 + 2 COMPLETE
+
+| Tranche | Phases | Status |
 |---|---|---|
-| v2.Phase 0 | Coin Filter + Market Filter | ✅ COMPLETE (QA PASSED) |
-| v2.Phase 0.1 | OHLCV Data Infrastructure | ✅ COMPLETE (QA PASSED) |
+| Tranche 1 | Phase 0 + 0.1 + 1 + 1.5 | ✅ COMPLETE (QA PASSED) |
+| Tranche 2 | Phase 0.5 + 2 + 3 + 4 + 5 + 7.1 + 9 | ✅ COMPLETE (QA PASSED) |
 
-### Tranche 1 — Remaining (Next Up)
-| Phase | Description | Status | Dependency |
-|---|---|---|---|
-| v2.Phase 1 | Technical Analysis Engine | ✅ COMPLETE (QA PASSED Round 3) | v2.Phase 0.1 |
-| v2.Phase 1.5 | Backtesting Framework | ✅ COMPLETE (QA PASSED Round 4) | v2.Phase 1 |
+### Tranche 2 Exit Gate (PENDING)
 
-**Tranche 1 Exit Gate:**
-- [ ] 90 days of candle data stored for all 11 coins x 3 timeframes
-- [ ] Backtesting pass criteria ALL met (win rate >40%, quality >=60 on 20%+ days, directional diversity, trend accuracy >55%, S/R hit rate >50%)
-
-### Tranche 2 — Shadow Mode + Classification + Regime + TP/SL (PLANNED)
-| Phase | Description | Status | Dependency |
-|---|---|---|---|
-| v2.Phase 0.5 | Shadow Mode + Admin Dashboard | ⬜ PLANNED (T-V2-05A→05Q) | v2.Phase 1.5 PASSED |
-| v2.Phase 3 | Signal Classification System | ✅ COMPLETE (QA PASSED Round 3) | v2.Phase 1 |
-| v2.Phase 2 | Market Regime Detection | ✅ COMPLETE (QA PASSED Round 2) | v2.Phase 1 |
-| v2.Phase 4 | TP/SL Engine Overhaul | ✅ COMPLETE (QA PASSED Round 2) | v2.Phase 1 + v2.Phase 3 |
-
-**Tranche 2 Exit Gate:**
 - [ ] Shadow mode running minimum 2 weeks
 - [ ] 20+ resolved shadow signals
 - [ ] Algorithm disagreement win rate > 60%
 
-### Tranche 3 — Full Integration (BLOCKED)
-| Phase | Description | Status | Dependency |
-|---|---|---|---|
-| v2.Phase 5 | Signal Lifecycle System | ⬜ BLOCKED | v2.Phase 3 + v2.Phase 4 |
-| v2.Phase 7.1 | Daily Trend Context | ⬜ BLOCKED | v2.Phase 1 |
-| v2.Phase 7.2 | Weekly Bias Layer | ⬜ BLOCKED | v2.Phase 7.1 |
-| v2.Phase 7.3 | 4H Entry Timing | ⬜ BLOCKED | v2.Phase 7.2 |
-| v2.Phase 7.4 | Multi-TF Classification | ⬜ BLOCKED | v2.Phase 7.3 |
-| v2.Phase 8 | Scorecard Redesign | ⬜ BLOCKED | v2.Phase 5 + v2.Phase 6 |
+### Blocked Tranches
 
-### Independent Track
-| Phase | Description | Status | Dependency |
+| Tranche | Phases | Status | Blocked By |
 |---|---|---|---|
-| v2.Phase 9 | Airdrop System Redesign | ⬜ NOT STARTED | v2.Phase 0 only |
+| Tranche 3 | Phase 7.2 + 7.3 + 7.4 + 8 | ⬜ BLOCKED | Tranche 2 Exit Gate |
 
 ---
 
-## Key New Infrastructure (v2.1)
+## Key Infrastructure (Active)
+
 | Component | File | Purpose |
 |---|---|---|
-| Coin Constants | `backend/src/config/coins.ts` | Single source of truth for 11 tracked coins |
-| OHLCV Candles Table | `ohlcv_candles` in `market.model.ts` | Raw candle storage (11 coins x 3 TFs) |
-| OHLCV Indicators Table | `ohlcv_indicators` in `market.model.ts` | Pre-computed EMA/ATR/volume_avg |
-| OHLCV Snapshot Service | `backend/src/services/ohlcvSnapshot.service.ts` | Fetch, store, compute indicators |
-| OHLCV Snapshot Cron | `backend/src/crons/ohlcvSnapshot.cron.ts` | Every 4H refresh |
-| Historical Backfill | `backend/scripts/backfill-ohlcv.ts` | One-time 90-day backfill |
-| Market Filter Cron | `backend/src/crons/marketFilter.cron.ts` | Every 6H, coin health check |
-| Technical Analysis | `backend/src/services/technicalAnalysis.service.ts` | ✅ COMPLETE — Full rewrite per v2 spec (771 lines, 8 sub-engines, QA PASSED Round 3) |
-| Backtesting Script | `backend/scripts/backtest-technical.ts` | ✅ COMPLETE — Historical TA replay, 5 exit gate metrics, QA PASSED Round 4 |
-| Historical Query Helpers | `backend/src/services/ohlcvSnapshot.service.ts` | getCandlesAtTime + getIndicatorsRange (QA PASSED) |
-| Backtest Env Flag | `backend/src/config/env.ts` | BACKTEST_TECHNICAL_ENABLED (default false) |
-| Signal Classification | `backend/src/services/signalClassification.service.ts` | ✅ COMPLETE — classifySignalOutcome + getClassificationStats (QA PASSED Round 3) |
-| Signal Classification Migration | `backend/scripts/migrate-signal-classification.sql` | ✅ COMPLETE — migration_flags guard, enum type for outcome_classification (QA PASSED) |
-| Market Regime Detection | `backend/src/services/marketRegime.service.ts` | ✅ COMPLETE — 5 regimes (RISK_ON/OFF, TRENDING, SIDEWAYS, VOLATILE), BTC 4H + Fear&Greed + RSS macro scan (QA PASSED Round 2) |
-| Market Regime Cron | `backend/src/crons/regimeUpdate.cron.ts` | ✅ COMPLETE — Every 4H, batch DB update, Redis cache (QA PASSED) |
-| Market Regime Migration | `backend/scripts/migrate-market-regime.sql` | ✅ COMPLETE — migration_flags guard, current_regime VARCHAR(20) on coin_intelligence_cache (QA PASSED) |
-| Regime Env Flag | `backend/src/config/env.ts` | MARKET_REGIME_ENABLED (default false) |
-| TP/SL V2 Calculator | `backend/src/services/tpslCalculatorV2.service.ts` | ✅ COMPLETE — calculateTpslV2 with RR gate, TP/SL source tracking (QA PASSED) |
-| TP/SL Sanity Gate | `backend/src/services/tpslSanityGate.service.ts` | ✅ COMPLETE — validateTpslSanity, 7 checks, pure function (QA PASSED) |
-| TPSL V2 Env Flag | `backend/src/config/env.ts` | TPSL_V2_ENABLED (default false) |
+| Coin Constants | config/coins.ts | 11 tracked coins |
+| OHLCV Candles + Indicators | ohlcvSnapshot.service.ts | Pre-computed EMA/ATR/volume |
+| Technical Analysis | technicalAnalysis.service.ts | 8 sub-engines, 771 lines |
+| Signal Classification | signalClassification.service.ts | TACTICAL vs STRATEGIC |
+| Market Regime | marketRegime.service.ts | 5 regimes, BTC-centric |
+| TP/SL V2 | tpslCalculatorV2.service.ts | S/R → ATR priority chain |
+| TP/SL Sanity Gate | tpslSanityGate.service.ts | 7 validation checks |
+| Shadow Signals | shadowSignals.service.ts | Algorithm vs AI comparison |
+| Signal Lifecycle | signalLifecycle.service.ts | NEW → ACTIVE → CLOSED |
+| Daily Trend | dailyTrend.service.ts | Trend-aware signal gating |
+| Airdrop Quality | airdropQuality.service.ts | Score < 60 = reject |
 
 ---
 
-## Completed Phases (Legacy — Pre-v2.1)
+## Development Rules
 
-| Phase | Description | Key Commits | Notes |
-|---|---|---|---|
-| Phase 7 | Public Language / Google-Safe | 3933f44→f1e6535 | 9 tasks, 175 files audited, 78 findings fixed |
-| Phase 2 | Full Event Impact Engine | 4ae0af4 | 8 tasks, 68/68 QA pass. Stats injection behind flag. |
-| Phase 1 | Event Impact Activation | f206e39, 886bea9 | 7 tasks, 2 new crons |
-| Phase 8 | Migration Strategy | f5d0ec3 | Docs only, no migrations run |
-| Phase 6B | Event Impact Persistence | — | 7 tasks, event_impacts + outcomes tables |
-| Phase 6A | Event Impact Analysis | — | 7 tasks, read-only analysis service |
-| Phase 0.5 | AdSense-Safe Presentation | — | 6 tasks, terminology cleanup |
-| Phase 23 | TP/SL Auto-Close | — | 9 tasks, signalManager + tpslMonitor |
-| Phase 22 | Airdrop Pipeline Resurrection | 110313b | 3 tasks, DeepSeek/GLM fix |
-| Phase 21 | Multi-TF Signal System | — | 7 tasks, signalManager.service.ts |
-| Phase 20 | AI Pipeline Quality | — | 8 tasks, memory injection + model fix |
-| Phase 19 | AdSense Legal Pages | — | 12 tasks, 5 legal pages + footer + cookie banner |
-| Phase 18 | Signal P&L Tracker | — | 8 tasks, scorecard page |
-| Phase 17 | Telegram Pipeline | — | 7 tasks, telegram.service.ts |
-| Phase 16 | Airdrop Pipeline Fix | — | 9 tasks, RSS + Redis dedup |
-| Phase 15 | Strategic Intelligence | — | 5 tasks, strategicOutlook.service.ts |
-| Phase 14 | Article Cache Fix | — | 2 tasks, cache invalidation |
-| Phase 13 | 404 Dynamic Radar | — | 4 tasks, dynamic coin pages |
-| Phase 12 | Airdrop UX Overhaul | — | 15 tasks |
-| Phase 11 | Airdrop RSS Hunter | — | 7 tasks |
-| Phase 10 | Top Movers Widget | — | 7 tasks |
-| Phase 9 | Terminal Deep-Link | — | 7 tasks |
-| Phase 3 | Level Intelligence | — | PARTIAL — needs reconciliation |
-| Phase 4 | Scenario Tracker | — | PARTIAL — schema exists, integration stub |
-| Phase 4.5 | Level Intelligence Activation | — | PARTIAL — cron stub, env flags |
+1. Zero `any` types — strict TypeScript
+2. Modular boundaries: CacheManager, AIGateway, PromptFactory
+3. Backward compatible — all existing exports unchanged
+4. Zero BUY/SELL terminology — BULLISH/BEARISH only
+5. All DB queries via Drizzle ORM
+6. All migrations guarded by migration_flags
+7. All new crons behind env flags (default false)
 
-### Phase Notes
-- **Phase 2:** Runtime stats injection disabled by flag (`EVENT_IMPACT_STATS_IN_PROMPTS_ENABLED` default `false`). Classification confidence function exists but not fully wired. No blockers.
-- **Phase 3:** `scenarioTracker.service.ts` exists from commit 58ecebd. Not confirmed complete. Needs reconciliation.
-- **Phase 5:** `levelIntelligence.service.ts` exists. Not fully integrated into public scenario/article generation.
-- **Phase 6:** `ai-gateway.ts`, `cache-manager.ts` exist. Full cost reduction plan not complete. Superseded by v2.Phase 6.
+---
+
+## Guiding Principle
+
+The algorithm reads the market and produces the numbers. The AI explains the why. Never the reverse.
+
+---
+
+## Historical Reference
+
+For completed phase details, see:
+- TIMELINE.md — strategic narrative
+- FEATURE_MAP.md — feature ownership + dependencies
+- DECISIONS_COMPRESSED.md — architecture decisions
+- AGENT_LOGS.md — QA review history
+- archives/ — full historical documentation

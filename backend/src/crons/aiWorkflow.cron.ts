@@ -31,7 +31,7 @@ import { calculateTpslV2 } from '../services/tpslCalculatorV2.service';
 import { validateTpslSanity } from '../services/tpslSanityGate.service';
 import { analyzeTechnicals } from '../services/technicalAnalysis.service';
 import { insertShadowSignal } from '../services/shadowSignals.service';
-import type { TrendLabel } from '../services/technicalAnalysis.service';
+import type { TrendLabel, TechnicalAnalysisFullResult } from '../services/technicalAnalysis.service';
 import { getNearbyLevels } from '../services/levelIntelligence.service';
 import { ScenarioTrackerService } from '../services/scenarioTracker.service';
 import { calculateDailyTrend } from '../services/dailyTrend.service';
@@ -70,9 +70,10 @@ const TRIGGER_TYPE_MAP: Record<string, string> = {
 
 // ─── Shadow Mode Helper Functions ─────────────────────────────────────────────
 
-function trendToDirection(trend: TrendLabel): 'bullish' | 'bearish' | 'neutral' {
-    if (trend === 'STRONG_BULLISH' || trend === 'BULLISH') return 'bullish';
-    if (trend === 'STRONG_BEARISH' || trend === 'BEARISH') return 'bearish';
+function deriveAlgorithmDirection(taResult: TechnicalAnalysisFullResult): 'bullish' | 'bearish' | 'neutral' {
+    const verdict = deriveAlgorithmVerdict(taResult);
+    if (verdict === 'BULLISH') return 'bullish';
+    if (verdict === 'BEARISH') return 'bearish';
     return 'neutral';
 }
 
@@ -86,14 +87,47 @@ function verdictToDirection(verdict: string): 'bullish' | 'bearish' | 'neutral' 
     return 'neutral';
 }
 
-function mapTrendToVerdict(trend: TrendLabel): string {
-    switch (trend) {
-        case 'STRONG_BULLISH': return 'BULLISH';
-        case 'BULLISH': return 'BULLISH';
-        case 'STRONG_BEARISH': return 'BEARISH';
-        case 'BEARISH': return 'BEARISH';
-        default: return 'NEUTRAL';
+function deriveAlgorithmVerdict(taResult: TechnicalAnalysisFullResult): 'BULLISH' | 'BEARISH' | 'NEUTRAL' {
+    let verdict: 'BULLISH' | 'BEARISH' | 'NEUTRAL' = 'NEUTRAL';
+
+    const sp = taResult.structure.pattern;
+    if (sp === 'BOS_BULLISH' || sp === 'HH_HL') {
+        verdict = 'BULLISH';
+    } else if (sp === 'BOS_BEARISH' || sp === 'LH_LL') {
+        verdict = 'BEARISH';
+    } else if (sp === 'CHOCH_BULLISH') {
+        verdict = 'BULLISH';
+    } else if (sp === 'CHOCH_BEARISH') {
+        verdict = 'BEARISH';
+    } else if (sp === 'FAILED_BOS') {
+        verdict = 'NEUTRAL';
+    } else if (sp === 'NONE') {
+        const cp = taResult.candlePattern;
+        if (cp.direction === 'bullish' && cp.isValid) {
+            verdict = 'BULLISH';
+        } else if (cp.direction === 'bearish' && cp.isValid) {
+            verdict = 'BEARISH';
+        } else {
+            switch (taResult.trend) {
+                case 'STRONG_BULLISH':
+                case 'BULLISH':
+                    verdict = 'BULLISH';
+                    break;
+                case 'STRONG_BEARISH':
+                case 'BEARISH':
+                    verdict = 'BEARISH';
+                    break;
+                default:
+                    verdict = 'NEUTRAL';
+            }
+        }
     }
+
+    if (taResult.qualityScore.score < 60) {
+        return 'NEUTRAL';
+    }
+
+    return verdict;
 }
 
 function generateSlug(name: string): string {
@@ -770,9 +804,9 @@ export async function runAiWorkflow(): Promise<void> {
                                 (async () => {
                                     try {
                                         if (!taResult?.qualityScore) return;
-                                        const algoVerdict = mapTrendToVerdict(taResult.trend);
+                                        const algoVerdict = deriveAlgorithmVerdict(taResult);
                                         const aiVerdict = analysisResult.verdict;
-                                        const algoDirection = trendToDirection(taResult.trend);
+                                        const algoDirection = deriveAlgorithmDirection(taResult);
                                         const aiDirection = verdictToDirection(aiVerdict);
                                         const agreement = algoDirection === aiDirection;
 
