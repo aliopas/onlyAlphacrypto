@@ -14,11 +14,16 @@ export type TrendLabel = 'STRONG_BULLISH' | 'BULLISH' | 'SIDEWAYS' | 'BEARISH' |
 export interface SRLevel {
     price: number;
     type: 'support' | 'resistance';
-    strengthScore: number;        // 0-100, only >= 60 used for TP/SL
+    strengthScore: number;        // 0-100
     touchCount: number;           // number of price reactions
     volumeAtLevel: number;        // avg volume when price was near this level
     rejectionStrength: number;    // avg wick size as % of candle range
     lastTouchedAt: Date;
+}
+
+export interface SRTiers {
+    strongLevels: SRLevel[];     // strengthScore >= 60 — for TP/SL
+    allLevels: SRLevel[];         // strengthScore >= 40 — for quality scoring nearSR
 }
 
 // ─── Market Structure Result ──────────────────────────────
@@ -74,8 +79,10 @@ export interface TechnicalAnalysisFullResult {
     symbol: string;
     timestamp: Date;
     trend: TrendLabel;
-    supportLevels: SRLevel[];     // sorted by strength DESC, only strength >= 60
-    resistanceLevels: SRLevel[];  // sorted by strength DESC, only strength >= 60
+    supportLevels: SRLevel[];     // strong (>=60), for TP/SL — backward compatible
+    resistanceLevels: SRLevel[];   // strong (>=60), for TP/SL — backward compatible
+    allSupportLevels: SRLevel[];  // (>=40) for quality scoring nearSR check
+    allResistanceLevels: SRLevel[];// (>=40) for quality scoring nearSR check
     nearestSupport: SRLevel | null;
     nearestResistance: SRLevel | null;
     structure: MarketStructureResult;
@@ -162,20 +169,15 @@ export async function detectTrend(symbol: string, preFetched4h?: IndicatorRow | 
     }
 }
 
-export async function detectSupportResistance(symbol: string, preFetchedCandles?: CandleRow[] | null): Promise<{
-    supportLevels: SRLevel[];
-    resistanceLevels: SRLevel[];
-}> {
+export async function detectSupportResistance(symbol: string, preFetchedCandles?: CandleRow[] | null): Promise<SRTiers> {
     try {
         const candles = preFetchedCandles || await getCandles(symbol, '4h', 200);
         if (!candles || candles.length < 5) {
-            return { supportLevels: [], resistanceLevels: [] };
+            return { strongLevels: [], allLevels: [] };
         }
 
-        // Reverse to ASC order (oldest first)
         const ascCandles = candles.slice().reverse();
 
-        // Step 1: Detect swing points
         const swingHighs: { price: number; index: number; volume: number; date: Date }[] = [];
         const swingLows: { price: number; index: number; volume: number; date: Date }[] = [];
 
@@ -194,7 +196,6 @@ export async function detectSupportResistance(symbol: string, preFetchedCandles?
             }
         }
 
-        // Step 2: Cluster levels within 1.5%
         const clusterLevels = (swings: typeof swingHighs, type: 'support' | 'resistance'): SRLevel[] => {
             if (swings.length === 0) return [];
 
@@ -219,7 +220,6 @@ export async function detectSupportResistance(symbol: string, preFetchedCandles?
                 }
             }
 
-            // Overall avg volume
             const overallAvgVolume = ascCandles.reduce((sum, c) => sum + c.volume, 0) / ascCandles.length;
 
             return clusters.map(cluster => {
@@ -228,11 +228,10 @@ export async function detectSupportResistance(symbol: string, preFetchedCandles?
                 const volumeAtLevel = cluster.volumes.reduce((sum, v) => sum + v, 0) / cluster.volumes.length;
                 const lastTouchedAt = cluster.dates.reduce((latest, d) => d > latest ? d : latest, cluster.dates[0]);
 
-                // Rejection strength
                 let rejectionStrength = 0;
                 let rejectionCount = 0;
                 for (const candle of ascCandles) {
-                    if (priceDistancePercent(candle.close, price) <= 0.5) { // near level
+                    if (priceDistancePercent(candle.close, price) <= 0.5) {
                         const range = candle.high - candle.low;
                         if (range > 0) {
                             if (type === 'resistance') {
@@ -248,7 +247,6 @@ export async function detectSupportResistance(symbol: string, preFetchedCandles?
                 }
                 rejectionStrength = rejectionCount > 0 ? rejectionStrength / rejectionCount : 0;
 
-                // Strength score
                 const touchScore = Math.min(touchCount / 5, 1) * 100 * 0.3;
                 const volumeScore = Math.min(volumeAtLevel / overallAvgVolume, 1.5) / 1.5 * 100 * 0.3;
                 const rejectionScore = rejectionStrength * 100 * 0.2;
@@ -273,16 +271,16 @@ export async function detectSupportResistance(symbol: string, preFetchedCandles?
         const supportLevels = clusterLevels(swingLows, 'support');
         const resistanceLevels = clusterLevels(swingHighs, 'resistance');
 
-        // Filter >=60, sort DESC by strength
-        const filterAndSort = (levels: SRLevel[]) => levels.filter(l => l.strengthScore >= 60).sort((a, b) => b.strengthScore - a.strengthScore).slice(0, 5);
+        const filterStrong = (levels: SRLevel[]) => levels.filter(l => l.strengthScore >= 60).sort((a, b) => b.strengthScore - a.strengthScore).slice(0, 5);
+        const filterAll = (levels: SRLevel[]) => levels.filter(l => l.strengthScore >= 40).sort((a, b) => b.strengthScore - a.strengthScore).slice(0, 10);
 
         return {
-            supportLevels: filterAndSort(supportLevels),
-            resistanceLevels: filterAndSort(resistanceLevels),
+            strongLevels: [...filterStrong(supportLevels), ...filterStrong(resistanceLevels)],
+            allLevels: [...filterAll(supportLevels), ...filterAll(resistanceLevels)],
         };
     } catch (error) {
         console.error(`[detectSupportResistance] Error for ${symbol}:`, error);
-        return { supportLevels: [], resistanceLevels: [] };
+        return { strongLevels: [], allLevels: [] };
     }
 }
 
@@ -604,6 +602,8 @@ export async function analyzeVolumeConfirmation(symbol: string, preFetchedCandle
 export function calculateQualityScore(params: {
     trend: TrendLabel;
     currentPrice: number;
+    allSupportLevels: SRLevel[];
+    allResistanceLevels: SRLevel[];
     nearestSupport: SRLevel | null;
     nearestResistance: SRLevel | null;
     volumeConfirmed: boolean;
@@ -613,10 +613,12 @@ export function calculateQualityScore(params: {
     isFailedBos: boolean;
     priceChange24h: number | null;
 }): QualityScoreResult {
-    // Base scoring
     const trendConfirmed = ['BULLISH', 'STRONG_BULLISH', 'BEARISH', 'STRONG_BEARISH'].includes(params.trend);
-    const nearSR = ((params.nearestSupport && isNearLevel(params.currentPrice, params.nearestSupport.price, 2)) ||
+    const primaryNearSR = ((params.nearestSupport && isNearLevel(params.currentPrice, params.nearestSupport.price, 2)) ||
                    (params.nearestResistance && isNearLevel(params.currentPrice, params.nearestResistance.price, 2))) ?? false;
+    const secondaryNearSR = params.allSupportLevels.some(l => isNearLevel(params.currentPrice, l.price, 2)) ||
+                            params.allResistanceLevels.some(l => isNearLevel(params.currentPrice, l.price, 2));
+    const nearSR = primaryNearSR || secondaryNearSR;
     const volumeConfirmed = params.volumeConfirmed;
     const patternAtSR = params.patternAtSR;
 
@@ -681,11 +683,15 @@ export async function analyzeTechnicals(symbol: string): Promise<TechnicalAnalys
             analyzeVolumeConfirmation(symbol, candles200.slice(0, 1), indicator4h),
         ]);
 
-        const { supportLevels, resistanceLevels } = srResult;
+        const { strongLevels, allLevels } = srResult;
+
+        const supportLevels = strongLevels.filter(l => l.type === 'support');
+        const resistanceLevels = strongLevels.filter(l => l.type === 'resistance');
+        const allSupportLevels = allLevels.filter(l => l.type === 'support');
+        const allResistanceLevels = allLevels.filter(l => l.type === 'resistance');
 
         const patternResult = await detectCandlePattern(symbol, supportLevels, resistanceLevels, candles200.slice(0, 5), indicator4h);
 
-        // 5. Determine nearest S/R
         const nearestSupport = supportLevels
             .filter(l => l.price < currentPrice)
             .sort((a, b) => Math.abs(currentPrice - a.price) - Math.abs(currentPrice - b.price))[0] ?? null;
@@ -693,10 +699,11 @@ export async function analyzeTechnicals(symbol: string): Promise<TechnicalAnalys
             .filter(l => l.price > currentPrice)
             .sort((a, b) => Math.abs(currentPrice - a.price) - Math.abs(currentPrice - b.price))[0] ?? null;
 
-        // 6. Calculate quality score
         const qualityScore = calculateQualityScore({
             trend,
             currentPrice,
+            allSupportLevels,
+            allResistanceLevels,
             nearestSupport,
             nearestResistance,
             volumeConfirmed: volumeResult.isAboveAverage,
@@ -704,16 +711,17 @@ export async function analyzeTechnicals(symbol: string): Promise<TechnicalAnalys
             patternAtSR: patternResult.isValid,
             isChocho: structure.isChocho,
             isFailedBos: structure.isFailedBos,
-            priceChange24h: null, // not available
+            priceChange24h: null,
         });
 
-        // 7. Assemble result
         return {
             symbol,
             timestamp: new Date(),
             trend,
             supportLevels,
             resistanceLevels,
+            allSupportLevels,
+            allResistanceLevels,
             nearestSupport,
             nearestResistance,
             structure,

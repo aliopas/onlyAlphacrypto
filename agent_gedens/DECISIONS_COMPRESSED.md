@@ -177,3 +177,9 @@ Decision: Fix algorithm verdict in shadow mode — replace single-factor EMA tre
 Reason: mapTrendToVerdict(taResult.trend) uses only 4H EMA alignment which returns SIDEWAYS 95%+ of the time (8 of 9 code paths). Structure, candle patterns, volume, and quality score are all computed but ignored.
 Impact: aiWorkflow.cron.ts helper functions (lines 73-97) and shadow block (lines 769-797). Priority chain: structure → candle pattern → EMA trend. Quality < 40 override to NEUTRAL. Live signal pipeline UNTOUCHED.
 Status: ACTIVE
+
+[DEC-029]
+Decision: Fix quality threshold discrepancy in shadow mode — change `< 60` to `< 40` per DEC-028 specification
+Reason: Implementation of DEC-028 uses qualityScore < 60 instead of approved < 40, causing ALL algorithm verdicts forced to NEUTRAL. Typical scores 0-50 all below 60. DEC-009 (quality < 60 rejected) governs live pipeline only, NOT shadow mode.
+Impact: aiWorkflow.cron.ts line 126 only. One-line change. Shadow mode produces directional verdicts for quality 40-59. Live pipeline untouched.
+Status: ACTIVE

@@ -20,7 +20,7 @@
 
 **Status:** Phase A IN PROGRESS — 7 bug fixes (10 tasks) to unblock algorithm signal generation + shadow mode
 **Source Plan:** plans/ALGORITHM-INTELLIGENCE-UPGRADE.md
-**Decisions:** DEC-021 to DEC-026, DEC-028
+**Decisions:** DEC-021 to DEC-026, DEC-028, DEC-029
 
 ### Phase A: Bug Fix Batch (7 Fixes)
 

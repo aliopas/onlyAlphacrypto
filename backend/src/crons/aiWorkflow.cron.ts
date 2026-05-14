@@ -123,7 +123,7 @@ function deriveAlgorithmVerdict(taResult: TechnicalAnalysisFullResult): 'BULLISH
         }
     }
 
-    if (taResult.qualityScore.score < 60) {
+    if (taResult.qualityScore.score < 40) {
         return 'NEUTRAL';
     }
 

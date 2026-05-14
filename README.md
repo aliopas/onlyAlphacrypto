@@ -121,21 +121,21 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 │  ┌───────────┐   ┌────────────┐   ┌─────────────────────────┐     │
 │  │  Routes   │──▶│Controllers │──▶│       Services          │     │
 │  └───────────┘   └────────────┘   │                          │     │
-│                                   │  openai.service.ts       │     │
-│  ┌──────────────────────────┐     │  ├─ generateLightweight  │     │
-│  │     CRON JOBS (14 active)│────▶│  │    Triage()           │     │
-│  │  AiWorkflow       hourly │     │  ├─ PromptFactory        │     │
-│  │  TerminalEngine  */10min │     │  ├─ QualityAuditor       │     │
-│  │  AirdropRSS       */6h   │     │  ├─ StrategicOutlook     │     │
-│  │  SignalPerformance */6h  │     │  └─ SignalManager        │     │
-│  │  AirdropDiscovery */6h   │  │  └─ SignalManager        │     │
-│  │  AirdropHunter    */12h  │     └─────────────────────────┘     │
+│  ┌──────────────────────────┐     │  14 active crons          │     │
+│  │  AiWorkflow       hourly │     │  (AiWorkflow as central   │     │
+│  │  TerminalEngine  */10min │     │   intelligence pipeline)  │     │
+│  │  TriageEngine     */2h   │     │  └─────────────────────────┘     │
+│  │  ScenarioOutcome  */2h   │                                     │
 │  │  TelegramMonitor */30min │                                     │
-│  │  ConvictionUpdate */6h   │                                     │
-│  │  DailyAlpha       06:00  │                                     │
-│  │  MarketMood       07:00  │                                     │
-│  │  HistoricalNews   04:00  │                                     │
-│  │  BufferCleanup    00:00  │                                     │
+│  │  SignalPerformance */6h  │                                     │
+│  │  AirdropRSS       */6h  │                                     │
+│  │  AirdropDiscovery */6h  │                                     │
+│  │  ConvictionUpdate */6h  │                                     │
+│  │  AirdropHunter    */12h │                                     │
+│  │  DailyAlpha       06:00 │                                     │
+│  │  MarketMood       07:00 │                                     │
+│  │  HistoricalNews   04:00 │                                     │
+│  │  BufferCleanup    00:00 │                                     │
 │  └──────────────────────────┘                                     │
 │  Bootstrap Scripts:                                                 │
 │  ├─ Radar Cleanup (dedup)                                           │
@@ -186,25 +186,30 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 │  ┌───────────┐   ┌────────────┐   ┌─────────────────────────┐     │
 │  │  Routes   │──▶│Controllers │──▶│       Services          │     │
 │  └───────────┘   └────────────┘   │                          │     │
-│                                   │  openai.service.ts       │     │
-│  ┌──────────────────────────┐     │  ├─ generateLightweight  │     │
-│  │     CRON JOBS (13 active)│────▶│  │    Triage()           │     │
-│  │  AiWorkflow       hourly │     │  ├─ PromptFactory        │     │
-│  │  TerminalEngine  */10min │     │  ├─ QualityAuditor       │     │
-│  │  TelegramMonitor */30min │     │  ├─ FactualGrounding     │     │
-│  │  SignalPerformance */6h  │     │  ├─ StrategicOutlook     │     │
-│  │  AirdropRSS       */6h   │     │  ├─ SignalManager        │     │
-│  │  AirdropDiscovery */6h   │  │  └─ SignalManager        │     │
-│  │  AirdropHunter    */12h  │     └─────────────────────────┘     │
-│  └──────────────────────────┘                                      │
+│  ┌──────────────────────────┐     │  14 active crons          │     │
+│  │  AiWorkflow       hourly │     │  (AiWorkflow as central   │     │
+│  │  TerminalEngine  */10min │     │   intelligence pipeline)  │     │
+│  │  TriageEngine     */2h   │     │  └─────────────────────────┘     │
+│  │  ScenarioOutcome  */2h   │                                     │
+│  │  TelegramMonitor */30min │                                     │
+│  │  SignalPerformance */6h  │                                     │
+│  │  AirdropRSS       */6h  │                                     │
+│  │  AirdropDiscovery */6h  │                                     │
+│  │  ConvictionUpdate */6h  │                                     │
+│  │  AirdropHunter    */12h │                                     │
+│  │  DailyAlpha       06:00 │                                     │
+│  │  MarketMood       07:00 │                                     │
+│  │  HistoricalNews   04:00 │                                     │
+│  │  BufferCleanup    00:00 │                                     │
+│  └──────────────────────────┘                                     │
 │  Bootstrap Scripts:                                                 │
 │  ├─ Radar Cleanup (dedup)                                           │
 │  ├─ Article Repair (incomplete)                                     │
 │  └─ Meta Tag Repair (poor/generic meta titles + descriptions)       │
 └──────────┬───────────────────┬──────────────────┬────────────────────┘
-           │                   │                  │
-    ┌──────▼──────┐   ┌───────▼───────┐  ┌───────▼───────┐
-    │ PostgreSQL  │   │    Redis      │  │ External APIs │
+            │                   │                  │
+     ┌──────▼──────┐   ┌───────▼───────┐  ┌───────▼───────┐
+     │ PostgreSQL  │   │    Redis      │  │ External APIs │
     │ (Native pg) │   │              │  │               │
     │  pgvector   │   │  Cache Layer │  │  OpenRouter   │
     │  25 tables  │   │  Mutex Locks │  │  DeepSeek Dir │
@@ -328,6 +333,16 @@ raw_news_buffer (processed=true, relevanceScore >= threshold)
                     → Save to coin_memory
                     → Store Embedding (pgvector)
                     → Invalidate Redis Cache
+
+  ┌─────────────────────────────────────────────────────┐
+  │            SHADOW MODE (Parallel)                    │
+  │                                                      │
+  │  Composite Algorithm Verdict (DEC-028)              │
+  │  Priority chain: structure → candle → EMA trend    │
+  │  Quality < 40 → NEUTRAL override                    │
+  │  Shadow verdict compared vs AI verdict              │
+  │  Tracked in shadow_signals table                     │
+  └─────────────────────────────────────────────────────┘
 ```
 
 **Key routing change:** Both MINOR updates and MAJOR article writing now route through **DeepSeek Direct** when `DEEPSEEK_API_KEY` is set, falling back to OpenRouter only when unavailable. This extends cost savings to the entire pipeline, not just the analysis phase.
@@ -608,6 +623,7 @@ const crons = [
     { name: 'ConvictionUpdate', fn: startConvictionUpdateCron },
     { name: 'TelegramMonitor', fn: startTelegramMonitorCron },
     { name: 'SignalPerformance', fn: startSignalPerformanceCron },
+    { name: 'ScenarioOutcomeChecker', fn: startScenarioOutcomeCheckerCron },
 ];
 
 crons.forEach((cron, index) => {
@@ -617,7 +633,7 @@ crons.forEach((cron, index) => {
 
 | Cron | Schedule | File | What It Does |
 |---|---|---|---|
-| **AiWorkflow** | `0 * * * *` (hourly) | `aiWorkflow.cron.ts` | Full pipeline: dedup → analysis → article → quality audit → memory → radar → strategic outlook → cache invalidation |
+| **AiWorkflow** | `0 * * * *` (hourly) | `aiWorkflow.cron.ts` | Full pipeline: dedup → composite algorithm verdict → analysis → article → quality audit → memory → radar → strategic outlook → cache invalidation |
 | **TriageEngine** | `0 */2 * * *` (every 2h) | `triageEngine.cron.ts` | Classifies 50 news items in batches of 10 |
 | **TerminalEngine** | `*/10 * * * *` (every 10min) | `terminalEngine.cron.ts` | Pulls 4 RSS feeds into buffer |
 | **TelegramMonitor** | `*/30 * * * *` (news), `0 */4 * * *` (airdrops) | `telegramMonitor.cron.ts` | Scrapes 7 Telegram channels (4 news + 3 airdrop) with spam filtering |
@@ -1465,6 +1481,19 @@ This project is **proprietary**. All rights reserved.
 ---
 
 ## Changelog
+
+### Phase 23 — Composite Algorithm Verdict + Bug Fixes (May 13-14, 2026)
+- Phase A bug fix batch: 7 fixes (FIX-1 to FIX-7) to unblock algorithm signal generation
+- DEC-021: TP/SL V2 RR fallback math — ATR TP×2.0/SL×1.0 for tactical, TP×3.0/SL×1.0 for strategic
+- DEC-022: Direction derived from verdict (not hardcoded) in signalClassification.service.ts
+- DEC-023: S/R strengthScore filter lowered from 60 to 40 for quality scoring
+- DEC-024: Daily trend allows trend-aligned signals (SELL on bearish = ALLOWED)
+- DEC-025: VOLATILE regime ATR trigger raised from 3% to 5% (check from 4% to 6%)
+- DEC-026: Deduplicate triple RR check in signalClassification.service.ts
+- DEC-027: SEO & Meta Tags Remediation — 13 tasks for platform-wide meta tag gaps
+- DEC-028: Composite algorithm verdict replaces single-factor EMA trend (shadow mode pending)
+- Phase A shadow mode active — algorithm producing composite verdicts vs AI analysis
+- 14 active crons documented with ScenarioOutcomeChecker added
 
 ### Phase 22 — Airdrop Pipeline Resurrection (Apr 29, 2026)
 - Fixed 3 critical failures that killed airdrop discovery for 2+ days
