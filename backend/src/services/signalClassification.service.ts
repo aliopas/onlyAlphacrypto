@@ -87,12 +87,21 @@ function calculateRiskReward(
     return tpDistance / slDistance;
 }
 
+export function deriveDirectionFromVerdict(verdict?: string): 'bullish' | 'bearish' | null {
+    if (!verdict) return null;
+    const upper = verdict.toUpperCase();
+    if (upper === 'STRONG_BULLISH' || upper === 'BULLISH') return 'bullish';
+    if (upper === 'STRONG_BEARISH' || upper === 'BEARISH') return 'bearish';
+    return null;
+}
+
 export function classifySignal(params: {
     eventType: string;
     taResult: TechnicalAnalysisFullResult;
     currentPrice: number;
+    verdict?: string;
 }): ClassificationResult {
-    const { eventType, taResult, currentPrice } = params;
+    const { eventType, taResult, currentPrice, verdict } = params;
     const entryPrice = currentPrice;
 
     if (entryPrice <= 0) {
@@ -109,7 +118,20 @@ export function classifySignal(params: {
     }
 
     const { signalType, horizonDays } = mapEventTypeToSignalType(eventType);
-    const direction: 'bullish' | 'bearish' = 'bullish';
+    const direction = deriveDirectionFromVerdict(verdict);
+
+    if (!direction) {
+        return {
+            signalType: 'tactical',
+            horizonDays: 3,
+            entryZoneLow: 0,
+            entryZoneHigh: 0,
+            invalidationLevel: 0,
+            invalidationReason: 'No directional verdict',
+            riskRewardRatio: 0,
+            meetsMinimumRR: false,
+        };
+    }
 
     const nearestSR = findNearestSRLevel(entryPrice, direction, taResult);
     const takeProfitPrice = nearestSR?.level ?? entryPrice * 1.15;

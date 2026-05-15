@@ -342,12 +342,26 @@ export async function analyzeMarketStructure(symbol: string, preFetchedCandles?:
         const highs = lastSwings.filter(s => s.type === 'high').map(s => s.price);
         const lows = lastSwings.filter(s => s.type === 'low').map(s => s.price);
 
-        // Check patterns
-        const isAscending = (arr: number[]) => arr.every((val, i) => i === 0 || val >= arr[i - 1]);
-        const isDescending = (arr: number[]) => arr.every((val, i) => i === 0 || val <= arr[i - 1]);
+        // Check patterns with 1-deviation tolerance
+        let hhDeviations = 0;
+        for (let i = 1; i < highs.length; i++) {
+            if (highs[i] < highs[i - 1]) hhDeviations++;
+        }
+        let hlDeviations = 0;
+        for (let i = 1; i < lows.length; i++) {
+            if (lows[i] < lows[i - 1]) hlDeviations++;
+        }
+        const hh_hl = highs.length >= 2 && lows.length >= 2 && hhDeviations <= 1 && hlDeviations <= 1;
 
-        const hh_hl = highs.length >= 2 && lows.length >= 2 && isAscending(highs) && isAscending(lows);
-        const lh_ll = highs.length >= 2 && lows.length >= 2 && isDescending(highs) && isDescending(lows);
+        let lhDeviations = 0;
+        for (let i = 1; i < highs.length; i++) {
+            if (highs[i] > highs[i - 1]) lhDeviations++;
+        }
+        let llDeviations = 0;
+        for (let i = 1; i < lows.length; i++) {
+            if (lows[i] > lows[i - 1]) llDeviations++;
+        }
+        const lh_ll = highs.length >= 2 && lows.length >= 2 && lhDeviations <= 1 && llDeviations <= 1;
 
         const lastSwingHigh = highs[highs.length - 1] || null;
         const lastSwingLow = lows[lows.length - 1] || null;
@@ -518,7 +532,7 @@ export async function detectCandlePattern(
             srAligned = true;
         }
 
-        const isValid = pattern !== null && volumeConfirmed && srAligned;
+        const isValid = pattern !== null && (volumeConfirmed || srAligned);
 
         return {
             pattern,

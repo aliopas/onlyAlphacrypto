@@ -106,7 +106,7 @@ async function analyzeBTC4H(): Promise<BTCAnalysis | null> {
         ? ema20 > ema50 && ema50 > ema200
         : false;
 
-    const volatilityScore = atrPercent > 3 ? 1 : atrPercent > 1.5 ? 0.5 : 0;
+    const volatilityScore = atrPercent > 5 ? 1 : atrPercent > 2.5 ? 0.5 : 0;
 
     return {
         atrPercent,
@@ -143,7 +143,7 @@ export async function detectMarketRegime(): Promise<MarketRegime> {
 
     const { atrPercent, recentChange, volatilityScore } = btcAnalysis;
 
-    if (atrPercent > 4 || volatilityScore >= 1) {
+    if (atrPercent > 6 || volatilityScore >= 1) {
         return 'VOLATILE';
     }
 

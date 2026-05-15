@@ -1,6 +1,6 @@
 import { db } from '../config/db';
 import { ohlcvIndicators } from '../models/market.model';
-import { eq, desc } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { logger } from '../utils/logger';
 
 export type TrendLabel = 'STRONG_BULLISH' | 'BULLISH' | 'SIDEWAYS' | 'BEARISH' | 'STRONG_BEARISH';
@@ -14,7 +14,7 @@ async function getLatest1dIndicator(symbol: string): Promise<{
         const [row] = await db
             .select()
             .from(ohlcvIndicators)
-            .where(eq(ohlcvIndicators.coinSymbol, symbol))
+            .where(and(eq(ohlcvIndicators.coinSymbol, symbol), eq(ohlcvIndicators.timeframe, '1d')))
             .orderBy(desc(ohlcvIndicators.openTime));
 
         if (!row) return null;
