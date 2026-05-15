@@ -52,6 +52,12 @@ nul
 # Playwright MCP artifacts
 .playwright-mcp/
 
+# Agent governance (local only)
+agent_gedens/
+
+# Agent plans (local only)
+plans/
+
 # Screenshots (but allow frontend public images)
 *.png
 !frontend/public/**/*.png
