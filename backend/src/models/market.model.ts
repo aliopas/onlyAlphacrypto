@@ -155,6 +155,13 @@ export const signalPerformance = pgTable('signal_performance', {
     breakevenMovedAt: timestamp('breakeven_moved_at'),
     closeReason: varchar('close_reason', { length: 50 }),
 
+    // Phase C: Multi-TP columns
+    tp2Price: real('tp2_price'),
+    tp3Price: real('tp3_price'),
+    tp2HitAt: timestamp('tp2_hit_at'),
+    tp3HitAt: timestamp('tp3_hit_at'),
+    lifecycleActionsLog: jsonb('lifecycle_actions_log').default('[]'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -588,6 +595,9 @@ export const shadowSignals = pgTable('shadow_signals', {
     algorithmWin7d: boolean('algorithm_win_7d'),
     aiWin7d: boolean('ai_win_7d'),
     winner: varchar('winner', { length: 20 }),
+    mtfConfluenceScore: integer('mtf_confluence_score'),
+    mtfTrendAlignment: varchar('mtf_trend_alignment', { length: 20 }),
+    mtfDominantTrend: varchar('mtf_dominant_trend', { length: 20 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     resolvedAt: timestamp('resolved_at'),
 }, (table) => ({

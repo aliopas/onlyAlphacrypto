@@ -122,6 +122,12 @@ const envSchema = z.object({
     // v2.Phase 7.1 — Daily Trend
     DAILY_TREND_ENABLED: z.coerce.boolean().default(false),
 
+    // v2.Phase B — Multi-Timeframe Context Engine
+    MTF_CONTEXT_ENABLED: z.coerce.boolean().default(false),
+
+    // v2.Phase C — Intelligent Signal Lifecycle Engine V2
+    LIFECYCLE_V2_ENABLED: z.coerce.boolean().default(false),
+
     // Admin Authentication
     ADMIN_EMAIL: z.string().email().default('admin@onlyalpha.io'),
     ADMIN_PASSWORD: z.string().min(12).default('change_me_in_prod'),
