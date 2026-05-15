@@ -7,6 +7,8 @@ import { deleteCachePattern } from '../config/redis';
 import { getCoinKlinesRange } from './binance.service';
 
 const BINANCE_INTERVAL_MAP: Record<string, string> = {
+    '15m': '15m',
+    '1h': '1h',
     '4h': '4h',
     '1d': '1d',
     '1w': '1w',
@@ -18,9 +20,11 @@ export async function fetchAndStoreCandles(symbol: string, timeframe: string, li
         if (!binanceInterval) throw new Error(`Unsupported timeframe: ${timeframe}`);
 
         // Calculate time range for latest candles
-        const intervalMs = timeframe === '4h' ? 4 * 60 * 60 * 1000 :
-                          timeframe === '1d' ? 24 * 60 * 60 * 1000 :
-                          7 * 24 * 60 * 60 * 1000; // 1w
+        const intervalMs = timeframe === '15m' ? 15 * 60 * 1000 :
+                          timeframe === '1h'  ? 60 * 60 * 1000 :
+                          timeframe === '4h'  ? 4 * 60 * 60 * 1000 :
+                          timeframe === '1d'  ? 24 * 60 * 60 * 1000 :
+                          7 * 24 * 60 * 60 * 1000;
         const endTime = Date.now();
         const startTime = endTime - (limit * intervalMs);
 
@@ -79,7 +83,7 @@ export async function backfillHistoricalCandles(symbol: string, timeframe: strin
         const candles: typeof ohlcvCandles.$inferInsert[] = klines.map(k => ({
             coinSymbol: symbol,
             timeframe,
-            openTime: new Date(k.closeTime - (timeframe === '4h' ? 4 * 60 * 60 * 1000 : timeframe === '1d' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000)), // Approximate
+            openTime: new Date(k.closeTime - (timeframe === '15m' ? 15 * 60 * 1000 : timeframe === '1h' ? 60 * 60 * 1000 : timeframe === '4h' ? 4 * 60 * 60 * 1000 : timeframe === '1d' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 1000)),
             open: k.open,
             high: k.high,
             low: k.low,
@@ -193,6 +197,11 @@ export async function computeIndicators(symbol: string, timeframe: string): Prom
         const ema20 = calculateEMA(closes, 20);
         const ema50 = calculateEMA(closes, 50);
         const ema200 = calculateEMA(closes, 200);
+        if (timeframe === '15m') {
+            for (let i = 0; i < ema200.length; i++) {
+                ema200[i] = null;
+            }
+        }
         const atr14 = calculateATR(highs, lows, closes, 14);
         const volumeAvg20 = calculateSMA(volumes, 20);
 

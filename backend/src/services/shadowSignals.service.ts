@@ -36,6 +36,9 @@ export async function insertShadowSignal(params: {
     qualityScore: number;
     trendContext: string;
     agreement: boolean;
+    mtfConfluenceScore?: number | null;
+    mtfTrendAlignment?: string | null;
+    mtfDominantTrend?: string | null;
 }): Promise<number> {
     const result = await db.insert(shadowSignals).values({
         coinSymbol: params.coinSymbol,
@@ -50,6 +53,9 @@ export async function insertShadowSignal(params: {
         qualityScore: params.qualityScore,
         trendContext: params.trendContext,
         agreement: params.agreement,
+        mtfConfluenceScore: params.mtfConfluenceScore ?? null,
+        mtfTrendAlignment: params.mtfTrendAlignment ?? null,
+        mtfDominantTrend: params.mtfDominantTrend ?? null,
     }).returning({ id: shadowSignals.id });
 
     return result[0].id;

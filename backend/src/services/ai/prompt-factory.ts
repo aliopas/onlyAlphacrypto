@@ -4,6 +4,7 @@ import type { CoinIntelligence } from '../coinIntelligence.service';
 import type { TemporalPattern } from '../temporalIntelligence.service';
 import type { PriceResult } from '../priceService';
 import type { HistoricalStatsOutput } from '../historicalEventStats.service';
+import type { MtfContext } from '../mtfContext.service';
 
 
 
@@ -58,6 +59,7 @@ export interface DeepAnalysisInput {
         breakCount: number;
         lastTouchedAt?: Date;
     }>;
+    mtfContext?: MtfContext | null;
 }
 
 export interface MasterUpdateInput {
@@ -378,7 +380,12 @@ ${input.recentMemory && input.recentMemory.length > 0
     ? input.recentMemory.map((m, i) =>
         `${i + 1}. [${m.createdAt.toISOString().split('T')[0]}] ${m.eventType}: ${m.eventSummary} | Price: $${m.priceAtEvent ?? 'N/A'} | Verdict: ${m.verdict ?? 'N/A'} | Confidence: ${m.confidenceScore ?? 'N/A'}${m.redFlags && m.redFlags.length > 0 ? ` | Red Flags: ${m.redFlags.join(', ')}` : ''}${m.keyDrivers && m.keyDrivers.length > 0 ? ` | Drivers: ${m.keyDrivers.join(', ')}` : ''}`
     ).join('\n')
-    : 'No prior events recorded for this coin.'}`
+    : 'No prior events recorded for this coin.'}
+
+--- MULTI-TIMEFRAME CONTEXT ---
+${input.mtfContext ? `Dominant Trend: ${input.mtfContext.dominantTrend} (Confluence: ${input.mtfContext.confluence.confluenceScore}%)
+Alignment: ${input.mtfContext.confluence.trendAlignment}
+${input.mtfContext.timeframes.map(tf => `- ${tf.timeframe}: ${tf.trend} | ATR: ${tf.atr ?? 'N/A'}`).join('\n')}` : 'No MTF context available'}`
             }
         ];
     }
