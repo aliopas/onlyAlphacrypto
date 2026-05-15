@@ -12,7 +12,9 @@ export const metadata: Metadata = {
     title: 'Article Archive — OnlyAlpha',
     description: 'Browse all AI-powered crypto intelligence articles, analysis reports, and market insights.',
     url: `${SITE_URL}/archive`,
+    siteName: 'OnlyAlpha',
     type: 'website',
+    images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'Article Archive — OnlyAlpha' }],
   },
   twitter: {
     card: 'summary_large_image',

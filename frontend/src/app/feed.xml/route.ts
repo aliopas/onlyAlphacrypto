@@ -18,7 +18,7 @@ export async function GET() {
   try {
     const { data: articles } = await apiClient.get<ArchiveArticle[]>('/market/archive');
 
-    const items = (articles as ArchiveArticle[]).map(article => {
+    const items = articles.map(article => {
       const pubDate = new Date(article.updatedAt || article.createdAt).toUTCString();
       const link = `${SITE_URL}/terminal/${article.coinSymbol.toLowerCase()}/alpha`;
       const description = article.metaDescription || article.hook || `AI-powered analysis for ${article.coinSymbol}`;

@@ -13,6 +13,7 @@ export const metadata: Metadata = {
   title: 'OnlyAlpha — AI-Powered Crypto Intelligence | Real-Time Market Analysis',
   description: 'Track 11 top cryptocurrencies with AI-powered analysis, airdrop farming, on-chain intelligence, and real-time market signals. Free crypto intelligence platform.',
   keywords: ['crypto intelligence', 'AI crypto analysis', 'airdrop tracker', 'market signals', 'crypto analysis', 'OnlyAlpha'],
+  robots: { index: true, follow: true },
   openGraph: {
     title: 'OnlyAlpha — AI-Powered Crypto Intelligence',
     description: 'Real-time AI market analysis, airdrop tracking, and on-chain intelligence for crypto market participants.',

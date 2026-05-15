@@ -95,6 +95,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
             description,
             url: `${SITE_URL}/terminal/${coin}`,
             type: 'website',
+            siteName: 'OnlyAlpha',
+            images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: `${symbol} Analysis — OnlyAlpha` }],
         },
         twitter: {
             card: 'summary_large_image',

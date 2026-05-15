@@ -16,7 +16,7 @@ export const metadata: Metadata = {
         url: `${SITE_URL}/terminal`,
         siteName: 'OnlyAlpha',
         type: 'website',
-        images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630 }],
+        images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'Terminal — Live Crypto Analysis Dashboard | OnlyAlpha' }],
     },
     twitter: {
         card: 'summary_large_image',

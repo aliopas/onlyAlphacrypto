@@ -13,6 +13,7 @@ export const metadata: Metadata = {
         title: 'Market Intelligence Scorecard — OnlyAlpha',
         description: 'Data-driven market scenario tracking with historical outcomes and pattern analysis per coin.',
         url: `${SITE_URL}/scorecard`,
+        siteName: 'OnlyAlpha',
         type: 'website',
         images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'Market Intelligence Scorecard — OnlyAlpha' }],
     },

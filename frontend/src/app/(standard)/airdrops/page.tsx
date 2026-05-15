@@ -14,6 +14,7 @@ export const metadata: Metadata = {
         title: 'Airdrop Farm Grid — OnlyAlpha',
         description: 'Discover and track active crypto airdrops with AI-powered risk assessment.',
         url: `${SITE_URL}/airdrops`,
+        siteName: 'OnlyAlpha',
         type: 'website',
         images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'Airdrop Farm Grid — OnlyAlpha' }],
     },
@@ -27,19 +28,6 @@ export const metadata: Metadata = {
     },
 };
 
-const airdropListJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'CollectionPage',
-    name: 'Active Crypto Airdrops',
-    description: 'Discover and track active crypto airdrops on OnlyAlpha',
-    url: `${SITE_URL}/airdrops`,
-    publisher: {
-        '@type': 'Organization',
-        name: 'OnlyAlpha',
-        url: SITE_URL,
-    },
-};
-
 export default async function AirdropsPage() {
     let projects: AirdropProject[] = [];
     let fetchError = false;
@@ -49,6 +37,26 @@ export default async function AirdropsPage() {
         console.error('[Airdrops] Failed to load projects on server:', error);
         fetchError = true;
     }
+
+    const airdropListJsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: 'Active Crypto Airdrops',
+        description: 'Discover and track active crypto airdrops on OnlyAlpha',
+        url: `${SITE_URL}/airdrops`,
+        numberOfItems: projects.length,
+        itemListElement: projects.map((p, i) => ({
+            '@type': 'ListItem',
+            position: i + 1,
+            url: `${SITE_URL}/airdrops/${p.id}`,
+            name: p.name,
+        })),
+        publisher: {
+            '@type': 'Organization',
+            name: 'OnlyAlpha',
+            url: SITE_URL,
+        },
+    };
 
     return (
         <>
