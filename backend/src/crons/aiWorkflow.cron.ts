@@ -124,10 +124,6 @@ function deriveAlgorithmVerdict(taResult: TechnicalAnalysisFullResult): 'BULLISH
         }
     }
 
-    if (taResult.qualityScore.score < 40) {
-        return 'NEUTRAL';
-    }
-
     return verdict;
 }
 
@@ -712,12 +708,11 @@ if (!price?.price) {
                                         const dailyTrend = await calculateDailyTrend(symbol) as DailyTrendLabel;
                                         const verdictDirection = deriveDirectionFromVerdict(analysisResult.verdict);
                                         const bearishTrends = new Set(['BEARISH', 'STRONG_BEARISH']);
-                                        const counterTrendSignal = bearishTrends.has(dailyTrend) && verdictDirection === 'bullish';
+                                        const bullishTrends = new Set(['BULLISH', 'STRONG_BULLISH']);
+                                        const counterTrendSignal = (bearishTrends.has(dailyTrend) && verdictDirection === 'bullish')
+                                            || (bullishTrends.has(dailyTrend) && verdictDirection === 'bearish');
                                         if (counterTrendSignal) {
-                                            console.log(`[AI Workflow] Skipping counter-trend signal for ${symbol}: daily trend=${dailyTrend}, verdict=${analysisResult.verdict}`);
-                                            shouldSkipSignal = true;
-                                        } else if (bearishTrends.has(dailyTrend)) {
-                                            console.log(`[AI Workflow] Skipping signal for ${symbol}: daily trend=${dailyTrend}`);
+                                            console.log(`[AI Workflow] Skipping counter-trend signal for ${symbol}: daily trend=${dailyTrend}, verdict direction=${verdictDirection}`);
                                             shouldSkipSignal = true;
                                         }
                                     } catch (err) {

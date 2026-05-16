@@ -181,17 +181,15 @@ export async function detectSupportResistance(symbol: string, preFetchedCandles?
         const swingHighs: { price: number; index: number; volume: number; date: Date }[] = [];
         const swingLows: { price: number; index: number; volume: number; date: Date }[] = [];
 
-        for (let i = 2; i < ascCandles.length - 2; i++) {
+        for (let i = 1; i < ascCandles.length - 1; i++) {
             const candle = ascCandles[i];
             const prev1 = ascCandles[i - 1];
-            const prev2 = ascCandles[i - 2];
             const next1 = ascCandles[i + 1];
-            const next2 = ascCandles[i + 2];
 
-            if (candle.low < prev1.low && candle.low < prev2.low && candle.low < next1.low && candle.low < next2.low) {
+            if (candle.low < prev1.low && candle.low < next1.low) {
                 swingLows.push({ price: candle.low, index: i, volume: candle.volume, date: candle.openTime });
             }
-            if (candle.high > prev1.high && candle.high > prev2.high && candle.high > next1.high && candle.high > next2.high) {
+            if (candle.high > prev1.high && candle.high > next1.high) {
                 swingHighs.push({ price: candle.high, index: i, volume: candle.volume, date: candle.openTime });
             }
         }
@@ -305,17 +303,15 @@ export async function analyzeMarketStructure(symbol: string, preFetchedCandles?:
         const swingHighs: { price: number; index: number }[] = [];
         const swingLows: { price: number; index: number }[] = [];
 
-        for (let i = 2; i < ascCandles.length - 2; i++) {
+        for (let i = 1; i < ascCandles.length - 1; i++) {
             const candle = ascCandles[i];
             const prev1 = ascCandles[i - 1];
-            const prev2 = ascCandles[i - 2];
             const next1 = ascCandles[i + 1];
-            const next2 = ascCandles[i + 2];
 
-            if (candle.low < prev1.low && candle.low < prev2.low && candle.low < next1.low && candle.low < next2.low) {
+            if (candle.low < prev1.low && candle.low < next1.low) {
                 swingLows.push({ price: candle.low, index: i });
             }
-            if (candle.high > prev1.high && candle.high > prev2.high && candle.high > next1.high && candle.high > next2.high) {
+            if (candle.high > prev1.high && candle.high > next1.high) {
                 swingHighs.push({ price: candle.high, index: i });
             }
         }
