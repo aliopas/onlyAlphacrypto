@@ -63,15 +63,24 @@ export interface VolumeConfirmationResult {
 // ─── Quality Score Result ─────────────────────────────────
 export interface QualityScoreResult {
     score: number;                // 0-100, signal only proceeds if >= 60
-    trendConfirmed: boolean;      // +25 if true
-    nearSR: boolean;              // +25 if true
-    volumeConfirmed: boolean;     // +25 if true
-    patternAtSR: boolean;         // +25 if true
+    trendConfirmed: boolean;      // true if trend is directional
+    nearSR: boolean;              // true if near any S/R level
+    volumeConfirmed: boolean;     // volume > 1.2x average
+    patternAtSR: boolean;         // valid candle pattern at S/R
     chochPenalty: number;         // -20 if CHOCH detected
     lowVolumePenalty: number;     // -15 if low volume movement
     manipulationPenalty: number;  // -20 if price > 25% move in 24h
     isRejected: boolean;          // true if score < 60
     rejectionReason: string | null;
+    breakdown: {
+        trend: number;
+        sr: number;
+        volume: number;
+        structure: number;
+        confluence: number;
+        penalties: number;
+        final: number;
+    };
 }
 
 // ─── Technical Analysis Full Result ───────────────────────
@@ -618,54 +627,113 @@ export function calculateQualityScore(params: {
     nearestResistance: SRLevel | null;
     volumeConfirmed: boolean;
     volumeSpike: boolean;
+    volumeRatio: number;
     patternAtSR: boolean;
     isChocho: boolean;
     isFailedBos: boolean;
     priceChange24h: number | null;
+    structurePattern: StructurePattern;
+    ema20: number | null;
+    ema50: number | null;
+    ema200: number | null;
 }): QualityScoreResult {
-    const trendConfirmed = ['BULLISH', 'STRONG_BULLISH', 'BEARISH', 'STRONG_BEARISH'].includes(params.trend);
-    const primaryNearSR = ((params.nearestSupport && isNearLevel(params.currentPrice, params.nearestSupport.price, 2)) ||
-                   (params.nearestResistance && isNearLevel(params.currentPrice, params.nearestResistance.price, 2))) ?? false;
-    const secondaryNearSR = params.allSupportLevels.some(l => isNearLevel(params.currentPrice, l.price, 2)) ||
-                            params.allResistanceLevels.some(l => isNearLevel(params.currentPrice, l.price, 2));
-    const nearSR = primaryNearSR || secondaryNearSR;
-    const volumeConfirmed = params.volumeConfirmed;
-    const patternAtSR = params.patternAtSR;
+    const { trend, currentPrice, volumeRatio, structurePattern, ema20, ema50, ema200 } = params;
 
-    let baseScore = 0;
-    if (trendConfirmed) baseScore += 25;
-    if (nearSR) baseScore += 25;
-    if (volumeConfirmed) baseScore += 25;
-    if (patternAtSR) baseScore += 25;
+    // ── Trend Strength: 0–20 (gradient based on EMA alignment) ──
+    let trendStrength = 0;
+    const directionalTrends = new Set<TrendLabel>(['BULLISH', 'STRONG_BULLISH', 'BEARISH', 'STRONG_BEARISH']);
+    if (directionalTrends.has(trend)) {
+        trendStrength += 10;
+        if (trend === 'STRONG_BULLISH' || trend === 'STRONG_BEARISH') {
+            trendStrength += 5;
+        }
+    }
+    if (ema20 !== null && ema50 !== null && ema200 !== null) {
+        const maxEma = Math.max(ema20, ema50, ema200);
+        if (maxEma > 0) {
+            const spread = (maxEma - Math.min(ema20, ema50, ema200)) / maxEma;
+            trendStrength += Math.min(5, Math.round(spread / 0.02));
+        }
+    } else if (ema20 !== null && ema50 !== null) {
+        const maxEma = Math.max(ema20, ema50);
+        if (maxEma > 0) {
+            const spread = Math.abs(ema20 - ema50) / maxEma;
+            trendStrength += Math.min(5, Math.round(spread / 0.02));
+        }
+    }
+    trendStrength = Math.min(20, trendStrength);
 
-    if (params.volumeSpike) baseScore += 10;
+    // ── S/R Proximity: 0–20 (distance-based, closer = higher) ──
+    let srScore = 0;
+    const allLevels = [...params.allSupportLevels, ...params.allResistanceLevels];
+    let closestDistance = Infinity;
+    for (const level of allLevels) {
+        const dist = priceDistancePercent(currentPrice, level.price);
+        if (dist < closestDistance) closestDistance = dist;
+    }
+    if (closestDistance <= 0.5) srScore = 20;
+    else if (closestDistance <= 1.0) srScore = 16;
+    else if (closestDistance <= 1.5) srScore = 12;
+    else if (closestDistance <= 2.0) srScore = 8;
+    else if (closestDistance <= 3.0) srScore = 4;
+    else srScore = 0;
 
-    // Penalties
+    // ── Volume Confirmation: 0–20 (ratio-based continuous) ──
+    let volumeScore = 0;
+    if (volumeRatio >= 2.0) volumeScore = 20;
+    else if (volumeRatio >= 1.5) volumeScore = 16;
+    else if (volumeRatio >= 1.2) volumeScore = 12;
+    else if (volumeRatio >= 0.8) volumeScore = 6;
+    else if (volumeRatio >= 0.5) volumeScore = 3;
+    else volumeScore = 0;
+
+    // ── Structure Alignment: 0–20 ──
+    let structureScore = 0;
+    switch (structurePattern) {
+        case 'BOS_BULLISH': case 'BOS_BEARISH': structureScore = 18; break;
+        case 'HH_HL': case 'LH_LL': structureScore = 14; break;
+        case 'CHOCH_BULLISH': case 'CHOCH_BEARISH': structureScore = 6; break;
+        case 'NONE': structureScore = 4; break;
+        case 'FAILED_BOS': structureScore = 0; break;
+        default: structureScore = 2;
+    }
+
+    // ── Pattern + Confluence: 0–20 ──
+    let confluenceScore = 0;
+    if (params.patternAtSR) confluenceScore += 10;
+    if (params.volumeSpike) confluenceScore += 5;
+    if (directionalTrends.has(trend) && params.patternAtSR) confluenceScore += 5;
+    confluenceScore = Math.min(20, confluenceScore);
+
+    // ── Penalties (additive) ──
     const chochPenalty = params.isChocho ? -20 : 0;
-    const lowVolumePenalty = (!params.volumeConfirmed && !params.volumeSpike) ? -15 : 0;
+    const lowVolumePenalty = volumeRatio < 0.5 ? -15 : 0;
     const manipulationPenalty = (params.priceChange24h !== null && Math.abs(params.priceChange24h) > 25) ? -20 : 0;
+    const penalties = chochPenalty + lowVolumePenalty + manipulationPenalty;
 
-    const finalScore = Math.max(0, Math.min(100, baseScore + chochPenalty + lowVolumePenalty + manipulationPenalty));
+    const baseScore = trendStrength + srScore + volumeScore + structureScore + confluenceScore;
+    const finalScore = Math.max(0, Math.min(100, baseScore + penalties));
 
     const isRejected = finalScore < 60;
     let rejectionReason: string | null = null;
     if (params.isFailedBos) {
         rejectionReason = "Failed Break of Structure — no signal";
     } else if (finalScore < 60) {
-        rejectionReason = `Quality score ${finalScore} below threshold 60`;
+        rejectionReason = `Quality score ${finalScore} below threshold 60 (trend=${trendStrength} sr=${srScore} vol=${volumeScore} struct=${structureScore} conf=${confluenceScore} pen=${penalties})`;
     }
 
     return {
         score: finalScore,
-        trendConfirmed,
-        nearSR,
-        volumeConfirmed,
-        patternAtSR,
+        trendConfirmed: directionalTrends.has(trend),
+        nearSR: srScore > 0,
+        volumeConfirmed: params.volumeConfirmed,
+        patternAtSR: params.patternAtSR,
         chochPenalty,
         lowVolumePenalty,
         manipulationPenalty,
         isRejected,
         rejectionReason,
+        breakdown: { trend: trendStrength, sr: srScore, volume: volumeScore, structure: structureScore, confluence: confluenceScore, penalties, final: finalScore },
     };
 }
 
@@ -718,10 +786,15 @@ export async function analyzeTechnicals(symbol: string): Promise<TechnicalAnalys
             nearestResistance,
             volumeConfirmed: volumeResult.isAboveAverage,
             volumeSpike: volumeResult.isSpike,
+            volumeRatio: volumeResult.volumeRatio,
             patternAtSR: patternResult.isValid,
             isChocho: structure.isChocho,
             isFailedBos: structure.isFailedBos,
             priceChange24h: null,
+            structurePattern: structure.pattern,
+            ema20: indicator4h?.ema20 ?? null,
+            ema50: indicator4h?.ema50 ?? null,
+            ema200: indicator1d?.ema200 ?? null,
         });
 
         return {

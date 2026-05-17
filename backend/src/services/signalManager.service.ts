@@ -3,6 +3,7 @@ import { radarSignals, signalPerformance } from '../models/market.model';
 import { eq, and } from 'drizzle-orm';
 import { getPriceWithFallback } from './priceService';
 import { calculateTpsl } from './tpslCalculator.service';
+import { logger } from '../utils/logger';
 
 type SignalDirection = 'bullish' | 'bearish';
 type SignalVerdict = 'STRONG_BUY' | 'BUY' | 'SELL' | 'STRONG_SELL';
@@ -18,6 +19,9 @@ interface SignalDecision {
     };
     reason: string;
 }
+
+const MIN_SIGNAL_AGE_HOURS_FOR_REVERSAL = 6;
+const STRONG_OPPOSING_VERDICTS = new Set(['STRONG_BUY', 'STRONG_SELL']);
 
 function verdictToDirection(verdict: string): SignalDirection {
     const bullish = new Set(['STRONG_BUY', 'BUY']);
@@ -90,6 +94,29 @@ export async function decideSignalAction(coinSymbol: string, newVerdict: SignalV
         };
     }
 
+    // ── Direction change: apply minimum holding period guard ──
+    const signalAgeMs = Date.now() - new Date(activeSignal.createdAt).getTime();
+    const signalAgeHours = signalAgeMs / (1000 * 60 * 60);
+
+    if (signalAgeHours < MIN_SIGNAL_AGE_HOURS_FOR_REVERSAL) {
+        logger.info('[SignalManager] Reversal blocked for %s: signal age %.1fh < minimum %.1fh', coinSymbol, signalAgeHours, MIN_SIGNAL_AGE_HOURS_FOR_REVERSAL);
+        return {
+            action: 'skip',
+            verdict: activeSignal.verdict as SignalVerdict,
+            reason: `Direction change blocked: signal age ${signalAgeHours.toFixed(1)}h below minimum ${MIN_SIGNAL_AGE_HOURS_FOR_REVERSAL}h. Keeping ${activeSignal.verdict}.`
+        };
+    }
+
+    // After minimum age: require strong opposing verdict for reversal
+    if (!STRONG_OPPOSING_VERDICTS.has(newVerdict)) {
+        logger.info('[SignalManager] Weak reversal blocked for %s: newVerdict=%s is not STRONG', coinSymbol, newVerdict);
+        return {
+            action: 'skip',
+            verdict: activeSignal.verdict as SignalVerdict,
+            reason: `Direction change blocked: newVerdict=${newVerdict} is not strong (STRONG_BUY/STRONG_SELL required). Signal age ${signalAgeHours.toFixed(1)}h.`
+        };
+    }
+
     const price = await getPriceWithFallback(coinSymbol);
     if (!price || price.price <= 0) {
         return {
@@ -105,6 +132,8 @@ export async function decideSignalAction(coinSymbol: string, newVerdict: SignalV
 
     const closedAt = new Date();
 
+    logger.info('[SignalManager] Reversal allowed for %s: %s → %s, age=%.1fh, pnl=%.2f%%', coinSymbol, activeSignal.verdict, newVerdict, signalAgeHours, realizedPnl);
+
     return {
         action: 'close_and_replace',
         verdict: newVerdict,
@@ -114,7 +143,7 @@ export async function decideSignalAction(coinSymbol: string, newVerdict: SignalV
             realizedPnl,
             closedAt
         },
-        reason: `Direction changed from ${oldDirection} to ${newDirection}. Closing old ${activeSignal.verdict} signal with ${realizedPnl.toFixed(2)}% P&L.`
+        reason: `Direction changed from ${oldDirection} to ${newDirection} (age=${signalAgeHours.toFixed(1)}h, strong verdict). Closing old ${activeSignal.verdict} signal with ${realizedPnl.toFixed(2)}% P&L.`
     };
 }
 

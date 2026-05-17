@@ -182,7 +182,7 @@ export function getRegimeEffects(regime: MarketRegime): RegimeEffects {
             return {
                 confidenceModifier: 0.9,
                 stopLossAdjustment: 0,
-                allowSignals: false,
+                allowSignals: true,
             };
         case 'VOLATILE':
             return {

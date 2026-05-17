@@ -91,6 +91,24 @@ async function bootstrap(): Promise<void> {
         );
 
         const PORT = parseInt(env.PORT, 10);
+
+        logger.info('┌─────────────────────────────────────────────┐');
+        logger.info('│           [BOOT CONFIG] OnlyAlpha           │');
+        logger.info('├─────────────────────────────────────────────┤');
+        logger.info('│ SHADOW_MODE_ENABLED         : %s', String(env.SHADOW_MODE_ENABLED));
+        logger.info('│ SIGNAL_CLASSIFICATION_ENABLED: %s', String(env.SIGNAL_CLASSIFICATION_ENABLED));
+        logger.info('│ TPSL_V2_ENABLED              : %s', String(env.TPSL_V2_ENABLED));
+        logger.info('│ SIGNAL_LIFECYCLE_ENABLED     : %s', String(env.SIGNAL_LIFECYCLE_ENABLED));
+        logger.info('│ DAILY_TREND_ENABLED          : %s', String(env.DAILY_TREND_ENABLED));
+        logger.info('│ MTF_CONTEXT_ENABLED          : %s', String(env.MTF_CONTEXT_ENABLED));
+        logger.info('│ LIFECYCLE_V2_ENABLED         : %s', String(env.LIFECYCLE_V2_ENABLED));
+        logger.info('│ MARKET_REGIME_ENABLED        : %s', String(env.MARKET_REGIME_ENABLED));
+        logger.info('│ LEVEL_INTELLIGENCE_ENABLED   : %s', String(env.LEVEL_INTELLIGENCE_ENABLED));
+        logger.info('│ SCENARIO_TRACKER_ENABLED     : %s', String(env.SCENARIO_TRACKER_ENABLED));
+        logger.info('│ OHLCV_SNAPSHOT_ENABLED       : %s', String(env.OHLCV_SNAPSHOT_ENABLED));
+        logger.info('│ MARKET_FILTER_ENABLED        : %s', String(env.MARKET_FILTER_ENABLED));
+        logger.info('└─────────────────────────────────────────────┘');
+
         app.listen(PORT, () => {
             logger.info('OnlyAlpha Backend running at http://localhost:%d', PORT);
             logger.info('Environment: %s', env.NODE_ENV);
