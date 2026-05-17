@@ -7,14 +7,10 @@ export default function ScorecardSoftLaunchPopup() {
     const [fadingOut, setFadingOut] = useState(false);
 
     useEffect(() => {
-        const seen = localStorage.getItem('onlyalpha:scorecard_popup_seen');
-        if (!seen) {
-            setVisible(true);
-        }
+        setVisible(true);
     }, []);
 
     const handleDismiss = () => {
-        localStorage.setItem('onlyalpha:scorecard_popup_seen', 'true');
         setFadingOut(true);
         setTimeout(() => setVisible(false), 400);
     };
@@ -35,15 +31,15 @@ export default function ScorecardSoftLaunchPopup() {
                         <span className="material-symbols-outlined text-xl text-[#666]">science</span>
                     </div>
                     <div className="flex-1">
-                        <h2 className="text-lg font-semibold text-white mb-2">🔬 Shadow Mode</h2>
+                        <h2 className="text-lg font-semibold text-white mb-2">⚙️ Under Development</h2>
                         <p className="text-sm text-[#888] leading-relaxed mb-4">
-                            This feature is running in Shadow Mode — analyzing data and generating insights, but responses aren&apos;t live yet. You&apos;re getting a preview as we refine accuracy.
+                            This feature is still under active development. The current signal accuracy hasn&apos;t reached our target — false signals are still being generated at a higher rate than acceptable. We&apos;re actively testing and refining the algorithm to deliver the best possible results before going live.
                         </p>
                         <button
                             onClick={handleDismiss}
                             className="w-full bg-[#1A1A1A] border border-[#333] text-white px-4 py-2 rounded-lg hover:bg-[#222] transition-colors text-sm font-medium"
                         >
-                            Got it, let&apos;s explore
+                            Understood
                         </button>
                     </div>
                 </div>
