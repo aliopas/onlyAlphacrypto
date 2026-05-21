@@ -698,14 +698,13 @@ const built = await buildMtfContext(symbol);
                     if (!taResult || !price?.price) {
                         console.warn(`[AI Workflow] No TA result or price for ${symbol}, skipping signal pipeline`);
                     } else {
-                        // ── PHASE 2: Algorithm is source of truth for direction ──
+                        // ── Algorithm-first, AI fallback when algorithm is NEUTRAL ──
                         const algoVerdict = deriveAlgorithmVerdict(taResult);
                         const algoDirection = deriveAlgorithmDirection(taResult);
                         const aiDirection = verdictToDirection(analysisResult.verdict);
                         const agreement = algoDirection === aiDirection;
 
-                        // Determine final direction: algorithm wins, AI is advisory
-                        const finalDirection = algoDirection;
+                        const finalDirection = algoDirection !== 'neutral' ? algoDirection : aiDirection;
                         let finalVerdict: 'STRONG_BUY' | 'BUY' | 'SELL' | 'STRONG_SELL' | 'NEUTRAL';
 
                         if (finalDirection === 'neutral') {
@@ -736,17 +735,7 @@ const built = await buildMtfContext(symbol);
                         let rejectionStage: string | null = null;
                         let shouldSkipSignal = false;
 
-                        // Quality gate
-                        if (taResult.qualityScore.isRejected && !taResult.structure.isFailedBos) {
-                            if (taResult.qualityScore.score < 40) {
-                                shouldSkipSignal = true;
-                                rejectionStage = 'quality_threshold';
-                                incrementRejection('quality_threshold');
-                                logger.info('[AI Workflow] Signal rejected for %s: quality=%d < 40', symbol, taResult.qualityScore.score);
-                            }
-                        }
-
-                        // Failed BOS = hard reject
+                        // Failed BOS = hard reject (immutable rule)
                         if (taResult.structure.isFailedBos) {
                             shouldSkipSignal = true;
                             rejectionStage = 'failed_bos';
@@ -754,11 +743,12 @@ const built = await buildMtfContext(symbol);
                             logger.info('[AI Workflow] Signal rejected for %s: FAILED_BOS', symbol);
                         }
 
-                        // Non-directional = skip
-                        if (finalDirection === 'neutral') {
+                        // Quality gate: only reject if both algorithm AND AI have no direction AND quality is very low
+                        if (!shouldSkipSignal && finalDirection === 'neutral' && taResult.qualityScore.score < 30) {
                             shouldSkipSignal = true;
-                            rejectionStage = 'no_direction';
-                            incrementRejection('no_direction');
+                            rejectionStage = 'quality_threshold';
+                            incrementRejection('quality_threshold');
+                            logger.info('[AI Workflow] Signal rejected for %s: neutral+quality=%d < 30', symbol, taResult.qualityScore.score);
                         }
 
                         // Regime gate (VOLATILE blocks signals, SIDEWAYS now allows)
