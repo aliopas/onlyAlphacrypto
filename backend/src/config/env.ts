@@ -128,6 +128,17 @@ const envSchema = z.object({
     // v2.Phase C — Intelligent Signal Lifecycle Engine V2
     LIFECYCLE_V2_ENABLED: z.coerce.boolean().default(false),
 
+    // Scorecard — Educational Portfolio Simulation
+    SCORECARD_SCRAPER_ENABLED: z.coerce.boolean().default(false),
+    SCORECARD_MONITOR_ENABLED: z.coerce.boolean().default(false),
+    SCORECARD_SNAPSHOT_ENABLED: z.coerce.boolean().default(false),
+    COINGECKO_BASE_URL: z.string().url().default('https://api.coingecko.com/api/v3'),
+    SCORECARD_TELEGRAM_CHANNEL: z.string().default(''),
+    SCORECARD_MAX_COINS: z.coerce.number().default(30),
+    SCORECARD_MAX_DRAWDOWN_PERCENT: z.coerce.number().default(30),
+    SCORECARD_TACTICAL_BUDGET: z.coerce.number().default(200),
+    SCORECARD_STRATEGIC_BUDGET: z.coerce.number().default(300),
+
     // Admin Authentication
     ADMIN_EMAIL: z.string().email().default('admin@onlyalpha.io'),
     ADMIN_PASSWORD: z.string().min(12).default('change_me_in_prod'),

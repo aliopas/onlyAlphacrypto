@@ -33,6 +33,8 @@ import { startRegimeUpdateCron } from './crons/regimeUpdate.cron';
 import { startShadowChecker } from './crons/shadowChecker.cron';
 import { startSignalLifecycleCron } from './crons/signalLifecycle.cron';
 import { startDailyTrendCron } from './crons/dailyTrend.cron';
+import { startTelegramPortfolioScraperCron } from './crons/telegramPortfolioScraper.cron';
+import { startPortfolioSnapshotCron } from './crons/portfolioSnapshot.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -102,6 +104,8 @@ async function bootstrap(): Promise<void> {
         logger.info('│ DAILY_TREND_ENABLED          : %s', String(env.DAILY_TREND_ENABLED));
         logger.info('│ MTF_CONTEXT_ENABLED          : %s', String(env.MTF_CONTEXT_ENABLED));
         logger.info('│ LIFECYCLE_V2_ENABLED         : %s', String(env.LIFECYCLE_V2_ENABLED));
+        logger.info('│ SCORECARD_SCRAPER_ENABLED    : %s', String(env.SCORECARD_SCRAPER_ENABLED));
+        logger.info('│ SCORECARD_SNAPSHOT_ENABLED    : %s', String(env.SCORECARD_SNAPSHOT_ENABLED));
         logger.info('│ MARKET_REGIME_ENABLED        : %s', String(env.MARKET_REGIME_ENABLED));
         logger.info('│ LEVEL_INTELLIGENCE_ENABLED   : %s', String(env.LEVEL_INTELLIGENCE_ENABLED));
         logger.info('│ SCENARIO_TRACKER_ENABLED     : %s', String(env.SCENARIO_TRACKER_ENABLED));
@@ -254,6 +258,30 @@ async function bootstrap(): Promise<void> {
                     logger.error('[Server] Failed to start optional cron DailyTrend: %s', error instanceof Error ? error.message : String(error));
                 }
             }, (crons.length + 8) * cronStartDelay);
+        }
+
+        // Optional Scorecard Scraper cron
+        if (env.SCORECARD_SCRAPER_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startTelegramPortfolioScraperCron();
+                    logger.info('[Server] Optional cron started: TelegramPortfolioScraper');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron TelegramPortfolioScraper: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 9) * cronStartDelay);
+        }
+
+        // Optional Portfolio Snapshot cron
+        if (env.SCORECARD_SNAPSHOT_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startPortfolioSnapshotCron();
+                    logger.info('[Server] Optional cron started: PortfolioSnapshot');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron PortfolioSnapshot: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 10) * cronStartDelay);
         }
     } catch (error) {
         logger.error('[Server] Failed to start: %s', error instanceof Error ? error.message : String(error));

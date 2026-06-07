@@ -5,6 +5,7 @@ import chatRoutes from './chat.routes';
 import userRoutes from './user.routes';
 import chartRoutes from './chart.routes';
 import adminRoutes from './admin.routes';
+import scorecardRoutes from './scorecard.routes';
 import { systemHealthCheck } from '../controllers/health.controller';
 
 const router = Router();
@@ -15,6 +16,7 @@ router.use('/chat', chatRoutes);
 router.use('/user', userRoutes);
 router.use('/chart', chartRoutes);
 router.use('/admin', adminRoutes);
+router.use('/scorecard', scorecardRoutes);
 
 // Health check
 router.get('/health', systemHealthCheck);
