@@ -177,9 +177,21 @@ export async function getScorecardCoinBySymbol(req: Request, res: Response, next
         }
 
         const livePrice = await getLivePrices().then(m => m.get(symbol.toUpperCase()));
+        const coinRow = coin as unknown as CoinRow & {
+            projectProfile: unknown;
+            technicalAnalysis: unknown;
+        };
         const response: CoinDetailResponse = {
-            ...coin,
-            currentPrice: livePrice ? String(livePrice) : coin.currentPrice,
+            ...coinRow,
+            currentPrice: livePrice ? String(livePrice) : coinRow.currentPrice,
+            projectProfile:
+                coinRow.projectProfile && typeof coinRow.projectProfile === 'object'
+                    ? (coinRow.projectProfile as Record<string, unknown>)
+                    : null,
+            technicalAnalysis:
+                coinRow.technicalAnalysis && typeof coinRow.technicalAnalysis === 'object'
+                    ? (coinRow.technicalAnalysis as Record<string, unknown>)
+                    : null,
         };
 
         res.json(response);
