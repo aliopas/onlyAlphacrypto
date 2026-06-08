@@ -7,6 +7,7 @@ import { telegramPortfolioPosts, portfolioCoins } from '../models/scorecard.mode
 import { eq, isNull, and } from 'drizzle-orm';
 import { TRACKED_COIN_SET } from '../config/coins';
 import { AIGateway } from './ai/ai-gateway';
+import { Api } from 'telegram';
 
 const writerGateway = new AIGateway({
     apiKey: env.OPENROUTER_API_KEY,
@@ -55,7 +56,20 @@ async function getTelegramClient(): Promise<TelegramClient | null> {
     }
 }
 
-async function callVisionForSymbolExtraction(imageUrl: string): Promise<VisionResponse | null> {
+async function downloadPhotoAsBase64(client: TelegramClient, msg: Parameters<TelegramClient['downloadMedia']>[0]): Promise<string | null> {
+    try {
+        const buffer = await client.downloadMedia(msg, {}) as Buffer | undefined;
+
+        if (!buffer || !Buffer.isBuffer(buffer)) return null;
+
+        return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+    } catch (err) {
+        console.warn('[TelegramPortfolioScraper] Photo download failed:', err instanceof Error ? err.message : String(err));
+        return null;
+    }
+}
+
+async function callVisionForSymbolExtraction(imageDataUrl: string): Promise<VisionResponse | null> {
     const visionPrompt = `You are analyzing a cryptocurrency tweet/post image.
 Extract ONLY the cryptocurrency ticker symbols and their entry prices mentioned.
 Return a JSON object with a "symbols" array. Each entry must have:
@@ -86,7 +100,7 @@ Respond with ONLY the JSON object, no preamble.`;
                         },
                         {
                             type: 'image_url',
-                            image_url: { url: imageUrl },
+                            image_url: { url: imageDataUrl },
                         },
                     ],
                 },
@@ -95,7 +109,8 @@ Respond with ONLY the JSON object, no preamble.`;
             maxTokens: 512,
         });
 
-        const parsed = JSON.parse(raw.trim()) as VisionResponse;
+        const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        const parsed = JSON.parse(cleaned) as VisionResponse;
         return parsed;
     } catch (err) {
         console.error('[TelegramPortfolioScraper] Vision call failed:', err instanceof Error ? err.message : String(err));
@@ -121,6 +136,7 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
     const channel = env.SCORECARD_TELEGRAM_CHANNEL;
     if (!channel) {
         console.warn('[TelegramPortfolioScraper] SCORECARD_TELEGRAM_CHANNEL not set');
+        await client.disconnect();
         return { extracted: [], totalProcessed: 0, postsAnalyzed: 0 };
     }
 
@@ -129,6 +145,7 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
     let totalProcessed = 0;
     let postsAnalyzed = 0;
     let offsetId = 0;
+    const MAX_PAGES = 10;
 
     const existingSymbols = new Set<string>();
     const existingCoins = await db
@@ -138,7 +155,9 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
         existingSymbols.add(coin.symbol.toUpperCase());
     }
 
-    while (extracted.length < maxCoins) {
+    let pageCount = 0;
+    while (extracted.length < maxCoins && pageCount < MAX_PAGES) {
+        pageCount++;
         const messages = await client.getMessages(channel, {
             limit: 5,
             offsetId,
@@ -146,12 +165,16 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
 
         if (messages.length === 0) break;
 
+        let processedAnyInBatch = false;
+
         for (const msg of messages) {
             if (extracted.length >= maxCoins) break;
-            if (!msg.media) continue;
             if (!msg.id) continue;
 
             offsetId = msg.id;
+            processedAnyInBatch = true;
+
+            if (!msg.media) continue;
 
             const messageHash = createHash('sha256')
                 .update(`${channel}:${msg.id}`)
@@ -165,31 +188,19 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
 
             if (existingPost) continue;
 
-            const hasImage =
-                'photo' in msg.media ||
-                'webPreview' in msg.media ||
-                'document' in msg.media;
+            const media = msg.media as unknown as Record<string, unknown>;
+            const hasPhoto = !!media.photo;
 
-            let imageUrl: string | null = null;
-            if (hasImage) {
-                try {
-                    const media = msg.media as unknown as Record<string, unknown>;
-                    if (media.photo) {
-                        imageUrl = `https://t.me/${channel}/${msg.id}`;
-                    } else if (media.webPreview) {
-                        const webPreview = media.webPreview as { url?: string };
-                        imageUrl = webPreview.url ?? null;
-                    }
-                } catch {
-                    imageUrl = null;
-                }
+            let imageDataUrl: string | null = null;
+            if (hasPhoto) {
+                imageDataUrl = await downloadPhotoAsBase64(client, msg);
             }
 
             let postSymbols: string[] = [];
             let analyzed = false;
 
-            if (imageUrl) {
-                const visionResult = await callVisionForSymbolExtraction(imageUrl);
+            if (imageDataUrl) {
+                const visionResult = await callVisionForSymbolExtraction(imageDataUrl);
                 if (visionResult && visionResult.symbols && Array.isArray(visionResult.symbols)) {
                     for (const item of visionResult.symbols) {
                         if (!validateExtraction(item)) continue;
@@ -211,7 +222,7 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
             await db.insert(telegramPortfolioPosts).values({
                 messageId: String(msg.id),
                 content: contentText,
-                imageUrl: imageUrl ?? null,
+                imageUrl: hasPhoto ? `tg://msg/${msg.id}` : null,
                 isAnalyzed: analyzed,
                 extractedSymbols: postSymbols.length > 0 ? postSymbols.join(',') : null,
                 analyzedAt: analyzed ? new Date() : null,
@@ -219,9 +230,12 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
 
             postsAnalyzed++;
         }
+
+        if (!processedAnyInBatch) break;
     }
 
     await client.disconnect();
 
+    console.log(`[TelegramPortfolioScraper] Extracted ${extracted.length} coins from ${postsAnalyzed} posts (${pageCount} pages)`);
     return { extracted, totalProcessed, postsAnalyzed };
 }

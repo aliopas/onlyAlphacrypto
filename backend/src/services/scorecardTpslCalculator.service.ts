@@ -157,9 +157,9 @@ export async function calculateScorecardTpsl(params: {
 
     const atrValue = calculateATR(candles, 14) || (entryPrice * 0.05);
 
-    const recentCandles = candles.slice(0, Math.min(20, candles.length));
+    const recentCandles = candles.slice(-20);
     const avgClose = recentCandles.reduce((s, c) => s + c.close, 0) / recentCandles.length;
-    const direction: 'BULLISH' | 'BEARISH' = candles[0].close > avgClose ? 'BULLISH' : 'BEARISH';
+    const direction: 'BULLISH' | 'BEARISH' = candles[candles.length - 1].close > avgClose ? 'BULLISH' : 'BEARISH';
 
     const levels = detectSwingLevels(candles);
     const supportLevels = levels.filter(l => l.type === 'support').sort((a, b) => b.strength - a.strength);
