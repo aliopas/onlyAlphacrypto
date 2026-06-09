@@ -294,13 +294,46 @@ bootstrap();
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+const originalConsoleError = console.error.bind(console);
+const originalConsoleWarn = console.warn.bind(console);
+
+function isGramJsTimeout(args: unknown[]): boolean {
+    if (args.length === 0) return false;
+    const first = args[0];
+    if (first instanceof Error && first.message === 'TIMEOUT') {
+        const stack = first.stack ?? '';
+        if (stack.includes('telegram/client/updates.js')) return true;
+    }
+    if (typeof first === 'string' && first.includes('TIMEOUT') && first.includes('telegram/client/updates.js')) {
+        return true;
+    }
+    for (const a of args) {
+        if (a instanceof Error) {
+            const stack = a.stack ?? '';
+            if (a.message === 'TIMEOUT' && stack.includes('telegram/client/updates.js')) return true;
+            if (stack.includes('telegram/client/updates.js') && stack.includes('_updateLoop')) return true;
+        }
+    }
+    return false;
+}
+
+console.error = (...args: unknown[]) => {
+    if (isGramJsTimeout(args)) return;
+    originalConsoleError(...args);
+};
+
+console.warn = (...args: unknown[]) => {
+    if (isGramJsTimeout(args)) return;
+    originalConsoleWarn(...args);
+};
+
 process.on('unhandledRejection', (reason) => {
     const message = reason instanceof Error ? reason.message : String(reason);
     const stack = reason instanceof Error ? reason.stack : undefined;
     if (message === 'TIMEOUT' && stack?.includes('telegram/client/updates.js')) {
         return;
     }
-    console.error('[Server] Unhandled Rejection:', reason);
+    originalConsoleError('[Server] Unhandled Rejection:', reason);
 });
 
 process.on('uncaughtException', (err) => {
@@ -309,7 +342,7 @@ process.on('uncaughtException', (err) => {
     if (message === 'TIMEOUT' && stack?.includes('telegram/client/updates.js')) {
         return;
     }
-    console.error('[Server] Uncaught Exception:', err);
+    originalConsoleError('[Server] Uncaught Exception:', err);
 });
 
 export default app;
