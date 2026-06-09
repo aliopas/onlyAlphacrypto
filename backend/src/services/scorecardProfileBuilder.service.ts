@@ -67,9 +67,9 @@ function parseProfileFromText(text: string, symbol: string): Partial<CoinProfile
 }
 
 export async function buildCoinProfile(
-    validatedCoin: { symbol: string; coinGeckoId: string }
+    validatedCoin: { symbol: string }
 ): Promise<CoinProfile> {
-    const { symbol, coinGeckoId } = validatedCoin;
+    const { symbol } = validatedCoin;
     const now = new Date().toISOString();
 
     const partial: Partial<CoinProfile> = {
@@ -86,7 +86,7 @@ export async function buildCoinProfile(
     };
 
     try {
-        const query = `Provide project name, core team, tokenomics (total supply, circulating supply, distribution, vesting schedule) for ${symbol} (${coinGeckoId}). Return structured data only. Focus on verifiable facts.`;
+        const query = `Provide project name, core team, tokenomics (total supply, circulating supply, distribution, vesting schedule) for ${symbol} cryptocurrency. Return structured data only. Focus on verifiable facts.`;
         const results = await searchWeb(query);
 
         if (results.length > 0) {

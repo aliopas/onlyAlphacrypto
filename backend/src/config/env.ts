@@ -132,7 +132,6 @@ const envSchema = z.object({
     SCORECARD_SCRAPER_ENABLED: z.coerce.boolean().default(false),
     SCORECARD_MONITOR_ENABLED: z.coerce.boolean().default(false),
     SCORECARD_SNAPSHOT_ENABLED: z.coerce.boolean().default(false),
-    COINGECKO_BASE_URL: z.string().url().default('https://api.coingecko.com/api/v3'),
     SCORECARD_TELEGRAM_CHANNEL: z.string().default(''),
     SCORECARD_MAX_COINS: z.coerce.number().default(30),
     SCORECARD_MAX_DRAWDOWN_PERCENT: z.coerce.number().default(30),

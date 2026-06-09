@@ -60,7 +60,6 @@ async function stage1_envValidation(): Promise<boolean> {
         { key: 'TELEGRAM_API_HASH', value: env.TELEGRAM_API_HASH, critical: true },
         { key: 'TELEGRAM_SESSION_STRING', value: env.TELEGRAM_SESSION_STRING, critical: true },
         { key: 'OPENROUTER_API_KEY', value: env.OPENROUTER_API_KEY, critical: true },
-        { key: 'COINGECKO_BASE_URL', value: env.COINGECKO_BASE_URL, critical: false, note: '(using zod default)' },
         { key: 'SCORECARD_TELEGRAM_CHANNEL', value: env.SCORECARD_TELEGRAM_CHANNEL, critical: false, note: '(empty — scraper will skip)' },
         { key: 'WRITER_MODEL', value: env.WRITER_MODEL, critical: false, note: '(using zod default)' },
     ];
@@ -217,22 +216,23 @@ async function stage4_visionCall(): Promise<boolean> {
 }
 
 async function stage5_validation(): Promise<boolean> {
-    console.log(STAGE(++stageNum, 'VALIDATION (COINGECKO + CEX + BINANCE)'));
+    console.log(STAGE(++stageNum, 'VALIDATION (BINANCE-ONLY — NO COINGECKO)'));
     const testSymbols = [
-        { symbol: 'ARB', expectPass: true, note: 'major tracked — expect REJECTED by altcoin gate' },
-        { symbol: 'INJ', expectPass: true, note: 'major tracked — expect REJECTED by altcoin gate' },
-        { symbol: 'NOTACOINXYZ123', expectPass: false, note: 'non-existent — expect REJECTED by CoinGecko' },
+        { symbol: 'ARB', entryPrice: 1.0, note: 'major tracked — expect REJECTED by altcoin gate' },
+        { symbol: 'INJ', entryPrice: 25.0, note: 'major tracked — expect REJECTED by altcoin gate' },
+        { symbol: 'NOTACOINXYZ123', entryPrice: 1.0, note: 'non-existent — expect REJECTED by Binance check' },
+        { symbol: 'PEPE', entryPrice: 0.00001, note: 'altcoin on Binance — may PASS or REJECT on movement' },
     ];
 
     const { validateScorecardCoin } = await import('../src/services/scorecardValidation.service');
 
     let allOk = true;
     for (const test of testSymbols) {
-        console.log(`\n   ── Testing ${test.symbol} (${test.note}) ──`);
+        console.log(`\n   ── Testing ${test.symbol} @ $${test.entryPrice} (${test.note}) ──`);
         try {
-            const result = await validateScorecardCoin({ symbol: test.symbol, entryPrice: 1.0 });
+            const result = await validateScorecardCoin({ symbol: test.symbol, entryPrice: test.entryPrice });
             if (result) {
-                OK(`${test.symbol}: PASSED validation — price=$${result.currentPrice}, movement=${result.priceMovement.toFixed(2)}%`);
+                OK(`${test.symbol}: PASSED — price=$${result.currentPrice}, movement=${result.priceMovement.toFixed(2)}%, cex=${result.cexListings}`);
             } else {
                 OK(`${test.symbol}: REJECTED (as expected for this test case)`);
             }
@@ -275,7 +275,7 @@ async function stage7_profile(): Promise<boolean> {
     console.log(STAGE(++stageNum, 'PROFILE BUILDER'));
     const { buildCoinProfile } = await import('../src/services/scorecardProfileBuilder.service');
     try {
-        const result = await buildCoinProfile({ symbol: 'ARB', coinGeckoId: 'arbitrum' });
+        const result = await buildCoinProfile({ symbol: 'ARB' });
         OK(`Profile built: projectName=${result.projectName}, team=${result.team.slice(0, 40)}…, newsCount=${result.latestNews.length}`);
         return true;
     } catch (err) {

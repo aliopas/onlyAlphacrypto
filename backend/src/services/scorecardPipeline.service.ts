@@ -66,7 +66,6 @@ export async function runScorecardPipeline(): Promise<PipelineStats> {
         console.log(`[ScorecardPipeline] ${extraction.symbol}: Step 3 — Building profile...`);
         const profile = await buildCoinProfile({
             symbol: validated.symbol,
-            coinGeckoId: validated.coinGeckoId,
         });
         console.log(`[ScorecardPipeline] ${extraction.symbol}: Profile built — project=${profile.projectName}`);
 
