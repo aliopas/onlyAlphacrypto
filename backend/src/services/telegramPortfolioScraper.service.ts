@@ -1,5 +1,6 @@
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions';
+import { LogLevel } from 'telegram/extensions/Logger';
 import { createHash } from 'crypto';
 import { db } from '../config/db';
 import { env } from '../config/env';
@@ -48,6 +49,7 @@ async function getTelegramClient(): Promise<TelegramClient | null> {
         const client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
             connectionRetries: 3,
         });
+        client.setLogLevel(LogLevel.NONE);
         await client.connect();
         return client;
     } catch (err) {
