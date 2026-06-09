@@ -294,4 +294,22 @@ bootstrap();
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+process.on('unhandledRejection', (reason) => {
+    const message = reason instanceof Error ? reason.message : String(reason);
+    const stack = reason instanceof Error ? reason.stack : undefined;
+    if (message === 'TIMEOUT' && stack?.includes('telegram/client/updates.js')) {
+        return;
+    }
+    console.error('[Server] Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    if (message === 'TIMEOUT' && stack?.includes('telegram/client/updates.js')) {
+        return;
+    }
+    console.error('[Server] Uncaught Exception:', err);
+});
+
 export default app;

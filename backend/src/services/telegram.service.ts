@@ -42,11 +42,7 @@ export interface TelegramAirdropItem {
     hash: string;
 }
 
-let clientInstance: TelegramClient | null = null;
-
-async function getClient(): Promise<TelegramClient | null> {
-    if (clientInstance) return clientInstance;
-
+async function createClient(): Promise<TelegramClient | null> {
     const apiId = parseInt(env.TELEGRAM_API_ID, 10);
     const apiHash = env.TELEGRAM_API_HASH;
     const sessionStr = env.TELEGRAM_SESSION_STRING;
@@ -61,8 +57,6 @@ async function getClient(): Promise<TelegramClient | null> {
             connectionRetries: 3,
         });
         await client.connect();
-        clientInstance = client;
-        console.log('[Telegram] Connected successfully');
         return client;
     } catch (err) {
         console.error('[Telegram] Connection failed:', err instanceof Error ? err.message : String(err));
@@ -70,79 +64,88 @@ async function getClient(): Promise<TelegramClient | null> {
     }
 }
 
-export async function fetchNewsFromTelegram(minutesBack: number = 30): Promise<TelegramNewsItem[]> {
-    const client = await getClient();
-    if (!client) return [];
-
-    const cutoff = new Date(Date.now() - minutesBack * 60 * 1000);
-    const results: TelegramNewsItem[] = [];
-
-    for (const channel of NEWS_CHANNELS) {
+async function withClient<T>(fn: (client: TelegramClient) => Promise<T>): Promise<T | null> {
+    const client = await createClient();
+    if (!client) return null;
+    try {
+        return await fn(client);
+    } finally {
         try {
-            const messages = await client.getMessages(channel, { limit: 10 });
-            for (const msg of messages) {
-                if (!msg.message || msg.message.length < 20) continue;
-                const msgDate = new Date((msg.date ?? 0) * 1000);
-                if (msgDate < cutoff) continue;
-                if (isSpam(msg.message)) continue;
-
-                results.push({
-                    title: msg.message.slice(0, 200),
-                    source: `telegram:${channel}`,
-                    sourceHash: createHash('sha256').update(msg.message).digest('hex'),
-                    link: `https://t.me/${channel}/${msg.id}`,
-                    publishedAt: msgDate,
-                    rawContent: msg.message,
-                });
-            }
-        } catch (err) {
-            console.error(`[Telegram] Error reading ${channel}:`, err instanceof Error ? err.message : String(err));
+            await client.disconnect();
+        } catch {
         }
     }
+}
 
-    console.log(`[Telegram] Fetched ${results.length} news items from ${NEWS_CHANNELS.length} channels`);
-    return results;
+export async function fetchNewsFromTelegram(minutesBack: number = 30): Promise<TelegramNewsItem[]> {
+    const cutoff = new Date(Date.now() - minutesBack * 60 * 1000);
+
+    const results = await withClient(async (client) => {
+        const items: TelegramNewsItem[] = [];
+        for (const channel of NEWS_CHANNELS) {
+            try {
+                const messages = await client.getMessages(channel, { limit: 10 });
+                for (const msg of messages) {
+                    if (!msg.message || msg.message.length < 20) continue;
+                    const msgDate = new Date((msg.date ?? 0) * 1000);
+                    if (msgDate < cutoff) continue;
+                    if (isSpam(msg.message)) continue;
+
+                    items.push({
+                        title: msg.message.slice(0, 200),
+                        source: `telegram:${channel}`,
+                        sourceHash: createHash('sha256').update(msg.message).digest('hex'),
+                        link: `https://t.me/${channel}/${msg.id}`,
+                        publishedAt: msgDate,
+                        rawContent: msg.message,
+                    });
+                }
+            } catch (err) {
+                console.error(`[Telegram] Error reading ${channel}:`, err instanceof Error ? err.message : String(err));
+            }
+        }
+        return items;
+    });
+
+    console.log(`[Telegram] Fetched ${results?.length ?? 0} news items from ${NEWS_CHANNELS.length} channels`);
+    return results ?? [];
 }
 
 export async function fetchAirdropsFromTelegram(hoursBack: number = 6): Promise<TelegramAirdropItem[]> {
-    const client = await getClient();
-    if (!client) return [];
-
     const cutoff = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
-    const results: TelegramAirdropItem[] = [];
 
-    for (const channel of AIRDROP_CHANNELS) {
-        try {
-            const messages = await client.getMessages(channel, { limit: 15 });
-            for (const msg of messages) {
-                if (!msg.message || msg.message.length < 30) continue;
-                const msgDate = new Date((msg.date ?? 0) * 1000);
-                if (msgDate < cutoff) continue;
-                if (isSpam(msg.message)) continue;
+    const results = await withClient(async (client) => {
+        const items: TelegramAirdropItem[] = [];
+        for (const channel of AIRDROP_CHANNELS) {
+            try {
+                const messages = await client.getMessages(channel, { limit: 15 });
+                for (const msg of messages) {
+                    if (!msg.message || msg.message.length < 30) continue;
+                    const msgDate = new Date((msg.date ?? 0) * 1000);
+                    if (msgDate < cutoff) continue;
+                    if (isSpam(msg.message)) continue;
 
-                const hash = createHash('sha256').update(`${msg.message}||https://t.me/${channel}/${msg.id}`).digest('hex');
-                results.push({
-                    title: msg.message.slice(0, 200),
-                    link: `https://t.me/${channel}/${msg.id}`,
-                    pubDate: msgDate.toISOString(),
-                    contentSnippet: msg.message.slice(0, 300),
-                    source: `telegram:${channel}`,
-                    content: msg.message,
-                    hash,
-                });
+                    const hash = createHash('sha256').update(`${msg.message}||https://t.me/${channel}/${msg.id}`).digest('hex');
+                    items.push({
+                        title: msg.message.slice(0, 200),
+                        link: `https://t.me/${channel}/${msg.id}`,
+                        pubDate: msgDate.toISOString(),
+                        contentSnippet: msg.message.slice(0, 300),
+                        source: `telegram:${channel}`,
+                        content: msg.message,
+                        hash,
+                    });
+                }
+            } catch (err) {
+                console.error(`[Telegram] Error reading airdrop channel ${channel}:`, err instanceof Error ? err.message : String(err));
             }
-        } catch (err) {
-            console.error(`[Telegram] Error reading airdrop channel ${channel}:`, err instanceof Error ? err.message : String(err));
         }
-    }
+        return items;
+    });
 
-    console.log(`[Telegram] Fetched ${results.length} airdrop items from ${AIRDROP_CHANNELS.length} channels`);
-    return results;
+    console.log(`[Telegram] Fetched ${results?.length ?? 0} airdrop items from ${AIRDROP_CHANNELS.length} channels`);
+    return results ?? [];
 }
 
 export async function disconnectTelegram(): Promise<void> {
-    if (clientInstance) {
-        await clientInstance.disconnect();
-        clientInstance = null;
-    }
 }
