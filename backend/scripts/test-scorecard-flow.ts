@@ -55,33 +55,32 @@ function recordFail(name: string, err: unknown) {
 
 async function stage1_envValidation(): Promise<boolean> {
     console.log(STAGE(++stageNum, 'ENV VALIDATION'));
-    const required = [
-        'TELEGRAM_API_ID',
-        'TELEGRAM_API_HASH',
-        'TELEGRAM_SESSION_STRING',
-        'OPENROUTER_API_KEY',
-        'COINGECKO_BASE_URL',
+    const checks: Array<{ key: string; value: string; critical: boolean; note?: string }> = [
+        { key: 'TELEGRAM_API_ID', value: env.TELEGRAM_API_ID, critical: true },
+        { key: 'TELEGRAM_API_HASH', value: env.TELEGRAM_API_HASH, critical: true },
+        { key: 'TELEGRAM_SESSION_STRING', value: env.TELEGRAM_SESSION_STRING, critical: true },
+        { key: 'OPENROUTER_API_KEY', value: env.OPENROUTER_API_KEY, critical: true },
+        { key: 'COINGECKO_BASE_URL', value: env.COINGECKO_BASE_URL, critical: false, note: '(using zod default)' },
+        { key: 'SCORECARD_TELEGRAM_CHANNEL', value: env.SCORECARD_TELEGRAM_CHANNEL, critical: false, note: '(empty — scraper will skip)' },
+        { key: 'WRITER_MODEL', value: env.WRITER_MODEL, critical: false, note: '(using zod default)' },
     ];
-    let allOk = true;
-    for (const key of required) {
-        const val = process.env[key];
-        if (!val || val.trim() === '') {
-            FAIL(`${key} is missing or empty`);
-            allOk = false;
+
+    let criticalFailed = false;
+    for (const c of checks) {
+        const isEmpty = !c.value || c.value.trim() === '';
+        if (isEmpty) {
+            if (c.critical) {
+                FAIL(`${c.key} is missing or empty`);
+                criticalFailed = true;
+            } else {
+                WARN(`${c.key} is not set in .env ${c.note ?? ''}`);
+            }
         } else {
-            const display = val.length > 20 ? `${val.slice(0, 16)}…` : val;
-            OK(`${key} = ${display}`);
+            const display = c.value.length > 24 ? `${c.value.slice(0, 20)}…` : c.value;
+            OK(`${c.key} = ${display}`);
         }
     }
-    const channel = process.env['SCORECARD_TELEGRAM_CHANNEL'] || '';
-    if (!channel) {
-        WARN('SCORECARD_TELEGRAM_CHANNEL is not set — scraper will skip (this is expected if you have not configured it yet)');
-    } else {
-        OK(`SCORECARD_TELEGRAM_CHANNEL = ${channel}`);
-    }
-    INFO('WRITER_MODEL = ' + (process.env['WRITER_MODEL'] || '(not set)'));
-    INFO('SCORECARD_MAX_COINS = ' + (process.env['SCORECARD_MAX_COINS'] || '30 (default)'));
-    return allOk;
+    return !criticalFailed;
 }
 
 async function stage2_telegramConnection(): Promise<{ client: TelegramClient | null; channelOk: boolean }> {
