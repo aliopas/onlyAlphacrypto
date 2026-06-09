@@ -17,15 +17,29 @@ export function startTelegramPortfolioScraperCron(): void {
 
         isRunning = true;
         try {
-            console.log('[ScorecardScraperCron] Pipeline starting');
+            console.log('[ScorecardScraperCron] Scheduled pipeline starting');
             await runScorecardPipeline();
-            console.log('[ScorecardScraperCron] Pipeline complete');
+            console.log('[ScorecardScraperCron] Scheduled pipeline complete');
         } catch (err) {
-            console.error('[ScorecardScraperCron] Pipeline error:', err instanceof Error ? err.message : String(err));
+            console.error('[ScorecardScraperCron] Scheduled pipeline error:', err instanceof Error ? err.message : String(err));
         } finally {
             isRunning = false;
         }
     });
 
-    console.log('[ScorecardScraperCron] Scheduled: daily at midnight');
+    setTimeout(async () => {
+        if (isRunning) return;
+        isRunning = true;
+        try {
+            console.log('[ScorecardScraperCron] === STARTUP RUN — testing pipeline ===');
+            await runScorecardPipeline();
+            console.log('[ScorecardScraperCron] === STARTUP RUN complete ===');
+        } catch (err) {
+            console.error('[ScorecardScraperCron] === STARTUP RUN error:', err instanceof Error ? err.message : String(err));
+        } finally {
+            isRunning = false;
+        }
+    }, 30_000);
+
+    console.log('[ScorecardScraperCron] Scheduled: daily at midnight + startup run in 30s');
 }

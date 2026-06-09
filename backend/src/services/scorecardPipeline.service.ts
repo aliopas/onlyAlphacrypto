@@ -16,13 +16,16 @@ export interface PipelineStats {
 }
 
 export async function runScorecardPipeline(): Promise<PipelineStats> {
+    console.log('[ScorecardPipeline] === PIPELINE START ===');
     const stats: PipelineStats = { processed: 0, validated: 0, inserted: 0, rejected: 0, failed: 0 };
 
+    console.log('[ScorecardPipeline] Step 1: Running scraper...');
     const scraperResult = await runScorecardScraper();
     if (scraperResult.extracted.length === 0) {
         console.log('[ScorecardPipeline] No coins extracted — skipping pipeline');
         return stats;
     }
+    console.log(`[ScorecardPipeline] Scraper returned ${scraperResult.extracted.length} coins: ${scraperResult.extracted.map(e => e.symbol).join(', ')}`);
 
     const existingSymbols = new Set<string>();
     const existing = await db
@@ -38,27 +41,36 @@ export async function runScorecardPipeline(): Promise<PipelineStats> {
         .where(eq(portfolioCoins.status, 'active'))
         .limit(1);
     const activeCount = activeCountArr[0]?.count ?? 0;
+    console.log(`[ScorecardPipeline] Active coins: ${activeCount}, Existing total: ${existing.length}`);
 
     for (const extraction of scraperResult.extracted) {
         stats.processed++;
+        console.log(`[ScorecardPipeline] --- Processing ${extraction.symbol} (entryPrice=$${extraction.entryPrice}) ---`);
 
         if (existingSymbols.has(extraction.symbol.toUpperCase())) {
+            console.log(`[ScorecardPipeline] ${extraction.symbol}: Already exists — skipping`);
             continue;
         }
 
+        console.log(`[ScorecardPipeline] ${extraction.symbol}: Step 2 — Validating...`);
         const validated = await validateScorecardCoin(extraction);
         if (!validated) {
+            console.log(`[ScorecardPipeline] ${extraction.symbol}: REJECTED at validation`);
             stats.rejected++;
             continue;
         }
+        console.log(`[ScorecardPipeline] ${extraction.symbol}: Validated — price=$${validated.currentPrice}, movement=${validated.priceMovement.toFixed(2)}%, cex=${validated.cexListings}`);
 
         stats.validated++;
 
+        console.log(`[ScorecardPipeline] ${extraction.symbol}: Step 3 — Building profile...`);
         const profile = await buildCoinProfile({
             symbol: validated.symbol,
             coinGeckoId: validated.coinGeckoId,
         });
+        console.log(`[ScorecardPipeline] ${extraction.symbol}: Profile built — project=${profile.projectName}`);
 
+        console.log(`[ScorecardPipeline] ${extraction.symbol}: Step 4 — Calculating TP/SL (STRATEGIC)...`);
         const tpslResultStrategic = await calculateScorecardTpsl({
             symbol: validated.symbol,
             entryPrice: validated.entryPrice,
@@ -71,7 +83,9 @@ export async function runScorecardPipeline(): Promise<PipelineStats> {
         if (!tpslResultStrategic.isRejected) {
             tpslResult = tpslResultStrategic;
             finalClassification = 'STRATEGIC';
+            console.log(`[ScorecardPipeline] ${extraction.symbol}: STRATEGIC accepted — RR=${tpslResult.rr.toFixed(2)}`);
         } else {
+            console.log(`[ScorecardPipeline] ${extraction.symbol}: STRATEGIC rejected (${tpslResultStrategic.rejectionReason}) — trying TACTICAL...`);
             const tpslResultTactical = await calculateScorecardTpsl({
                 symbol: validated.symbol,
                 entryPrice: validated.entryPrice,
@@ -79,12 +93,14 @@ export async function runScorecardPipeline(): Promise<PipelineStats> {
             });
 
             if (tpslResultTactical.isRejected) {
+                console.log(`[ScorecardPipeline] ${extraction.symbol}: TACTICAL also rejected (${tpslResultTactical.rejectionReason})`);
                 stats.rejected++;
                 continue;
             }
 
             tpslResult = tpslResultTactical;
             finalClassification = 'TACTICAL';
+            console.log(`[ScorecardPipeline] ${extraction.symbol}: TACTICAL accepted — RR=${tpslResult.rr.toFixed(2)}`);
         }
 
         let status: 'active' | 'watchlist' | 'exited' = 'active';
@@ -95,6 +111,9 @@ export async function runScorecardPipeline(): Promise<PipelineStats> {
             stats.rejected++;
             continue;
         }
+
+        console.log(`[ScorecardPipeline] ${extraction.symbol}: Step 5 — Inserting (status=${status}, class=${finalClassification})...`);
+        console.log(`[ScorecardPipeline] ${extraction.symbol}: TP1=${tpslResult.tp1} TP2=${tpslResult.tp2} TP3=${tpslResult.tp3} SL=${tpslResult.stopLoss}`);
 
         try {
             const insertedResult = await db.insert(portfolioCoins).values({
@@ -131,13 +150,14 @@ export async function runScorecardPipeline(): Promise<PipelineStats> {
 
                 existingSymbols.add(validated.symbol.toUpperCase());
                 stats.inserted++;
+                console.log(`[ScorecardPipeline] ${extraction.symbol}: INSERTED successfully (id=${insertedCoin.id})`);
             }
         } catch (err) {
-            console.error(`[ScorecardPipeline] Failed to insert ${validated.symbol}:`, err instanceof Error ? err.message : String(err));
+            console.error(`[ScorecardPipeline] ${extraction.symbol}: INSERT FAILED:`, err instanceof Error ? err.message : String(err));
             stats.failed++;
         }
     }
 
-    console.log(`[ScorecardPipeline] Done — processed:${stats.processed} validated:${stats.validated} inserted:${stats.inserted} rejected:${stats.rejected} failed:${stats.failed}`);
+    console.log(`[ScorecardPipeline] === PIPELINE DONE — processed:${stats.processed} validated:${stats.validated} inserted:${stats.inserted} rejected:${stats.rejected} failed:${stats.failed} ===`);
     return stats;
 }

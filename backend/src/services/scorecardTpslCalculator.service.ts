@@ -29,7 +29,10 @@ async function fetchBinanceCandles(symbol: string): Promise<Candle[] | null> {
         const res = await fetch(
             `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=4h&limit=100`
         );
-        if (!res.ok) return null;
+        if (!res.ok) {
+            console.warn(`[ScorecardTpsl] Binance klines ${pair} failed: HTTP ${res.status}`);
+            return null;
+        }
 
         const data = await res.json() as Array<[
             number, string, string, string, string, string, number, string, number, string, string, string
@@ -45,7 +48,8 @@ async function fetchBinanceCandles(symbol: string): Promise<Candle[] | null> {
         }));
 
         return candles;
-    } catch {
+    } catch (err) {
+        console.error(`[ScorecardTpsl] Binance klines ${symbol} error:`, err instanceof Error ? err.message : String(err));
         return null;
     }
 }
@@ -146,6 +150,7 @@ export async function calculateScorecardTpsl(params: {
 
     const candles = await fetchBinanceCandles(symbol);
     if (!candles || candles.length === 0) {
+        console.warn(`[ScorecardTpsl] ${symbol}: No candles — rejecting`);
         return {
             tp1: 0, tp2: 0, tp3: 0, stopLoss: 0,
             tpSource: 'atr', slSource: 'atr',
@@ -160,6 +165,7 @@ export async function calculateScorecardTpsl(params: {
     const recentCandles = candles.slice(-20);
     const avgClose = recentCandles.reduce((s, c) => s + c.close, 0) / recentCandles.length;
     const direction: 'BULLISH' | 'BEARISH' = candles[candles.length - 1].close > avgClose ? 'BULLISH' : 'BEARISH';
+    console.log(`[ScorecardTpsl] ${symbol}: ${candles.length} candles, ATR=${atrValue.toFixed(4)}, direction=${direction}, lastClose=${candles[candles.length - 1].close}, avgClose20=${avgClose.toFixed(4)}`);
 
     const levels = detectSwingLevels(candles);
     const supportLevels = levels.filter(l => l.type === 'support').sort((a, b) => b.strength - a.strength);
@@ -239,6 +245,7 @@ export async function calculateScorecardTpsl(params: {
 
     const minRR = classification === 'STRATEGIC' ? 3.0 : 2.0;
     if (rr < minRR) {
+        console.log(`[ScorecardTpsl] ${symbol}: REJECTED — RR=${rr.toFixed(2)} < minRR=${minRR} (${classification})`);
         return {
             tp1, tp2, tp3, stopLoss, tpSource, slSource, rr,
             isRejected: true,
@@ -252,6 +259,7 @@ export async function calculateScorecardTpsl(params: {
         ? env.SCORECARD_STRATEGIC_BUDGET
         : env.SCORECARD_TACTICAL_BUDGET;
 
+    console.log(`[ScorecardTpsl] ${symbol}: ACCEPTED — RR=${rr.toFixed(2)}, TP1=${tp1} TP2=${tp2} TP3=${tp3} SL=${stopLoss}, budget=$${allocatedBudget}`);
     return {
         tp1, tp2, tp3, stopLoss, tpSource, slSource, rr,
         isRejected: false,

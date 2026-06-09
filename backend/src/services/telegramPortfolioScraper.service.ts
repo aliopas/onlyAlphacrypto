@@ -127,20 +127,23 @@ function validateExtraction(extraction: VisionExtractionResult): boolean {
 }
 
 export async function runScorecardScraper(): Promise<ScraperResult> {
+    console.log('[ScorecardScraper] Step 1: Connecting to Telegram...');
     const client = await getTelegramClient();
     if (!client) {
-        console.warn('[TelegramPortfolioScraper] No client — skipping');
+        console.warn('[ScorecardScraper] FAILED: No Telegram client — skipping');
         return { extracted: [], totalProcessed: 0, postsAnalyzed: 0 };
     }
+    console.log('[ScorecardScraper] Telegram connected');
 
     const channel = env.SCORECARD_TELEGRAM_CHANNEL;
     if (!channel) {
-        console.warn('[TelegramPortfolioScraper] SCORECARD_TELEGRAM_CHANNEL not set');
+        console.warn('[ScorecardScraper] FAILED: SCORECARD_TELEGRAM_CHANNEL not set');
         await client.disconnect();
         return { extracted: [], totalProcessed: 0, postsAnalyzed: 0 };
     }
 
     const maxCoins = env.SCORECARD_MAX_COINS;
+    console.log(`[ScorecardScraper] Channel: ${channel}, maxCoins: ${maxCoins}`);
     const extracted: VisionExtractionResult[] = [];
     let totalProcessed = 0;
     let postsAnalyzed = 0;
@@ -154,16 +157,21 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
     for (const coin of existingCoins) {
         existingSymbols.add(coin.symbol.toUpperCase());
     }
+    console.log(`[ScorecardScraper] Existing coins in DB: ${existingCoins.length}`);
 
     let pageCount = 0;
     while (extracted.length < maxCoins && pageCount < MAX_PAGES) {
         pageCount++;
+        console.log(`[ScorecardScraper] Fetching page ${pageCount}/${MAX_PAGES} (offsetId=${offsetId})`);
         const messages = await client.getMessages(channel, {
             limit: 5,
             offsetId,
         });
 
-        if (messages.length === 0) break;
+        if (messages.length === 0) {
+            console.log('[ScorecardScraper] No more messages — stopping');
+            break;
+        }
 
         let processedAnyInBatch = false;
 
@@ -186,34 +194,58 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
                 .where(eq(telegramPortfolioPosts.messageId, String(msg.id)))
                 .limit(1);
 
-            if (existingPost) continue;
+            if (existingPost) {
+                console.log(`[ScorecardScraper] msg ${msg.id} already processed — skipping`);
+                continue;
+            }
 
             const media = msg.media as unknown as Record<string, unknown>;
             const hasPhoto = !!media.photo;
+            console.log(`[ScorecardScraper] msg ${msg.id}: hasPhoto=${hasPhoto}`);
 
             let imageDataUrl: string | null = null;
             if (hasPhoto) {
+                console.log(`[ScorecardScraper] msg ${msg.id}: Downloading photo...`);
                 imageDataUrl = await downloadPhotoAsBase64(client, msg);
+                if (imageDataUrl) {
+                    console.log(`[ScorecardScraper] msg ${msg.id}: Photo downloaded (${Math.round(imageDataUrl.length / 1024)}KB base64)`);
+                } else {
+                    console.warn(`[ScorecardScraper] msg ${msg.id}: Photo download FAILED`);
+                }
             }
 
             let postSymbols: string[] = [];
             let analyzed = false;
 
             if (imageDataUrl) {
+                console.log(`[ScorecardScraper] msg ${msg.id}: Calling Vision AI...`);
                 const visionResult = await callVisionForSymbolExtraction(imageDataUrl);
                 if (visionResult && visionResult.symbols && Array.isArray(visionResult.symbols)) {
+                    console.log(`[ScorecardScraper] msg ${msg.id}: Vision returned ${visionResult.symbols.length} symbols`);
                     for (const item of visionResult.symbols) {
-                        if (!validateExtraction(item)) continue;
+                        if (!validateExtraction(item)) {
+                            console.log(`[ScorecardScraper] msg ${msg.id}: Invalid extraction ${JSON.stringify(item)}`);
+                            continue;
+                        }
                         const symbol = item.symbol.toUpperCase().trim();
-                        if (TRACKED_COIN_SET.has(symbol)) continue;
-                        if (existingSymbols.has(symbol)) continue;
+                        if (TRACKED_COIN_SET.has(symbol)) {
+                            console.log(`[ScorecardScraper] msg ${msg.id}: ${symbol} is tracked major — skipping`);
+                            continue;
+                        }
+                        if (existingSymbols.has(symbol)) {
+                            console.log(`[ScorecardScraper] msg ${msg.id}: ${symbol} already exists — skipping`);
+                            continue;
+                        }
                         if (extracted.some(e => e.symbol === symbol)) continue;
 
+                        console.log(`[ScorecardScraper] msg ${msg.id}: Extracted ${symbol} @ $${item.entryPrice}`);
                         extracted.push({ symbol, entryPrice: item.entryPrice });
                         existingSymbols.add(symbol);
                         postSymbols.push(symbol);
                     }
                     analyzed = true;
+                } else {
+                    console.warn(`[ScorecardScraper] msg ${msg.id}: Vision returned null/empty`);
                 }
             }
 
@@ -231,11 +263,15 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
             postsAnalyzed++;
         }
 
-        if (!processedAnyInBatch) break;
+        if (!processedAnyInBatch) {
+            console.log('[ScorecardScraper] No valid messages in batch — stopping');
+            break;
+        }
     }
 
     await client.disconnect();
+    console.log('[ScorecardScraper] Telegram disconnected');
 
-    console.log(`[TelegramPortfolioScraper] Extracted ${extracted.length} coins from ${postsAnalyzed} posts (${pageCount} pages)`);
+    console.log(`[ScorecardScraper] DONE: Extracted ${extracted.length} coins from ${postsAnalyzed} posts (${pageCount} pages)`);
     return { extracted, totalProcessed, postsAnalyzed };
 }
