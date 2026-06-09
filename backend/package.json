@@ -13,7 +13,8 @@
     "db:studio": "drizzle-kit studio",
     "db:purge": "ts-node src/scripts/purge-data.ts",
     "test": "jest --verbose",
-    "test:airdrop": "jest --verbose specs/airdropPipelineV2.spec.ts"
+    "test:airdrop": "jest --verbose specs/airdropPipelineV2.spec.ts",
+    "test:scorecard": "ts-node scripts/test-scorecard-flow.ts"
   },
   "keywords": [],
   "author": "",
