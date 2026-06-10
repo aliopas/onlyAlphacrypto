@@ -1,8 +1,19 @@
 import axios from 'axios';
+import http from 'http';
+import https from 'https';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
 export const BINANCE_BASE = 'https://api.binance.com/api/v3';
+
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
+
+const binanceClient = axios.create({
+    timeout: 10000,
+    httpAgent,
+    httpsAgent,
+});
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -33,9 +44,8 @@ export interface BinanceKline {
 export async function getLivePrice(symbol: string): Promise<number | null> {
     try {
         const pair = symbol.toUpperCase() + 'USDT';
-        const { data } = await axios.get<BinanceTicker>(`${BINANCE_BASE}/ticker/price`, {
+        const { data } = await binanceClient.get<BinanceTicker>(`${BINANCE_BASE}/ticker/price`, {
             params: { symbol: pair },
-            timeout: 5000,
         });
         return parseFloat(data.price);
     } catch (error) {
@@ -49,9 +59,8 @@ export async function getLivePrice(symbol: string): Promise<number | null> {
 export async function getLivePrices(symbols: string[]): Promise<Record<string, number>> {
     try {
         const pairs = symbols.map((s) => `"${s.toUpperCase()}USDT"`).join(',');
-        const { data } = await axios.get<BinanceTicker[]>(`${BINANCE_BASE}/ticker/price`, {
+        const { data } = await binanceClient.get<BinanceTicker[]>(`${BINANCE_BASE}/ticker/price`, {
             params: { symbols: `[${pairs}]` },
-            timeout: 5000,
         });
 
         const result: Record<string, number> = {};
@@ -70,9 +79,7 @@ export async function getLivePrices(symbols: string[]): Promise<Record<string, n
 
 export async function getTopMovers(limit = 10): Promise<BinanceMover[]> {
     try {
-        const { data } = await axios.get<BinanceMover[]>(`${BINANCE_BASE}/ticker/24hr`, {
-            timeout: 8000,
-        });
+        const { data } = await binanceClient.get<BinanceMover[]>(`${BINANCE_BASE}/ticker/24hr`);
 
         // Filter USDT pairs only, then sort by absolute change %
         return data
@@ -96,9 +103,8 @@ export async function getTopMovers(limit = 10): Promise<BinanceMover[]> {
 export async function getCoinKlines(symbol: string, interval = '1h', limit = 15) {
     try {
         const pair = symbol.toUpperCase() + 'USDT';
-        const { data } = await axios.get(`${BINANCE_BASE}/klines`, {
+        const { data } = await binanceClient.get(`${BINANCE_BASE}/klines`, {
             params: { symbol: pair, interval, limit },
-            timeout: 5000,
         });
 
         return data.map((k: unknown[]) => ({
@@ -134,7 +140,7 @@ export async function getCoinKlinesRange(symbol: string, interval: string, start
 
     try {
         while (allCandles.length < maxCandles && currentStartTime < endTime) {
-            const { data } = await axios.get(`${BINANCE_BASE}/klines`, {
+            const { data } = await binanceClient.get(`${BINANCE_BASE}/klines`, {
                 params: {
                     symbol: pair,
                     interval,
@@ -142,7 +148,6 @@ export async function getCoinKlinesRange(symbol: string, interval: string, start
                     endTime,
                     limit: limitPerRequest,
                 },
-                timeout: 5000,
             });
 
             if (!Array.isArray(data) || data.length === 0) {
@@ -190,7 +195,7 @@ export async function getCoinKlinesRange(symbol: string, interval: string, start
 
 export async function getFearAndGreed(): Promise<{ value: number; classification: string }> {
     try {
-        const { data } = await axios.get(env.ALTERNATIVE_ME_URL, { timeout: 5000 });
+        const { data } = await binanceClient.get(env.ALTERNATIVE_ME_URL);
         const item = data.data[0];
         return {
             value: parseInt(item.value, 10),

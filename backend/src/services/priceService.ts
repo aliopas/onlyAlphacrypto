@@ -73,10 +73,20 @@ export interface PriceResult {
 
 const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
 
+const priceCache: Map<string, { price: PriceResult; ts: number }> = new Map();
+const PRICE_CACHE_TTL = 15_000;
+
 export async function getPriceWithFallback(symbol: string, tokenAddress?: string): Promise<PriceResult | null> {
+    const cacheKey = symbol.toUpperCase();
+    const cached = priceCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < PRICE_CACHE_TTL) {
+        return cached.price;
+    }
+
     try {
         const binanceResult = await tryBinance(symbol);
         if (binanceResult !== null) {
+            priceCache.set(cacheKey, { price: binanceResult, ts: Date.now() });
             return binanceResult;
         }
     } catch (error) {
@@ -88,6 +98,7 @@ export async function getPriceWithFallback(symbol: string, tokenAddress?: string
     try {
         const dexResult = await tryDexScreener(symbol, tokenAddress);
         if (dexResult !== null) {
+            priceCache.set(cacheKey, { price: dexResult, ts: Date.now() });
             return dexResult;
         }
     } catch (error) {
@@ -99,7 +110,7 @@ export async function getPriceWithFallback(symbol: string, tokenAddress?: string
 
 async function tryBinance(symbol: string): Promise<PriceResult | null> {
     const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol.toUpperCase()}USDT`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
 
     if (!res.ok) {
         return null;
@@ -136,7 +147,7 @@ async function tryDexScreener(symbol: string, tokenAddress?: string): Promise<Pr
         url = `https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(symbol)}`;
     }
 
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
 
     if (!res.ok) {
         return null;
@@ -200,7 +211,7 @@ export async function getBinancePriceAtDate(pair: string, date: Date): Promise<n
         const start = date.getTime();
         const end = start + 3_600_000;
         const url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1h&startTime=${start}&endTime=${end}&limit=1`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
 
         if (!res.ok) {
             return null;
