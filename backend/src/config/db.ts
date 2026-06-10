@@ -133,6 +133,56 @@ async function runMigrations(): Promise<void> {
                 console.log('✅ TP/SL backfill complete');
             }
         }
+
+        // ─── Admin Command Center migrations ───────────────────────────────────
+        const adminMigrationFlag = await client.query(
+            "SELECT 1 FROM migration_flags WHERE flag_name = 'admin_command_center_v1'"
+        );
+
+        if (adminMigrationFlag.rows.length === 0) {
+            console.log('📦 Running admin command center migrations...');
+
+            // Add archived_at to signal_performance
+            await client.query(`
+                ALTER TABLE signal_performance
+                ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP
+            `);
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS idx_signal_performance_archived
+                ON signal_performance(archived_at)
+                WHERE archived_at IS NULL
+            `);
+
+            // Create admin_audit_log table
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS admin_audit_log (
+                    id SERIAL PRIMARY KEY,
+                    admin_email VARCHAR(100) NOT NULL,
+                    action VARCHAR(50) NOT NULL,
+                    target_table VARCHAR(50),
+                    target_id VARCHAR(50),
+                    old_value JSONB,
+                    new_value JSONB,
+                    ip_address VARCHAR(45),
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            `);
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS idx_admin_audit_action
+                ON admin_audit_log(action, created_at)
+            `);
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS idx_admin_audit_admin
+                ON admin_audit_log(admin_email, created_at)
+            `);
+
+            // Register migration flag
+            await client.query(
+                "INSERT INTO migration_flags (flag_name) VALUES ('admin_command_center_v1')"
+            );
+
+            console.log('✅ Admin command center migrations complete');
+        }
     } catch (err) {
         console.error('⚠️ Alpha focus migration warning:', err instanceof Error ? err.message : String(err));
     } finally {

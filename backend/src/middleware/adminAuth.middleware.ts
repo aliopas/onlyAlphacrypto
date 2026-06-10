@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { env } from '../config/env';
+import { redis, getSession, setSession, deleteSession } from '../config/redis';
+import { logger } from '../utils/logger';
 
 declare global {
     namespace Express {
@@ -13,19 +15,15 @@ declare global {
 
 interface AdminSession {
     email: string;
-    expiresAt: Date;
+    expiresAt: string;
 }
 
-// In-memory session store (not persistent across restarts)
-// NOTE: In-memory only — sessions are lost on server restart.
-// This is acceptable for Shadow Mode admin dashboard (single user, low traffic).
-// TODO: Migrate to Redis-backed sessions when moving to production-grade auth.
-// See: Phase 0.5 admin auth redesign in Master Plan.
-const sessions = new Map<string, AdminSession>();
+// Fallback in-memory store when Redis is unavailable (backward compatibility)
+const fallbackSessions = new Map<string, AdminSession>();
 
 // ─── Rate Limiting ───────────────────────────────────────────────────────────
 const MAX_LOGIN_ATTEMPTS = 5;
-const BLOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+const BLOCK_DURATION_MS = 15 * 60 * 1000;
 
 interface LoginAttempt {
     count: number;
@@ -66,18 +64,46 @@ function getClientIp(req: Request): string {
 
 // Session expiry time (24 hours)
 const SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000;
+const SESSION_TTL_SECONDS = 86400;
 
 // Session cleanup interval (every hour)
 const SESSION_CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 
-// Schedule periodic cleanup of expired sessions
 setInterval(() => {
-    cleanupExpiredSessions();
+    cleanupExpiredSessions().catch((err: unknown) => {
+        logger.error('[AdminSession] Cleanup error: %s', err instanceof Error ? err.message : String(err));
+    });
 }, SESSION_CLEANUP_INTERVAL_MS);
 
-/**
- * Generate a secure HMAC-signed session token
- */
+// ─── Session Storage ─────────────────────────────────────────────────────────
+
+async function storeSession(token: string, session: AdminSession): Promise<void> {
+    if (redis) {
+        await setSession(token, session, SESSION_TTL_SECONDS);
+    } else {
+        fallbackSessions.set(token, session);
+    }
+}
+
+async function retrieveSession(token: string): Promise<AdminSession | null> {
+    if (redis) {
+        const data = await getSession<AdminSession>(token);
+        if (!data) return null;
+        return data;
+    }
+    return fallbackSessions.get(token) ?? null;
+}
+
+async function removeSession(token: string): Promise<void> {
+    if (redis) {
+        await deleteSession(token);
+    } else {
+        fallbackSessions.delete(token);
+    }
+}
+
+// ─── Token Utilities ─────────────────────────────────────────────────────────
+
 function generateSessionToken(): string {
     const payload = crypto.randomBytes(32).toString('hex');
     const signature = crypto
@@ -87,9 +113,6 @@ function generateSessionToken(): string {
     return `${payload}.${signature}`;
 }
 
-/**
- * Verify a session token
- */
 function verifySessionToken(token: string): boolean {
     const parts = token.split('.');
     if (parts.length !== 2) return false;
@@ -107,155 +130,161 @@ function verifySessionToken(token: string): boolean {
     }
 }
 
-/**
- * Extract session ID from token
- */
 function extractSessionId(token: string): string | null {
     const parts = token.split('.');
     if (parts.length !== 2) return null;
     return verifySessionToken(token) ? parts[0] : null;
 }
 
-/**
- * Clean up expired sessions
- */
-export function cleanupExpiredSessions(): void {
-    const now = new Date();
-    for (const [sessionId, session] of sessions.entries()) {
-        if (session.expiresAt <= now) {
-            sessions.delete(sessionId);
-        }
-    }
-}
-
-/**
- * Admin login handler
- */
-export async function adminLogin(req: Request, res: Response): Promise<void> {
-    const clientIp = getClientIp(req);
-
-    if (isIpBlocked(clientIp)) {
-        res.status(404).json({ error: 'Not found' });
-        return;
-    }
-
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-        res.status(400).json({ error: 'Email and password required' });
-        return;
-    }
-
-    // Validate email
-    if (email !== env.ADMIN_EMAIL) {
-        recordFailedAttempt(clientIp);
-        res.status(401).json({ error: 'Invalid credentials' });
-        return;
-    }
-
-    // Compare password
-    const passwordHash = env.ADMIN_PASSWORD;
-    let isValidPassword = false;
-
-    // Check if stored password is a bcrypt hash (starts with $2) or plaintext
-    if (passwordHash.startsWith('$2')) {
-        // It's a bcrypt hash
-        try {
-            isValidPassword = await bcrypt.compare(password, passwordHash);
-        } catch {
-            isValidPassword = false;
-        }
-    } else {
-        // It's plaintext - timing-safe comparison
-        isValidPassword = safeCompare(password, passwordHash);
-    }
-
-    if (!isValidPassword) {
-        recordFailedAttempt(clientIp);
-        res.status(401).json({ error: 'Invalid credentials' });
-        return;
-    }
-
-    // Successful login - reset rate limit
-    resetLoginAttempts(clientIp);
-
-    // Generate session
-    const sessionToken = generateSessionToken();
-    const expiresAt = new Date(Date.now() + SESSION_EXPIRY_MS);
-
-    sessions.set(sessionToken, {
-        email,
-        expiresAt,
-    });
-
-    res.json({
-        message: 'Login successful',
-        sessionToken,
-        expiresAt: expiresAt.toISOString(),
-    });
-}
-
-/**
- * Timing-safe string comparison to prevent timing attacks
- */
 function safeCompare(a: string, b: string): boolean {
     const bufA = Buffer.from(a, 'utf8');
     const bufB = Buffer.from(b, 'utf8');
     if (bufA.length !== bufB.length) {
-        // Constant-time comparison to avoid leaking length
-        return crypto.timingSafeEqual(bufA, bufA);
+        return false;
     }
     return crypto.timingSafeEqual(bufA, bufB);
 }
 
-/**
- * Admin logout handler
- */
-export function adminLogout(req: Request, res: Response): void {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        res.status(404).json({ error: 'Not found' });
-        return;
-    }
+// ─── Exported Handlers ───────────────────────────────────────────────────────
 
-    const token = authHeader.substring(7);
-    sessions.delete(token);
-    res.json({ message: 'Logout successful' });
+export async function cleanupExpiredSessions(): Promise<void> {
+    if (redis) {
+        try {
+            let cursor = '0';
+            do {
+                const [nextCursor, keys] = await redis.scan(cursor, 'MATCH', 'oa:admin:session:*', 'COUNT', 100);
+                cursor = nextCursor;
+                for (const key of keys) {
+                    const ttl = await redis.ttl(key);
+                    if (ttl < 0) {
+                        await redis.del(key);
+                    }
+                }
+            } while (cursor !== '0');
+        } catch (err) {
+            logger.error('[AdminSession] Redis cleanup scan failed: %s', err instanceof Error ? err.message : String(err));
+        }
+    } else {
+        const now = new Date();
+        for (const [token, session] of fallbackSessions.entries()) {
+            const expiresAt = new Date(session.expiresAt);
+            if (expiresAt <= now) {
+                fallbackSessions.delete(token);
+            }
+        }
+    }
 }
 
-/**
- * Admin authentication middleware
- */
-export function adminAuth(req: Request, res: Response, next: NextFunction): void {
-    const authHeader = req.headers.authorization;
+export async function adminLogin(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const clientIp = getClientIp(req);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        res.status(404).json({ error: 'Not found' });
-        return;
+        if (isIpBlocked(clientIp)) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            res.status(400).json({ error: 'Email and password required' });
+            return;
+        }
+
+        if (email !== env.ADMIN_EMAIL) {
+            recordFailedAttempt(clientIp);
+            res.status(401).json({ error: 'Invalid credentials' });
+            return;
+        }
+
+        const passwordHash = env.ADMIN_PASSWORD;
+        let isValidPassword = false;
+
+        if (passwordHash.startsWith('$2')) {
+            try {
+                isValidPassword = await bcrypt.compare(password, passwordHash);
+            } catch {
+                isValidPassword = false;
+            }
+        } else {
+            isValidPassword = safeCompare(password, passwordHash);
+        }
+
+        if (!isValidPassword) {
+            recordFailedAttempt(clientIp);
+            res.status(401).json({ error: 'Invalid credentials' });
+            return;
+        }
+
+        resetLoginAttempts(clientIp);
+
+        const sessionToken = generateSessionToken();
+        const expiresAt = new Date(Date.now() + SESSION_EXPIRY_MS);
+
+        await storeSession(sessionToken, {
+            email,
+            expiresAt: expiresAt.toISOString(),
+        });
+
+        res.json({
+            message: 'Login successful',
+            sessionToken,
+            expiresAt: expiresAt.toISOString(),
+        });
+    } catch (err) {
+        next(err);
     }
+}
 
-    const token = authHeader.substring(7);
-    const sessionId = extractSessionId(token);
+export async function adminLogout(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
 
-    if (!sessionId) {
-        res.status(404).json({ error: 'Not found' });
-        return;
+        const token = authHeader.substring(7);
+        await removeSession(token);
+        res.json({ message: 'Logout successful' });
+    } catch (err) {
+        next(err);
     }
+}
 
-    const session = sessions.get(token);
-    if (!session) {
-        res.status(404).json({ error: 'Not found' });
-        return;
+export async function adminAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+        const authHeader = req.headers.authorization;
+
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const token = authHeader.substring(7);
+        const sessionId = extractSessionId(token);
+
+        if (!sessionId) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const session = await retrieveSession(token);
+        if (!session) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const expiresAt = new Date(session.expiresAt);
+        if (expiresAt <= new Date()) {
+            await removeSession(token);
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        req.adminEmail = session.email;
+        next();
+    } catch (err) {
+        next(err);
     }
-
-    // Check if session expired
-    if (session.expiresAt <= new Date()) {
-        sessions.delete(token);
-        res.status(404).json({ error: 'Not found' });
-        return;
-    }
-
-    // Session is valid, proceed
-    req.adminEmail = session.email;
-    next();
 }

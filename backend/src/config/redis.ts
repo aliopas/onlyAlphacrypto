@@ -66,3 +66,35 @@ export async function deleteCachePattern(pattern: string): Promise<void> {
         logger.error('[Cache] Failed to delete cache pattern "%s": %s', pattern, err instanceof Error ? err.message : String(err));
     }
 }
+
+const SESSION_KEY_PREFIX = 'oa:admin:session:';
+
+export async function getSession<T>(sessionId: string): Promise<T | null> {
+    if (!redis) return null;
+    try {
+        const data = await redis.get(`${SESSION_KEY_PREFIX}${sessionId}`);
+        if (!data) return null;
+        return JSON.parse(data) as T;
+    } catch (err) {
+        logger.error('[Session] Failed to get session "%s": %s', sessionId, err instanceof Error ? err.message : String(err));
+        return null;
+    }
+}
+
+export async function setSession<T>(sessionId: string, data: T, ttlSeconds = 86400): Promise<void> {
+    if (!redis) return;
+    try {
+        await redis.setex(`${SESSION_KEY_PREFIX}${sessionId}`, ttlSeconds, JSON.stringify(data));
+    } catch (err) {
+        logger.error('[Session] Failed to set session "%s": %s', sessionId, err instanceof Error ? err.message : String(err));
+    }
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+    if (!redis) return;
+    try {
+        await redis.del(`${SESSION_KEY_PREFIX}${sessionId}`);
+    } catch (err) {
+        logger.error('[Session] Failed to delete session "%s": %s', sessionId, err instanceof Error ? err.message : String(err));
+    }
+}

@@ -1,8 +1,12 @@
 import { Request, Response } from 'express';
 import { getShadowStats } from '../services/shadowSignals.service';
+import { logAdminAction } from '../services/adminAudit.service';
+import { pauseSignalGeneration, resumeSignalGeneration } from '../services/signalControl.service';
+import { isPageInMaintenance, setMaintenanceMode, clearMaintenanceMode, getAllMaintenanceFlags } from '../services/maintenance.service';
+import { collectSystemTelemetry } from '../services/telemetry.service';
 import { db } from '../config/db';
-import { shadowSignals } from '../models/market.model';
-import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
+import { shadowSignals, signalPerformance } from '../models/market.model';
+import { eq, and, gte, lte, desc, sql, isNull, inArray, lte as lteOp } from 'drizzle-orm';
 
 /**
  * Get shadow mode statistics
@@ -127,5 +131,505 @@ export async function getShadowSignalByIdHandler(req: Request, res: Response): P
         res.json(signals[0]);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch shadow signal' });
+    }
+}
+
+function getClientIp(req: Request): string {
+    return (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
+        ?? (req.headers['x-real-ip'] as string | undefined)
+        ?? req.socket.remoteAddress
+        ?? 'unknown';
+}
+
+/**
+ * Get score records (signal_performance) with filtering and pagination
+ */
+export async function getScoreRecordsHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const {
+            coin,
+            state,
+            startDate,
+            endDate,
+            includeArchived,
+            page = '1',
+            limit = '50',
+        } = req.query;
+
+        const pageNum = parseInt(page as string, 10) || 1;
+        const limitNum = Math.min(parseInt(limit as string, 10) || 50, 100);
+        const offset = (pageNum - 1) * limitNum;
+
+        const whereConditions = [];
+
+        if (coin && typeof coin === 'string') {
+            whereConditions.push(eq(signalPerformance.coinSymbol, coin));
+        }
+
+        if (state && typeof state === 'string') {
+            whereConditions.push(eq(signalPerformance.signalState, state));
+        }
+
+        if (startDate && typeof startDate === 'string') {
+            whereConditions.push(gte(signalPerformance.createdAt, new Date(startDate)));
+        }
+        if (endDate && typeof endDate === 'string') {
+            whereConditions.push(lte(signalPerformance.createdAt, new Date(endDate)));
+        }
+
+        if (includeArchived !== 'true') {
+            whereConditions.push(isNull(signalPerformance.archivedAt));
+        }
+
+        const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+        const totalResult = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(signalPerformance)
+            .where(whereClause);
+
+        const total = totalResult[0]?.count || 0;
+
+        const records = await db
+            .select()
+            .from(signalPerformance)
+            .where(whereClause)
+            .orderBy(desc(signalPerformance.createdAt))
+            .limit(limitNum)
+            .offset(offset);
+
+        res.json({
+            records,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total,
+                totalPages: Math.ceil(total / limitNum),
+            },
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch score records' });
+    }
+}
+
+/**
+ * Bulk archive score records (soft delete)
+ */
+export async function archiveScoreRecordsHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const { ids } = req.body;
+        const adminEmail = req.adminEmail;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            res.status(400).json({ error: 'ids array required' });
+            return;
+        }
+
+        if (ids.length > 1000) {
+            res.status(400).json({ error: 'Max 1000 records per archive request' });
+            return;
+        }
+
+        const now = new Date();
+
+        // Verify all records exist and are not already archived
+        const existing = await db
+            .select({ id: signalPerformance.id, archivedAt: signalPerformance.archivedAt })
+            .from(signalPerformance)
+            .where(and(
+                inArray(signalPerformance.id, ids),
+                isNull(signalPerformance.archivedAt)
+            ));
+
+        if (existing.length === 0) {
+            res.status(404).json({ error: 'No eligible records found' });
+            return;
+        }
+
+        const eligibleIds = existing.map(r => r.id);
+
+        await db
+            .update(signalPerformance)
+            .set({ archivedAt: now })
+            .where(inArray(signalPerformance.id, eligibleIds));
+
+        await logAdminAction({
+            adminEmail: adminEmail ?? 'unknown',
+            action: 'archive_records',
+            targetTable: 'signal_performance',
+            targetId: eligibleIds.join(','),
+            newValue: { archivedAt: now.toISOString(), count: eligibleIds.length },
+            ipAddress: getClientIp(req),
+        });
+
+        res.json({
+            message: 'Records archived',
+            archivedCount: eligibleIds.length,
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to archive records' });
+    }
+}
+
+/**
+ * Auto-archive score records older than N days
+ */
+export async function archiveOldScoreRecordsHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const days = parseInt(req.query.days as string, 10) || 90;
+        const adminEmail = req.adminEmail;
+
+        if (days < 7) {
+            res.status(400).json({ error: 'Minimum archive age is 7 days' });
+            return;
+        }
+
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+
+        // Count eligible records (cap at 1000)
+        const countResult = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(signalPerformance)
+            .where(and(
+                lteOp(signalPerformance.createdAt, cutoffDate),
+                isNull(signalPerformance.archivedAt)
+            ));
+
+        const eligibleCount = countResult[0]?.count || 0;
+
+        if (eligibleCount === 0) {
+            res.json({ message: 'No eligible records to archive', archivedCount: 0 });
+            return;
+        }
+
+        const archiveCount = Math.min(eligibleCount, 1000);
+        const now = new Date();
+
+        // Archive up to 1000 oldest records
+        await db.execute(sql`
+            UPDATE signal_performance
+            SET archived_at = ${now}
+            WHERE id IN (
+                SELECT id FROM signal_performance
+                WHERE created_at <= ${cutoffDate}
+                  AND archived_at IS NULL
+                ORDER BY created_at ASC
+                LIMIT 1000
+            )
+        `);
+
+        await logAdminAction({
+            adminEmail: adminEmail ?? 'unknown',
+            action: 'archive_old_records',
+            targetTable: 'signal_performance',
+            newValue: { days, cutoffDate: cutoffDate.toISOString(), archivedCount: archiveCount },
+            ipAddress: getClientIp(req),
+        });
+
+        res.json({
+            message: 'Old records archived',
+            archivedCount: archiveCount,
+            days,
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to archive old records' });
+    }
+}
+
+/**
+ * Pause signal generation
+ */
+export async function pauseSignalGenerationHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const adminEmail = req.adminEmail;
+        const { ttl } = req.body;
+        const ttlSeconds = typeof ttl === 'number' && ttl > 0 ? ttl : 86400;
+
+        await pauseSignalGeneration(ttlSeconds);
+
+        await logAdminAction({
+            adminEmail: adminEmail ?? 'unknown',
+            action: 'pause_signal_generation',
+            targetTable: 'redis',
+            newValue: { ttlSeconds },
+            ipAddress: getClientIp(req),
+        });
+
+        res.json({ message: 'Signal generation paused', ttlSeconds });
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Failed to pause signal generation';
+        res.status(500).json({ error: msg });
+    }
+}
+
+/**
+ * Resume signal generation
+ */
+export async function resumeSignalGenerationHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const adminEmail = req.adminEmail;
+
+        await resumeSignalGeneration();
+
+        await logAdminAction({
+            adminEmail: adminEmail ?? 'unknown',
+            action: 'resume_signal_generation',
+            targetTable: 'redis',
+            ipAddress: getClientIp(req),
+        });
+
+        res.json({ message: 'Signal generation resumed' });
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Failed to resume signal generation';
+        res.status(500).json({ error: msg });
+    }
+}
+
+interface TpRaiseBody {
+    takeProfitPrice?: number;
+    tp2Price?: number;
+    tp3Price?: number;
+    stopLossPrice?: number;
+}
+
+const MAX_TP_RAISES = 3;
+
+/**
+ * Raise TP targets for an active signal
+ */
+export async function raiseTpHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const signalId = parseInt(idParam, 10);
+        if (isNaN(signalId)) {
+            res.status(400).json({ error: 'Invalid signal ID' });
+            return;
+        }
+
+        const body = req.body as TpRaiseBody;
+        const adminEmail = req.adminEmail;
+
+        const [signal] = await db
+            .select()
+            .from(signalPerformance)
+            .where(eq(signalPerformance.id, signalId))
+            .limit(1);
+
+        if (!signal) {
+            res.status(404).json({ error: 'Signal not found' });
+            return;
+        }
+
+        const eligibleStates = ['ACTIVE', 'PARTIAL_TP', 'PARTIAL_TP2'];
+        if (!eligibleStates.includes(signal.signalState ?? '')) {
+            res.status(400).json({ error: 'Signal is not active' });
+            return;
+        }
+
+        const isLong = signal.takeProfitPrice != null
+            ? signal.takeProfitPrice > signal.entryPrice
+            : (signal.tp2Price ?? 0) > signal.entryPrice;
+
+        const currentLog: unknown = signal.lifecycleActionsLog;
+        const logEntries = Array.isArray(currentLog)
+            ? currentLog as Array<{ action?: string }>
+            : [];
+        const tpRaiseCount = logEntries.filter(e => e?.action === 'TP_RAISE').length;
+
+        if (tpRaiseCount >= MAX_TP_RAISES) {
+            res.status(400).json({ error: `Maximum ${MAX_TP_RAISES} TP raises exceeded` });
+            return;
+        }
+
+        const updates: Partial<typeof signalPerformance.$inferInsert> = {};
+        const oldValues: Record<string, number | null> = {};
+        const newValues: Record<string, number | null> = {};
+
+        const entryPrice = signal.entryPrice;
+        const sanityCap = entryPrice * 1.4;
+        const sanityFloor = entryPrice * 0.6;
+
+        if (body.takeProfitPrice !== undefined) {
+            const newTp = body.takeProfitPrice;
+            if (signal.takeProfitPrice != null && isLong && newTp <= signal.takeProfitPrice) {
+                res.status(400).json({ error: 'New TP1 must be greater than current TP1' });
+                return;
+            }
+            if (signal.takeProfitPrice != null && !isLong && newTp >= signal.takeProfitPrice) {
+                res.status(400).json({ error: 'New TP1 must be less than current TP1' });
+                return;
+            }
+            if (newTp < sanityFloor || newTp > sanityCap) {
+                res.status(400).json({ error: 'New TP1 exceeds 40% sanity gate around entry' });
+                return;
+            }
+            updates.takeProfitPrice = newTp;
+            oldValues.takeProfitPrice = signal.takeProfitPrice;
+            newValues.takeProfitPrice = newTp;
+        }
+
+        if (body.tp2Price !== undefined) {
+            const newTp2 = body.tp2Price;
+            if (signal.tp2Price != null && isLong && newTp2 <= signal.tp2Price) {
+                res.status(400).json({ error: 'New TP2 must be greater than current TP2' });
+                return;
+            }
+            if (signal.tp2Price != null && !isLong && newTp2 >= signal.tp2Price) {
+                res.status(400).json({ error: 'New TP2 must be less than current TP2' });
+                return;
+            }
+            if (newTp2 < sanityFloor || newTp2 > sanityCap) {
+                res.status(400).json({ error: 'New TP2 exceeds 40% sanity gate around entry' });
+                return;
+            }
+            updates.tp2Price = newTp2;
+            oldValues.tp2Price = signal.tp2Price;
+            newValues.tp2Price = newTp2;
+        }
+
+        if (body.tp3Price !== undefined) {
+            const newTp3 = body.tp3Price;
+            if (signal.tp3Price != null && isLong && newTp3 <= signal.tp3Price) {
+                res.status(400).json({ error: 'New TP3 must be greater than current TP3' });
+                return;
+            }
+            if (signal.tp3Price != null && !isLong && newTp3 >= signal.tp3Price) {
+                res.status(400).json({ error: 'New TP3 must be less than current TP3' });
+                return;
+            }
+            if (newTp3 < sanityFloor || newTp3 > sanityCap) {
+                res.status(400).json({ error: 'New TP3 exceeds 40% sanity gate around entry' });
+                return;
+            }
+            updates.tp3Price = newTp3;
+            oldValues.tp3Price = signal.tp3Price;
+            newValues.tp3Price = newTp3;
+        }
+
+        if (body.stopLossPrice !== undefined) {
+            const newSl = body.stopLossPrice;
+            if (newSl <= 0) {
+                res.status(400).json({ error: 'Invalid stop loss price' });
+                return;
+            }
+            updates.stopLossPrice = newSl;
+            oldValues.stopLossPrice = signal.stopLossPrice;
+            newValues.stopLossPrice = newSl;
+        }
+
+        if (Object.keys(updates).length === 0) {
+            res.status(400).json({ error: 'No target updates provided' });
+            return;
+        }
+
+        await db
+            .update(signalPerformance)
+            .set(updates)
+            .where(eq(signalPerformance.id, signalId));
+
+        const updatedLog = Array.isArray(signal.lifecycleActionsLog)
+            ? [...signal.lifecycleActionsLog, {
+                action: 'TP_RAISE',
+                timestamp: new Date().toISOString(),
+                details: { oldValues, newValues },
+            }]
+            : [{
+                action: 'TP_RAISE',
+                timestamp: new Date().toISOString(),
+                details: { oldValues, newValues },
+            }];
+
+        await db
+            .update(signalPerformance)
+            .set({ lifecycleActionsLog: updatedLog })
+            .where(eq(signalPerformance.id, signalId));
+
+        await logAdminAction({
+            adminEmail: adminEmail ?? 'unknown',
+            action: 'raise_tp',
+            targetTable: 'signal_performance',
+            targetId: String(signalId),
+            oldValue: oldValues,
+            newValue: newValues,
+            ipAddress: getClientIp(req),
+        });
+
+        res.json({ message: 'Targets updated', signalId, updates: newValues });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to raise targets' });
+    }
+}
+
+/**
+ * Get maintenance status for a page (public endpoint)
+ */
+export async function getMaintenanceStatusHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const { page } = req.query;
+        const pageKey = typeof page === 'string' ? page : 'home';
+        const inMaintenance = await isPageInMaintenance(pageKey);
+        res.json({ inMaintenance, pageKey, retryAfter: 300 });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to check maintenance status' });
+    }
+}
+
+/**
+ * Toggle maintenance mode for a page (admin only)
+ */
+export async function toggleMaintenanceHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const { pageKey, enabled, ttlSeconds } = req.body;
+        const adminEmail = req.adminEmail;
+
+        if (!pageKey || typeof pageKey !== 'string') {
+            res.status(400).json({ error: 'pageKey required' });
+            return;
+        }
+
+        if (enabled) {
+            await setMaintenanceMode(pageKey, typeof ttlSeconds === 'number' && ttlSeconds > 0 ? ttlSeconds : 3600);
+        } else {
+            await clearMaintenanceMode(pageKey);
+        }
+
+        await logAdminAction({
+            adminEmail: adminEmail ?? 'unknown',
+            action: enabled ? 'enable_maintenance' : 'disable_maintenance',
+            targetTable: 'redis',
+            targetId: pageKey,
+            newValue: { enabled, ttlSeconds: typeof ttlSeconds === 'number' ? ttlSeconds : 3600 },
+            ipAddress: getClientIp(req),
+        });
+
+        res.json({ message: 'Maintenance mode updated', pageKey, enabled });
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Failed to toggle maintenance';
+        res.status(500).json({ error: msg });
+    }
+}
+
+/**
+ * Get all maintenance flags (admin only)
+ */
+export async function getAllMaintenanceStatusHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const flags = await getAllMaintenanceFlags();
+        res.json(flags);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch maintenance status' });
+    }
+}
+
+/**
+ * Get system telemetry dashboard data
+ */
+export async function getTelemetryHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const telemetry = await collectSystemTelemetry();
+        res.json(telemetry);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to collect telemetry' });
     }
 }

@@ -143,6 +143,10 @@ const envSchema = z.object({
     ADMIN_PASSWORD: z.string().min(12).default('change_me_in_prod'),
     ADMIN_SESSION_SECRET: z.string().length(32).default('00000000000000000000000000000000'),
 
+    // Admin Command Center
+    ADMIN_COMMAND_CENTER_ENABLED: z.coerce.boolean().default(false),
+    ADMIN_SIGNAL_OPS_ENABLED: z.coerce.boolean().default(false),
+
     // Monitoring Cron
     MONITORING_CRON_ENABLED: z.boolean().default(false),
 

@@ -40,6 +40,7 @@ import type { TrendLabel as DailyTrendLabel } from '../services/dailyTrend.servi
 import { detectMarketRegime, getRegimeEffects } from '../services/marketRegime.service';
 import { eq, gte, and, desc, sql, isNotNull, ne, or, isNull } from 'drizzle-orm';
 import { deleteCache, deleteCachePattern, redis } from '../config/redis';
+import { isSignalGenerationPaused } from '../services/signalControl.service';
 
 async function markBufferItemConsumed(bufferId: number): Promise<void> {
     await db.update(rawNewsBuffer)
@@ -225,6 +226,17 @@ export async function runAiWorkflow(): Promise<void> {
             clearTimeout(workflowTimer);
             return;
         }
+    }
+
+    const paused = await isSignalGenerationPaused();
+    if (paused) {
+        logger.info('[AI Workflow] Signal generation is paused. Skipping.');
+        isAiWorkflowRunning = false;
+        clearTimeout(workflowTimer);
+        if (redis) {
+            await redis.del(lockKey).catch(() => {});
+        }
+        return;
     }
 
     try {

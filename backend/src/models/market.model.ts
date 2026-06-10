@@ -162,6 +162,9 @@ export const signalPerformance = pgTable('signal_performance', {
     tp3HitAt: timestamp('tp3_hit_at'),
     lifecycleActionsLog: jsonb('lifecycle_actions_log').default('[]'),
 
+    // Admin Command Center: soft-delete archive
+    archivedAt: timestamp('archived_at'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -344,6 +347,22 @@ export const migrationFlags = pgTable('migration_flags', {
     flagName: varchar('flag_name', { length: 100 }).notNull().unique(),
     executedAt: timestamp('executed_at').defaultNow().notNull(),
 });
+
+// ─── ADMIN AUDIT LOG (Append-only, immutable) ─────────────────────────────────
+export const adminAuditLog = pgTable('admin_audit_log', {
+    id: serial('id').primaryKey(),
+    adminEmail: varchar('admin_email', { length: 100 }).notNull(),
+    action: varchar('action', { length: 50 }).notNull(),
+    targetTable: varchar('target_table', { length: 50 }),
+    targetId: varchar('target_id', { length: 50 }),
+    oldValue: jsonb('old_value'),
+    newValue: jsonb('new_value'),
+    ipAddress: varchar('ip_address', { length: 45 }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => ({
+    actionIdx: index('idx_admin_audit_action').on(table.action, table.createdAt),
+    adminIdx: index('idx_admin_audit_admin').on(table.adminEmail, table.createdAt),
+}));
 
 export const coinTimelineUpdates = pgTable('coin_timeline_updates', {
     id: serial('id').primaryKey(),
