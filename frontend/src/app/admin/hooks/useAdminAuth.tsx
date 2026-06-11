@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -14,7 +14,9 @@ export interface AdminAuthState {
     fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
 }
 
-export function useAdminAuth(): AdminAuthState {
+const AdminAuthContext = createContext<AdminAuthState | null>(null);
+
+export function AdminAuthProvider({ children }: { children: React.ReactNode }) {
     const [token, setToken] = useState<string | null>(null);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -84,5 +86,17 @@ export function useAdminAuth(): AdminAuthState {
         return response;
     }, [token]);
 
-    return { token, isAuthenticated, isLoading, loginError, login, logout, fetchWithAuth };
+    return (
+        <AdminAuthContext.Provider value={{ token, isAuthenticated, isLoading, loginError, login, logout, fetchWithAuth }}>
+            {children}
+        </AdminAuthContext.Provider>
+    );
+}
+
+export function useAdminAuth(): AdminAuthState {
+    const ctx = useContext(AdminAuthContext);
+    if (!ctx) {
+        throw new Error('useAdminAuth must be used within AdminAuthProvider');
+    }
+    return ctx;
 }

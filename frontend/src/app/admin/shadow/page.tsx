@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useAdminAuth } from '../hooks/useAdminAuth';
 
 interface ShadowStats {
     totalSignals: number;
@@ -45,74 +46,30 @@ interface ShadowSignal {
 }
 
 export default function ShadowDashboard() {
+    const { fetchWithAuth } = useAdminAuth();
     const [stats, setStats] = useState<ShadowStats | null>(null);
-    const [signals, setSignals] = useState<ShadowSignal[]>([])
+    const [signals, setSignals] = useState<ShadowSignal[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [sessionToken, setSessionToken] = useState<string | null>(null);
-    const [loginEmail, setLoginEmail] = useState('');
-    const [loginPassword, setLoginPassword] = useState('');
-    const [loginError, setLoginError] = useState<string | null>(null);
 
-    // Filters
     const [coinFilter, setCoinFilter] = useState('');
     const [agreementFilter, setAgreementFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
-    // Filter refs to prevent keystroke-triggered API calls
     const coinFilterRef = useRef('');
     const agreementFilterRef = useRef('');
     const statusFilterRef = useRef('');
     const startDateRef = useRef('');
     const endDateRef = useRef('');
 
-    // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalSignals, setTotalSignals] = useState(0);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-    // Fetch trigger counter — manual trigger for Apply/Clear (bypasses pagination staleness)
     const [fetchTrigger, setFetchTrigger] = useState(0);
-
-    // Load session from localStorage on mount
-    useEffect(() => {
-        const stored = localStorage.getItem('adminSessionToken');
-        if (stored) {
-            setSessionToken(stored);
-            setIsAuthenticated(true);
-        }
-        setLoading(false);
-    }, []);
-
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-
-    const fetchWithAuth = useCallback(async (url: string, options: RequestInit = {}) => {
-        const headers: Record<string, string> = {
-            ...(options.headers as Record<string, string>),
-        };
-
-        if (sessionToken) {
-            headers['Authorization'] = `Bearer ${sessionToken}`;
-        }
-
-        const response = await fetch(`${API_BASE}${url}`, {
-            ...options,
-            headers,
-        });
-
-        if (response.status === 404) {
-            setIsAuthenticated(false);
-            setSessionToken(null);
-            localStorage.removeItem('adminSessionToken');
-            throw new Error('Not authenticated');
-        }
-
-        return response;
-    }, [sessionToken]);
 
     const fetchStats = useCallback(async () => {
         try {
@@ -120,12 +77,8 @@ export default function ShadowDashboard() {
             if (!response.ok) throw new Error('Failed to fetch stats');
             const data = await response.json();
             setStats(data);
-        } catch (err) {
-            if ((err as Error).message === 'Not authenticated') {
-                setError('Please login to view shadow mode statistics');
-            } else {
-                setError('Failed to load statistics');
-            }
+        } catch {
+            setError('Failed to load statistics');
         }
     }, [fetchWithAuth]);
 
@@ -147,69 +100,17 @@ export default function ShadowDashboard() {
             setTotalSignals(data.pagination.total);
             setTotalPages(data.pagination.totalPages);
             setLastUpdated(new Date());
-        } catch (err) {
-            if ((err as Error).message === 'Not authenticated') {
-                setError('Please login to view shadow mode statistics');
-            } else {
-                setError('Failed to load signals');
-            }
+        } catch {
+            setError('Failed to load signals');
         } finally {
             setLoading(false);
         }
     }, [fetchWithAuth, currentPage]);
 
-    const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoginError(null);
-
-        try {
-            const response = await fetch(`${API_BASE}/admin/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: loginEmail, password: loginPassword }),
-            });
-
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.error || 'Login failed');
-            }
-
-            const data = await response.json();
-            setSessionToken(data.sessionToken);
-            setIsAuthenticated(true);
-            localStorage.setItem('adminSessionToken', data.sessionToken);
-            setLoginEmail('');
-            setLoginPassword('');
-        } catch (err) {
-            setLoginError((err as Error).message);
-        }
-    };
-
-    const handleLogout = async () => {
-        try {
-            await fetch(`${API_BASE}/admin/logout`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${sessionToken}`,
-                },
-            });
-        } catch {
-            // Ignore logout errors
-        }
-
-        setIsAuthenticated(false);
-        setSessionToken(null);
-        setStats(null);
-        setSignals([]);
-        localStorage.removeItem('adminSessionToken');
-    };
-
     useEffect(() => {
-        if (isAuthenticated && sessionToken) {
-            fetchStats();
-            fetchSignals();
-        }
-    }, [isAuthenticated, sessionToken, currentPage, fetchTrigger, fetchStats, fetchSignals]);
+        fetchStats();
+        fetchSignals();
+    }, [fetchStats, fetchSignals, fetchTrigger]);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -221,48 +122,6 @@ export default function ShadowDashboard() {
     }, [fetchSignals]);
 
     const formatPercent = (value: number | null) => value !== null ? `${value.toFixed(1)}%` : 'N/A';
-
-    if (!isAuthenticated) {
-        return (
-            <div className="container mx-auto p-6">
-                <h1 className="text-3xl font-bold mb-6">Shadow Mode Dashboard</h1>
-                <div className="bg-[#0A0A0A] border border-[#333] p-6 rounded-lg">
-                    <h2 className="text-xl font-semibold mb-4">Admin Login</h2>
-                    <form onSubmit={handleLogin}>
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium mb-1 text-gray-300">Email</label>
-                            <input
-                                type="email"
-                                value={loginEmail}
-                                onChange={(e) => setLoginEmail(e.target.value)}
-                                className="w-full border border-[#333] bg-[#0D0D0D] p-2 rounded text-white placeholder-gray-500"
-                                required
-                            />
-                        </div>
-                        <div className="mb-4">
-                            <label className="block text-sm font-medium mb-1 text-gray-300">Password</label>
-                            <input
-                                type="password"
-                                value={loginPassword}
-                                onChange={(e) => setLoginPassword(e.target.value)}
-                                className="w-full border border-[#333] bg-[#0D0D0D] p-2 rounded text-white placeholder-gray-500"
-                                required
-                            />
-                        </div>
-                        {loginError && (
-                            <div className="mb-4 text-red-400 text-sm">{loginError}</div>
-                        )}
-                        <button
-                            type="submit"
-                            className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
-                        >
-                            Login
-                        </button>
-                    </form>
-                </div>
-            </div>
-        );
-    }
 
     if (loading) return <div>Loading...</div>;
     if (error) return <div>Error: {error}</div>;
@@ -281,15 +140,8 @@ export default function ShadowDashboard() {
                         </p>
                     )}
                 </div>
-                <button
-                    onClick={handleLogout}
-                    className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
-                >
-                    Logout
-                </button>
             </div>
 
-            {/* Decision Helper Banner */}
             {showDecisionHelper && stats && (
                 <div className="bg-[#0A0A0A] border border-[#333] border-l-4 border-blue-500 p-4 mb-6">
                     <div className="flex">
@@ -307,7 +159,6 @@ export default function ShadowDashboard() {
                 </div>
             )}
 
-            {/* Stats Cards */}
             {stats && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
                     <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded">
@@ -339,7 +190,6 @@ export default function ShadowDashboard() {
                 </div>
             )}
 
-            {/* Filters */}
             <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded mb-6">
                 <h3 className="text-lg font-semibold mb-4 text-white">Filters</h3>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -430,7 +280,6 @@ export default function ShadowDashboard() {
                 </div>
             </div>
 
-            {/* Pagination */}
             {totalPages > 1 && (
                 <div className="flex justify-center items-center gap-2 mb-4">
                     <button
@@ -453,7 +302,6 @@ export default function ShadowDashboard() {
                 </div>
             )}
 
-            {/* Signals Table */}
             <div className="bg-[#0A0A0A] border border-[#333] rounded overflow-hidden">
                 <div className="max-h-[600px] overflow-y-auto">
                     <table className="w-full table-auto">

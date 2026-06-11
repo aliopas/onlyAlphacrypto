@@ -2,10 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAdminAuth } from './hooks/useAdminAuth';
+import { useAdminAuth, AdminAuthProvider } from './hooks/useAdminAuth';
 import AdminNav from './components/AdminNav';
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     const { isAuthenticated, isLoading, loginError, login, logout } = useAdminAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -83,5 +83,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <AdminNav onLogout={logout} />
             <main className="flex-1 overflow-y-auto p-6">{children}</main>
         </div>
+    );
+}
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+    return (
+        <AdminAuthProvider>
+            <AdminLayoutInner>{children}</AdminLayoutInner>
+        </AdminAuthProvider>
     );
 }
