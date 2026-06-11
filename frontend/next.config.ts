@@ -2,6 +2,12 @@ import type { NextConfig } from "next";
 import { COINS } from "./src/lib/constants";
 
 const nextConfig: NextConfig = {
+    experimental: {
+        staleTimes: {
+            dynamic: 0,
+            static: 0,
+        },
+    },
     async headers() {
         return [
             {
