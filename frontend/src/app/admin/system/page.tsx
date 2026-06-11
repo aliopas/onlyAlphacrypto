@@ -229,7 +229,7 @@ export default function SystemPage() {
                                 {Object.entries(maintenanceFlags).map(([key, ttl]) => (
                                     <div key={key} className="flex justify-between items-center p-2 bg-[#1a1a1a] rounded">
                                         <span className="text-sm font-mono">{key}</span>
-                                        <span className="text-xs text-gray-500">{TTL: {ttl}s}</span>
+                                        <span className="text-xs text-gray-500">{`TTL: ${ttl}s`}</span>
                                     </div>
                                 ))}
                             </div>
