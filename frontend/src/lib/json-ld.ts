@@ -1,6 +1,9 @@
 export function sanitizeForJsonLd(value: string | null | undefined): string {
     if (!value) return '';
     return String(value)
-        .replace(/</g, '\u003c')
-        .replace(/>/g, '\u003e');
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }

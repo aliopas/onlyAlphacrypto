@@ -5,7 +5,6 @@ import { pauseSignalGeneration, resumeSignalGeneration } from '../services/signa
 import { isPageInMaintenance, setMaintenanceMode, clearMaintenanceMode, getAllMaintenanceFlags } from '../services/maintenance.service';
 import { collectSystemTelemetry } from '../services/telemetry.service';
 import { db } from '../config/db';
-import { deleteCache } from '../config/redis';
 import { shadowSignals, signalPerformance } from '../models/market.model';
 import { eq, and, gte, lte, desc, sql, isNull, inArray, lte as lteOp } from 'drizzle-orm';
 
@@ -271,8 +270,6 @@ export async function archiveScoreRecordsHandler(req: Request, res: Response): P
             ipAddress: getClientIp(req),
         });
 
-        await deleteCache('scorecard:latest');
-
         res.json({
             message: 'Records archived',
             archivedCount: eligibleIds.length,
@@ -337,8 +334,6 @@ export async function archiveOldScoreRecordsHandler(req: Request, res: Response)
             newValue: { days, cutoffDate: cutoffDate.toISOString(), archivedCount: archiveCount },
             ipAddress: getClientIp(req),
         });
-
-        await deleteCache('scorecard:latest');
 
         res.json({
             message: 'Old records archived',
