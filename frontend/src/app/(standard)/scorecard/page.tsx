@@ -1,5 +1,6 @@
 import ScorecardClient from './ScorecardClient';
 import { apiClient } from '@/features/shared/api/client';
+import { SITE_URL } from '@/lib/constants';
 
 interface CoinRow {
     id: number;
@@ -35,6 +36,17 @@ interface ScorecardData {
     watchlist: CoinRow[];
 }
 
+function buildBreadcrumbJsonLd(): Record<string, unknown> {
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+            { '@type': 'ListItem', position: 2, name: 'Scorecard', item: `${SITE_URL}/scorecard` },
+        ],
+    };
+}
+
 export default async function ScorecardPage() {
     let initialData: ScorecardData | null = null;
 
@@ -45,5 +57,13 @@ export default async function ScorecardPage() {
         initialData = null;
     }
 
-    return <ScorecardClient initialData={initialData} />;
+    return (
+        <>
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(buildBreadcrumbJsonLd()) }}
+            />
+            <ScorecardClient initialData={initialData} />
+        </>
+    );
 }

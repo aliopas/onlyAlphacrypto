@@ -8,7 +8,7 @@ import {
     signalPerformance, coinStrategicOutlook
 } from '../models/index';
 import { getStrategicOutlook, getActiveEventResponses } from '../services/strategicOutlook.service';
-import { desc, eq, gte, and, asc, sql } from 'drizzle-orm';
+import { desc, eq, gte, and, asc, sql, isNull } from 'drizzle-orm';
 import { getLivePrices, getTopMovers } from '../services/binance.service';
 import { getPriceWithFallback } from '../services/priceService';
 import { AppError } from '../middleware/errorHandler';
@@ -539,7 +539,10 @@ export async function getScorecardHandler(req: Request, res: Response, next: Nex
         // --- Section 1: Tactical Signals (active, one per coin) ---
         const activeSignals = await db.select()
             .from(signalPerformance)
-            .where(eq(signalPerformance.isActive, true))
+            .where(and(
+                eq(signalPerformance.isActive, true),
+                isNull(signalPerformance.archivedAt)
+            ))
             .orderBy(desc(signalPerformance.entryAt))
             .limit(50);
 
@@ -589,7 +592,10 @@ export async function getScorecardHandler(req: Request, res: Response, next: Nex
         // --- Section 2: Closed Signals (with realized P&L) ---
         const closedSignals = await db.select()
             .from(signalPerformance)
-            .where(eq(signalPerformance.isActive, false))
+            .where(and(
+                eq(signalPerformance.isActive, false),
+                isNull(signalPerformance.archivedAt)
+            ))
             .orderBy(desc(signalPerformance.closedAt))
             .limit(30);
 

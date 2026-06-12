@@ -3,6 +3,8 @@ import { airdropApi } from '@/features/airdrop/api';
 import { AirdropProject } from '@/features/airdrop/types';
 import { AirdropsPageClient } from '@/features/airdrop/components/AirdropsPageClient';
 import { SITE_URL } from '@/lib/constants';
+import { FaqSchema, FaqItem } from '@/components/seo/FaqSchema';
+import { sanitizeForJsonLd } from '@/lib/json-ld';
 
 export const revalidate = 60;
 
@@ -28,6 +30,35 @@ export const metadata: Metadata = {
     },
 };
 
+const AIRDROP_FAQ: FaqItem[] = [
+    {
+        question: 'What are crypto airdrops?',
+        answer:
+            'Crypto airdrops are distributions of tokens to early users, testers, or community members of a blockchain project, often used to bootstrap adoption and reward engagement.',
+    },
+    {
+        question: 'How does OnlyAlpha rate airdrops?',
+        answer:
+            'OnlyAlpha scores airdrops using a quality model that considers CEX listings, price data availability, on-chain activity, farming difficulty, and risk indicators. Scores are for research and education only and do not constitute financial advice.',
+    },
+    {
+        question: 'Is airdrop farming safe?',
+        answer:
+            'Airdrop farming involves smart-contract interactions, wallet exposure, token volatility, and potential scams. OnlyAlpha provides research tools to help users evaluate opportunities, but all participation is at your own risk and is not financial advice.',
+    },
+];
+
+function buildBreadcrumbJsonLd(): Record<string, unknown> {
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+            { '@type': 'ListItem', position: 2, name: 'Airdrops', item: `${SITE_URL}/airdrops` },
+        ],
+    };
+}
+
 export default async function AirdropsPage() {
     let projects: AirdropProject[] = [];
     let fetchError = false;
@@ -49,7 +80,7 @@ export default async function AirdropsPage() {
             '@type': 'ListItem',
             position: i + 1,
             url: `${SITE_URL}/airdrops/${p.id}`,
-            name: p.name,
+            name: sanitizeForJsonLd(p.name),
         })),
         publisher: {
             '@type': 'Organization',
@@ -64,6 +95,11 @@ export default async function AirdropsPage() {
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(airdropListJsonLd) }}
             />
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(buildBreadcrumbJsonLd()) }}
+            />
+            <FaqSchema items={AIRDROP_FAQ} />
             <AirdropsPageClient initialProjects={projects} initialError={fetchError} />
         </>
     );
