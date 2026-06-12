@@ -147,6 +147,7 @@ function getClientIp(req: Request): string {
 export async function getScoreRecordsHandler(req: Request, res: Response): Promise<void> {
     try {
         const {
+            id,
             coin,
             state,
             startDate,
@@ -161,6 +162,13 @@ export async function getScoreRecordsHandler(req: Request, res: Response): Promi
         const offset = (pageNum - 1) * limitNum;
 
         const whereConditions = [];
+
+        if (id && typeof id === 'string') {
+            const idNum = parseInt(id, 10);
+            if (!isNaN(idNum)) {
+                whereConditions.push(eq(signalPerformance.id, idNum));
+            }
+        }
 
         if (coin && typeof coin === 'string') {
             whereConditions.push(eq(signalPerformance.coinSymbol, coin));

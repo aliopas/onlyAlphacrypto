@@ -38,6 +38,7 @@ export default function ScoreRecordsPage() {
     const [endDate, setEndDate] = useState('');
     const [includeArchived, setIncludeArchived] = useState(false);
     const [page, setPage] = useState(1);
+    const [searchId, setSearchId] = useState('');
 
     const [archiveDays, setArchiveDays] = useState(90);
     const [archiveLoading, setArchiveLoading] = useState(false);
@@ -48,6 +49,7 @@ export default function ScoreRecordsPage() {
         setError(null);
         try {
             const params = new URLSearchParams();
+            if (searchId) params.append('id', searchId);
             if (coin) params.append('coin', coin);
             if (state) params.append('state', state);
             if (startDate) params.append('startDate', startDate);
@@ -66,7 +68,7 @@ export default function ScoreRecordsPage() {
         } finally {
             setLoading(false);
         }
-    }, [fetchWithAuth, coin, state, startDate, endDate, includeArchived, page]);
+    }, [fetchWithAuth, searchId, coin, state, startDate, endDate, includeArchived, page]);
 
     useEffect(() => {
         fetchRecords();
@@ -152,7 +154,14 @@ export default function ScoreRecordsPage() {
 
             {/* Filters */}
             <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+                    <input
+                        type="number"
+                        placeholder="Record ID"
+                        value={searchId}
+                        onChange={(e) => { setSearchId(e.target.value); setPage(1); }}
+                        className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white placeholder-gray-500"
+                    />
                     <input
                         type="text"
                         placeholder="Coin (e.g. BTC)"
