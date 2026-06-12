@@ -62,6 +62,7 @@ export default function WatchlistTable({ coins, onCoinClick }: Props) {
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="bg-[#0A0A0A] text-[#555] text-xs">
+                            <th className="text-left px-4 py-3 font-medium">ID</th>
                             <th className="text-left px-4 py-3 font-medium">Coin</th>
                             <th className="text-right px-4 py-3 font-medium">Analysis Price</th>
                             <th className="text-right px-4 py-3 font-medium">Current Price</th>
@@ -78,6 +79,7 @@ export default function WatchlistTable({ coins, onCoinClick }: Props) {
                                     className={`border-t border-[#1A1A1A] ${idx % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'} hover:bg-[#161616] cursor-pointer transition-colors`}
                                     onClick={() => onCoinClick(coin.symbol)}
                                 >
+                                    <td className="px-4 py-3 font-mono text-[#888] text-xs">#{coin.id}</td>
                                     <td className="px-4 py-3 font-mono font-semibold text-white hover:text-yellow-400">{coin.symbol}</td>
                                     <td className="px-4 py-3 text-right font-mono">{formatPrice(coin.entryPrice)}</td>
                                     <td className="px-4 py-3 text-right font-mono">{formatPrice(coin.currentPrice)}</td>

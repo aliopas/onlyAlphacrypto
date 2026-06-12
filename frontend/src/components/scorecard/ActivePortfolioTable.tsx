@@ -21,7 +21,7 @@ interface CoinRow {
     updatedAt: string;
 }
 
-type SortKey = 'symbol' | 'entryPrice' | 'currentPrice' | 'movement' | 'classification';
+type SortKey = 'id' | 'symbol' | 'entryPrice' | 'currentPrice' | 'movement' | 'classification';
 type SortDir = 'asc' | 'desc';
 
 interface Props {
@@ -65,6 +65,9 @@ export default function ActivePortfolioTable({ coins, onCoinClick }: Props) {
     const sorted = [...coins].sort((a, b) => {
         let cmp = 0;
         switch (sortKey) {
+            case 'id':
+                cmp = a.id - b.id;
+                break;
             case 'symbol':
                 cmp = a.symbol.localeCompare(b.symbol);
                 break;
@@ -116,6 +119,9 @@ export default function ActivePortfolioTable({ coins, onCoinClick }: Props) {
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="bg-[#0A0A0A] text-[#555] text-xs">
+                            <th className="text-left px-4 py-3 font-medium cursor-pointer hover:text-[#888]" onClick={() => toggleSort('id')}>
+                                ID {sortIcon('id')}
+                            </th>
                             <th className="text-left px-4 py-3 font-medium cursor-pointer hover:text-[#888]" onClick={() => toggleSort('symbol')}>
                                 Coin {sortIcon('symbol')}
                             </th>
@@ -146,6 +152,7 @@ export default function ActivePortfolioTable({ coins, onCoinClick }: Props) {
                                     className={`border-t border-[#1A1A1A] ${idx % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'} hover:bg-[#161616] cursor-pointer transition-colors`}
                                     onClick={() => onCoinClick(coin.symbol)}
                                 >
+                                    <td className="px-4 py-3 font-mono text-[#888] text-xs">#{coin.id}</td>
                                     <td className="px-4 py-3 font-mono font-semibold text-white hover:text-emerald-400">{coin.symbol}</td>
                                     <td className="px-4 py-3 text-right font-mono">{formatPrice(coin.entryPrice)}</td>
                                     <td className="px-4 py-3 text-right font-mono">{formatPrice(coin.currentPrice)}</td>
