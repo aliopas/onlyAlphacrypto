@@ -272,7 +272,7 @@ export default function ScoreRecordsPage() {
                                             className="rounded"
                                         />
                                     </td>
-                                    <td className="px-3 py-2">{record.id}</td>
+                                    <td className="px-3 py-2 font-mono text-white font-bold">#{record.id}</td>
                                     <td className="px-3 py-2">{record.coinSymbol}</td>
                                     <td className="px-3 py-2">
                                         <span className="px-2 py-0.5 rounded text-xs bg-[#1a1a1a]">{record.signalState ?? 'N/A'}</span>
