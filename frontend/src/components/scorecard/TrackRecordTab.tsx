@@ -250,6 +250,7 @@ export default function TrackRecordTab() {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="bg-[#0A0A0A] text-[#555] text-xs">
+                                    <th className="text-left px-4 py-3 font-medium">ID</th>
                                     <th className="text-left px-4 py-3 font-medium">Coin</th>
                                     <th className="text-center px-4 py-3 font-medium">Verdict</th>
                                     <th className="text-right px-4 py-3 font-medium">Entry</th>
@@ -265,6 +266,7 @@ export default function TrackRecordTab() {
                                         key={sig.id}
                                         className={`border-t border-[#1A1A1A] ${idx % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'} hover:bg-[#161616] transition-colors`}
                                     >
+                                        <td className="px-4 py-3 font-mono text-[#888] text-xs">#{sig.id}</td>
                                         <td className="px-4 py-3 font-mono font-semibold text-white">{sig.coinSymbol}</td>
                                         <td className="px-4 py-3 text-center">
                                             <span className={`text-xs px-2 py-0.5 rounded font-mono ${verdictBadge(sig.verdict)}`}>
@@ -299,6 +301,7 @@ export default function TrackRecordTab() {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="bg-[#0A0A0A] text-[#555] text-xs">
+                                    <th className="text-left px-4 py-3 font-medium">ID</th>
                                     <th className="text-left px-4 py-3 font-medium">Coin</th>
                                     <th className="text-left px-4 py-3 font-medium">Market Phase</th>
                                     <th className="text-right px-4 py-3 font-medium">Bull Prob</th>
@@ -313,6 +316,7 @@ export default function TrackRecordTab() {
                                         key={s.id}
                                         className={`border-t border-[#1A1A1A] ${idx % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'} hover:bg-[#161616] transition-colors`}
                                     >
+                                        <td className="px-4 py-3 font-mono text-[#888] text-xs">#{s.id}</td>
                                         <td className="px-4 py-3 font-mono font-semibold text-white">{s.coinSymbol}</td>
                                         <td className="px-4 py-3 font-mono text-[#888]">{s.marketPhase ?? '—'}</td>
                                         <td className="px-4 py-3 text-right font-mono text-yellow-400">
@@ -344,6 +348,7 @@ export default function TrackRecordTab() {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="bg-[#0A0A0A] text-[#555] text-xs">
+                                    <th className="text-left px-4 py-3 font-medium">ID</th>
                                     <th className="text-left px-4 py-3 font-medium">Coin</th>
                                     <th className="text-center px-4 py-3 font-medium">Verdict</th>
                                     <th className="text-right px-4 py-3 font-medium">Entry</th>
@@ -359,6 +364,7 @@ export default function TrackRecordTab() {
                                         key={sig.id}
                                         className={`border-t border-[#1A1A1A] ${idx % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'} hover:bg-[#161616] transition-colors`}
                                     >
+                                        <td className="px-4 py-3 font-mono text-[#888] text-xs">#{sig.id}</td>
                                         <td className="px-4 py-3 font-mono font-semibold text-white">{sig.coinSymbol}</td>
                                         <td className="px-4 py-3 text-center">
                                             <span className={`text-xs px-2 py-0.5 rounded font-mono ${verdictBadge(sig.verdict)}`}>
