@@ -333,7 +333,7 @@ process.on('unhandledRejection', (reason) => {
     if (message === 'TIMEOUT' && stack?.includes('telegram/client/updates.js')) {
         return;
     }
-    const cause = reason instanceof Error && reason.cause instanceof Error ? ` | cause: ${reason.cause.message}` : '';
+    const cause = reason instanceof Error && (reason as unknown as { cause?: Error }).cause instanceof Error ? ` | cause: ${(reason as unknown as { cause?: Error }).cause!.message}` : '';
     originalConsoleError('[Server] Unhandled Rejection:', reason, cause);
 });
 
@@ -343,7 +343,7 @@ process.on('uncaughtException', (err) => {
     if (message === 'TIMEOUT' && stack?.includes('telegram/client/updates.js')) {
         return;
     }
-    const cause = err.cause instanceof Error ? ` | cause: ${err.cause.message}` : '';
+    const cause = (err as unknown as { cause?: Error }).cause instanceof Error ? ` | cause: ${(err as unknown as { cause?: Error }).cause!.message}` : '';
     originalConsoleError('[Server] Uncaught Exception:', err, cause);
 });
 
