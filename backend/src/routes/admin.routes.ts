@@ -15,6 +15,10 @@ import {
     toggleMaintenanceHandler,
     getAllMaintenanceStatusHandler,
     getTelemetryHandler,
+    getPortfolioCoinsHandler,
+    createPortfolioCoinHandler,
+    updatePortfolioCoinHandler,
+    closePortfolioCoinHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -63,5 +67,11 @@ router.get('/maintenance', featureFlagMiddleware, adminAuth, getAllMaintenanceSt
 
 // System Telemetry Dashboard (behind feature flag)
 router.get('/telemetry', featureFlagMiddleware, adminAuth, getTelemetryHandler);
+
+// Portfolio Management (behind feature flag)
+router.get('/portfolio/coins', featureFlagMiddleware, adminAuth, getPortfolioCoinsHandler);
+router.post('/portfolio/coins', featureFlagMiddleware, adminAuth, createPortfolioCoinHandler);
+router.patch('/portfolio/coins/:id', featureFlagMiddleware, adminAuth, updatePortfolioCoinHandler);
+router.patch('/portfolio/coins/:id/close', featureFlagMiddleware, adminAuth, closePortfolioCoinHandler);
 
 export default router;

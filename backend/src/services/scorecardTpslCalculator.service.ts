@@ -243,7 +243,7 @@ export async function calculateScorecardTpsl(params: {
     const rewardAmount = Math.abs(tp1 - entryPrice);
     const rr = riskAmount > 0 ? rewardAmount / riskAmount : 0;
 
-    const minRR = classification === 'STRATEGIC' ? 3.0 : 2.0;
+    const minRR = classification === 'STRATEGIC' ? 2.0 : 1.5;
     if (rr < minRR) {
         console.log(`[ScorecardTpsl] ${symbol}: REJECTED — RR=${rr.toFixed(2)} < minRR=${minRR} (${classification})`);
         return {

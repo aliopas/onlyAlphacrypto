@@ -1,11 +1,10 @@
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions';
 import { LogLevel } from 'telegram/extensions/Logger';
-import { createHash } from 'crypto';
 import { db } from '../config/db';
 import { env } from '../config/env';
 import { telegramPortfolioPosts, portfolioCoins } from '../models/scorecard.model';
-import { eq, isNull, and } from 'drizzle-orm';
+import { eq, isNull, and, inArray } from 'drizzle-orm';
 import { TRACKED_COIN_SET } from '../config/coins';
 import { AIGateway } from './ai/ai-gateway';
 import { Api } from 'telegram';
@@ -177,6 +176,18 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
 
         let processedAnyInBatch = false;
 
+        const msgIds = messages
+            .filter((m): m is typeof m & { id: number } => !!m.id)
+            .map((m) => String(m.id));
+
+        const existingPosts = msgIds.length > 0
+            ? await db
+                .select({ id: telegramPortfolioPosts.id, messageId: telegramPortfolioPosts.messageId, isAnalyzed: telegramPortfolioPosts.isAnalyzed })
+                .from(telegramPortfolioPosts)
+                .where(inArray(telegramPortfolioPosts.messageId, msgIds))
+            : [];
+        const postMap = new Map(existingPosts.map((p) => [p.messageId, p]));
+
         for (const msg of messages) {
             if (extracted.length >= maxCoins) break;
             if (!msg.id) continue;
@@ -186,18 +197,10 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
 
             if (!msg.media) continue;
 
-            const messageHash = createHash('sha256')
-                .update(`${channel}:${msg.id}`)
-                .digest('hex');
+            const existingPost = postMap.get(String(msg.id));
 
-            const [existingPost] = await db
-                .select({ id: telegramPortfolioPosts.id })
-                .from(telegramPortfolioPosts)
-                .where(eq(telegramPortfolioPosts.messageId, String(msg.id)))
-                .limit(1);
-
-            if (existingPost) {
-                console.log(`[ScorecardScraper] msg ${msg.id} already processed — skipping`);
+            if (existingPost?.isAnalyzed) {
+                console.log(`[ScorecardScraper] msg ${msg.id} already analyzed — skipping`);
                 continue;
             }
 
@@ -252,15 +255,25 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
             }
 
             const contentText = typeof msg.message === 'string' ? msg.message : null;
-
-            await db.insert(telegramPortfolioPosts).values({
-                messageId: String(msg.id),
+            const postValues = {
                 content: contentText,
                 imageUrl: hasPhoto ? `tg://msg/${msg.id}` : null,
                 isAnalyzed: analyzed,
                 extractedSymbols: postSymbols.length > 0 ? postSymbols.join(',') : null,
                 analyzedAt: analyzed ? new Date() : null,
-            });
+            };
+
+            if (existingPost) {
+                await db.update(telegramPortfolioPosts)
+                    .set(postValues)
+                    .where(eq(telegramPortfolioPosts.id, existingPost.id));
+                console.log(`[ScorecardScraper] msg ${msg.id}: Re-analyzed and updated`);
+            } else {
+                await db.insert(telegramPortfolioPosts).values({
+                    messageId: String(msg.id),
+                    ...postValues,
+                });
+            }
 
             postsAnalyzed++;
         }

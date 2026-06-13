@@ -51,6 +51,11 @@ export async function validateScorecardCoin(
 ): Promise<ValidatedCoin | null> {
     const { symbol, entryPrice } = extraction;
 
+    if (typeof entryPrice !== 'number' || entryPrice <= 0) {
+        console.log(`[ScorecardValidation] ${symbol}: REJECTED — invalid entryPrice (${entryPrice})`);
+        return null;
+    }
+
     const altcoinGate: ValidationGateResult = {
         passed: !TRACKED_COIN_SET.has(symbol.toUpperCase()),
         reason: 'Altcoin filter: symbol is a tracked major coin',
@@ -68,8 +73,8 @@ export async function validateScorecardCoin(
     console.log(`[ScorecardValidation] ${symbol}: Verified on Binance @ $${tradable.price} (CEX: ${tradable.cexListing})`);
 
     const priceMovement = ((tradable.price - entryPrice) / entryPrice) * 100;
-    if (Math.abs(priceMovement) > 20) {
-        console.log(`[ScorecardValidation] ${symbol}: REJECTED — price movement too high (${priceMovement.toFixed(2)}%)`);
+    if (priceMovement < -20) {
+        console.log(`[ScorecardValidation] ${symbol}: REJECTED — price dropped more than 20% (${priceMovement.toFixed(2)}%)`);
         return null;
     }
 

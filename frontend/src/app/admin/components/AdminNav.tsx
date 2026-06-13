@@ -11,6 +11,7 @@ const NAV_ITEMS = [
     { href: '/admin/shadow', label: 'Shadow Dashboard', icon: '📊' },
     { href: '/admin/score-records', label: 'Score Records', icon: '📋' },
     { href: '/admin/signals', label: 'Signal Control', icon: '🎯' },
+    { href: '/admin/portfolio', label: 'Portfolio', icon: '💼' },
     { href: '/admin/system', label: 'System', icon: '⚙️' },
 ];
 
