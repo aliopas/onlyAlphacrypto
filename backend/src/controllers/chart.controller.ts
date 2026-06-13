@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { getCache, setCache } from '../config/redis';
 import { env } from '../config/env';
+import { logger } from '../utils/logger';
 
-import { binanceClient, BINANCE_BASE } from '../services/binance.service';
+import { binanceGet, BINANCE_BASE } from '../services/binance.service';
 
 interface DexScreenerPair {
     chainId: string;
@@ -53,12 +54,10 @@ interface ChartResponse {
 
 async function fetchBinanceKlines(symbol: string): Promise<ChartCandle[] | null> {
     try {
-        const { data } = await binanceClient.get<[number, string, string, string, string, string][]>(`${BINANCE_BASE}/klines`, {
-            params: {
-                symbol: `${symbol}USDT`,
-                interval: '1h',
-                limit: 100,
-            },
+        const { data } = await binanceGet<[number, string, string, string, string, string][]>(`${BINANCE_BASE}/klines`, {
+            symbol: `${symbol}USDT`,
+            interval: '1h',
+            limit: 100,
         });
         if (!Array.isArray(data) || data.length === 0) return null;
         return data.map((d) => ({
@@ -67,8 +66,10 @@ async function fetchBinanceKlines(symbol: string): Promise<ChartCandle[] | null>
             high: parseFloat(d[2]),
             low: parseFloat(d[3]),
             close: parseFloat(d[4]),
+            volume: parseFloat(d[5]),
         }));
-    } catch {
+    } catch (error) {
+        logger.error('[Chart] fetchBinanceKlines failed for %s: %s', symbol, error instanceof Error ? error.message : String(error));
         return null;
     }
 }

@@ -1,4 +1,4 @@
-import { binanceClient, BINANCE_BASE } from './binance.service';
+import { binanceGet, BINANCE_BASE } from './binance.service';
 
 interface BinanceTickerResponse {
     symbol: string;
@@ -111,10 +111,10 @@ export async function getPriceWithFallback(symbol: string, tokenAddress?: string
 }
 
 async function tryBinance(symbol: string): Promise<PriceResult | null> {
-    const url = `${BINANCE_BASE}/ticker/24hr?symbol=${symbol.toUpperCase()}USDT`;
     try {
-        const res = await binanceClient.get<BinanceTickerResponse>(url);
-        const data = res.data;
+        const { data } = await binanceGet<BinanceTickerResponse>(`${BINANCE_BASE}/ticker/24hr`, {
+            symbol: `${symbol.toUpperCase()}USDT`,
+        });
         const price = parseFloat(data.lastPrice);
 
         if (isNaN(price) || price <= 0) {
@@ -197,18 +197,13 @@ export async function getBinancePriceAtDate(pair: string, date: Date): Promise<n
     try {
         const start = date.getTime();
         const end = start + 3_600_000;
-        const url = `${BINANCE_BASE}/klines`;
-        const res = await binanceClient.get<[number, string, string, string, string, string, number, string, number, string, string, string][]>(url, {
-            params: {
-                symbol: pair,
-                interval: '1h',
-                startTime: start,
-                endTime: end,
-                limit: 1,
-            },
+        const { data } = await binanceGet<[number, string, string, string, string, string, number, string, number, string, string, string][]>(`${BINANCE_BASE}/klines`, {
+            symbol: pair,
+            interval: '1h',
+            startTime: start,
+            endTime: end,
+            limit: 1,
         });
-
-        const data = res.data;
 
         if (!Array.isArray(data) || data.length === 0) {
             return null;
