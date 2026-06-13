@@ -387,7 +387,8 @@ export async function saveLevels(levels: LevelData[]): Promise<void> {
                 });
             }
         } catch (error) {
-            logger.error('[LevelIntelligence] saveLevels failed for %s: %s', level.coinSymbol, error instanceof Error ? error.message : String(error));
+            const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : '';
+            logger.error('[LevelIntelligence] saveLevels failed for %s: %s | cause: %s', level.coinSymbol, error instanceof Error ? error.message : String(error), cause || 'none');
         }
     }
 }
