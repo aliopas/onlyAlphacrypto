@@ -43,7 +43,12 @@ const ANTI_KEYWORDS: string[] = [
     'honeypot', 'rug pull', 'malicious',
 ];
 
-const parser = new Parser();
+const parser = new Parser({
+    requestOptions: {
+        timeout: 20000,
+        family: 4,
+    },
+});
 
 export function filterAirdropRelevant(text: string): boolean {
     const lower = text.toLowerCase();

@@ -15,14 +15,18 @@ const httpAgent = new http.Agent({
     maxSockets: env.BINANCE_MAX_SOCKETS,
     maxFreeSockets: env.BINANCE_MAX_FREE_SOCKETS,
     timeout: env.BINANCE_TIMEOUT_MS,
-});
+    freeSocketTimeout: 5000,
+    scheduling: 'lifo',
+} as http.AgentOptions);
 const httpsAgent = new https.Agent({
     keepAlive: true,
     keepAliveMsecs: 1000,
     maxSockets: env.BINANCE_MAX_SOCKETS,
     maxFreeSockets: env.BINANCE_MAX_FREE_SOCKETS,
     timeout: env.BINANCE_TIMEOUT_MS,
-});
+    freeSocketTimeout: 5000,
+    scheduling: 'lifo',
+} as https.AgentOptions);
 
 export const binanceClient = axios.create({
     timeout: env.BINANCE_TIMEOUT_MS,
@@ -195,12 +199,27 @@ async function executeOnce<T>(config: AxiosRequestConfig): Promise<AxiosResponse
     await rateLimiter.throttle();
 
     const start = Date.now();
-    const response = await binanceClient.request<T>(config);
-    const duration = Date.now() - start;
-    const weight = response.headers['x-mbx-used-weight-1m'];
-    logger.info('[Binance] %s duration=%dms weight=%s', config.url ?? 'unknown', duration, String(weight ?? 'n/a'));
-    rateLimiter.recordHeaders(response.headers);
-    return response;
+    const controller = new AbortController();
+    const requestTimeoutMs = Math.max(1000, (config.timeout ?? env.BINANCE_TIMEOUT_MS) - 500);
+    const timer = setTimeout(() => controller.abort('request timeout'), requestTimeoutMs);
+
+    try {
+        const requestConfig: AxiosRequestConfig<T> = {
+            ...config,
+            timeout: env.BINANCE_TIMEOUT_MS,
+            signal: controller.signal,
+            family: 4,
+        } as AxiosRequestConfig<T>;
+
+        const response = await binanceClient.request<T>(requestConfig);
+        const duration = Date.now() - start;
+        const weight = response.headers['x-mbx-used-weight-1m'];
+        logger.info('[Binance] %s duration=%dms weight=%s', config.url ?? 'unknown', duration, String(weight ?? 'n/a'));
+        rateLimiter.recordHeaders(response.headers);
+        return response;
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 async function executeWithRetry<T>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> {
