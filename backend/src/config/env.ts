@@ -39,6 +39,12 @@ const envSchema = z.object({
     // Binance
     BINANCE_API_KEY: z.string().optional(),
     BINANCE_SECRET: z.string().optional(),
+    BINANCE_TIMEOUT_MS: z.coerce.number().default(30000),
+    BINANCE_MAX_SOCKETS: z.coerce.number().default(5),
+    BINANCE_MAX_FREE_SOCKETS: z.coerce.number().default(2),
+    BINANCE_MAX_CONCURRENT: z.coerce.number().default(3),
+    BINANCE_CACHE_TTL_PRICE_MS: z.coerce.number().default(10000),
+    BINANCE_CACHE_TTL_TICKER_24H_MS: z.coerce.number().default(60000),
 
     // Moralis
     MORALIS_API_KEY: z.string().min(1, 'MORALIS_API_KEY is required'),

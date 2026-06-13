@@ -1,18 +1,11 @@
 import cron from 'node-cron';
-import axios from 'axios';
 import { TRACKED_COINS } from '../config/coins';
 import { db } from '../config/db';
 import { coinIntelligenceCache } from '../models/market.model';
 import { eq } from 'drizzle-orm';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
-import { BINANCE_BASE } from '../services/binance.service';
-
-interface BinanceTicker {
-    symbol: string;
-    quoteVolume: string;
-    priceChangePercent: string;
-}
+import { get24hrTickers, type BinanceMover } from '../services/binance.service';
 
 const MARKET_FILTER_CRITERIA = {
     MIN_VOLUME_USD: 50_000_000,   // $50M
@@ -30,17 +23,11 @@ async function fetchMarketFilterData(): Promise<Map<string, MarketData>> {
     const data = new Map<string, MarketData>();
 
     try {
-        // Fetch from Binance: GET /api/v3/ticker/24hr
-        const response = await axios.get(`${BINANCE_BASE}/ticker/24hr`);
-        const tickers = response.data as BinanceTicker[];
+        const tickers = await get24hrTickers(TRACKED_COINS);
 
         for (const coin of TRACKED_COINS) {
-            const ticker = tickers.find((t: BinanceTicker) => t.symbol === `${coin}USDT`);
+            const ticker = tickers.find((t: BinanceMover) => t.symbol === `${coin}USDT`);
             if (ticker) {
-                // Binance ticker has:
-                // quoteVolume: 24h volume in USDT
-                // priceChangePercent: price change %
-                // Note: Spread not available in 24hr ticker, so skip spread check
                 const volume = parseFloat(ticker.quoteVolume);
                 const priceChange = parseFloat(ticker.priceChangePercent);
 

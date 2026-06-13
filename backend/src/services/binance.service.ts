@@ -3,6 +3,7 @@ import http from 'http';
 import https from 'https';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
+import { getCache, setCache } from '../config/redis';
 
 export const BINANCE_BASE = 'https://api.binance.com/api/v3';
 
@@ -11,20 +12,20 @@ export const BINANCE_BASE = 'https://api.binance.com/api/v3';
 const httpAgent = new http.Agent({
     keepAlive: true,
     keepAliveMsecs: 1000,
-    maxSockets: 50,
-    maxFreeSockets: 10,
-    timeout: 8000,
+    maxSockets: env.BINANCE_MAX_SOCKETS,
+    maxFreeSockets: env.BINANCE_MAX_FREE_SOCKETS,
+    timeout: env.BINANCE_TIMEOUT_MS,
 });
 const httpsAgent = new https.Agent({
     keepAlive: true,
     keepAliveMsecs: 1000,
-    maxSockets: 50,
-    maxFreeSockets: 10,
-    timeout: 8000,
+    maxSockets: env.BINANCE_MAX_SOCKETS,
+    maxFreeSockets: env.BINANCE_MAX_FREE_SOCKETS,
+    timeout: env.BINANCE_TIMEOUT_MS,
 });
 
 export const binanceClient = axios.create({
-    timeout: 10000,
+    timeout: env.BINANCE_TIMEOUT_MS,
     httpAgent,
     httpsAgent,
 });
@@ -44,6 +45,11 @@ interface CacheEntry<T> {
 
 class SimpleCache {
     private readonly store = new Map<string, CacheEntry<unknown>>();
+    private readonly l2Enabled: boolean;
+
+    constructor() {
+        this.l2Enabled = Boolean(env.REDIS_URL);
+    }
 
     get<T>(key: string): T | undefined {
         const entry = this.store.get(key);
@@ -55,8 +61,26 @@ class SimpleCache {
         return entry.value as T;
     }
 
+    async getWithL2<T>(key: string, ttlMs: number): Promise<T | undefined> {
+        const l1 = this.get<T>(key);
+        if (l1 !== undefined) return l1;
+        if (!this.l2Enabled) return undefined;
+        const l2 = await getCache<T>(key);
+        if (l2 !== null) {
+            this.set(key, l2, ttlMs);
+            return l2;
+        }
+        return undefined;
+    }
+
     set<T>(key: string, value: T, ttlMs: number): void {
         this.store.set(key, { value, expiresAt: Date.now() + ttlMs });
+    }
+
+    async setWithL2<T>(key: string, value: T, ttlMs: number): Promise<void> {
+        this.set(key, value, ttlMs);
+        if (!this.l2Enabled) return;
+        await setCache(key, value, Math.ceil(ttlMs / 1000));
     }
 
     delete(key: string): void {
@@ -65,6 +89,36 @@ class SimpleCache {
 }
 
 const cache = new SimpleCache();
+
+// ─── Concurrency Limiter ────────────────────────────────────────────────────
+
+class BinanceConcurrencyLimiter {
+    private active = 0;
+    private readonly queue: Array<() => void> = [];
+
+    constructor(private readonly maxConcurrent: number) {}
+
+    async acquire(): Promise<void> {
+        if (this.active < this.maxConcurrent) {
+            this.active++;
+            return;
+        }
+        await new Promise<void>((resolve) => this.queue.push(resolve));
+        this.active++;
+    }
+
+    release(): void {
+        this.active = Math.max(0, this.active - 1);
+        const next = this.queue.shift();
+        if (next) next();
+    }
+
+    getActive(): number {
+        return this.active;
+    }
+}
+
+const concurrencyLimiter = new BinanceConcurrencyLimiter(env.BINANCE_MAX_CONCURRENT);
 
 // ─── Rate Limiter ───────────────────────────────────────────────────────────
 
@@ -82,6 +136,10 @@ class BinanceRateLimiter {
             // The header is a rolling 1-minute window; refresh our local window.
             this.windowResetAt = Date.now() + 60_000;
         }
+    }
+
+    getCurrentWeight(): number {
+        return this.currentWeight;
     }
 
     async throttle(): Promise<void> {
@@ -133,33 +191,48 @@ function isRetryableError(error: unknown): boolean {
     return status >= 500 || status === 429;
 }
 
-async function executeWithRetry<T>(config: AxiosRequestConfig, attempt = 1): Promise<AxiosResponse<T>> {
+async function executeOnce<T>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> {
     await rateLimiter.throttle();
 
+    const start = Date.now();
+    const response = await binanceClient.request<T>(config);
+    const duration = Date.now() - start;
+    const weight = response.headers['x-mbx-used-weight-1m'];
+    logger.info('[Binance] %s duration=%dms weight=%s', config.url ?? 'unknown', duration, String(weight ?? 'n/a'));
+    rateLimiter.recordHeaders(response.headers);
+    return response;
+}
+
+async function executeWithRetry<T>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> {
+    await concurrencyLimiter.acquire();
     try {
-        const response = await binanceClient.request<T>(config);
-        rateLimiter.recordHeaders(response.headers);
-        return response;
-    } catch (error) {
-        if (attempt >= MAX_RETRIES || !isRetryableError(error)) {
-            throw error;
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                return await executeOnce<T>(config);
+            } catch (error) {
+                if (attempt >= MAX_RETRIES || !isRetryableError(error)) {
+                    throw error;
+                }
+
+                const backoff = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** (attempt - 1));
+                const jitter = Math.floor(Math.random() * 200);
+                const totalBackoff = backoff + jitter;
+
+                logger.warn(
+                    '[Binance] Retryable error on %s (attempt %d/%d), backing off %dms: %s',
+                    config.url ?? 'unknown',
+                    attempt,
+                    MAX_RETRIES,
+                    totalBackoff,
+                    error instanceof Error ? error.message : String(error)
+                );
+
+                await sleep(totalBackoff);
+            }
         }
-
-        const backoff = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** (attempt - 1));
-        const jitter = Math.floor(Math.random() * 200);
-        const totalBackoff = backoff + jitter;
-
-        logger.warn(
-            '[Binance] Retryable error on %s (attempt %d/%d), backing off %dms: %s',
-            config.url ?? 'unknown',
-            attempt,
-            MAX_RETRIES,
-            totalBackoff,
-            error instanceof Error ? error.message : String(error)
-        );
-
-        await sleep(totalBackoff);
-        return executeWithRetry<T>(config, attempt + 1);
+        throw new Error('[Binance] Unexpected retry exhaustion');
+    } finally {
+        concurrencyLimiter.release();
     }
 }
 
@@ -213,7 +286,7 @@ export interface BinanceKline {
 
 export async function getLivePrice(symbol: string): Promise<number | null> {
     const cacheKey = `binance:livePrice:${symbol.toUpperCase()}`;
-    const cached = cache.get<number>(cacheKey);
+    const cached = await cache.getWithL2<number>(cacheKey, env.BINANCE_CACHE_TTL_PRICE_MS);
     if (cached !== undefined) return cached;
 
     try {
@@ -221,7 +294,7 @@ export async function getLivePrice(symbol: string): Promise<number | null> {
         const { data } = await binanceGet<BinanceTicker>(`${BINANCE_BASE}/ticker/price`, { symbol: pair });
         const price = parseFloat(data.price);
         if (!Number.isNaN(price)) {
-            cache.set(cacheKey, price, 10_000);
+            await cache.setWithL2(cacheKey, price, env.BINANCE_CACHE_TTL_PRICE_MS);
         }
         return price;
     } catch (error) {
@@ -236,7 +309,7 @@ export async function getLivePrices(symbols: string[]): Promise<Record<string, n
     if (symbols.length === 0) return {};
 
     const cacheKey = `binance:livePrices:${symbols.map((s) => s.toUpperCase()).sort().join(',')}`;
-    const cached = cache.get<Record<string, number>>(cacheKey);
+    const cached = await cache.getWithL2<Record<string, number>>(cacheKey, env.BINANCE_CACHE_TTL_PRICE_MS);
     if (cached !== undefined) return cached;
 
     try {
@@ -248,7 +321,7 @@ export async function getLivePrices(symbols: string[]): Promise<Record<string, n
             const sym = ticker.symbol.replace('USDT', '');
             result[sym] = parseFloat(ticker.price);
         }
-        cache.set(cacheKey, result, 10_000);
+        await cache.setWithL2(cacheKey, result, env.BINANCE_CACHE_TTL_PRICE_MS);
         return result;
     } catch (error) {
         logger.error('[Binance] getLivePrices failed: %s', error instanceof Error ? error.message : String(error));
@@ -256,11 +329,11 @@ export async function getLivePrices(symbols: string[]): Promise<Record<string, n
     }
 }
 
-// ─── Get Top Movers (24h) ─────────────────────────────────────────────────────
+// ─── Get 24hr Tickers ─────────────────────────────────────────────────────────
 
-export async function getTopMovers(limit = 10, symbols?: string[]): Promise<BinanceMover[]> {
-    const cacheKey = `binance:topMovers:${symbols?.map((s) => s.toUpperCase()).sort().join(',') ?? 'all'}`;
-    const cached = cache.get<BinanceMover[]>(cacheKey);
+export async function get24hrTickers(symbols?: readonly string[]): Promise<BinanceMover[]> {
+    const cacheKey = `binance:24hrTickers:${symbols?.map((s) => s.toUpperCase()).sort().join(',') ?? 'all'}`;
+    const cached = await cache.getWithL2<BinanceMover[]>(cacheKey, env.BINANCE_CACHE_TTL_TICKER_24H_MS);
     if (cached !== undefined) return cached;
 
     try {
@@ -277,6 +350,24 @@ export async function getTopMovers(limit = 10, symbols?: string[]): Promise<Bina
             data = responseData;
         }
 
+        await cache.setWithL2(cacheKey, data, env.BINANCE_CACHE_TTL_TICKER_24H_MS);
+        return data;
+    } catch (error) {
+        logger.error('[Binance] get24hrTickers failed: %s', error instanceof Error ? error.message : String(error));
+        return [];
+    }
+}
+
+// ─── Get Top Movers (24h) ─────────────────────────────────────────────────────
+
+export async function getTopMovers(limit = 10, symbols?: readonly string[]): Promise<BinanceMover[]> {
+    const cacheKey = `binance:topMovers:${symbols?.map((s) => s.toUpperCase()).sort().join(',') ?? 'all'}`;
+    const cached = await cache.getWithL2<BinanceMover[]>(cacheKey, env.BINANCE_CACHE_TTL_TICKER_24H_MS);
+    if (cached !== undefined) return cached;
+
+    try {
+        const data = await get24hrTickers(symbols);
+
         const result = data
             .filter((t) => t.symbol.endsWith('USDT')
                 && !t.symbol.includes('BEAR')
@@ -288,7 +379,7 @@ export async function getTopMovers(limit = 10, symbols?: string[]): Promise<Bina
             .sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent))
             .slice(0, limit);
 
-        cache.set(cacheKey, result, 60_000);
+        await cache.setWithL2(cacheKey, result, env.BINANCE_CACHE_TTL_TICKER_24H_MS);
         return result;
     } catch (error) {
         logger.error('[Binance] getTopMovers failed: %s', error instanceof Error ? error.message : String(error));
@@ -402,4 +493,14 @@ export async function getFearAndGreed(): Promise<{ value: number; classification
         logger.error('[Binance] getFearAndGreed failed: %s', error instanceof Error ? error.message : String(error));
         return { value: 0, classification: 'Unknown' };
     }
+}
+
+// ─── Resilience Telemetry ───────────────────────────────────────────────────
+
+export function getBinanceResilienceStatus(): { weight: number; maxConcurrent: number; active: number } {
+    return {
+        weight: rateLimiter.getCurrentWeight(),
+        maxConcurrent: env.BINANCE_MAX_CONCURRENT,
+        active: concurrencyLimiter.getActive(),
+    };
 }
