@@ -6,10 +6,22 @@ import { logger } from '../utils/logger';
 
 export const BINANCE_BASE = 'https://api.binance.com/api/v3';
 
-const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 50 });
-const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50 });
+const httpAgent = new http.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 1000,
+    maxSockets: 50,
+    maxFreeSockets: 10,
+    timeout: 8000,
+});
+const httpsAgent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 1000,
+    maxSockets: 50,
+    maxFreeSockets: 10,
+    timeout: 8000,
+});
 
-const binanceClient = axios.create({
+export const binanceClient = axios.create({
     timeout: 10000,
     httpAgent,
     httpsAgent,

@@ -2,14 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { getCache, setCache } from '../config/redis';
 import { env } from '../config/env';
 
-interface BinanceKline {
-    0: number;
-    1: string;
-    2: string;
-    3: string;
-    4: string;
-    5: string;
-}
+import { binanceClient, BINANCE_BASE } from '../services/binance.service';
 
 interface DexScreenerPair {
     chainId: string;
@@ -60,14 +53,15 @@ interface ChartResponse {
 
 async function fetchBinanceKlines(symbol: string): Promise<ChartCandle[] | null> {
     try {
-        const res = await fetch(
-            `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=1h&limit=100`,
-            { signal: AbortSignal.timeout(8000) }
-        );
-        if (!res.ok) return null;
-        const data: unknown = await res.json();
+        const { data } = await binanceClient.get<[number, string, string, string, string, string][]>(`${BINANCE_BASE}/klines`, {
+            params: {
+                symbol: `${symbol}USDT`,
+                interval: '1h',
+                limit: 100,
+            },
+        });
         if (!Array.isArray(data) || data.length === 0) return null;
-        return (data as BinanceKline[]).map((d) => ({
+        return data.map((d) => ({
             time: d[0] / 1000,
             open: parseFloat(d[1]),
             high: parseFloat(d[2]),

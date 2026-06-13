@@ -1,3 +1,5 @@
+import { binanceClient, BINANCE_BASE } from './binance.service';
+
 interface BinanceTickerResponse {
     symbol: string;
     priceChange: string;
@@ -109,33 +111,33 @@ export async function getPriceWithFallback(symbol: string, tokenAddress?: string
 }
 
 async function tryBinance(symbol: string): Promise<PriceResult | null> {
-    const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol.toUpperCase()}USDT`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const url = `${BINANCE_BASE}/ticker/24hr?symbol=${symbol.toUpperCase()}USDT`;
+    try {
+        const res = await binanceClient.get<BinanceTickerResponse>(url);
+        const data = res.data;
+        const price = parseFloat(data.lastPrice);
 
-    if (!res.ok) {
+        if (isNaN(price) || price <= 0) {
+            return null;
+        }
+
+        const changePercent = parseFloat(data.priceChangePercent);
+        const volume = parseFloat(data.volume);
+        const high = parseFloat(data.highPrice);
+        const low = parseFloat(data.lowPrice);
+
+        return {
+            source: 'binance',
+            price,
+            change24h: isNaN(changePercent) ? null : changePercent,
+            volume24h: isNaN(volume) ? null : volume,
+            high24h: isNaN(high) ? null : high,
+            low24h: isNaN(low) ? null : low,
+        };
+    } catch (error) {
+        console.warn('[priceService] Binance fetch failed:', error instanceof Error ? error.message : String(error));
         return null;
     }
-
-    const data: BinanceTickerResponse = await res.json() as BinanceTickerResponse;
-    const price = parseFloat(data.lastPrice);
-
-    if (isNaN(price) || price <= 0) {
-        return null;
-    }
-
-    const changePercent = parseFloat(data.priceChangePercent);
-    const volume = parseFloat(data.volume);
-    const high = parseFloat(data.highPrice);
-    const low = parseFloat(data.lowPrice);
-
-    return {
-        source: 'binance',
-        price,
-        change24h: isNaN(changePercent) ? null : changePercent,
-        volume24h: isNaN(volume) ? null : volume,
-        high24h: isNaN(high) ? null : high,
-        low24h: isNaN(low) ? null : low,
-    };
 }
 
 async function tryDexScreener(symbol: string, tokenAddress?: string): Promise<PriceResult | null> {
@@ -191,33 +193,22 @@ async function tryDexScreener(symbol: string, tokenAddress?: string): Promise<Pr
     };
 }
 
-interface BinanceKlineAtDate {
-    0: number;
-    1: string;
-    2: string;
-    3: string;
-    4: string;
-    5: string;
-    6: number;
-    7: string;
-    8: number;
-    9: string;
-    10: string;
-    11: string;
-}
-
 export async function getBinancePriceAtDate(pair: string, date: Date): Promise<number | null> {
     try {
         const start = date.getTime();
         const end = start + 3_600_000;
-        const url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1h&startTime=${start}&endTime=${end}&limit=1`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        const url = `${BINANCE_BASE}/klines`;
+        const res = await binanceClient.get<[number, string, string, string, string, string, number, string, number, string, string, string][]>(url, {
+            params: {
+                symbol: pair,
+                interval: '1h',
+                startTime: start,
+                endTime: end,
+                limit: 1,
+            },
+        });
 
-        if (!res.ok) {
-            return null;
-        }
-
-        const data: BinanceKlineAtDate[] = await res.json() as BinanceKlineAtDate[];
+        const data = res.data;
 
         if (!Array.isArray(data) || data.length === 0) {
             return null;

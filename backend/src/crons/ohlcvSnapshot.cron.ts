@@ -81,13 +81,9 @@ export function startOhlcvSnapshotCron(): void {
     });
     logger.info('[OHLCV] 15m snapshot cron scheduled — every 15 minutes');
 
+    // Run full snapshot once at startup only; higher-TF and 15m jobs are covered
+    // by the 4h snapshot and will fire on their normal schedules shortly after.
     runOhlcvSnapshot().catch(err =>
         logger.error('[OHLCV] Initial 4h snapshot failed: %s', err instanceof Error ? err.message : String(err))
-    );
-    runOhlcvSnapshotHigherTf().catch(err =>
-        logger.error('[OHLCV] Initial 1h snapshot failed: %s', err instanceof Error ? err.message : String(err))
-    );
-    runOhlcvSnapshot15m().catch(err =>
-        logger.error('[OHLCV] Initial 15m snapshot failed: %s', err instanceof Error ? err.message : String(err))
     );
 }
