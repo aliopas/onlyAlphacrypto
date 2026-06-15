@@ -46,6 +46,10 @@ const envSchema = z.object({
     BINANCE_CACHE_TTL_PRICE_MS: z.coerce.number().default(10000),
     BINANCE_CACHE_TTL_TICKER_24H_MS: z.coerce.number().default(60000),
 
+    // Price Source Authority (DEC-038)
+    PRICE_BINANCE_RETRIES: z.coerce.number().positive().default(3),
+    PRICE_BINANCE_RETRY_BACKOFF_MS: z.coerce.number().positive().default(500),
+
     // Moralis
     MORALIS_API_KEY: z.string().min(1, 'MORALIS_API_KEY is required'),
 

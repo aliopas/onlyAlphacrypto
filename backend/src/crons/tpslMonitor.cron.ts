@@ -86,7 +86,10 @@ async function expireOldSignals(): Promise<void> {
         for (const signal of oldSignals) {
             try {
                 const price = await getPriceWithFallback(signal.coinSymbol);
-                const currentPrice = price?.price ?? signal.entryPrice;
+                if (price === null || price.price <= 0) {
+                    continue;
+                }
+                const currentPrice = price.price;
 
                 const isBearish = signal.verdict === 'SELL' || signal.verdict === 'STRONG_SELL';
                 const rawPnl = ((currentPrice - signal.entryPrice) / signal.entryPrice) * 100;

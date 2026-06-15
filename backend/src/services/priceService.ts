@@ -1,4 +1,7 @@
 import { binanceGet, BINANCE_BASE } from './binance.service';
+import { TRACKED_COIN_SET } from '../config/coins';
+import { env } from '../config/env';
+import { logger } from '../utils/logger';
 
 interface BinanceTickerResponse {
     symbol: string;
@@ -85,6 +88,36 @@ export async function getPriceWithFallback(symbol: string, tokenAddress?: string
         return cached.price;
     }
 
+    const isTracked = TRACKED_COIN_SET.has(symbol.toUpperCase());
+
+    if (isTracked) {
+        const attempts = env.PRICE_BINANCE_RETRIES;
+        for (let attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                const binanceResult = await tryBinance(symbol);
+                if (binanceResult !== null) {
+                    priceCache.set(cacheKey, { price: binanceResult, ts: Date.now() });
+                    return binanceResult;
+                }
+            } catch (error) {
+                logger.warn({ message: 'Binance fetch failed', symbol, attempt, error: error instanceof Error ? error.message : String(error) });
+            }
+
+            if (attempt < attempts) {
+                await sleep(env.PRICE_BINANCE_RETRY_BACKOFF_MS);
+            }
+        }
+
+        logger.warn({
+            symbol,
+            attempts,
+            source: 'binance',
+            message: 'Binance price exhausted for tracked coin'
+        });
+
+        return null;
+    }
+
     try {
         const binanceResult = await tryBinance(symbol);
         if (binanceResult !== null) {
@@ -92,7 +125,7 @@ export async function getPriceWithFallback(symbol: string, tokenAddress?: string
             return binanceResult;
         }
     } catch (error) {
-        console.warn('[priceService] Binance fetch failed:', error instanceof Error ? error.message : String(error));
+        logger.warn({ message: 'Binance fetch failed', symbol, error: error instanceof Error ? error.message : String(error) });
     }
 
     await sleep(300);
@@ -104,7 +137,7 @@ export async function getPriceWithFallback(symbol: string, tokenAddress?: string
             return dexResult;
         }
     } catch (error) {
-        console.warn('[priceService] DexScreener fetch failed:', error instanceof Error ? error.message : String(error));
+        logger.warn({ message: 'DexScreener fetch failed', symbol, error: error instanceof Error ? error.message : String(error) });
     }
 
     return null;
@@ -135,7 +168,7 @@ async function tryBinance(symbol: string): Promise<PriceResult | null> {
             low24h: isNaN(low) ? null : low,
         };
     } catch (error) {
-        console.warn('[priceService] Binance fetch failed:', error instanceof Error ? error.message : String(error));
+        logger.warn({ message: 'Binance fetch failed', symbol, error: error instanceof Error ? error.message : String(error) });
         return null;
     }
 }
@@ -165,7 +198,7 @@ async function tryDexScreener(symbol: string, tokenAddress?: string): Promise<Pr
     const sorted = [...pairs].sort((a, b) => {
         const liqA = a.liquidity?.usd ?? 0;
         const liqB = b.liquidity?.usd ?? 0;
-        return (liqB as number) - (liqA as number);
+        return liqB - liqA;
     });
 
     const best = sorted[0];

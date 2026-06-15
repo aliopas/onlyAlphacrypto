@@ -155,19 +155,6 @@ export async function executeSignalDecision(
     decision: SignalDecision,
     tpslData?: { stopLossPrice: number; takeProfitPrice: number }
 ): Promise<number | null> {
-    if (decision.action === 'close_and_replace' && decision.closedSignal) {
-        await db.update(signalPerformance)
-            .set({
-                isActive: false,
-                closedAt: decision.closedSignal.closedAt,
-                exitPrice: decision.closedSignal.exitPrice,
-                realizedPnl: decision.closedSignal.realizedPnl
-            })
-            .where(eq(signalPerformance.id, decision.closedSignal.id));
-
-        console.log(`[SignalManager] Closed signal ${decision.closedSignal.id} for ${coinSymbol}: exitPrice=$${decision.closedSignal.exitPrice}, realizedPnl=${decision.closedSignal.realizedPnl.toFixed(2)}%`);
-    }
-
     if (decision.action === 'upgrade') {
         await db.update(signalPerformance)
             .set({ verdict: decision.verdict })
@@ -186,6 +173,25 @@ export async function executeSignalDecision(
     }
 
     if (decision.action === 'create' || decision.action === 'close_and_replace') {
+        const price = await getPriceWithFallback(coinSymbol);
+        if (!price || price.price <= 0) {
+            console.error(`[SignalManager] Failed to fetch price for ${coinSymbol}. Skipping signal creation.`);
+            return null;
+        }
+
+        if (decision.action === 'close_and_replace' && decision.closedSignal) {
+            await db.update(signalPerformance)
+                .set({
+                    isActive: false,
+                    closedAt: decision.closedSignal.closedAt,
+                    exitPrice: decision.closedSignal.exitPrice,
+                    realizedPnl: decision.closedSignal.realizedPnl
+                })
+                .where(eq(signalPerformance.id, decision.closedSignal.id));
+
+            console.log(`[SignalManager] Closed signal ${decision.closedSignal.id} for ${coinSymbol}: exitPrice=$${decision.closedSignal.exitPrice}, realizedPnl=${decision.closedSignal.realizedPnl.toFixed(2)}%`);
+        }
+
         const insertedRadar = await db.insert(radarSignals).values({
             coinSymbol,
             signalText,
@@ -199,27 +205,21 @@ export async function executeSignalDecision(
             return null;
         }
 
-        const price = await getPriceWithFallback(coinSymbol);
-        if (price && price.price > 0) {
-            await db.insert(signalPerformance).values({
-                signalId: insertedRadar[0].id,
-                coinSymbol,
-                verdict: decision.verdict,
-                sentiment,
-                entryPrice: price.price,
-                entryAt: new Date(),
-                isActive: true,
-                stopLossPrice: tpslData?.stopLossPrice,
-                takeProfitPrice: tpslData?.takeProfitPrice,
-                signalState: 'NEW',
-            });
+        await db.insert(signalPerformance).values({
+            signalId: insertedRadar[0].id,
+            coinSymbol,
+            verdict: decision.verdict,
+            sentiment,
+            entryPrice: price.price,
+            entryAt: new Date(),
+            isActive: true,
+            stopLossPrice: tpslData?.stopLossPrice,
+            takeProfitPrice: tpslData?.takeProfitPrice,
+            signalState: 'NEW',
+        });
 
-            console.log(`[SignalManager] Created ${decision.verdict} signal for ${coinSymbol}: entryPrice=$${price.price}, signalId=${insertedRadar[0].id}`);
-            return insertedRadar[0].id;
-        } else {
-            console.error(`[SignalManager] Failed to fetch price for ${coinSymbol} after creating radar signal`);
-            return null;
-        }
+        console.log(`[SignalManager] Created ${decision.verdict} signal for ${coinSymbol}: entryPrice=$${price.price}, signalId=${insertedRadar[0].id}`);
+        return insertedRadar[0].id;
     }
 
     return null;
