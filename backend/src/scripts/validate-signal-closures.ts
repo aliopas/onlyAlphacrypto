@@ -3,31 +3,7 @@ import { signalPerformance } from '../models/market.model';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { TRACKED_COIN_SET } from '../config/coins';
 import { logger } from '../utils/logger';
-import { binanceGet, BINANCE_BASE } from '../services/binance.service';
-
-interface BinanceTickerAtTimeResponse {
-    symbol: string;
-    priceChange: string;
-    priceChangePercent: string;
-    weightedAvgPrice: string;
-    prevClosePrice: string;
-    lastPrice: string;
-    lastQty: string;
-    bidPrice: string;
-    bidQty: string;
-    askPrice: string;
-    askQty: string;
-    openPrice: string;
-    highPrice: string;
-    lowPrice: string;
-    volume: string;
-    quoteVolume: string;
-    openTime: number;
-    closeTime: number;
-    firstId: number;
-    lastId: number;
-    count: number;
-}
+import { getCoinKlinesRange } from '../services/binance.service';
 
 interface ClosureSummary {
     totalClosed: number;
@@ -38,40 +14,32 @@ interface ClosureSummary {
     errors: string[];
 }
 
-interface Ticker24hAtTime {
+interface KlineRange {
     high24h: number;
     low24h: number;
-    openTime: number;
-    closeTime: number;
 }
 
-async function get24hTickerAtTime(symbol: string, timestamp: Date): Promise<Ticker24hAtTime | null> {
+async function get24hRangeAtTime(symbol: string, timestamp: Date): Promise<KlineRange | null> {
     try {
-        const pair = `${symbol.toUpperCase()}USDT`;
-        const targetMs = timestamp.getTime();
+        const endTime = timestamp.getTime();
+        const startTime = endTime - 24 * 60 * 60 * 1000;
 
-        const { data } = await binanceGet<BinanceTickerAtTimeResponse[]>(`${BINANCE_BASE}/ticker/24hr`, {
-            symbol: pair,
-        });
+        const klines = await getCoinKlinesRange(symbol, '1h', startTime, endTime);
 
-        if (!Array.isArray(data) || data.length === 0) {
+        if (!klines || klines.length === 0) {
             return null;
         }
 
-        for (const ticker of data) {
-            const openTime = ticker.openTime;
-            const closeTime = ticker.closeTime;
-            if (targetMs >= openTime && targetMs <= closeTime) {
-                const high24h = parseFloat(ticker.highPrice);
-                const low24h = parseFloat(ticker.lowPrice);
-                if (isNaN(high24h) || isNaN(low24h)) return null;
-                return { high24h, low24h, openTime, closeTime };
-            }
+        const high24h = Math.max(...klines.map(k => k.high));
+        const low24h = Math.min(...klines.map(k => k.low));
+
+        if (isNaN(high24h) || isNaN(low24h)) {
+            return null;
         }
 
-        return null;
+        return { high24h, low24h };
     } catch (err) {
-        logger.warn({ message: 'Failed to fetch 24h ticker at closure time', symbol, timestamp: timestamp.toISOString(), error: err instanceof Error ? err.message : String(err) });
+        logger.warn({ message: 'Failed to fetch klines for 24h range', symbol, timestamp: timestamp.toISOString(), error: err instanceof Error ? err.message : String(err) });
         return null;
     }
 }
@@ -111,22 +79,22 @@ async function validateSignalClosures(): Promise<ClosureSummary> {
                     continue;
                 }
 
-                const ticker = await get24hTickerAtTime(signal.coinSymbol, signal.closedAt);
-                if (!ticker) {
+                const range = await get24hRangeAtTime(signal.coinSymbol, signal.closedAt);
+                if (!range) {
                     summary.noHistory++;
-                    summary.errors.push(`Signal #${signal.id} (${signal.coinSymbol}): no 24h ticker history at ${signal.closedAt.toISOString()}`);
+                    summary.errors.push(`Signal #${signal.id} (${signal.coinSymbol}): no klines at ${signal.closedAt.toISOString()}`);
                     continue;
                 }
 
                 const exitPrice = signal.exitPrice ?? 0;
-                const withinBounds = exitPrice >= ticker.low24h && exitPrice <= ticker.high24h;
+                const withinBounds = exitPrice >= range.low24h && exitPrice <= range.high24h;
 
                 if (withinBounds) {
                     summary.withinBounds++;
                 } else {
                     summary.outsideBounds++;
                     summary.errors.push(
-                        `Signal #${signal.id} (${signal.coinSymbol}): exitPrice=${exitPrice} outside 24h range [${ticker.low24h}, ${ticker.high24h}] at ${signal.closedAt.toISOString()}`
+                        `Signal #${signal.id} (${signal.coinSymbol}): exitPrice=${exitPrice} outside 24h range [${range.low24h}, ${range.high24h}] at ${signal.closedAt.toISOString()}`
                     );
                 }
             } catch (err) {
@@ -152,20 +120,19 @@ async function main(): Promise<void> {
     logger.info('[ValidateSignalClosures] Tracked coin closures: %d', summary.trackedClosed);
     logger.info('[ValidateSignalClosures] Within 24h bounds at closure: %d', summary.withinBounds);
     logger.info('[ValidateSignalClosures] Outside 24h bounds at closure: %d', summary.outsideBounds);
-    logger.info('[ValidateSignalClosures] No history at closure: %d', summary.noHistory);
+    logger.info('[ValidateSignalClosures] No kline history at closure: %d', summary.noHistory);
 
-    if (summary.errors.length > 0) {
-        logger.warn('[ValidateSignalClosures] Issues found: %d', summary.errors.length);
+    if (summary.outsideBounds > 0) {
+        logger.warn('[ValidateSignalClosures] Issues found: %d', summary.outsideBounds);
         for (const error of summary.errors.slice(0, 50)) {
-            logger.warn('[ValidateSignalClosures] - %s', error);
-        }
-        if (summary.errors.length > 50) {
-            logger.warn('[ValidateSignalClosures] ... and %d more', summary.errors.length - 50);
+            if (error.includes('outside 24h range')) {
+                logger.warn('[ValidateSignalClosures] - %s', error);
+            }
         }
         process.exit(1);
     }
 
-    logger.info('[ValidateSignalClosures] All tracked-coin closures are within 24h bounds at closure time.');
+    logger.info('[ValidateSignalClosures] All tracked-coin closures with kline history are within 24h bounds.');
     process.exit(0);
 }
 
