@@ -8,11 +8,17 @@ interface ScoreRecord {
     signalId: number;
     coinSymbol: string;
     signalState: string | null;
+    isActive: boolean;
     entryPrice: number;
     takeProfitPrice: number | null;
     tp2Price: number | null;
     tp3Price: number | null;
     stopLossPrice: number | null;
+    exitPrice: number | null;
+    realizedPnl: number | null;
+    closedAt: string | null;
+    autoClosedReason: string | null;
+    closeReason: string | null;
     createdAt: string;
     archivedAt: string | null;
 }
@@ -43,6 +49,8 @@ export default function ScoreRecordsPage() {
     const [archiveDays, setArchiveDays] = useState(90);
     const [archiveLoading, setArchiveLoading] = useState(false);
     const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
+    const [reactivateLoading, setReactivateLoading] = useState<number | null>(null);
+    const [reactivateMessage, setReactivateMessage] = useState<string | null>(null);
 
     const fetchRecords = useCallback(async () => {
         setLoading(true);
@@ -133,6 +141,46 @@ export default function ScoreRecordsPage() {
         }
     };
 
+    const handleReactivate = async (record: ScoreRecord) => {
+        if (record.isActive) {
+            setReactivateMessage(`Signal #${record.id} is already active`);
+            return;
+        }
+
+        const details = [
+            record.exitPrice ? `Exit: $${record.exitPrice.toFixed(2)}` : null,
+            record.realizedPnl ? `PnL: ${record.realizedPnl.toFixed(2)}%` : null,
+            record.autoClosedReason ? `Reason: ${record.autoClosedReason}` : null,
+            record.closeReason ? `Close reason: ${record.closeReason}` : null,
+        ].filter(Boolean).join(' | ');
+
+        const confirmMessage = details
+            ? `Reactivate #${record.id} ${record.coinSymbol}?\n${details}\n\nThis will restore the signal to active tracking with entry/TP/SL unchanged.`
+            : `Reactivate #${record.id} ${record.coinSymbol}? This will restore the signal to active tracking with entry/TP/SL unchanged.`;
+        if (!confirm(confirmMessage)) return;
+
+        setReactivateLoading(record.id);
+        setReactivateMessage(null);
+        try {
+            const response = await fetchWithAuth(`/admin/score-records/${record.id}/reactivate`, {
+                method: 'POST',
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Reactivate failed');
+            }
+            const data = await response.json();
+            const priceText = data.data.currentPrice ? `$${Number(data.data.currentPrice).toFixed(2)}` : 'unavailable';
+            const pnlText = data.data.unrealizedPnl !== null ? `${(Number(data.data.unrealizedPnl) * 100).toFixed(2)}%` : 'unavailable';
+            setReactivateMessage(`Reactivated #${record.id} ${record.coinSymbol} — current price ${priceText}, unrealized PnL ${pnlText}`);
+            fetchRecords();
+        } catch (err) {
+            setReactivateMessage(err instanceof Error ? err.message : 'Reactivate failed');
+        } finally {
+            setReactivateLoading(null);
+        }
+    };
+
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
@@ -150,6 +198,10 @@ export default function ScoreRecordsPage() {
 
             {archiveMessage && (
                 <div className="mb-4 p-3 bg-blue-900/20 border border-blue-900/50 rounded text-blue-400">{archiveMessage}</div>
+            )}
+
+            {reactivateMessage && (
+                <div className="mb-4 p-3 bg-green-900/20 border border-green-900/50 rounded text-green-400">{reactivateMessage}</div>
             )}
 
             {/* Filters */}
@@ -245,17 +297,18 @@ export default function ScoreRecordsPage() {
                                 <th className="px-3 py-2 text-left">SL</th>
                                 <th className="px-3 py-2 text-left">Created</th>
                                 <th className="px-3 py-2 text-left">Status</th>
+                                <th className="px-3 py-2 text-left">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading && (
                                 <tr>
-                                    <td colSpan={11} className="px-4 py-8 text-center text-gray-500">Loading...</td>
+                                    <td colSpan={12} className="px-4 py-8 text-center text-gray-500">Loading...</td>
                                 </tr>
                             )}
                             {error && (
                                 <tr>
-                                    <td colSpan={11} className="px-4 py-8 text-center text-red-400">{error}</td>
+                                    <td colSpan={12} className="px-4 py-8 text-center text-red-400">{error}</td>
                                 </tr>
                             )}
                             {!loading && !error && records.map((record) => (
@@ -286,8 +339,21 @@ export default function ScoreRecordsPage() {
                                     <td className="px-3 py-2">
                                         {record.archivedAt ? (
                                             <span className="px-2 py-0.5 rounded text-xs bg-gray-800 text-gray-500">Archived</span>
-                                        ) : (
+                                        ) : record.isActive ? (
                                             <span className="px-2 py-0.5 rounded text-xs bg-green-900/30 text-green-400">Active</span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 rounded text-xs bg-red-900/30 text-red-400">Closed</span>
+                                        )}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        {!record.isActive && (
+                                            <button
+                                                onClick={() => handleReactivate(record)}
+                                                disabled={reactivateLoading === record.id}
+                                                className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
+                                            >
+                                                {reactivateLoading === record.id ? '...' : 'Reactivate'}
+                                            </button>
                                         )}
                                     </td>
                                 </tr>
