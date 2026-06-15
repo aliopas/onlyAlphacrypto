@@ -1,10 +1,15 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
 import { signalPerformance } from '../models/market.model';
-import { eq, and, isNotNull, sql, lt, inArray } from 'drizzle-orm';
-import { getPriceWithFallback } from '../services/priceService';
-import { deleteCache } from '../config/redis';
+import { eq, and, lt, inArray, sql } from 'drizzle-orm';
+import { getConfirmedClosePrice } from '../services/priceService';
+import { autoCloseSignal, type CloseReason } from '../services/signalLifecycle.service';
 import { TRACKED_COINS } from '../config/coins';
+import { logger } from '../utils/logger';
+
+function isBullishVerdict(verdict: string): boolean {
+    return verdict === 'BUY' || verdict === 'STRONG_BUY';
+}
 
 async function monitorTpsl(): Promise<void> {
     try {
@@ -19,55 +24,42 @@ async function monitorTpsl(): Promise<void> {
 
         for (const signal of activeSignals) {
             try {
-                const price = await getPriceWithFallback(signal.coinSymbol);
-                if (!price || price.price <= 0) {
+                if (!signal.takeProfitPrice || !signal.stopLossPrice || !signal.entryPrice) {
                     continue;
                 }
 
-                const currentPrice = price.price;
-                let closeReason: 'take_profit' | 'stop_loss' | null = null;
-
-                if (signal.verdict === 'BUY' || signal.verdict === 'STRONG_BUY') {
-                    if (signal.takeProfitPrice && currentPrice >= signal.takeProfitPrice) {
-                        closeReason = 'take_profit';
-                    } else if (signal.stopLossPrice && currentPrice <= signal.stopLossPrice) {
-                        closeReason = 'stop_loss';
-                    }
-                } else if (signal.verdict === 'SELL' || signal.verdict === 'STRONG_SELL') {
-                    if (signal.takeProfitPrice && currentPrice <= signal.takeProfitPrice) {
-                        closeReason = 'take_profit';
-                    } else if (signal.stopLossPrice && currentPrice >= signal.stopLossPrice) {
-                        closeReason = 'stop_loss';
-                    }
+                const confirmed = await getConfirmedClosePrice(signal.coinSymbol);
+                if (!confirmed || !confirmed.validated || confirmed.price === null || confirmed.price <= 0) {
+                    logger.warn({
+                        message: 'TPSL Monitor skipped signal: no validated confirmed price',
+                        signalId: signal.id,
+                        coinSymbol: signal.coinSymbol,
+                        reason: confirmed?.reason ?? 'null confirmed price'
+                    });
+                    continue;
                 }
 
-                if (closeReason) {
-                    const isBearish = signal.verdict === 'SELL' || signal.verdict === 'STRONG_SELL';
-                    const rawPnl = ((currentPrice - signal.entryPrice) / signal.entryPrice) * 100;
-                    const realizedPnl = isBearish ? -rawPnl : rawPnl;
+                const currentPrice = confirmed.price;
+                const isBullish = isBullishVerdict(signal.verdict);
 
-                    await db.update(signalPerformance)
-                        .set({
-                            isActive: false,
-                            exitPrice: currentPrice,
-                            realizedPnl,
-                            closedAt: new Date(),
-                            autoClosedReason: closeReason
-                        })
-                        .where(eq(signalPerformance.id, signal.id));
+                const tpHit = isBullish
+                    ? currentPrice >= signal.takeProfitPrice
+                    : currentPrice <= signal.takeProfitPrice;
 
-                    const percentageChange = realizedPnl.toFixed(2);
-                    const sign = realizedPnl >= 0 ? '+' : '';
-                    console.log(`[TPSL Monitor] Closed signal #${signal.id} for ${signal.coinSymbol}: ${closeReason} hit at $${currentPrice} (${sign}${percentageChange}%)`);
+                const slHit = isBullish
+                    ? currentPrice <= signal.stopLossPrice
+                    : currentPrice >= signal.stopLossPrice;
 
-                    await deleteCache('scorecard:latest');
+                if (tpHit || slHit) {
+                    const reason: CloseReason = tpHit ? 'TP_HIT' : 'SL_HIT';
+                    await autoCloseSignal(signal.id, reason, confirmed);
                 }
             } catch (err) {
-                console.error(`[TPSL Monitor] Failed to process signal #${signal.id} for ${signal.coinSymbol}:`, err instanceof Error ? err.message : String(err));
+                logger.error(`[TPSL Monitor] Failed to process signal #${signal.id} for ${signal.coinSymbol}:`, err instanceof Error ? err.message : String(err));
             }
         }
     } catch (err) {
-        console.error('[TPSL Monitor] Failed to fetch active signals:', err instanceof Error ? err.message : String(err));
+        logger.error('[TPSL Monitor] Failed to fetch active signals:', err instanceof Error ? err.message : String(err));
     }
 }
 
@@ -79,41 +71,31 @@ async function expireOldSignals(): Promise<void> {
             .from(signalPerformance)
             .where(and(
                 eq(signalPerformance.isActive, true),
-                lt(signalPerformance.entryAt, thirtyDaysAgo)
+                lt(signalPerformance.entryAt, thirtyDaysAgo),
+                inArray(signalPerformance.coinSymbol, [...TRACKED_COINS])
             ))
             .limit(50);
 
         for (const signal of oldSignals) {
             try {
-                const price = await getPriceWithFallback(signal.coinSymbol);
-                if (price === null || price.price <= 0) {
+                const confirmed = await getConfirmedClosePrice(signal.coinSymbol);
+                if (!confirmed || !confirmed.validated || confirmed.price === null || confirmed.price <= 0) {
+                    logger.warn({
+                        message: 'TPSL Monitor skipped expiry: no validated confirmed price',
+                        signalId: signal.id,
+                        coinSymbol: signal.coinSymbol,
+                        reason: confirmed?.reason ?? 'null confirmed price'
+                    });
                     continue;
                 }
-                const currentPrice = price.price;
 
-                const isBearish = signal.verdict === 'SELL' || signal.verdict === 'STRONG_SELL';
-                const rawPnl = ((currentPrice - signal.entryPrice) / signal.entryPrice) * 100;
-                const realizedPnl = isBearish ? -rawPnl : rawPnl;
-
-                await db.update(signalPerformance)
-                    .set({
-                        isActive: false,
-                        exitPrice: currentPrice,
-                        realizedPnl,
-                        closedAt: new Date(),
-                        autoClosedReason: 'time_expiry'
-                    })
-                    .where(eq(signalPerformance.id, signal.id));
-
-                console.log(`[TPSL Monitor] Expired old signal #${signal.id} for ${signal.coinSymbol} (30+ days) at $${currentPrice}`);
-
-                await deleteCache('scorecard:latest');
+                await autoCloseSignal(signal.id, 'EXPIRED', confirmed);
             } catch (err) {
-                console.error(`[TPSL Monitor] Failed to expire signal #${signal.id} for ${signal.coinSymbol}:`, err instanceof Error ? err.message : String(err));
+                logger.error(`[TPSL Monitor] Failed to expire signal #${signal.id} for ${signal.coinSymbol}:`, err instanceof Error ? err.message : String(err));
             }
         }
     } catch (err) {
-        console.error('[TPSL Monitor] Failed to fetch old signals for expiry:', err instanceof Error ? err.message : String(err));
+        logger.error('[TPSL Monitor] Failed to fetch old signals for expiry:', err instanceof Error ? err.message : String(err));
     }
 }
 

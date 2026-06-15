@@ -3,6 +3,8 @@ import { signalPerformance } from '../models/market.model';
 import { eq, inArray } from 'drizzle-orm';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
+import { getConfirmedClosePrice, type ConfirmedClosePrice } from './priceService';
+import { deleteCache } from '../config/redis';
 
 export type SignalState = 'NEW' | 'WAITING_CONFIRMATION' | 'ACTIVE' | 'PARTIAL_TP' | 'PARTIAL_TP2' | 'BREAKEVEN' | 'CLOSED';
 export type CloseReason = 'TP_HIT' | 'SL_HIT' | 'EXPIRED' | 'THESIS_INVALIDATED' | 'ALL_TP_HIT';
@@ -134,18 +136,65 @@ export async function moveStopToLevel(signalId: number, newStopPrice: number): P
     }
 }
 
-export async function autoCloseSignal(signalId: number, reason: CloseReason): Promise<void> {
+export async function autoCloseSignal(signalId: number, reason: CloseReason, preConfirmed?: ConfirmedClosePrice): Promise<void> {
     try {
+        const [signal] = await db
+            .select()
+            .from(signalPerformance)
+            .where(eq(signalPerformance.id, signalId))
+            .limit(1);
+
+        if (!signal) {
+            logger.warn(`[SignalLifecycle] autoCloseSignal: signal ${signalId} not found`);
+            return;
+        }
+
+        const confirmed = preConfirmed ?? await getConfirmedClosePrice(signal.coinSymbol);
+        if (!confirmed || !confirmed.validated || confirmed.price === null || confirmed.price <= 0) {
+            logger.warn({
+                message: 'SignalLifecycle skipped auto-close: no validated confirmed price',
+                signalId,
+                coinSymbol: signal.coinSymbol,
+                reason: confirmed?.reason ?? 'null confirmed price'
+            });
+            return;
+        }
+
+        const currentPrice = confirmed.price;
+        const isLong = (signal.takeProfitPrice ?? 0) > signal.entryPrice;
+        const rawPnl = ((currentPrice - signal.entryPrice) / signal.entryPrice) * 100;
+        const realizedPnl = isLong ? rawPnl : -rawPnl;
+
         await db
             .update(signalPerformance)
             .set({
                 signalState: 'CLOSED',
                 closeReason: reason,
+                autoClosedReason: reason,
                 isActive: false,
+                exitPrice: currentPrice,
+                realizedPnl,
                 closedAt: new Date(),
             })
             .where(eq(signalPerformance.id, signalId));
-        logger.info(`[SignalLifecycle] signalId=${signalId} auto-closed. reason=${reason}`);
+
+        logger.info({
+            message: `SignalLifecycle signalId=${signalId} auto-closed. reason=${reason}`,
+            signalId,
+            coinSymbol: signal.coinSymbol,
+            reason,
+            exitPrice: currentPrice,
+            realizedPnl,
+            source: confirmed.source,
+            lastPrice: confirmed.lastPrice,
+            high24h: confirmed.high24h,
+            low24h: confirmed.low24h,
+            candleClose: confirmed.candleClose,
+            deviationPct: confirmed.deviationPct,
+            closeValidationReason: confirmed.reason
+        });
+
+        await invalidateScorecardCache();
     } catch (err) {
         logger.error(`[SignalLifecycle] Failed to auto-close signalId=${signalId}:`, err);
         throw err;
@@ -187,17 +236,18 @@ export async function processActiveSignals(): Promise<void> {
         const activeSignals = await getSignalsByState('ACTIVE');
         for (const signal of activeSignals) {
             try {
-                const currentPrice = await getCurrentPrice(signal.coinSymbol);
-                if (!currentPrice || !signal.takeProfitPrice || !signal.entryPrice || !signal.stopLossPrice) continue;
+                const currentPrice = await getConfirmedClosePrice(signal.coinSymbol);
+                if (!currentPrice || !currentPrice.validated || currentPrice.price === null || !signal.takeProfitPrice || !signal.entryPrice || !signal.stopLossPrice) continue;
 
+                const price = currentPrice.price;
                 const isLong = signal.takeProfitPrice > signal.entryPrice;
 
                 const tpHit = isLong
-                    ? currentPrice >= signal.takeProfitPrice
-                    : currentPrice <= signal.takeProfitPrice;
+                    ? price >= signal.takeProfitPrice
+                    : price <= signal.takeProfitPrice;
                 const slHit = isLong
-                    ? currentPrice <= signal.stopLossPrice
-                    : currentPrice >= signal.stopLossPrice;
+                    ? price <= signal.stopLossPrice
+                    : price >= signal.stopLossPrice;
 
                 if (tpHit) {
                     if (env.LIFECYCLE_V2_ENABLED && signal.tp2Price != null) {
@@ -213,28 +263,28 @@ export async function processActiveSignals(): Promise<void> {
                         await appendLifecycleAction(signal.id, {
                             action: 'TP1_HIT',
                             timestamp: new Date().toISOString(),
-                            price: currentPrice,
+                            price,
                         });
                         logger.info(`[SignalLifecycle] signalId=${signal.id} TP1 hit, state=PARTIAL_TP, SL moved to breakeven`);
                     } else {
-                        await autoCloseSignal(signal.id, 'TP_HIT');
+                        await autoCloseSignal(signal.id, 'TP_HIT', currentPrice);
                         if (env.LIFECYCLE_V2_ENABLED) {
                             await appendLifecycleAction(signal.id, {
                                 action: 'TP_HIT',
                                 timestamp: new Date().toISOString(),
-                                price: currentPrice,
+                                price,
                             });
                         }
                     }
                     continue;
                 }
                 if (slHit) {
-                    await autoCloseSignal(signal.id, 'SL_HIT');
+                    await autoCloseSignal(signal.id, 'SL_HIT', currentPrice);
                     if (env.LIFECYCLE_V2_ENABLED) {
                         await appendLifecycleAction(signal.id, {
                             action: 'SL_HIT',
                             timestamp: new Date().toISOString(),
-                            price: currentPrice,
+                            price,
                         });
                     }
                     continue;
@@ -242,7 +292,7 @@ export async function processActiveSignals(): Promise<void> {
 
                 const isPartialTp = await checkPartialTp(
                     signal.id,
-                    currentPrice,
+                    price,
                     signal.entryPrice,
                     signal.takeProfitPrice
                 );
@@ -269,13 +319,14 @@ export async function processPartialTpSignals(): Promise<void> {
         const partialTpSignals = await getSignalsByState('PARTIAL_TP');
         for (const signal of partialTpSignals) {
             try {
-                const currentPrice = await getCurrentPrice(signal.coinSymbol);
-                if (!currentPrice || signal.tp2Price == null) continue;
+                const currentPrice = await getConfirmedClosePrice(signal.coinSymbol);
+                if (!currentPrice || !currentPrice.validated || currentPrice.price === null || signal.tp2Price == null) continue;
 
+                const price = currentPrice.price;
                 const isLong = signal.tp2Price > signal.entryPrice;
                 const tp2Hit = isLong
-                    ? currentPrice >= signal.tp2Price
-                    : currentPrice <= signal.tp2Price;
+                    ? price >= signal.tp2Price
+                    : price <= signal.tp2Price;
 
                 if (tp2Hit) {
                     await db
@@ -290,7 +341,7 @@ export async function processPartialTpSignals(): Promise<void> {
                     await appendLifecycleAction(signal.id, {
                         action: 'TP2_HIT',
                         timestamp: new Date().toISOString(),
-                        price: currentPrice,
+                        price,
                         details: { newStopPrice: signal.takeProfitPrice },
                     });
                     logger.info(`[SignalLifecycle] signalId=${signal.id} TP2 hit, state=PARTIAL_TP2, SL moved to TP1=${signal.takeProfitPrice}`);
@@ -313,43 +364,36 @@ export async function processPartialTp2Signals(): Promise<void> {
         const partialTp2Signals = await getSignalsByState('PARTIAL_TP2');
         for (const signal of partialTp2Signals) {
             try {
-                const currentPrice = await getCurrentPrice(signal.coinSymbol);
-                if (!currentPrice || signal.tp3Price == null) continue;
+                const currentPrice = await getConfirmedClosePrice(signal.coinSymbol);
+                if (!currentPrice || !currentPrice.validated || currentPrice.price === null || signal.tp3Price == null) continue;
 
+                const price = currentPrice.price;
                 const isLong = (signal.tp3Price ?? signal.tp2Price ?? signal.takeProfitPrice ?? 0) > signal.entryPrice;
 
                 const slHit = signal.stopLossPrice != null && (
-                    isLong ? currentPrice <= signal.stopLossPrice : currentPrice >= signal.stopLossPrice
+                    isLong ? price <= signal.stopLossPrice : price >= signal.stopLossPrice
                 );
                 if (slHit) {
-                    await autoCloseSignal(signal.id, 'SL_HIT');
+                    await autoCloseSignal(signal.id, 'SL_HIT', currentPrice);
                     await appendLifecycleAction(signal.id, {
                         action: 'SL_HIT',
                         timestamp: new Date().toISOString(),
-                        price: currentPrice,
+                        price,
                     });
                     continue;
                 }
 
                 const tp3Hit = isLong
-                    ? currentPrice >= signal.tp3Price
-                    : currentPrice <= signal.tp3Price;
+                    ? price >= signal.tp3Price
+                    : price <= signal.tp3Price;
 
                 if (tp3Hit) {
-                    await db
-                        .update(signalPerformance)
-                        .set({
-                            signalState: 'CLOSED',
-                            closeReason: 'ALL_TP_HIT',
-                            isActive: false,
-                            closedAt: new Date(),
-                        })
-                        .where(eq(signalPerformance.id, signal.id));
+                    await autoCloseSignal(signal.id, 'ALL_TP_HIT', currentPrice);
 
                     await appendLifecycleAction(signal.id, {
                         action: 'TP3_HIT_ALL_TP_COMPLETE',
                         timestamp: new Date().toISOString(),
-                        price: currentPrice,
+                        price,
                     });
                     logger.info(`[SignalLifecycle] signalId=${signal.id} All TP hit, closed with ALL_TP_HIT`);
                 }
@@ -376,9 +420,10 @@ export async function processDynamicSL(): Promise<void> {
                 const structureData = await getStructureData(signal.coinSymbol);
                 if (!structureData) continue;
 
-                const currentPrice = await getCurrentPrice(signal.coinSymbol);
-                if (!currentPrice || !signal.stopLossPrice) continue;
+                const currentPrice = await getConfirmedClosePrice(signal.coinSymbol);
+                if (!currentPrice || !currentPrice.validated || currentPrice.price === null || !signal.stopLossPrice) continue;
 
+                const price = currentPrice.price;
                 const isLong = (signal.tp2Price ?? signal.takeProfitPrice ?? 0) > signal.entryPrice;
 
                 let confluenceMultiplier = 1.0;
@@ -392,7 +437,7 @@ export async function processDynamicSL(): Promise<void> {
                     }
                 }
 
-                const slTrailingResult = evaluateSLTrailing(signal, currentPrice, structureData, confluenceMultiplier);
+                const slTrailingResult = evaluateSLTrailing(signal, price, structureData, confluenceMultiplier);
 
                 if (slTrailingResult.shouldTrail) {
                     const newStop = slTrailingResult.newStopPrice;
@@ -400,7 +445,7 @@ export async function processDynamicSL(): Promise<void> {
                     await appendLifecycleAction(signal.id, {
                         action: 'SL_TRAILED',
                         timestamp: new Date().toISOString(),
-                        price: currentPrice,
+                        price,
                         details: {
                             previousStop: signal.stopLossPrice,
                             newStop: newStop,
@@ -587,9 +632,10 @@ export async function processThesisValidation(): Promise<void> {
                 const structureData = await getStructureData(signal.coinSymbol);
                 if (!structureData) continue;
 
-                const currentPrice = await getCurrentPrice(signal.coinSymbol);
-                if (!currentPrice) continue;
+                const currentPrice = await getConfirmedClosePrice(signal.coinSymbol);
+                if (!currentPrice || !currentPrice.validated || currentPrice.price === null) continue;
 
+                const price = currentPrice.price;
                 const isLong = (signal.tp2Price ?? signal.takeProfitPrice ?? 0) > signal.entryPrice;
 
                 let thesisSensitivityMultiplier = 1.0;
@@ -603,14 +649,14 @@ export async function processThesisValidation(): Promise<void> {
                     }
                 }
 
-                const invalidationResult = evaluateThesisInvalidation(signal, currentPrice, structureData, thesisSensitivityMultiplier);
+                const invalidationResult = evaluateThesisInvalidation(signal, price, structureData, thesisSensitivityMultiplier);
 
                 if (invalidationResult.isInvalidated) {
-                    await autoCloseSignal(signal.id, 'THESIS_INVALIDATED');
+                    await autoCloseSignal(signal.id, 'THESIS_INVALIDATED', currentPrice);
                     await appendLifecycleAction(signal.id, {
                         action: 'THESIS_INVALIDATED',
                         timestamp: new Date().toISOString(),
-                        price: currentPrice,
+                        price,
                         details: { reason: invalidationResult.reason },
                     });
                     logger.info(`[SignalLifecycle] signalId=${signal.id} thesis invalidated: ${invalidationResult.reason}`);
@@ -698,6 +744,14 @@ export async function checkExpiredSignals(): Promise<void> {
         }
     } catch (err) {
         logger.error('[SignalLifecycle] Error in checkExpiredSignals:', err);
+    }
+}
+
+async function invalidateScorecardCache(): Promise<void> {
+    try {
+        await deleteCache('scorecard:latest');
+    } catch (err) {
+        logger.warn('[SignalLifecycle] Failed to invalidate scorecard cache:', err instanceof Error ? err.message : String(err));
     }
 }
 

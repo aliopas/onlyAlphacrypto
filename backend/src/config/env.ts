@@ -50,6 +50,14 @@ const envSchema = z.object({
     PRICE_BINANCE_RETRIES: z.coerce.number().positive().default(3),
     PRICE_BINANCE_RETRY_BACKOFF_MS: z.coerce.number().positive().default(500),
 
+    // TP/SL Confirmed-Price Closure (HF-SIGNAL-CLOSE-001)
+    // WARNING: 'samples' averages recent candle closes and is NOT a real traded price.
+    // It may cause false TP/SL triggers. Default 'candle' uses a single confirmed close.
+    TP_SL_CONFIRMED_PRICE_MODE: z.enum(['candle', 'samples']).default('candle'),
+    TP_SL_CONFIRMED_TIMEFRAME: z.enum(['1h', '4h']).default('4h'),
+    TP_SL_CONFIRMED_SAMPLES: z.coerce.number().positive().default(2),
+    TP_SL_PRICE_DEVIATION_THRESHOLD: z.coerce.number().min(0).max(1).default(0.05),
+
     // Moralis
     MORALIS_API_KEY: z.string().min(1, 'MORALIS_API_KEY is required'),
 

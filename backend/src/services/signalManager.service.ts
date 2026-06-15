@@ -1,9 +1,18 @@
 import { db } from '../config/db';
 import { radarSignals, signalPerformance } from '../models/market.model';
 import { eq, and } from 'drizzle-orm';
-import { getPriceWithFallback } from './priceService';
+import { getPriceWithFallback, getConfirmedClosePrice } from './priceService';
 import { calculateTpsl } from './tpslCalculator.service';
 import { logger } from '../utils/logger';
+import { deleteCache } from '../config/redis';
+
+async function invalidateScorecardCache(): Promise<void> {
+    try {
+        await deleteCache('scorecard:latest');
+    } catch (err) {
+        logger.warn('[SignalManager] Failed to invalidate scorecard cache: %s', err instanceof Error ? err.message : String(err));
+    }
+}
 
 type SignalDirection = 'bullish' | 'bearish';
 type SignalVerdict = 'STRONG_BUY' | 'BUY' | 'SELL' | 'STRONG_SELL';
@@ -117,17 +126,17 @@ export async function decideSignalAction(coinSymbol: string, newVerdict: SignalV
         };
     }
 
-    const price = await getPriceWithFallback(coinSymbol);
-    if (!price || price.price <= 0) {
+    const confirmed = await getConfirmedClosePrice(coinSymbol);
+    if (!confirmed || !confirmed.validated || confirmed.price === null || confirmed.price <= 0) {
         return {
             action: 'skip',
             verdict: activeSignal.verdict as SignalVerdict,
-            reason: `Price fetch failed for ${coinSymbol}. Skipping direction change.`
+            reason: `Confirmed price fetch failed for ${coinSymbol}. Skipping direction change.`
         };
     }
 
     const isBearish = oldDirection === 'bearish';
-    const tradePnl = ((price.price - activeSignal.entryPrice) / activeSignal.entryPrice) * 100;
+    const tradePnl = ((confirmed.price - activeSignal.entryPrice) / activeSignal.entryPrice) * 100;
     const realizedPnl = isBearish ? -tradePnl : tradePnl;
 
     const closedAt = new Date();
@@ -139,7 +148,7 @@ export async function decideSignalAction(coinSymbol: string, newVerdict: SignalV
         verdict: newVerdict,
         closedSignal: {
             id: activeSignal.id,
-            exitPrice: price.price,
+            exitPrice: confirmed.price,
             realizedPnl,
             closedAt
         },
@@ -190,6 +199,8 @@ export async function executeSignalDecision(
                 .where(eq(signalPerformance.id, decision.closedSignal.id));
 
             console.log(`[SignalManager] Closed signal ${decision.closedSignal.id} for ${coinSymbol}: exitPrice=$${decision.closedSignal.exitPrice}, realizedPnl=${decision.closedSignal.realizedPnl.toFixed(2)}%`);
+
+            await invalidateScorecardCache();
         }
 
         const insertedRadar = await db.insert(radarSignals).values({

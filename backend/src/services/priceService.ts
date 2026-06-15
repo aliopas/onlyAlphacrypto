@@ -226,6 +226,239 @@ async function tryDexScreener(symbol: string, tokenAddress?: string): Promise<Pr
     };
 }
 
+export interface ConfirmedClosePrice {
+    price: number | null;
+    source: 'ohlcv' | 'binance' | null;
+    lastPrice: number | null;
+    high24h: number | null;
+    low24h: number | null;
+    candleClose: number | null;
+    deviationPct: number | null;
+    validated: boolean;
+    reason: string | null;
+}
+
+export async function getConfirmedClosePrice(symbol: string): Promise<ConfirmedClosePrice | null> {
+    if (!TRACKED_COIN_SET.has(symbol.toUpperCase())) {
+        return null;
+    }
+
+    let lastPrice: number | null = null;
+    let high24h: number | null = null;
+    let low24h: number | null = null;
+
+    try {
+        const { data } = await binanceGet<BinanceTickerResponse>(`${BINANCE_BASE}/ticker/24hr`, {
+            symbol: `${symbol.toUpperCase()}USDT`,
+        });
+
+        lastPrice = parseFloat(data.lastPrice);
+        high24h = parseFloat(data.highPrice);
+        low24h = parseFloat(data.lowPrice);
+
+        if (isNaN(lastPrice) || lastPrice <= 0 || isNaN(high24h) || isNaN(low24h)) {
+            return {
+                price: null,
+                source: null,
+                lastPrice: isNaN(lastPrice ?? NaN) ? null : lastPrice,
+                high24h: isNaN(high24h ?? NaN) ? null : high24h,
+                low24h: isNaN(low24h ?? NaN) ? null : low24h,
+                candleClose: null,
+                deviationPct: null,
+                validated: false,
+                reason: 'Invalid Binance ticker data'
+            };
+        }
+
+        if (lastPrice < low24h || lastPrice > high24h) {
+            return {
+                price: null,
+                source: null,
+                lastPrice,
+                high24h,
+                low24h,
+                candleClose: null,
+                deviationPct: null,
+                validated: false,
+                reason: 'lastPrice outside 24h high/low'
+            };
+        }
+    } catch (error) {
+        logger.warn({ message: 'Confirmed close price fetch failed', symbol, error: error instanceof Error ? error.message : String(error) });
+        return null;
+    }
+
+    const mode = env.TP_SL_CONFIRMED_PRICE_MODE;
+    const timeframe = env.TP_SL_CONFIRMED_TIMEFRAME;
+
+    if (mode === 'samples') {
+        return await resolveSamplesConfirmedPrice(symbol, timeframe, lastPrice, high24h, low24h);
+    }
+
+    return await resolveCandleConfirmedPrice(symbol, timeframe, lastPrice, high24h, low24h);
+}
+
+async function fetchRecentCandleCloses(symbol: string, timeframe: string, limit: number): Promise<number[]> {
+    try {
+        const { getCandles } = await import('./ohlcvSnapshot.service');
+        const candles = await getCandles(symbol, timeframe, limit);
+        return candles
+            .map(c => c.close)
+            .filter((c): c is number => typeof c === 'number' && !isNaN(c) && c > 0)
+            .reverse();
+    } catch (ohlcvErr) {
+        logger.warn({ message: 'Failed to fetch OHLCV candles for confirmed close price', symbol, timeframe, limit, error: ohlcvErr instanceof Error ? ohlcvErr.message : String(ohlcvErr) });
+        return [];
+    }
+}
+
+async function resolveCandleConfirmedPrice(
+    symbol: string,
+    timeframe: string,
+    lastPrice: number,
+    high24h: number,
+    low24h: number
+): Promise<ConfirmedClosePrice> {
+    const closes = await fetchRecentCandleCloses(symbol, timeframe, 1);
+    const candleClose = closes.length > 0 ? closes[0] : null;
+
+    if (candleClose === null || candleClose <= 0) {
+        return buildValidatedResult({
+            price: lastPrice,
+            source: 'binance',
+            lastPrice,
+            high24h,
+            low24h,
+            candleClose: null,
+            reason: 'No OHLCV candle available; using validated lastPrice'
+        });
+    }
+
+    if (!isPriceWithinBounds(candleClose, high24h, low24h)) {
+        return {
+            price: null,
+            source: null,
+            lastPrice,
+            high24h,
+            low24h,
+            candleClose,
+            deviationPct: null,
+            validated: false,
+            reason: 'OHLCV candle close outside 24h high/low'
+        };
+    }
+
+    const deviationPct = Math.abs(lastPrice - candleClose) / candleClose;
+    const useCandle = deviationPct > env.TP_SL_PRICE_DEVIATION_THRESHOLD;
+    const finalPrice = useCandle ? candleClose : lastPrice;
+    const source: 'ohlcv' | 'binance' = useCandle ? 'ohlcv' : 'binance';
+    const reason = useCandle
+        ? `lastPrice deviated ${(deviationPct * 100).toFixed(2)}% from candle close; using candle close`
+        : 'lastPrice within deviation threshold; using lastPrice';
+
+    return buildValidatedResult({
+        price: finalPrice,
+        source,
+        lastPrice,
+        high24h,
+        low24h,
+        candleClose,
+        deviationPct,
+        reason
+    });
+}
+
+async function resolveSamplesConfirmedPrice(
+    symbol: string,
+    timeframe: string,
+    lastPrice: number,
+    high24h: number,
+    low24h: number
+): Promise<ConfirmedClosePrice> {
+    const sampleCount = Math.max(1, Math.floor(env.TP_SL_CONFIRMED_SAMPLES));
+    const candlesNeeded = Math.max(2, sampleCount);
+    const closes = await fetchRecentCandleCloses(symbol, timeframe, candlesNeeded);
+
+    if (closes.length === 0) {
+        return buildValidatedResult({
+            price: lastPrice,
+            source: 'binance',
+            lastPrice,
+            high24h,
+            low24h,
+            candleClose: null,
+            reason: 'No OHLCV candles available for samples; using validated lastPrice'
+        });
+    }
+
+    const validSamples = closes.filter(c => isPriceWithinBounds(c, high24h, low24h));
+    if (validSamples.length === 0) {
+        return {
+            price: null,
+            source: null,
+            lastPrice,
+            high24h,
+            low24h,
+            candleClose: closes[0] ?? null,
+            deviationPct: null,
+            validated: false,
+            reason: 'All recent candle closes outside 24h high/low'
+        };
+    }
+
+    const latest = validSamples[validSamples.length - 1];
+    const sampleAverage = validSamples.reduce((sum, c) => sum + c, 0) / validSamples.length;
+    const deviationPct = Math.abs(lastPrice - sampleAverage) / sampleAverage;
+    const useSampleAverage = validSamples.length >= sampleCount && deviationPct > env.TP_SL_PRICE_DEVIATION_THRESHOLD;
+
+    const finalPrice = useSampleAverage ? sampleAverage : lastPrice;
+    const source: 'ohlcv' | 'binance' = useSampleAverage ? 'ohlcv' : 'binance';
+    const candleClose = latest;
+    const reason = useSampleAverage
+        ? `${validSamples.length} sample(s) averaged ${sampleAverage.toFixed(6)}; lastPrice deviated ${(deviationPct * 100).toFixed(2)}%`
+        : `lastPrice within deviation threshold vs ${validSamples.length} sample(s); using lastPrice`;
+
+    return buildValidatedResult({
+        price: finalPrice,
+        source,
+        lastPrice,
+        high24h,
+        low24h,
+        candleClose,
+        deviationPct,
+        reason
+    });
+}
+
+function isPriceWithinBounds(price: number, high: number, low: number): boolean {
+    return price >= low && price <= high;
+}
+
+interface BuildValidatedResultInput {
+    price: number;
+    source: 'ohlcv' | 'binance';
+    lastPrice: number;
+    high24h: number;
+    low24h: number;
+    candleClose: number | null;
+    deviationPct?: number | null;
+    reason: string;
+}
+
+function buildValidatedResult(input: BuildValidatedResultInput): ConfirmedClosePrice {
+    return {
+        price: input.price,
+        source: input.source,
+        lastPrice: input.lastPrice,
+        high24h: input.high24h,
+        low24h: input.low24h,
+        candleClose: input.candleClose,
+        deviationPct: input.deviationPct ?? null,
+        validated: true,
+        reason: input.reason
+    };
+}
+
 export async function getBinancePriceAtDate(pair: string, date: Date): Promise<number | null> {
     try {
         const start = date.getTime();
