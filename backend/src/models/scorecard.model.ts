@@ -5,7 +5,7 @@ import {
 
 export const portfolioStatusEnum = pgEnum('portfolio_status_enum', ['active', 'watchlist', 'exited']);
 export const transactionTypeEnum = pgEnum('transaction_type_enum', [
-    'entry', 'tp1_hit', 'tp2_hit', 'tp3_hit', 'sl_hit', 'dca', 'rebalance'
+    'entry', 'tp1_hit', 'tp2_hit', 'tp3_hit', 'sl_hit', 'manual_close', 'dca', 'rebalance'
 ]);
 
 export const portfolioCoins = pgTable('portfolio_coins', {
@@ -60,5 +60,6 @@ export const portfolioSnapshots = pgTable('portfolio_snapshots', {
     activeCoins: integer('active_coins').default(0),
     watchlistCoins: integer('watchlist_coins').default(0),
     maxDrawdownPercent: numeric('max_drawdown_percent', { precision: 8, scale: 4 }).default('0'),
+    cashBalance: numeric('cash_balance', { precision: 12, scale: 2 }).default('0'),
     snapshotAt: timestamp('snapshot_at').defaultNow(),
 });

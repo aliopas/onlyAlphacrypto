@@ -28,6 +28,7 @@ interface ScorecardSummary {
     totalPnlPercent: number;
     activeCoins: number;
     watchlistCoins: number;
+    cashBalance: number;
 }
 
 interface ScorecardData {

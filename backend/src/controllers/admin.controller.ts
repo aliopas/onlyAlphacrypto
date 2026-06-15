@@ -983,6 +983,28 @@ export async function updatePortfolioCoinHandler(req: Request, res: Response): P
 
 interface ClosePortfolioCoinBody {
     closePrice: number;
+    type?: string;
+}
+
+const CLOSE_TRANSACTION_TYPES = ['tp3_hit', 'sl_hit', 'manual_close'] as const;
+type CloseTransactionType = typeof CLOSE_TRANSACTION_TYPES[number];
+
+function isCloseTransactionType(value: string): value is CloseTransactionType {
+    return CLOSE_TRANSACTION_TYPES.includes(value as CloseTransactionType);
+}
+
+function resolveCloseType(
+    requestedType: string | undefined,
+    closePrice: number,
+    tp3: number,
+    stopLoss: number
+): CloseTransactionType {
+    if (requestedType && isCloseTransactionType(requestedType)) {
+        return requestedType;
+    }
+    if (tp3 > 0 && closePrice >= tp3) return 'tp3_hit';
+    if (stopLoss > 0 && closePrice <= stopLoss) return 'sl_hit';
+    return 'manual_close';
 }
 
 export async function closePortfolioCoinHandler(req: Request, res: Response): Promise<void> {
@@ -1018,11 +1040,20 @@ export async function closePortfolioCoinHandler(req: Request, res: Response): Pr
             return;
         }
 
+        if (body.type !== undefined && !isCloseTransactionType(body.type)) {
+            res.status(400).json({ error: 'Invalid close type' });
+            return;
+        }
+
         const entryPrice = parseFloat(String(coin.entryPrice)) || 0;
         const allocatedBudget = parseFloat(String(coin.allocatedBudget)) || 0;
+        const tp3 = parseFloat(String(coin.tp3)) || 0;
+        const stopLoss = parseFloat(String(coin.stopLoss)) || 0;
         const quantity = entryPrice > 0 ? allocatedBudget / entryPrice : 0;
         const exitValue = quantity * body.closePrice;
         const pnl = exitValue - allocatedBudget;
+
+        const closeType = resolveCloseType(body.type, body.closePrice, tp3, stopLoss);
 
         const now = new Date();
 
@@ -1037,7 +1068,7 @@ export async function closePortfolioCoinHandler(req: Request, res: Response): Pr
 
         await db.insert(portfolioTransactions).values({
             coinId,
-            type: 'sl_hit',
+            type: closeType,
             price: String(body.closePrice),
             amount: String(exitValue.toFixed(2)),
             pnl: String(pnl.toFixed(2)),
@@ -1049,7 +1080,7 @@ export async function closePortfolioCoinHandler(req: Request, res: Response): Pr
             targetTable: 'portfolio_coins',
             targetId: String(coinId),
             oldValue: { status: coin.status, currentPrice: coin.currentPrice },
-            newValue: { status: 'exited', closePrice: body.closePrice, pnl: pnl.toFixed(2) },
+            newValue: { status: 'exited', closePrice: body.closePrice, closeType, pnl: pnl.toFixed(2) },
             ipAddress: getClientIp(req),
         });
 
@@ -1057,6 +1088,7 @@ export async function closePortfolioCoinHandler(req: Request, res: Response): Pr
             message: 'Portfolio coin closed',
             coinId,
             closePrice: body.closePrice,
+            closeType,
             pnl: pnl.toFixed(2),
         });
     } catch (error) {

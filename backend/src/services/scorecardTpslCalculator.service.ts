@@ -148,6 +148,26 @@ export async function calculateScorecardTpsl(params: {
 }): Promise<ScorecardTpslResult> {
     const { symbol, entryPrice, classification } = params;
 
+    if (classification === 'STRATEGIC') {
+        const tp1 = entryPrice * 1.30;
+        const tp2 = entryPrice * 1.40;
+        const tp3 = entryPrice * 1.50;
+        const stopLoss = entryPrice * 0.90;
+        const riskAmount = Math.abs(entryPrice - stopLoss);
+        const rewardAmount = Math.abs(tp1 - entryPrice);
+        const rr = riskAmount > 0 ? rewardAmount / riskAmount : 0;
+        const allocatedBudget = env.SCORECARD_STRATEGIC_BUDGET;
+
+        console.log(`[ScorecardTpsl] ${symbol}: STRATEGIC long-term — RR=${rr.toFixed(2)}, TP1=${tp1} TP2=${tp2} TP3=${tp3} SL=${stopLoss}, budget=$${allocatedBudget}`);
+        return {
+            tp1, tp2, tp3, stopLoss,
+            tpSource: 'atr', slSource: 'atr', rr,
+            isRejected: false,
+            allocatedBudget,
+            classification,
+        };
+    }
+
     const candles = await fetchBinanceCandles(symbol);
     if (!candles || candles.length === 0) {
         console.warn(`[ScorecardTpsl] ${symbol}: No candles — rejecting`);
@@ -243,7 +263,7 @@ export async function calculateScorecardTpsl(params: {
     const rewardAmount = Math.abs(tp1 - entryPrice);
     const rr = riskAmount > 0 ? rewardAmount / riskAmount : 0;
 
-    const minRR = classification === 'STRATEGIC' ? 2.0 : 1.5;
+    const minRR = 1.5;
     if (rr < minRR) {
         console.log(`[ScorecardTpsl] ${symbol}: REJECTED — RR=${rr.toFixed(2)} < minRR=${minRR} (${classification})`);
         return {
@@ -255,9 +275,7 @@ export async function calculateScorecardTpsl(params: {
         };
     }
 
-    const allocatedBudget = classification === 'STRATEGIC'
-        ? env.SCORECARD_STRATEGIC_BUDGET
-        : env.SCORECARD_TACTICAL_BUDGET;
+    const allocatedBudget = env.SCORECARD_TACTICAL_BUDGET;
 
     console.log(`[ScorecardTpsl] ${symbol}: ACCEPTED — RR=${rr.toFixed(2)}, TP1=${tp1} TP2=${tp2} TP3=${tp3} SL=${stopLoss}, budget=$${allocatedBudget}`);
     return {

@@ -33,6 +33,7 @@ interface ScorecardSummary {
     totalPnlPercent: number;
     activeCoins: number;
     watchlistCoins: number;
+    cashBalance: number;
 }
 
 interface ScorecardData {
@@ -50,6 +51,16 @@ export default function ModelPortfolioTab({ data }: ModelPortfolioTabProps) {
 
     return (
         <>
+            <div className="mb-4 p-4 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+                <div className="flex items-start gap-3">
+                    <span className="material-symbols-outlined text-orange-500 text-base mt-0.5 shrink-0">engineering</span>
+                    <p className="text-sm text-orange-200/80 leading-relaxed">
+                        Model Portfolio monitoring is in active deployment. Verify all TP/SL, 
+                        P&L, and position data manually until this banner is removed.
+                    </p>
+                </div>
+            </div>
+
             <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                 <div className="flex items-start gap-3">
                     <span className="material-symbols-outlined text-yellow-500 text-base mt-0.5 shrink-0">warning</span>

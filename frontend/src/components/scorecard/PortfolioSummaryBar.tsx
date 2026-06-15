@@ -10,6 +10,7 @@ interface ScorecardSummary {
     totalPnlPercent: number;
     activeCoins: number;
     watchlistCoins: number;
+    cashBalance: number;
 }
 
 interface Props {
@@ -38,8 +39,8 @@ export default function PortfolioSummaryBar({ summary: initialSummary }: Props) 
 
     if (error || !summary) {
         return (
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
-                {[...Array(6)].map((_, i) => (
+            <div className="grid grid-cols-2 md:grid-cols-7 gap-3 mb-6">
+                {[...Array(7)].map((_, i) => (
                     <div key={i} className="bg-[#0A0A0A] border border-red-500/30 rounded-lg p-4">
                         <div className="text-xs text-red-400 mb-1">Failed to load</div>
                         <button
@@ -58,7 +59,7 @@ export default function PortfolioSummaryBar({ summary: initialSummary }: Props) 
     const pnlSign = summary.totalPnl >= 0 ? '+' : '';
 
     return (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-3 mb-6">
             <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                 <div className="text-xs text-[#666] mb-1">Model Budget</div>
                 <div className="text-xl font-mono font-bold">
@@ -69,6 +70,12 @@ export default function PortfolioSummaryBar({ summary: initialSummary }: Props) 
                 <div className="text-xs text-[#666] mb-1">Current Value</div>
                 <div className="text-xl font-mono font-bold">
                     ${summary.currentValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </div>
+            </div>
+            <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
+                <div className="text-xs text-[#666] mb-1">Cash Balance</div>
+                <div className="text-xl font-mono font-bold text-blue-400">
+                    ${summary.cashBalance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </div>
             </div>
             <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">

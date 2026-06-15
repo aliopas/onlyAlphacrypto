@@ -41,6 +41,7 @@ export interface SnapshotRow {
     activeCoins: number;
     watchlistCoins: number;
     maxDrawdownPercent: string;
+    cashBalance: string;
     snapshotAt: Date;
 }
 
@@ -51,6 +52,7 @@ export interface ScorecardSummary {
     totalPnlPercent: number;
     activeCoins: number;
     watchlistCoins: number;
+    cashBalance: number;
 }
 
 export interface ScorecardSummaryResponse {
@@ -148,6 +150,7 @@ export async function getScorecardSummary(_req: Request, res: Response, next: Ne
             totalPnlPercent: latestSnapshot ? parseFloat(String(latestSnapshot.totalPnlPercent)) : 0,
             activeCoins: latestSnapshot ? Number(latestSnapshot.activeCoins) : enrichedActive.length,
             watchlistCoins: latestSnapshot ? Number(latestSnapshot.watchlistCoins) : enrichedWatchlist.length,
+            cashBalance: latestSnapshot ? parseFloat(String(latestSnapshot.cashBalance)) : 0,
         };
 
         const response: ScorecardSummaryResponse = {

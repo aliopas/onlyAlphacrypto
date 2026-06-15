@@ -1,4 +1,5 @@
 import { db } from '../config/db';
+import { env } from '../config/env';
 import { portfolioCoins, portfolioSnapshots } from '../models';
 import { eq, desc, sql } from 'drizzle-orm';
 
@@ -78,6 +79,7 @@ export interface SnapshotResult {
     activeCoins: number;
     watchlistCoins: number;
     maxDrawdownPercent: number;
+    cashBalance: number;
     snapshotAt: Date;
 }
 
@@ -130,6 +132,9 @@ export async function createDailySnapshot(): Promise<SnapshotResult | null> {
         ? ((totalCurrentValue - totalBudget) / totalBudget) * 100
         : 0;
 
+    const totalPortfolioBudget = env.SCORECARD_TOTAL_BUDGET;
+    const cashBalance = Math.max(0, totalPortfolioBudget - totalBudget);
+
     const maxDrawdownPercent = await calculateMaxDrawdownPercent(totalCurrentValue);
 
     const snapshotAt = new Date();
@@ -142,6 +147,7 @@ export async function createDailySnapshot(): Promise<SnapshotResult | null> {
         activeCoins: activeCoins.length,
         watchlistCoins: watchlistCoins.length,
         maxDrawdownPercent: String(maxDrawdownPercent.toFixed(4)),
+        cashBalance: String(cashBalance.toFixed(2)),
         snapshotAt,
     } as typeof portfolioSnapshots.$inferInsert).returning();
 
@@ -164,6 +170,7 @@ export async function createDailySnapshot(): Promise<SnapshotResult | null> {
         activeCoins: activeCoins.length,
         watchlistCoins: watchlistCoins.length,
         maxDrawdownPercent,
+        cashBalance,
         snapshotAt,
     };
 }

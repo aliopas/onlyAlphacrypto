@@ -143,6 +143,7 @@ const envSchema = z.object({
     SCORECARD_MAX_DRAWDOWN_PERCENT: z.coerce.number().default(30),
     SCORECARD_TACTICAL_BUDGET: z.coerce.number().default(200),
     SCORECARD_STRATEGIC_BUDGET: z.coerce.number().default(300),
+    SCORECARD_TOTAL_BUDGET: z.coerce.number().default(10000),
 
     // Admin Authentication
     ADMIN_EMAIL: z.string().email().default('admin@onlyalpha.io'),

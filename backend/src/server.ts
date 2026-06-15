@@ -35,6 +35,7 @@ import { startSignalLifecycleCron } from './crons/signalLifecycle.cron';
 import { startDailyTrendCron } from './crons/dailyTrend.cron';
 import { startTelegramPortfolioScraperCron } from './crons/telegramPortfolioScraper.cron';
 import { startPortfolioSnapshotCron } from './crons/portfolioSnapshot.cron';
+import { startPortfolioMonitorCron } from './crons/portfolioMonitor.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -106,6 +107,7 @@ async function bootstrap(): Promise<void> {
         logger.info('│ LIFECYCLE_V2_ENABLED         : %s', String(env.LIFECYCLE_V2_ENABLED));
         logger.info('│ SCORECARD_SCRAPER_ENABLED    : %s', String(env.SCORECARD_SCRAPER_ENABLED));
         logger.info('│ SCORECARD_SNAPSHOT_ENABLED    : %s', String(env.SCORECARD_SNAPSHOT_ENABLED));
+        logger.info('│ SCORECARD_MONITOR_ENABLED    : %s', String(env.SCORECARD_MONITOR_ENABLED));
         logger.info('│ MARKET_REGIME_ENABLED        : %s', String(env.MARKET_REGIME_ENABLED));
         logger.info('│ LEVEL_INTELLIGENCE_ENABLED   : %s', String(env.LEVEL_INTELLIGENCE_ENABLED));
         logger.info('│ SCENARIO_TRACKER_ENABLED     : %s', String(env.SCENARIO_TRACKER_ENABLED));
@@ -282,6 +284,18 @@ async function bootstrap(): Promise<void> {
                     logger.error('[Server] Failed to start optional cron PortfolioSnapshot: %s', error instanceof Error ? error.message : String(error));
                 }
             }, (crons.length + 10) * cronStartDelay);
+        }
+
+        // Optional Portfolio Monitor cron
+        if (env.SCORECARD_MONITOR_ENABLED) {
+            setTimeout(() => {
+                try {
+                    startPortfolioMonitorCron();
+                    logger.info('[Server] Optional cron started: PortfolioMonitor');
+                } catch (error) {
+                    logger.error('[Server] Failed to start optional cron PortfolioMonitor: %s', error instanceof Error ? error.message : String(error));
+                }
+            }, (crons.length + 11) * cronStartDelay);
         }
     } catch (error) {
         logger.error('[Server] Failed to start: %s', error instanceof Error ? error.message : String(error));
