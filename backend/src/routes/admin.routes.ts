@@ -8,6 +8,7 @@ import {
     getScoreRecordsHandler,
     archiveScoreRecordsHandler,
     archiveOldScoreRecordsHandler,
+    reactivateScoreRecordHandler,
     pauseSignalGenerationHandler,
     resumeSignalGenerationHandler,
     raiseTpHandler,
@@ -52,6 +53,7 @@ router.get('/shadow/signals/:id', adminAuth, getShadowSignalByIdHandler);
 router.get('/score-records', featureFlagMiddleware, adminAuth, getScoreRecordsHandler);
 router.delete('/score-records', featureFlagMiddleware, adminAuth, archiveScoreRecordsHandler);
 router.post('/score-records/archive-old', featureFlagMiddleware, adminAuth, archiveOldScoreRecordsHandler);
+router.post('/score-records/:id/reactivate', featureFlagMiddleware, adminAuth, reactivateScoreRecordHandler);
 
 // Admin Signal Operations (behind separate feature flag)
 router.post('/signals/pause-generation', signalOpsFlagMiddleware, adminAuth, pauseSignalGenerationHandler);

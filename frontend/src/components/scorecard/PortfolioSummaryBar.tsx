@@ -17,6 +17,11 @@ interface Props {
     summary: ScorecardSummary | null;
 }
 
+function toNum(value: unknown): number {
+    const n = typeof value === 'number' ? value : parseFloat(String(value));
+    return Number.isFinite(n) ? n : 0;
+}
+
 export default function PortfolioSummaryBar({ summary: initialSummary }: Props) {
     const [summary, setSummary] = useState<ScorecardSummary | null>(initialSummary);
     const [error, setError] = useState(false);
@@ -55,51 +60,57 @@ export default function PortfolioSummaryBar({ summary: initialSummary }: Props) 
         );
     }
 
-    const pnlColor = summary.totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400';
-    const pnlSign = summary.totalPnl >= 0 ? '+' : '';
+    const totalBudget = toNum(summary.totalBudget);
+    const currentValue = toNum(summary.currentValue);
+    const cashBalance = toNum(summary.cashBalance);
+    const totalPnl = toNum(summary.totalPnl);
+    const totalPnlPercent = toNum(summary.totalPnlPercent);
+
+    const pnlColor = totalPnl >= 0 ? 'text-emerald-400' : 'text-red-400';
+    const pnlSign = totalPnl >= 0 ? '+' : '';
 
     return (
         <div className="grid grid-cols-2 md:grid-cols-7 gap-3 mb-6">
             <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                 <div className="text-xs text-[#666] mb-1">Model Budget</div>
                 <div className="text-xl font-mono font-bold">
-                    ${summary.totalBudget.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    ${totalBudget.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </div>
             </div>
             <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                 <div className="text-xs text-[#666] mb-1">Current Value</div>
                 <div className="text-xl font-mono font-bold">
-                    ${summary.currentValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    ${currentValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </div>
             </div>
             <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                 <div className="text-xs text-[#666] mb-1">Cash Balance</div>
                 <div className="text-xl font-mono font-bold text-blue-400">
-                    ${summary.cashBalance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    ${cashBalance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </div>
             </div>
             <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                 <div className="text-xs text-[#666] mb-1">Total P&L</div>
                 <div className={`text-xl font-mono font-bold ${pnlColor}`}>
-                    {pnlSign}{summary.totalPnlPercent.toFixed(2)}%
+                    {pnlSign}{totalPnlPercent.toFixed(2)}%
                 </div>
             </div>
             <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                 <div className="text-xs text-[#666] mb-1">Active</div>
                 <div className="text-xl font-mono font-bold text-emerald-400">
-                    {summary.activeCoins}
+                    {toNum(summary.activeCoins)}
                 </div>
             </div>
             <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                 <div className="text-xs text-[#666] mb-1">Watchlist</div>
                 <div className="text-xl font-mono font-bold text-yellow-400">
-                    {summary.watchlistCoins}
+                    {toNum(summary.watchlistCoins)}
                 </div>
             </div>
             <div className="bg-[#0A0A0A] border border-[#222] rounded-lg p-4">
                 <div className="text-xs text-[#666] mb-1">Simulated P&L</div>
                 <div className={`text-xl font-mono font-bold ${pnlColor}`}>
-                    {pnlSign}${summary.totalPnl.toFixed(2)}
+                    {pnlSign}${totalPnl.toFixed(2)}
                 </div>
             </div>
         </div>

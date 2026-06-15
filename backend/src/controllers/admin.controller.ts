@@ -4,10 +4,13 @@ import { logAdminAction } from '../services/adminAudit.service';
 import { pauseSignalGeneration, resumeSignalGeneration } from '../services/signalControl.service';
 import { isPageInMaintenance, setMaintenanceMode, clearMaintenanceMode, getAllMaintenanceFlags } from '../services/maintenance.service';
 import { collectSystemTelemetry } from '../services/telemetry.service';
+import { getPriceWithFallback } from '../services/priceService';
+import { deleteCache } from '../config/redis';
 import { db } from '../config/db';
 import { shadowSignals, signalPerformance } from '../models/market.model';
 import { portfolioCoins, portfolioTransactions } from '../models/scorecard.model';
 import { eq, and, gte, lte, desc, sql, isNull, inArray } from 'drizzle-orm';
+import type { SignalState } from '../services/signalLifecycle.service';
 
 /**
  * Get shadow mode statistics
@@ -343,6 +346,154 @@ export async function archiveOldScoreRecordsHandler(req: Request, res: Response)
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to archive old records' });
+    }
+}
+
+/**
+ * Reactivate a falsely-closed signal_performance row
+ */
+export async function reactivateScoreRecordHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const signalId = parseInt(idParam, 10);
+        if (isNaN(signalId)) {
+            res.status(400).json({ error: 'Invalid signal ID' });
+            return;
+        }
+
+        const adminEmail = req.adminEmail;
+
+        const [signal] = await db
+            .select()
+            .from(signalPerformance)
+            .where(eq(signalPerformance.id, signalId))
+            .limit(1);
+
+        if (!signal) {
+            res.status(404).json({ error: 'Signal not found' });
+            return;
+        }
+
+        if (signal.isActive) {
+            res.status(400).json({ error: 'Signal is already active' });
+            return;
+        }
+
+        const CLOSED_STATE: SignalState = 'CLOSED';
+        const ACTIVE_STATE: SignalState = 'ACTIVE';
+
+        const oldValue = {
+            isActive: signal.isActive,
+            signalState: signal.signalState,
+            exitPrice: signal.exitPrice,
+            realizedPnl: signal.realizedPnl,
+            closedAt: signal.closedAt,
+            autoClosedReason: signal.autoClosedReason,
+            closeReason: signal.closeReason,
+            archivedAt: signal.archivedAt,
+            outcomeClassification: signal.outcomeClassification,
+            classificationConfidence: signal.classificationConfidence,
+            isWin7d: signal.isWin7d,
+            isWin30d: signal.isWin30d,
+            isWin72h: signal.isWin72h,
+            pnl24h: signal.pnl24h,
+            pnl7d: signal.pnl7d,
+            pnl30d: signal.pnl30d,
+            pnl72h: signal.pnl72h,
+        };
+
+        const updates: Partial<typeof signalPerformance.$inferInsert> = {
+            isActive: true,
+            exitPrice: null,
+            realizedPnl: null,
+            closedAt: null,
+            autoClosedReason: null,
+            closeReason: null,
+            archivedAt: null,
+            outcomeClassification: null,
+            classificationConfidence: null,
+            isWin7d: null,
+            isWin30d: null,
+            isWin72h: null,
+            pnl24h: null,
+            pnl7d: null,
+            pnl30d: null,
+            pnl72h: null,
+        };
+
+        if (signal.signalState === CLOSED_STATE) {
+            updates.signalState = ACTIVE_STATE;
+        }
+
+        await db
+            .update(signalPerformance)
+            .set(updates)
+            .where(eq(signalPerformance.id, signalId));
+
+        const newValue = {
+            isActive: true,
+            signalState: updates.signalState ?? signal.signalState,
+            exitPrice: null,
+            realizedPnl: null,
+            closedAt: null,
+            autoClosedReason: null,
+            closeReason: null,
+            archivedAt: null,
+            outcomeClassification: null,
+            classificationConfidence: null,
+            isWin7d: null,
+            isWin30d: null,
+            isWin72h: null,
+            pnl24h: null,
+            pnl7d: null,
+            pnl30d: null,
+            pnl72h: null,
+        };
+
+        let currentPrice: number | null = null;
+        try {
+            const priceResult = await getPriceWithFallback(signal.coinSymbol);
+            currentPrice = priceResult?.price ?? null;
+        } catch (error) {
+            console.warn('[ReactivateScoreRecord] Price fetch failed:', error instanceof Error ? error.message : String(error));
+        }
+
+        let unrealizedPnl: number | null = null;
+        if (currentPrice !== null && signal.entryPrice > 0) {
+            const rawPnl = (currentPrice - signal.entryPrice) / signal.entryPrice;
+            const isBearish = signal.verdict === 'SELL' || signal.verdict === 'STRONG_SELL';
+            unrealizedPnl = isBearish ? -rawPnl : rawPnl;
+        }
+
+        await logAdminAction({
+            adminEmail: adminEmail ?? 'unknown',
+            action: 'reactivate_signal',
+            targetTable: 'signal_performance',
+            targetId: String(signalId),
+            oldValue,
+            newValue,
+            ipAddress: getClientIp(req),
+        });
+
+        try {
+            await deleteCache('scorecard:latest');
+        } catch (error) {
+            console.warn('[ReactivateScoreRecord] Cache invalidation failed:', error instanceof Error ? error.message : String(error));
+        }
+
+        res.json({
+            success: true,
+            data: {
+                id: signal.id,
+                isActive: true,
+                signalState: updates.signalState ?? signal.signalState,
+                currentPrice,
+                unrealizedPnl,
+            },
+        });
+    } catch (error) {
+        console.error('[ReactivateScoreRecord] Failed to reactivate signal:', error instanceof Error ? error.message : String(error));
+        res.status(500).json({ error: 'Failed to reactivate signal' });
     }
 }
 
