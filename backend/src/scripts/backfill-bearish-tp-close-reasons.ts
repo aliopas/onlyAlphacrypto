@@ -1,6 +1,6 @@
 import { db } from '../config/db';
 import { signalPerformance } from '../models/market.model';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { logger } from '../utils/logger';
 
 interface BackfillSummary {
@@ -9,6 +9,8 @@ interface BackfillSummary {
     skipped: number;
     errors: string[];
 }
+
+const BEARISH_VERDICTS = ['SELL', 'STRONG_SELL'];
 
 async function backfillBearishTpCloseReasons(): Promise<BackfillSummary> {
     const summary: BackfillSummary = {
@@ -23,8 +25,8 @@ async function backfillBearishTpCloseReasons(): Promise<BackfillSummary> {
             .from(signalPerformance)
             .where(and(
                 eq(signalPerformance.isActive, false),
-                eq(signalPerformance.autoClosedReason, 'take_profit'),
-                eq(signalPerformance.closeReason, 'SL_HIT')
+                eq(signalPerformance.closeReason, 'SL_HIT'),
+                inArray(signalPerformance.verdict, BEARISH_VERDICTS)
             ))
             .limit(5000);
 
@@ -37,14 +39,11 @@ async function backfillBearishTpCloseReasons(): Promise<BackfillSummary> {
                     continue;
                 }
 
-                const isLong = signal.takeProfitPrice > signal.entryPrice;
-                const hitTp = isLong
-                    ? signal.exitPrice >= signal.takeProfitPrice
-                    : signal.exitPrice <= signal.takeProfitPrice;
+                const hitTp = signal.exitPrice <= signal.takeProfitPrice;
 
                 if (hitTp) {
                     await db.update(signalPerformance)
-                        .set({ closeReason: 'TP_HIT' })
+                        .set({ closeReason: 'TP_HIT', autoClosedReason: 'TP_HIT' })
                         .where(eq(signalPerformance.id, signal.id));
                     summary.corrected++;
                 } else {
