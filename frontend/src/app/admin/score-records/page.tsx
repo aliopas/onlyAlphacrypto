@@ -23,6 +23,15 @@ interface ScoreRecord {
     archivedAt: string | null;
 }
 
+interface RestoreResponse {
+    id: number;
+    status: string;
+    currentPrice: number | null;
+    unrealizedPnl: number | null;
+}
+
+type ArchivedView = 'hide' | 'archived' | 'all';
+
 interface Pagination {
     page: number;
     limit: number;
@@ -42,15 +51,15 @@ export default function ScoreRecordsPage() {
     const [state, setState] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [includeArchived, setIncludeArchived] = useState(false);
+    const [archivedView, setArchivedView] = useState<ArchivedView>('hide');
     const [page, setPage] = useState(1);
     const [searchId, setSearchId] = useState('');
 
     const [archiveDays, setArchiveDays] = useState(90);
     const [archiveLoading, setArchiveLoading] = useState(false);
     const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
-    const [reactivateLoading, setReactivateLoading] = useState<number | null>(null);
-    const [reactivateMessage, setReactivateMessage] = useState<string | null>(null);
+    const [restoreLoading, setRestoreLoading] = useState<number | null>(null);
+    const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
 
     const fetchRecords = useCallback(async () => {
         setLoading(true);
@@ -62,21 +71,25 @@ export default function ScoreRecordsPage() {
             if (state) params.append('state', state);
             if (startDate) params.append('startDate', startDate);
             if (endDate) params.append('endDate', endDate);
-            if (includeArchived) params.append('includeArchived', 'true');
+            if (archivedView !== 'hide') params.append('includeArchived', 'true');
             params.append('page', String(page));
             params.append('limit', '50');
 
             const response = await fetchWithAuth(`/admin/score-records?${params}`);
             if (!response.ok) throw new Error('Failed to fetch records');
             const data = await response.json();
-            setRecords(data.records);
+            const fetched: ScoreRecord[] = data.records;
+            const visible = archivedView === 'archived'
+                ? fetched.filter((r) => r.archivedAt !== null)
+                : fetched;
+            setRecords(visible);
             setPagination(data.pagination);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to load records');
         } finally {
             setLoading(false);
         }
-    }, [fetchWithAuth, searchId, coin, state, startDate, endDate, includeArchived, page]);
+    }, [fetchWithAuth, searchId, coin, state, startDate, endDate, archivedView, page]);
 
     useEffect(() => {
         fetchRecords();
@@ -141,43 +154,43 @@ export default function ScoreRecordsPage() {
         }
     };
 
-    const handleReactivate = async (record: ScoreRecord) => {
-        if (record.isActive) {
-            setReactivateMessage(`Signal #${record.id} is already active`);
+    const handleRestore = async (record: ScoreRecord) => {
+        if (record.isActive && !record.archivedAt) {
+            setRestoreMessage(`Record #${record.id} is already active and visible`);
             return;
         }
 
-        const details = [
-            record.exitPrice ? `Exit: $${record.exitPrice.toFixed(2)}` : null,
-            record.realizedPnl ? `PnL: ${record.realizedPnl.toFixed(2)}%` : null,
-            record.autoClosedReason ? `Reason: ${record.autoClosedReason}` : null,
-            record.closeReason ? `Close reason: ${record.closeReason}` : null,
-        ].filter(Boolean).join(' | ');
+        const wasClosed = !record.isActive;
+        const stateLabel = record.archivedAt
+            ? (wasClosed ? 'archived & closed' : 'archived')
+            : 'closed';
 
-        const confirmMessage = details
-            ? `Reactivate #${record.id} ${record.coinSymbol}?\n${details}\n\nThis will restore the signal to active tracking with entry/TP/SL unchanged.`
-            : `Reactivate #${record.id} ${record.coinSymbol}? This will restore the signal to active tracking with entry/TP/SL unchanged.`;
+        const confirmMessage = `Restore #${record.id} ${record.coinSymbol} to Active?\nCurrent state: ${stateLabel}.\n\nThis will return the record to active tracking at its original entry price (entry/TP/SL unchanged).`;
         if (!confirm(confirmMessage)) return;
 
-        setReactivateLoading(record.id);
-        setReactivateMessage(null);
+        setRestoreLoading(record.id);
+        setRestoreMessage(null);
         try {
-            const response = await fetchWithAuth(`/admin/score-records/${record.id}/reactivate`, {
+            const response = await fetchWithAuth(`/admin/score-records/${record.id}/restore`, {
                 method: 'POST',
             });
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                throw new Error(err.error || 'Reactivate failed');
+                throw new Error(err.error || 'Restore failed');
             }
-            const data = await response.json();
-            const priceText = data.data.currentPrice ? `$${Number(data.data.currentPrice).toFixed(2)}` : 'unavailable';
-            const pnlText = data.data.unrealizedPnl !== null ? `${(Number(data.data.unrealizedPnl) * 100).toFixed(2)}%` : 'unavailable';
-            setReactivateMessage(`Reactivated #${record.id} ${record.coinSymbol} — current price ${priceText}, unrealized PnL ${pnlText}`);
+            const data: RestoreResponse = await response.json();
+            const priceText = data.currentPrice !== null && data.currentPrice !== undefined
+                ? `$${Number(data.currentPrice).toFixed(2)}`
+                : 'Price temporarily unavailable';
+            const pnlText = data.unrealizedPnl !== null && data.unrealizedPnl !== undefined
+                ? `${data.unrealizedPnl >= 0 ? '+' : ''}${(data.unrealizedPnl * 100).toFixed(2)}% unrealized`
+                : 'PnL unavailable';
+            setRestoreMessage(`Restored #${record.id} ${record.coinSymbol} to active — ${priceText} · ${pnlText}`);
             fetchRecords();
         } catch (err) {
-            setReactivateMessage(err instanceof Error ? err.message : 'Reactivate failed');
+            setRestoreMessage(err instanceof Error ? err.message : 'Restore failed');
         } finally {
-            setReactivateLoading(null);
+            setRestoreLoading(null);
         }
     };
 
@@ -200,8 +213,8 @@ export default function ScoreRecordsPage() {
                 <div className="mb-4 p-3 bg-blue-900/20 border border-blue-900/50 rounded text-blue-400">{archiveMessage}</div>
             )}
 
-            {reactivateMessage && (
-                <div className="mb-4 p-3 bg-green-900/20 border border-green-900/50 rounded text-green-400">{reactivateMessage}</div>
+            {restoreMessage && (
+                <div className="mb-4 p-3 bg-green-900/20 border border-green-900/50 rounded text-green-400">{restoreMessage}</div>
             )}
 
             {/* Filters */}
@@ -245,15 +258,21 @@ export default function ScoreRecordsPage() {
                         onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
                         className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
                     />
-                    <label className="flex items-center gap-2 text-sm text-gray-400">
-                        <input
-                            type="checkbox"
-                            checked={includeArchived}
-                            onChange={(e) => { setIncludeArchived(e.target.checked); setPage(1); }}
-                            className="rounded"
-                        />
-                        Include Archived
-                    </label>
+                    <select
+                        value={archivedView}
+                        onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === 'hide' || value === 'archived' || value === 'all') {
+                                setArchivedView(value);
+                            }
+                            setPage(1);
+                        }}
+                        className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
+                    >
+                        <option value="hide">Active &amp; Closed</option>
+                        <option value="archived">Archived Only</option>
+                        <option value="all">Show All (incl. Archived)</option>
+                    </select>
                     <div className="flex gap-2">
                         <input
                             type="number"
@@ -314,7 +333,7 @@ export default function ScoreRecordsPage() {
                             {!loading && !error && records.map((record) => (
                                 <tr
                                     key={record.id}
-                                    className={`border-t border-[#222] text-gray-400 ${record.archivedAt ? 'opacity-50' : ''}`}
+                                    className={`border-t border-[#222] text-gray-400 ${record.archivedAt ? 'opacity-60 bg-amber-950/20' : ''}`}
                                 >
                                     <td className="px-3 py-2">
                                         <input
@@ -346,18 +365,25 @@ export default function ScoreRecordsPage() {
                                         )}
                                     </td>
                                     <td className="px-3 py-2">
-                                        {!record.isActive && (
+                                        {(!record.isActive || record.archivedAt) && (
                                             <button
-                                                onClick={() => handleReactivate(record)}
-                                                disabled={reactivateLoading === record.id}
+                                                onClick={() => handleRestore(record)}
+                                                disabled={restoreLoading === record.id}
                                                 className="px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
                                             >
-                                                {reactivateLoading === record.id ? '...' : 'Reactivate'}
+                                                {restoreLoading === record.id ? '...' : 'Restore to Active'}
                                             </button>
                                         )}
                                     </td>
                                 </tr>
                             ))}
+                            {!loading && !error && archivedView === 'archived' && records.length === 0 && (
+                                <tr>
+                                    <td colSpan={12} className="px-4 py-8 text-center text-gray-500">
+                                        No archived records on this page. Archived records are older — try the next pages.
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>

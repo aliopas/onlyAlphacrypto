@@ -9,6 +9,7 @@ import {
     archiveScoreRecordsHandler,
     archiveOldScoreRecordsHandler,
     reactivateScoreRecordHandler,
+    restoreScoreRecordHandler,
     pauseSignalGenerationHandler,
     resumeSignalGenerationHandler,
     raiseTpHandler,
@@ -54,6 +55,7 @@ router.get('/score-records', featureFlagMiddleware, adminAuth, getScoreRecordsHa
 router.delete('/score-records', featureFlagMiddleware, adminAuth, archiveScoreRecordsHandler);
 router.post('/score-records/archive-old', featureFlagMiddleware, adminAuth, archiveOldScoreRecordsHandler);
 router.post('/score-records/:id/reactivate', featureFlagMiddleware, adminAuth, reactivateScoreRecordHandler);
+router.post('/score-records/:id/restore', featureFlagMiddleware, adminAuth, restoreScoreRecordHandler);
 
 // Admin Signal Operations (behind separate feature flag)
 router.post('/signals/pause-generation', signalOpsFlagMiddleware, adminAuth, pauseSignalGenerationHandler);

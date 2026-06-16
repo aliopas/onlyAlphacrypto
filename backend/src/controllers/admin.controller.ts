@@ -498,6 +498,162 @@ export async function reactivateScoreRecordHandler(req: Request, res: Response):
 }
 
 /**
+ * Restore any non-active-visible signal_performance row to active tracking + visibility.
+ * Unified operation covering three cases in one handler:
+ *   - closed (isActive=false)            -> clear false-closure fields
+ *   - archived + closed                  -> clear false-closure fields + un-archive
+ *   - archived + active (isActive=true)  -> un-archive only, closure fields untouched
+ * Trade fields (entry/TP/SL/tp2/tp3/verdict) are immutable. Restore is never blocked
+ * by a missing price; currentPrice/unrealizedPnl are response-only and direction is
+ * derived from the TP-vs-entry relationship (not current-vs-entry) so it does not flip
+ * under drawdown.
+ */
+export async function restoreScoreRecordHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const signalId = parseInt(idParam, 10);
+        if (isNaN(signalId)) {
+            res.status(400).json({ error: 'Invalid signal ID' });
+            return;
+        }
+
+        const adminEmail = req.adminEmail;
+
+        const [signal] = await db
+            .select()
+            .from(signalPerformance)
+            .where(eq(signalPerformance.id, signalId))
+            .limit(1);
+
+        if (!signal) {
+            res.status(404).json({ error: 'Signal not found' });
+            return;
+        }
+
+        if (signal.isActive && signal.archivedAt === null) {
+            res.status(400).json({ error: 'Already active and visible' });
+            return;
+        }
+
+        const CLOSED_STATE: SignalState = 'CLOSED';
+        const ACTIVE_STATE: SignalState = 'ACTIVE';
+        const wasClosed = signal.isActive === false;
+
+        const oldValue = {
+            isActive: signal.isActive,
+            archivedAt: signal.archivedAt,
+            exitPrice: signal.exitPrice,
+            realizedPnl: signal.realizedPnl,
+            closedAt: signal.closedAt,
+            autoClosedReason: signal.autoClosedReason,
+            closeReason: signal.closeReason,
+            signalState: signal.signalState,
+            outcomeClassification: signal.outcomeClassification,
+            classificationConfidence: signal.classificationConfidence,
+            isWin7d: signal.isWin7d,
+            isWin30d: signal.isWin30d,
+            isWin72h: signal.isWin72h,
+            pnl24h: signal.pnl24h,
+            pnl7d: signal.pnl7d,
+            pnl30d: signal.pnl30d,
+            pnl72h: signal.pnl72h,
+        };
+
+        const updates: Partial<typeof signalPerformance.$inferInsert> = {
+            isActive: true,
+            archivedAt: null,
+        };
+
+        if (wasClosed) {
+            updates.exitPrice = null;
+            updates.realizedPnl = null;
+            updates.closedAt = null;
+            updates.autoClosedReason = null;
+            updates.closeReason = null;
+            updates.outcomeClassification = null;
+            updates.classificationConfidence = null;
+            updates.isWin7d = null;
+            updates.isWin30d = null;
+            updates.isWin72h = null;
+            updates.pnl24h = null;
+            updates.pnl7d = null;
+            updates.pnl30d = null;
+            updates.pnl72h = null;
+        }
+
+        if (signal.signalState === CLOSED_STATE) {
+            updates.signalState = ACTIVE_STATE;
+        }
+
+        await db
+            .update(signalPerformance)
+            .set(updates)
+            .where(eq(signalPerformance.id, signalId));
+
+        const newValue = {
+            isActive: true as const,
+            archivedAt: null,
+            exitPrice: wasClosed ? null : signal.exitPrice,
+            realizedPnl: wasClosed ? null : signal.realizedPnl,
+            closedAt: wasClosed ? null : signal.closedAt,
+            autoClosedReason: wasClosed ? null : signal.autoClosedReason,
+            closeReason: wasClosed ? null : signal.closeReason,
+            signalState: updates.signalState ?? signal.signalState,
+            outcomeClassification: wasClosed ? null : signal.outcomeClassification,
+            classificationConfidence: wasClosed ? null : signal.classificationConfidence,
+            isWin7d: wasClosed ? null : signal.isWin7d,
+            isWin30d: wasClosed ? null : signal.isWin30d,
+            isWin72h: wasClosed ? null : signal.isWin72h,
+            pnl24h: wasClosed ? null : signal.pnl24h,
+            pnl7d: wasClosed ? null : signal.pnl7d,
+            pnl30d: wasClosed ? null : signal.pnl30d,
+            pnl72h: wasClosed ? null : signal.pnl72h,
+        };
+
+        let currentPrice: number | null = null;
+        try {
+            const priceResult = await getPriceWithFallback(signal.coinSymbol);
+            currentPrice = priceResult?.price ?? null;
+        } catch (error) {
+            console.warn('[RestoreScoreRecord] Price fetch failed:', error instanceof Error ? error.message : String(error));
+        }
+
+        let unrealizedPnl: number | null = null;
+        if (currentPrice !== null && signal.entryPrice > 0) {
+            const rawPnl = (currentPrice - signal.entryPrice) / signal.entryPrice;
+            const isShort = signal.takeProfitPrice !== null && signal.takeProfitPrice < signal.entryPrice;
+            unrealizedPnl = isShort ? -rawPnl : rawPnl;
+        }
+
+        await logAdminAction({
+            adminEmail: adminEmail ?? 'unknown',
+            action: 'restore_signal',
+            targetTable: 'signal_performance',
+            targetId: String(signalId),
+            oldValue,
+            newValue,
+            ipAddress: getClientIp(req),
+        });
+
+        try {
+            await deleteCache('scorecard:latest');
+        } catch (error) {
+            console.warn('[RestoreScoreRecord] Cache invalidation failed:', error instanceof Error ? error.message : String(error));
+        }
+
+        res.json({
+            id: signal.id,
+            status: 'restored',
+            currentPrice,
+            unrealizedPnl,
+        });
+    } catch (error) {
+        console.error('[RestoreScoreRecord] Failed to restore signal:', error instanceof Error ? error.message : String(error));
+        res.status(500).json({ error: 'Failed to restore signal' });
+    }
+}
+
+/**
  * Pause signal generation
  */
 export async function pauseSignalGenerationHandler(req: Request, res: Response): Promise<void> {
