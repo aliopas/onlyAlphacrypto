@@ -1,13 +1,13 @@
 import { db } from '../config/db';
 import { signalPerformance } from '../models/market.model';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, and } from 'drizzle-orm';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
 import { getConfirmedClosePrice, type ConfirmedClosePrice } from './priceService';
 import { deleteCache } from '../config/redis';
 
 export type SignalState = 'NEW' | 'WAITING_CONFIRMATION' | 'ACTIVE' | 'PARTIAL_TP' | 'PARTIAL_TP2' | 'BREAKEVEN' | 'CLOSED';
-export type CloseReason = 'TP_HIT' | 'SL_HIT' | 'EXPIRED' | 'THESIS_INVALIDATED' | 'ALL_TP_HIT';
+export type CloseReason = 'TP_HIT' | 'SL_HIT' | 'EXPIRED' | 'THESIS_INVALIDATED' | 'ALL_TP_HIT' | 'REVERSED';
 
 export interface LifecycleActionEntry {
     action: string;
@@ -149,6 +149,15 @@ export async function autoCloseSignal(signalId: number, reason: CloseReason, pre
             return;
         }
 
+        // Race guard: if the signal is already closed/inactive, another cron (tpslMonitor,
+        // signalLifecycle.processActiveSignals, or an admin close) has already finalized it.
+        // Return idempotently instead of overwriting exitPrice/realizedPnl/closedAt, which
+        // previously caused double-close with inconsistent P&L under concurrent runs.
+        if (!signal.isActive) {
+            logger.info(`[SignalLifecycle] autoCloseSignal: signal ${signalId} already closed (state=${signal.signalState ?? 'n/a'}). Skipping — idempotent.`);
+            return;
+        }
+
         const confirmed = preConfirmed ?? await getConfirmedClosePrice(signal.coinSymbol);
         if (!confirmed || !confirmed.validated || confirmed.price === null || confirmed.price <= 0) {
             logger.warn({
@@ -165,7 +174,11 @@ export async function autoCloseSignal(signalId: number, reason: CloseReason, pre
         const rawPnl = ((currentPrice - signal.entryPrice) / signal.entryPrice) * 100;
         const realizedPnl = isLong ? rawPnl : -rawPnl;
 
-        await db
+        // Atomic close: the WHERE clause requires isActive=true at update time. If two
+        // concurrent runs both passed the SELECT above, only the first UPDATE flips the
+        // row to inactive; the second UPDATE matches zero rows (rowCount === 0) and we
+        // treat that as "already closed by a concurrent run" instead of overwriting.
+        const result = await db
             .update(signalPerformance)
             .set({
                 signalState: 'CLOSED',
@@ -176,7 +189,13 @@ export async function autoCloseSignal(signalId: number, reason: CloseReason, pre
                 realizedPnl,
                 closedAt: new Date(),
             })
-            .where(eq(signalPerformance.id, signalId));
+            .where(and(eq(signalPerformance.id, signalId), eq(signalPerformance.isActive, true)));
+
+        const closedRows = result?.rowCount ?? 1;
+        if (closedRows === 0) {
+            logger.info(`[SignalLifecycle] autoCloseSignal: signal ${signalId} was closed concurrently. Skipping — idempotent.`);
+            return;
+        }
 
         logger.info({
             message: `SignalLifecycle signalId=${signalId} auto-closed. reason=${reason}`,

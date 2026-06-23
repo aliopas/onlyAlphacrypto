@@ -6,6 +6,7 @@ import { getConfirmedClosePrice } from '../services/priceService';
 import { autoCloseSignal, type CloseReason } from '../services/signalLifecycle.service';
 import { TRACKED_COINS } from '../config/coins';
 import { logger } from '../utils/logger';
+import { guardCron } from '../utils/cronGuard';
 
 function isBullishVerdict(verdict: string): boolean {
     return verdict === 'BUY' || verdict === 'STRONG_BUY';
@@ -100,8 +101,10 @@ async function expireOldSignals(): Promise<void> {
 }
 
 export function startTpslMonitorCron(): void {
-    cron.schedule('*/15 * * * *', async () => {
+    // Every 15 minutes. Guarded so a slow price-fetch run cannot overlap the next tick —
+    // important because autoCloseSignal is now idempotent, but we still avoid double work.
+    cron.schedule('*/15 * * * *', guardCron('TpslMonitor', async () => {
         await monitorTpsl();
         await expireOldSignals();
-    });
+    }));
 }

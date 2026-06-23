@@ -189,16 +189,32 @@ export async function executeSignalDecision(
         }
 
         if (decision.action === 'close_and_replace' && decision.closedSignal) {
-            await db.update(signalPerformance)
+            // Atomic close with the same isActive=true guard used by autoCloseSignal.
+            // Also set signalState='CLOSED' + closeReason so every closed signal has a
+            // consistent shape regardless of which path closed it (auto-close vs reversal
+            // vs admin). Previously this branch set isActive=false but left signalState
+            // untouched (NEW/ACTIVE), so queries by signalState missed reversal-closed rows.
+            const closedResult = await db.update(signalPerformance)
                 .set({
                     isActive: false,
+                    signalState: 'CLOSED',
+                    closeReason: 'REVERSED',
+                    autoClosedReason: 'REVERSED',
                     closedAt: decision.closedSignal.closedAt,
                     exitPrice: decision.closedSignal.exitPrice,
                     realizedPnl: decision.closedSignal.realizedPnl
                 })
-                .where(eq(signalPerformance.id, decision.closedSignal.id));
+                .where(and(
+                    eq(signalPerformance.id, decision.closedSignal.id),
+                    eq(signalPerformance.isActive, true)
+                ));
 
-            console.log(`[SignalManager] Closed signal ${decision.closedSignal.id} for ${coinSymbol}: exitPrice=$${decision.closedSignal.exitPrice}, realizedPnl=${decision.closedSignal.realizedPnl.toFixed(2)}%`);
+            const closedCount = closedResult?.rowCount ?? 1;
+            if (closedCount === 0) {
+                logger.warn(`[SignalManager] close_and_replace: signal ${decision.closedSignal.id} was already inactive (closed concurrently). Continuing with new signal creation.`);
+            } else {
+                logger.info(`[SignalManager] Closed signal ${decision.closedSignal.id} for ${coinSymbol}: exitPrice=$${decision.closedSignal.exitPrice}, realizedPnl=${decision.closedSignal.realizedPnl.toFixed(2)}%`);
+            }
 
             await invalidateScorecardCache();
         }
@@ -226,7 +242,12 @@ export async function executeSignalDecision(
             isActive: true,
             stopLossPrice: tpslData?.stopLossPrice,
             takeProfitPrice: tpslData?.takeProfitPrice,
-            signalState: 'NEW',
+            // CRITICAL: Signals must enter as 'ACTIVE' (not 'NEW'). signalLifecycle.processActiveSignals,
+            // processDynamicSL, processThesisValidation and the multi-TP machine all query for
+            // signalState='ACTIVE'. Previously this was 'NEW', so every created signal sat in NEW
+            // forever and the entire V2 lifecycle (multi-TP, breakeven, trailing SL) was dead code.
+            // There is no WAITING_CONFIRMATION producer either, so ACTIVE is the correct entry state.
+            signalState: 'ACTIVE',
         });
 
         console.log(`[SignalManager] Created ${decision.verdict} signal for ${coinSymbol}: entryPrice=$${price.price}, signalId=${insertedRadar[0].id}`);

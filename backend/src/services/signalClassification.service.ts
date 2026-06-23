@@ -214,7 +214,13 @@ export async function classifySignalOutcome(signalId: number): Promise<void> {
         return;
     }
 
-    const wasInvalidated = perf.autoClosedReason === 'invalidation' || perf.autoClosedReason === 'stop_loss';
+    // Match the actual CloseReason values written by signalLifecycle.autoCloseSignal.
+    // Previously this compared against the never-written strings 'invalidation' / 'stop_loss',
+    // so the 'invalidated' outcome classification branch was unreachable.
+    // REVERSED signals (direction change from signalManager) are NOT treated as invalidated —
+    // they get classified by their actual 7d P&L, which is the correct semantics for a reversal.
+    const invalidatedReasons = new Set(['THESIS_INVALIDATED', 'SL_HIT']);
+    const wasInvalidated = perf.autoClosedReason != null && invalidatedReasons.has(perf.autoClosedReason);
     const { outcome, confidence } = deriveClassification(perf.pnl7d ?? null, wasInvalidated);
 
     await db.update(signalPerformance)

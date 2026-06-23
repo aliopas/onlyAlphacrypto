@@ -1,3 +1,6 @@
+import { binanceGet } from './binance.service';
+import { logger } from '../utils/logger';
+
 interface BinanceKline {
     0: number;
     1: string;
@@ -51,15 +54,15 @@ function pctChange(from: number, to: number): string {
 
 export async function getBinanceHistory(symbol: string): Promise<BinanceHistoryResult | null> {
     try {
+        // Route through the resilient binance.service client (retry, rate-limit, cache) instead
+        // of a raw fetch(). Previously this used a standalone fetch with an 8s timeout and no
+        // retry/rate-limiting, competing with binance.service for Binance's request budget.
         const pair = symbol.toUpperCase() + 'USDT';
-        const url = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1w&limit=200`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-
-        if (!res.ok) {
-            return null;
-        }
-
-        const rawData = await res.json() as (string | number)[][];
+        const { data: rawData } = await binanceGet<(string | number)[][]>('/klines', {
+            symbol: pair,
+            interval: '1w',
+            limit: 200,
+        });
 
         if (!Array.isArray(rawData) || rawData.length < 5) {
             return null;
@@ -100,7 +103,7 @@ export async function getBinanceHistory(symbol: string): Promise<BinanceHistoryR
             priceChange30d,
         };
     } catch (error) {
-        console.warn('[binanceHistory] getBinanceHistory failed:', error instanceof Error ? error.message : String(error));
+        logger.warn('[binanceHistory] getBinanceHistory failed: %s', error instanceof Error ? error.message : String(error));
         return null;
     }
 }

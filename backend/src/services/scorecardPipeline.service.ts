@@ -115,42 +115,51 @@ export async function runScorecardPipeline(): Promise<PipelineStats> {
         console.log(`[ScorecardPipeline] ${extraction.symbol}: TP1=${tpslResult.tp1} TP2=${tpslResult.tp2} TP3=${tpslResult.tp3} SL=${tpslResult.stopLoss}`);
 
         try {
-            const insertedResult = await db.insert(portfolioCoins).values({
-                symbol: validated.symbol,
-                entryPrice: String(validated.entryPrice),
-                currentPrice: String(validated.currentPrice),
-                priceMovementAtEntry: String(validated.priceMovement),
-                status,
-                signalClassification: finalClassification,
-                cexListings: validated.cexListings,
-                allocatedBudget: String(tpslResult.allocatedBudget),
-                tp1: String(tpslResult.tp1),
-                tp2: String(tpslResult.tp2),
-                tp3: String(tpslResult.tp3),
-                stopLoss: String(tpslResult.stopLoss),
-                qualityScore: Math.round(tpslResult.rr * 20),
-                projectProfile: profile,
-                technicalAnalysis: {
-                    tpSource: tpslResult.tpSource,
-                    slSource: tpslResult.slSource,
-                    rr: tpslResult.rr,
-                    calculatedAt: new Date().toISOString(),
-                },
-            } as typeof portfolioCoins.$inferInsert).returning({ id: portfolioCoins.id });
+            // Wrap the coin insert + entry-transaction insert in a single DB transaction so a
+            // failure between them cannot leave an orphaned portfolio_coins row with no
+            // corresponding entry transaction. Both commits atomically or neither does.
+            const insertedCoinId = await db.transaction(async (tx) => {
+                const insertedResult = await tx.insert(portfolioCoins).values({
+                    symbol: validated.symbol,
+                    entryPrice: String(validated.entryPrice),
+                    currentPrice: String(validated.currentPrice),
+                    priceMovementAtEntry: String(validated.priceMovement),
+                    status,
+                    signalClassification: finalClassification,
+                    cexListings: validated.cexListings,
+                    allocatedBudget: String(tpslResult.allocatedBudget),
+                    tp1: String(tpslResult.tp1),
+                    tp2: String(tpslResult.tp2),
+                    tp3: String(tpslResult.tp3),
+                    stopLoss: String(tpslResult.stopLoss),
+                    qualityScore: Math.round(tpslResult.rr * 20),
+                    projectProfile: profile,
+                    technicalAnalysis: {
+                        tpSource: tpslResult.tpSource,
+                        slSource: tpslResult.slSource,
+                        rr: tpslResult.rr,
+                        calculatedAt: new Date().toISOString(),
+                    },
+                } as typeof portfolioCoins.$inferInsert).returning({ id: portfolioCoins.id });
 
-            if (insertedResult[0]) {
                 const insertedCoin = insertedResult[0];
-                await db.insert(portfolioTransactions).values({
+                if (!insertedCoin) {
+                    throw new Error('portfolio_coins insert returned no row');
+                }
+
+                await tx.insert(portfolioTransactions).values({
                     coinId: insertedCoin.id,
                     type: 'entry',
                     price: String(validated.entryPrice),
                     amount: String(tpslResult.allocatedBudget),
                 } as typeof portfolioTransactions.$inferInsert);
 
-                existingSymbols.add(validated.symbol.toUpperCase());
-                stats.inserted++;
-                console.log(`[ScorecardPipeline] ${extraction.symbol}: INSERTED successfully (id=${insertedCoin.id})`);
-            }
+                return insertedCoin.id;
+            });
+
+            existingSymbols.add(validated.symbol.toUpperCase());
+            stats.inserted++;
+            console.log(`[ScorecardPipeline] ${extraction.symbol}: INSERTED successfully (id=${insertedCoinId})`);
         } catch (err) {
             console.error(`[ScorecardPipeline] ${extraction.symbol}: INSERT FAILED:`, err instanceof Error ? err.message : String(err));
             stats.failed++;

@@ -7,6 +7,7 @@ import { persistEventImpact, persistEventImpactOutcomes } from '../services/even
 import { eq, and, isNull, isNotNull, asc, desc, gte, sql, inArray } from 'drizzle-orm';
 import type { CoinNewsHistoryRecord } from '../services/eventImpactPersistence.service';
 import { TRACKED_COINS } from '../config/coins';
+import { guardCron } from '../utils/cronGuard';
 
 const BATCH_SIZE = 100;
 
@@ -124,6 +125,6 @@ export function startEventImpactSyncCron(): void {
         return;
     }
 
-    cron.schedule('*/30 * * * *', () => runEventImpactSync());
+    cron.schedule('*/30 * * * *', guardCron('EventImpactSync', runEventImpactSync));
     logger.info('[EventImpactSync] Scheduled — every 30 minutes');
 }

@@ -5,14 +5,11 @@ import { getCoinKlinesRange } from '../services/binance.service';
 import { logger } from '../utils/logger';
 import { eq, isNotNull, isNull, and, lt, gte, sql, inArray } from 'drizzle-orm';
 import { TRACKED_COIN_SET } from '../config/coins';
+import { guardCron } from '../utils/cronGuard';
+import { getHorizonMs } from '../utils/horizons';
 
-const HORIZONS = {
-    '1h': 3600000, // 1 hour in ms
-    '4h': 14400000, // 4 hours
-    '24h': 86400000, // 24 hours
-    '3d': 259200000, // 3 days
-    '7d': 604800000, // 7 days
-} as const;
+// Horizon durations live in utils/horizons.ts (single source of truth).
+const HORIZONS = ['1h', '4h', '24h', '3d', '7d'] as const;
 
 export async function runEventOutcomeChecker(): Promise<void> {
     try {
@@ -20,7 +17,7 @@ export async function runEventOutcomeChecker(): Promise<void> {
 
         // Query eligible rows: priceAtTime populated, no outcome classification yet, old enough for 1h
         const now = new Date();
-        const oneHourAgo = new Date(now.getTime() - HORIZONS['1h']);
+        const oneHourAgo = new Date(now.getTime() - getHorizonMs('1h'));
 
         const eligibleRows = await db
             .select({
@@ -91,8 +88,8 @@ async function processRow(row: {
 
     // Determine ready horizons
     const readyHorizons: string[] = [];
-    for (const [key, ms] of Object.entries(HORIZONS)) {
-        if (publishedAtMs + ms < now) {
+    for (const key of HORIZONS) {
+        if (publishedAtMs + getHorizonMs(key) < now) {
             readyHorizons.push(key);
         }
     }
@@ -103,7 +100,7 @@ async function processRow(row: {
     }
 
     // Fetch 1h candles from publishedAt to publishedAt + 7d (max horizon)
-    const maxEndTime = publishedAtMs + HORIZONS['7d'];
+    const maxEndTime = publishedAtMs + getHorizonMs('7d');
     const allCandles = await getCoinKlinesRange(coinSymbol, '1h', publishedAtMs, maxEndTime);
 
     if (allCandles.length === 0) {
@@ -116,7 +113,7 @@ async function processRow(row: {
     let horizonsFilled = 0;
 
     for (const horizon of readyHorizons) {
-        const horizonMs = HORIZONS[horizon as keyof typeof HORIZONS];
+        const horizonMs = getHorizonMs(horizon);
         const targetTime = publishedAtMs + horizonMs;
 
         // Find the closest candle at or after targetTime
@@ -157,11 +154,15 @@ async function processRow(row: {
         return;
     }
 
-    // Calculate maxUpside, maxDrawdown, timeToPeak, timeToBottom from allCandles
-    let maxUpside = 0;
-    let maxDrawdown = 0;
-    let peakTimeMs = 0;
-    let bottomTimeMs = 0;
+    // Calculate maxUpside, maxDrawdown, timeToPeak, timeToBottom from allCandles.
+    // Initialize to -Infinity so the first candle always establishes a real value.
+    // Previously initialized to 0, which meant a window where every candle closed below
+    // priceAtTime reported maxDrawdown=0 (hiding the actual drawdown). This matches the
+    // correct pattern already used in scenarioOutcomeChecker and eventImpactOutcomeChecker.
+    let maxUpside = -Infinity;
+    let maxDrawdown = Infinity;
+    let peakTimeMs: number | null = null;
+    let bottomTimeMs: number | null = null;
 
     for (const candle of allCandles) {
         const changePct = ((candle.close - priceAtTime) / priceAtTime) * 100;
@@ -175,10 +176,12 @@ async function processRow(row: {
         }
     }
 
-    updates.maxUpsideAfterEvent = maxUpside;
-    updates.maxDrawdownAfterEvent = maxDrawdown;
-    updates.timeToPeakHours = peakTimeMs > 0 ? Math.round((peakTimeMs - publishedAtMs) / 3600000) : null;
-    updates.timeToBottomHours = bottomTimeMs > 0 ? Math.round((bottomTimeMs - publishedAtMs) / 3600000) : null;
+    // Guard against empty candle windows (shouldn't happen given the horizon checks above,
+    // but keeps the schema's nullable columns honest).
+    updates.maxUpsideAfterEvent = maxUpside === -Infinity ? null : maxUpside;
+    updates.maxDrawdownAfterEvent = maxDrawdown === Infinity ? null : maxDrawdown;
+    updates.timeToPeakHours = peakTimeMs != null ? Math.round((peakTimeMs - publishedAtMs) / 3600000) : null;
+    updates.timeToBottomHours = bottomTimeMs != null ? Math.round((bottomTimeMs - publishedAtMs) / 3600000) : null;
 
     // Classify outcome if 3d horizon is filled
     if (updates.price3dAfter !== undefined && updates.change3d !== undefined) {
@@ -202,6 +205,6 @@ async function processRow(row: {
 }
 
 export function startEventOutcomeCheckerCron(): void {
-    cron.schedule('*/30 * * * *', () => runEventOutcomeChecker());
-    console.log('⏰ EventOutcomeChecker scheduled — every 30 minutes');
+    cron.schedule('*/30 * * * *', guardCron('EventOutcomeChecker', runEventOutcomeChecker));
+    logger.info('[EventOutcomeChecker] Scheduled — every 30 minutes');
 }

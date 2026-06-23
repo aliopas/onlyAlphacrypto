@@ -40,6 +40,8 @@ import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
 import { logger } from './utils/logger';
+import { startCrons } from './crons/registry';
+import { logFlowStatus } from './config/flows';
 
 const app = express();
 
@@ -122,181 +124,55 @@ async function bootstrap(): Promise<void> {
             logger.info('AI Engines: Starting...');
         });
 
+        // ─── Flow-based Cron Registration ─────────────────────────────────────
+        // All crons are declared here grouped by their owning flow. The registry consults
+        // FLOWS[flow].enabled (master switch) AND any sub-flag to decide whether to start
+        // each cron. This is the single source of truth — to disable an entire flow, set
+        // FLOW_<NAME>_ENABLED=false; to toggle a sub-feature, use its specific flag.
         const cronStartDelay = 5000;
-        const crons = [
-            { name: 'AiWorkflow', fn: startAiWorkflowCron },
-            { name: 'AirdropHunter', fn: startAirdropHunterCron },
-            { name: 'AirdropRSSHunter', fn: startAirdropRSSCron },
-            { name: 'AirdropDiscovery', fn: startAirdropDiscoveryCron },
-            { name: 'DailyAlpha', fn: startDailyAlphaCron },
-            { name: 'HistoricalNews', fn: startHistoricalNewsCron },
-            { name: 'MarketMood', fn: startMarketMoodCron },
-            { name: 'TerminalEngine', fn: startTerminalEngineCron },
-            { name: 'TriageEngine', fn: startTriageEngineCron },
-            { name: 'BufferCleanup', fn: startBufferCleanupCron },
-            { name: 'ConvictionUpdate', fn: startConvictionUpdateCron },
-            { name: 'TelegramMonitor', fn: startTelegramMonitorCron },
-            { name: 'SignalPerformance', fn: startSignalPerformanceCron },
-            { name: 'TpslMonitor', fn: startTpslMonitorCron },
-            { name: 'EventOutcomeChecker', fn: startEventOutcomeCheckerCron },
-            { name: 'LevelIntelligence', fn: startLevelIntelligenceCron },
-            { name: 'ScenarioOutcomeChecker', fn: startScenarioOutcomeCheckerCron },
-        ];
+        logFlowStatus();
 
-        crons.forEach((cron, index) => {
-            setTimeout(() => {
-                try {
-                    cron.fn();
-                    logger.info('[Server] Cron started: %s', cron.name);
-                } catch (error) {
-                    logger.error('[Server] Failed to start cron %s: %s', cron.name, error instanceof Error ? error.message : String(error));
-                }
-            }, index * cronStartDelay);
-        });
+        startCrons([
+            // ── NEWS flow ──────────────────────────────────────────────────────
+            { name: 'TerminalEngine',      start: startTerminalEngineCron,      flow: 'news' },
+            { name: 'TelegramMonitor',     start: startTelegramMonitorCron,     flow: 'news' },
+            { name: 'TriageEngine',        start: startTriageEngineCron,        flow: 'news' },
+            { name: 'AiWorkflow',          start: startAiWorkflowCron,          flow: 'news', alsoRequiresFlow: 'signals' },
+            { name: 'HistoricalNews',      start: startHistoricalNewsCron,      flow: 'news' },
+            { name: 'BufferCleanup',       start: startBufferCleanupCron,       flow: 'news' },
+            { name: 'ConvictionUpdate',    start: startConvictionUpdateCron,    flow: 'news' },
 
-        // Optional monitoring cron
-        if (env.MONITORING_CRON_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startMonitoringCron();
-                    logger.info('[Server] Optional cron started: MonitoringCron');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron MonitoringCron: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, crons.length * cronStartDelay);
-        }
+            // ── SIGNALS flow ───────────────────────────────────────────────────
+            { name: 'SignalPerformance',     start: startSignalPerformanceCron,        flow: 'signals' },
+            { name: 'TpslMonitor',           start: startTpslMonitorCron,              flow: 'signals' },
+            { name: 'SignalLifecycle',       start: startSignalLifecycleCron,          flow: 'signals', subFlag: env.SIGNAL_LIFECYCLE_ENABLED, subFlagName: 'SIGNAL_LIFECYCLE_ENABLED' },
+            { name: 'ShadowChecker',         start: startShadowChecker,                flow: 'signals', subFlag: env.SHADOW_MODE_ENABLED, subFlagName: 'SHADOW_MODE_ENABLED' },
+            { name: 'ScenarioOutcomeChecker', start: startScenarioOutcomeCheckerCron,  flow: 'signals', subFlag: env.SCENARIO_TRACKER_ENABLED, subFlagName: 'SCENARIO_TRACKER_ENABLED' },
+            { name: 'EventOutcomeChecker',   start: startEventOutcomeCheckerCron,      flow: 'signals' },
+            { name: 'EventImpactSync',       start: startEventImpactSyncCron,          flow: 'signals', subFlag: env.EVENT_IMPACT_SYNC_ENABLED, subFlagName: 'EVENT_IMPACT_SYNC_ENABLED' },
+            { name: 'EventImpactOutcomeChecker', start: startEventImpactOutcomeCheckerCron, flow: 'signals', subFlag: env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED, subFlagName: 'EVENT_IMPACT_OUTCOME_CHECKER_ENABLED' },
+            { name: 'LevelIntelligence',     start: startLevelIntelligenceCron,        flow: 'signals', subFlag: env.LEVEL_INTELLIGENCE_ENABLED, subFlagName: 'LEVEL_INTELLIGENCE_ENABLED' },
 
-        // Optional Event Impact Sync cron
-        if (env.EVENT_IMPACT_SYNC_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startEventImpactSyncCron();
-                    logger.info('[Server] Optional cron started: EventImpactSync');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron EventImpactSync: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 1) * cronStartDelay);
-        }
+            // ── MARKET flow ────────────────────────────────────────────────────
+            { name: 'DailyAlpha',          start: startDailyAlphaCron,          flow: 'market' },
+            { name: 'MarketMood',          start: startMarketMoodCron,          flow: 'market' },
+            { name: 'MarketFilter',        start: startMarketFilterCron,        flow: 'market', subFlag: env.MARKET_FILTER_ENABLED, subFlagName: 'MARKET_FILTER_ENABLED' },
+            { name: 'RegimeUpdate',        start: startRegimeUpdateCron,        flow: 'market', subFlag: env.MARKET_REGIME_ENABLED, subFlagName: 'MARKET_REGIME_ENABLED' },
+            { name: 'DailyTrend',          start: startDailyTrendCron,          flow: 'market', subFlag: env.DAILY_TREND_ENABLED, subFlagName: 'DAILY_TREND_ENABLED' },
+            { name: 'OhlcvSnapshot',       start: startOhlcvSnapshotCron,       flow: 'market', subFlag: env.OHLCV_SNAPSHOT_ENABLED, subFlagName: 'OHLCV_SNAPSHOT_ENABLED' },
+            { name: 'Monitoring',          start: startMonitoringCron,          flow: 'market', subFlag: env.MONITORING_CRON_ENABLED, subFlagName: 'MONITORING_CRON_ENABLED' },
 
-        // Optional Event Impact Outcome Checker cron
-        if (env.EVENT_IMPACT_OUTCOME_CHECKER_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startEventImpactOutcomeCheckerCron();
-                    logger.info('[Server] Optional cron started: EventImpactOutcomeChecker');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron EventImpactOutcomeChecker: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 2) * cronStartDelay);
-        }
+            // ── PORTFOLIO flow ─────────────────────────────────────────────────
+            { name: 'TelegramPortfolioScraper', start: startTelegramPortfolioScraperCron, flow: 'portfolio', subFlag: env.SCORECARD_SCRAPER_ENABLED, subFlagName: 'SCORECARD_SCRAPER_ENABLED' },
+            { name: 'PortfolioSnapshot',       start: startPortfolioSnapshotCron,         flow: 'portfolio', subFlag: env.SCORECARD_SNAPSHOT_ENABLED, subFlagName: 'SCORECARD_SNAPSHOT_ENABLED' },
+            { name: 'PortfolioMonitor',        start: startPortfolioMonitorCron,          flow: 'portfolio', subFlag: env.SCORECARD_MONITOR_ENABLED, subFlagName: 'SCORECARD_MONITOR_ENABLED' },
 
-        // Optional Market Filter cron
-        if (env.MARKET_FILTER_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startMarketFilterCron();
-                    logger.info('[Server] Optional cron started: MarketFilter');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron MarketFilter: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 3) * cronStartDelay);
-        }
+            // ── AIRDROP flow ───────────────────────────────────────────────────
+            { name: 'AirdropHunter',      start: startAirdropHunterCron,      flow: 'airdrop' },
+            { name: 'AirdropRSSHunter',   start: startAirdropRSSCron,         flow: 'airdrop' },
+            { name: 'AirdropDiscovery',   start: startAirdropDiscoveryCron,   flow: 'airdrop' },
+        ], cronStartDelay);
 
-        // Optional OHLCV Snapshot cron
-        if (env.OHLCV_SNAPSHOT_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startOhlcvSnapshotCron();
-                    logger.info('[Server] Optional cron started: OhlcvSnapshot');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron OhlcvSnapshot: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 4) * cronStartDelay);
-        }
-
-        // Optional Market Regime Detection cron
-        if (env.MARKET_REGIME_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startRegimeUpdateCron();
-                    logger.info('[Server] Optional cron started: RegimeUpdate');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron RegimeUpdate: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 5) * cronStartDelay);
-        }
-
-        // Optional Shadow Checker cron
-        if (env.SHADOW_MODE_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startShadowChecker();
-                    logger.info('[Server] Optional cron started: ShadowChecker');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron ShadowChecker: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 6) * cronStartDelay);
-        }
-
-        // Optional Signal Lifecycle cron
-        if (env.SIGNAL_LIFECYCLE_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startSignalLifecycleCron();
-                    logger.info('[Server] Optional cron started: SignalLifecycle');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron SignalLifecycle: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 7) * cronStartDelay);
-        }
-
-        // Optional Daily Trend cron
-        if (env.DAILY_TREND_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startDailyTrendCron();
-                    logger.info('[Server] Optional cron started: DailyTrend');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron DailyTrend: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 8) * cronStartDelay);
-        }
-
-        // Optional Scorecard Scraper cron
-        if (env.SCORECARD_SCRAPER_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startTelegramPortfolioScraperCron();
-                    logger.info('[Server] Optional cron started: TelegramPortfolioScraper');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron TelegramPortfolioScraper: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 9) * cronStartDelay);
-        }
-
-        // Optional Portfolio Snapshot cron
-        if (env.SCORECARD_SNAPSHOT_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startPortfolioSnapshotCron();
-                    logger.info('[Server] Optional cron started: PortfolioSnapshot');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron PortfolioSnapshot: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 10) * cronStartDelay);
-        }
-
-        // Optional Portfolio Monitor cron
-        if (env.SCORECARD_MONITOR_ENABLED) {
-            setTimeout(() => {
-                try {
-                    startPortfolioMonitorCron();
-                    logger.info('[Server] Optional cron started: PortfolioMonitor');
-                } catch (error) {
-                    logger.error('[Server] Failed to start optional cron PortfolioMonitor: %s', error instanceof Error ? error.message : String(error));
-                }
-            }, (crons.length + 11) * cronStartDelay);
-        }
     } catch (error) {
         logger.error('[Server] Failed to start: %s', error instanceof Error ? error.message : String(error));
         process.exit(1);
