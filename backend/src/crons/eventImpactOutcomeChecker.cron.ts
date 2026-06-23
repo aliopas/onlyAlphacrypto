@@ -6,14 +6,8 @@ import { getCoinKlinesRange } from '../services/binance.service';
 import { logger } from '../utils/logger';
 import { eq, and, lte, inArray } from 'drizzle-orm';
 import { TRACKED_COINS } from '../config/coins';
-
-const HORIZON_MS: Record<string, number> = {
-    '1h': 3_600_000,
-    '4h': 14_400_000,
-    '24h': 86_400_000,
-    '3d': 259_200_000,
-    '7d': 604_800_000,
-};
+import { guardCron } from '../utils/cronGuard';
+import { getHorizonMs } from '../utils/horizons';
 
 const BATCH_SIZE = 100;
 
@@ -112,7 +106,7 @@ async function processOutcome(outcome: PendingOutcomeRow): Promise<void> {
     }
 
     const startTime = publishedAt.getTime();
-    const horizonMs = HORIZON_MS[horizon] ?? horizonHours * 3_600_000;
+    const horizonMs = getHorizonMs(horizon, horizonHours);
     const endTime = startTime + horizonMs;
 
     const candles = await getCoinKlinesRange(coinSymbol, '1h', startTime, endTime);
@@ -195,6 +189,6 @@ export function startEventImpactOutcomeCheckerCron(): void {
         return;
     }
 
-    cron.schedule('*/30 * * * *', () => runEventImpactOutcomeChecker());
+    cron.schedule('*/30 * * * *', guardCron('EventImpactOutcomeChecker', runEventImpactOutcomeChecker));
     logger.info('[EventImpactOutcomeChecker] Scheduled — every 30 minutes');
 }

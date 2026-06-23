@@ -2,6 +2,8 @@ import { db } from '../config/db';
 import { env } from '../config/env';
 import { portfolioCoins, portfolioTransactions, portfolioSnapshots } from '../models';
 import { eq, and, desc, inArray } from 'drizzle-orm';
+import { getLivePrices } from './binance.service';
+import { logger } from '../utils/logger';
 
 export interface PortfolioMonitorResult {
     evaluated: number;
@@ -11,11 +13,6 @@ export interface PortfolioMonitorResult {
     drawdownPercent: number;
 }
 
-interface BinanceTicker {
-    symbol: string;
-    price: string;
-}
-
 const DRAWDOWN_PAUSE_PERCENT = env.SCORECARD_MAX_DRAWDOWN_PERCENT;
 
 async function fetchBinancePrices(symbols: string[]): Promise<Map<string, number>> {
@@ -23,26 +20,16 @@ async function fetchBinancePrices(symbols: string[]): Promise<Map<string, number
     if (symbols.length === 0) return priceMap;
 
     try {
-        const res = await fetch('https://api.binance.com/api/v3/ticker/price');
-        if (!res.ok) {
-            console.warn(`[PortfolioMonitor] Binance bulk price failed: HTTP ${res.status}`);
-            return priceMap;
-        }
-
-        const data = await res.json() as BinanceTicker[];
-        const symbolSet = new Set(symbols.map(s => s.toUpperCase()));
-
-        for (const ticker of data) {
-            const cleanSymbol = ticker.symbol.replace('USDT', '');
-            if (symbolSet.has(cleanSymbol)) {
-                const price = parseFloat(ticker.price);
-                if (price > 0) {
-                    priceMap.set(cleanSymbol, price);
-                }
+        // Use the resilient binance.service bulk price endpoint (cached, rate-limited, retried)
+        // instead of a raw fetch that downloads ALL thousands of symbols and has no protection.
+        const prices = await getLivePrices(symbols);
+        for (const [symbol, price] of Object.entries(prices)) {
+            if (price > 0) {
+                priceMap.set(symbol, price);
             }
         }
     } catch (err) {
-        console.error('[PortfolioMonitor] Failed to fetch Binance prices:', err instanceof Error ? err.message : String(err));
+        logger.error('[PortfolioMonitor] Failed to fetch Binance prices: %s', err instanceof Error ? err.message : String(err));
     }
 
     return priceMap;

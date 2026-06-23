@@ -1,6 +1,7 @@
 import { db } from '../config/db';
 import { marketScenarios, scenarioHorizonOutcomes, scenarioStatusHistory } from '../models/market.model';
 import { eq, and } from 'drizzle-orm';
+import { getHorizonDate } from '../utils/horizons';
 
 // Types
 type SourceType = 'signal' | 'radar' | 'manual' | 'event';
@@ -58,22 +59,9 @@ const horizonToGroup: Record<Horizon, HorizonGroup> = {
     '730d': 'investment'
 };
 
-// Helper function to calculate due date
+// Helper function to calculate due date (uses the unified horizon map in utils/horizons.ts)
 function getDueDate(referencePriceAt: Date, horizon: Horizon): Date {
-    const multipliers: Record<Horizon, number> = {
-        '1h': 1 * 60 * 60 * 1000,
-        '4h': 4 * 60 * 60 * 1000,
-        '24h': 24 * 60 * 60 * 1000,
-        '3d': 3 * 24 * 60 * 60 * 1000,
-        '7d': 7 * 24 * 60 * 60 * 1000,
-        '14d': 14 * 24 * 60 * 60 * 1000,
-        '30d': 30 * 24 * 60 * 60 * 1000,
-        '90d': 90 * 24 * 60 * 60 * 1000,
-        '180d': 180 * 24 * 60 * 60 * 1000,
-        '365d': 365 * 24 * 60 * 60 * 1000,
-        '730d': 730 * 24 * 60 * 60 * 1000
-    };
-    return new Date(referencePriceAt.getTime() + multipliers[horizon]);
+    return getHorizonDate(referencePriceAt, horizon);
 }
 
 export class ScenarioTrackerService {

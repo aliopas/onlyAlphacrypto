@@ -497,20 +497,32 @@ export async function getCoinKlinesRange(symbol: string, interval: string, start
 
 // ─── Alternative.me Fear & Greed ─────────────────────────────────────────────
 
-export async function getFearAndGreed(): Promise<{ value: number; classification: string }> {
+export async function getFearAndGreed(): Promise<{ value: number; classification: string } | null> {
     try {
         const { data } = await binanceRequest<{ data: Array<{ value: string; value_classification: string }> }>({
             method: 'GET',
             url: env.ALTERNATIVE_ME_URL,
         });
         const item = data.data[0];
+        if (!item || item.value == null) {
+            logger.warn('[Binance] getFearAndGreed: empty payload from Alternative.me');
+            return null;
+        }
+        const parsed = parseInt(item.value, 10);
+        if (Number.isNaN(parsed)) {
+            logger.warn('[Binance] getFearAndGreed: non-numeric value %j', item.value);
+            return null;
+        }
         return {
-            value: parseInt(item.value, 10),
+            value: parsed,
             classification: item.value_classification,
         };
     } catch (error) {
+        // Return null (not {value: 0}) on failure so callers can distinguish a real
+        // "Extreme Fear" reading (value=0-20) from a fetch failure. Previously returning
+        // {value: 0} caused marketMood to persist a bogus Extreme-Fear row on any outage.
         logger.error('[Binance] getFearAndGreed failed: %s', error instanceof Error ? error.message : String(error));
-        return { value: 0, classification: 'Unknown' };
+        return null;
     }
 }
 

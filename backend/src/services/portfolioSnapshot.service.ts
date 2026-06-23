@@ -2,6 +2,8 @@ import { db } from '../config/db';
 import { env } from '../config/env';
 import { portfolioCoins, portfolioSnapshots } from '../models';
 import { eq, desc, sql } from 'drizzle-orm';
+import { getLivePrices } from './binance.service';
+import { logger } from '../utils/logger';
 
 async function fetchCoinPrices(symbols: string[]): Promise<Map<string, number>> {
     const priceMap = new Map<string, number>();
@@ -9,20 +11,15 @@ async function fetchCoinPrices(symbols: string[]): Promise<Map<string, number>> 
     if (symbols.length === 0) return priceMap;
 
     try {
-        const res = await fetch('https://api.binance.com/api/v3/ticker/price');
-        if (!res.ok) return priceMap;
-
-        const data = await res.json() as Array<{ symbol: string; price: string }>;
-        const symbolSet = new Set(symbols.map(s => s.toUpperCase()));
-
-        for (const ticker of data) {
-            const cleanSymbol = ticker.symbol.replace('USDT', '');
-            if (symbolSet.has(cleanSymbol)) {
-                priceMap.set(cleanSymbol, parseFloat(ticker.price));
-            }
+        // Use the resilient binance.service bulk price endpoint (cached, rate-limited, retried)
+        // instead of a raw fetch to /ticker/price that downloads ALL thousands of symbols and
+        // has no retry/cache/rate-limit protection.
+        const prices = await getLivePrices(symbols);
+        for (const [symbol, price] of Object.entries(prices)) {
+            priceMap.set(symbol, price);
         }
     } catch (err) {
-        console.error('[PortfolioSnapshot] Failed to fetch prices:', err instanceof Error ? err.message : String(err));
+        logger.error('[PortfolioSnapshot] Failed to fetch prices: %s', err instanceof Error ? err.message : String(err));
     }
 
     return priceMap;

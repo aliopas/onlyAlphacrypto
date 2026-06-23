@@ -1,13 +1,14 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
 import { rawNewsBuffer } from '../models/market.model';
-import { airdropProjects } from '../models/index';
 import { fetchNewsFromTelegram, fetchAirdropsFromTelegram } from '../services/telegram.service';
 import { filterAirdropRelevant, getExistingProjectNames } from '../services/airdropRss.service';
 import { validateAirdropFromArticle } from '../services/openai.service';
 import { deleteCache, deleteCachePattern } from '../config/redis';
 import { insertProjectWithQuality } from '../controllers/airdrop.controller';
 import { env } from '../config/env';
+import { guardedCronRun, guardCron } from '../utils/cronGuard';
+import { logger } from '../utils/logger';
 
 const MAX_AIRDROP_AI_CALLS = 3;
 
@@ -30,6 +31,9 @@ async function telegramNewsJob(): Promise<void> {
                     source: item.source,
                     sourceHash: item.sourceHash,
                     retrievedAt: item.publishedAt,
+                    // Match terminalEngine's 48h TTL so bufferCleanup can reclaim these rows.
+                    // Previously omitted, which left Telegram-originated rows unbounded.
+                    ttlExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
                 }).onConflictDoNothing();
                 inserted++;
             } catch {
@@ -114,10 +118,15 @@ async function telegramAirdropJob(): Promise<void> {
 
 export function startTelegramMonitorCron(): void {
     if (!env.TELEGRAM_SESSION_STRING) {
-        console.warn('[TelegramMonitor] No TELEGRAM_SESSION_STRING — cron disabled');
+        logger.warn('[TelegramMonitor] No TELEGRAM_SESSION_STRING — cron disabled');
         return;
     }
-    cron.schedule('*/30 * * * *', telegramNewsJob);
-    cron.schedule('0 */4 * * *', telegramAirdropJob);
-    console.log('[TelegramMonitor] Crons scheduled — News: every 30min, Airdrops: every 4h');
+    // News: every 30min. Redis mutex (10 min TTL) — the news job writes into the shared
+    // raw_news_buffer table, so two instances must not scrape the same Telegram channel
+    // concurrently (would race on dedup + double-insert).
+    cron.schedule('*/30 * * * *', () => { void guardedCronRun('TelegramNews', 600, telegramNewsJob); });
+    // Airdrops: every 4h. In-process guard only — airdrop insertion is idempotent via the
+    // quality filter + dedup, and the Telegram airdrop channels are low-volume.
+    cron.schedule('0 */4 * * *', guardCron('TelegramAirdrop', telegramAirdropJob));
+    logger.info('[TelegramMonitor] Crons scheduled — News: every 30min, Airdrops: every 4h');
 }

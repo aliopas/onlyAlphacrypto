@@ -43,8 +43,12 @@ import { deleteCache, deleteCachePattern, redis } from '../config/redis';
 import { isSignalGenerationPaused } from '../services/signalControl.service';
 
 async function markBufferItemConsumed(bufferId: number): Promise<void> {
+    // NOTE: Must set BOTH `consumedAt` (read by aiWorkflow/telemetry to find unprocessed rows)
+    // AND `consumed` (read by bufferCleanup to decide what to delete). Previously only
+    // `consumedAt` was written, leaving the `consumed` boolean at its default `false` forever,
+    // which made bufferCleanup a no-op and caused raw_news_buffer to grow unbounded.
     await db.update(rawNewsBuffer)
-        .set({ consumedAt: sql`NOW()` })
+        .set({ consumed: true, consumedAt: sql`NOW()` })
         .where(eq(rawNewsBuffer.id, bufferId));
 }
 
@@ -209,9 +213,20 @@ export async function runAiWorkflow(): Promise<void> {
     isAiWorkflowRunning = true;
     console.log('🤖 [AI Workflow] Started.');
 
+    // Cooperative cancellation: the watchdog aborts this controller so the per-item
+    // loop can break out cleanly. Previously the watchdog only cleared the flag + lock
+    // but left the async for...of loop running, which let the NEXT hourly cycle start a
+    // second concurrent workflow while the first was still processing items — causing
+    // double AI spend and duplicate writes on the same news items.
+    const abortController = new AbortController();
+    const abortSignal = abortController.signal;
+
     const workflowTimer = setTimeout(() => {
-        console.error('[AI Workflow] TIMEOUT — forced release after 10 minutes');
-        isAiWorkflowRunning = false;
+        console.error('[AI Workflow] TIMEOUT — aborting after 10 minutes. In-flight item will finish, remaining items will be skipped.');
+        abortController.abort();
+        // Note: we do NOT clear isAiWorkflowRunning here — the finally block does that
+        // once the in-flight work actually returns. This keeps the flag truthful instead
+        // of letting a second workflow start while the first is still finishing its item.
         if (redis) {
             redis.del('cron:aiworkflow:lock').catch(() => {});
         }
@@ -293,6 +308,13 @@ export async function runAiWorkflow(): Promise<void> {
         console.log(`[AI Workflow] Found ${itemsWithSymbols.length} items with symbols, ${itemsWithoutSymbols.length} items to infer.`);
 
         for (const item of allItems) {
+            // Cooperative cancellation: the 10-minute watchdog aborts the controller.
+            // Break out before starting new AI work so the next cycle can run safely.
+            if (abortSignal.aborted) {
+                console.warn('[AI Workflow] Aborted by watchdog — skipping remaining items.');
+                break;
+            }
+
             const mentions = (item.symbolMentions as string[]) || [];
             let symbol = mentions.length > 0 ? mentions[0] : null;
 

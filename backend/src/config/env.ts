@@ -174,6 +174,16 @@ const envSchema = z.object({
     EMBEDDING_MODEL: z.string().default('openai/text-embedding-3-small'),
     OLLAMA_BASE_URL: z.string().default('http://localhost:11434'),
     OLLAMA_EMBEDDING_MODEL: z.string().default('nomic-embed-text'),
+
+    // ─── Flow Isolation Layer ────────────────────────────────────────────────
+    // Master on/off switches for each of the 5 independent flows. Default true so existing
+    // deployments keep all flows running. Set FLOW_<NAME>_ENABLED=false to disable an entire
+    // flow (its crons won't start, regardless of their sub-feature flags below).
+    FLOW_NEWS_ENABLED: z.coerce.boolean().default(true),
+    FLOW_SIGNALS_ENABLED: z.coerce.boolean().default(true),
+    FLOW_MARKET_ENABLED: z.coerce.boolean().default(true),
+    FLOW_PORTFOLIO_ENABLED: z.coerce.boolean().default(true),
+    FLOW_AIRDROP_ENABLED: z.coerce.boolean().default(true),
 });
 
 const parsed = envSchema.safeParse(process.env);

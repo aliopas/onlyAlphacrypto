@@ -5,6 +5,8 @@ import { coinNews, rawNewsBuffer } from '../models/market.model';
 import { fetchAllRSSNews } from '../services/rssNews.service';
 import { eq, isNotNull, desc, and } from 'drizzle-orm';
 import { TRACKED_COINS } from '../config/coins';
+import { guardedCronRun } from '../utils/cronGuard';
+import { logger } from '../utils/logger';
 
 function hashTitle(title: string): string {
     return crypto.createHash('sha256').update(title.trim().toLowerCase()).digest('hex');
@@ -12,7 +14,7 @@ function hashTitle(title: string): string {
 
 // ─── Main Cron: Every 10 minutes (Phase 1A: Gathering Engine) ──────────────
 export async function runTerminalEngine(): Promise<void> {
-    console.log('🤖 [TerminalEngine] Running — gathering crypto news (Phase 1A)...');
+    logger.info('[TerminalEngine] Running — gathering crypto news (Phase 1A)...');
 
     const rssItems = await fetchAllRSSNews();
     const newsItems = rssItems.map(item => ({ title: item.title, source: item.source }));
@@ -79,12 +81,15 @@ export async function runTerminalEngine(): Promise<void> {
         }
     }
 
-    console.log(`✅ [TerminalEngine] Buffered ${bufferedCount} new news items, skipped ${duplicateCount} duplicates.`);
+    logger.info('[TerminalEngine] Buffered %d new news items, skipped %d duplicates.', bufferedCount, duplicateCount);
 }
 
 // Export function to start the cron job
 export function startTerminalEngineCron(): void {
-    // Changed from '*/5 * * * *' to '*/10 * * * *' for 10-minute intervals (Phase 1A optimization)
-    cron.schedule('*/10 * * * *', runTerminalEngine);
-    console.log('⏰ Terminal Intelligence Engine cron scheduled — every 10 minutes (Phase 1A: Gathering Engine)');
+    // Every 10 minutes (Phase 1A: Gathering Engine). Protected by BOTH an in-process guard
+    // and a cross-instance Redis mutex (5 min TTL) because this cron produces rows into the
+    // shared raw_news_buffer table — without the mutex, two instances would double-fetch and
+    // race on the dedup SELECT/INSERT.
+    cron.schedule('*/10 * * * *', () => { void guardedCronRun('TerminalEngine', 300, runTerminalEngine); });
+    logger.info('[TerminalEngine] Cron scheduled — every 10 minutes (Phase 1A: Gathering Engine)');
 }

@@ -5,6 +5,8 @@ import { getCoinKlinesRange } from '../services/binance.service';
 import { logger } from '../utils/logger';
 import { eq, lte, and, sql, inArray } from 'drizzle-orm';
 import { TRACKED_COINS } from '../config/coins';
+import { guardCron } from '../utils/cronGuard';
+import { getHorizonMs } from '../utils/horizons';
 
 export async function runScenarioOutcomeChecker(): Promise<void> {
     if (process.env.SCENARIO_TRACKER_ENABLED !== 'true') {
@@ -198,24 +200,9 @@ async function updateOutcome(
         ));
 }
 
-function getHorizonMs(horizon: string): number {
-    const map: Record<string, number> = {
-        '1h': 3600000,
-        '4h': 14400000,
-        '24h': 86400000,
-        '3d': 259200000,
-        '7d': 604800000,
-        '14d': 1209600000,
-        '30d': 2592000000,
-        '90d': 7776000000,
-        '180d': 15552000000,
-        '365d': 31536000000,
-        '730d': 63072000000
-    };
-    return map[horizon] || 0;
-}
+// getHorizonMs is imported from utils/horizons.ts (single source of truth).
 
 export function startScenarioOutcomeCheckerCron(): void {
-    cron.schedule('0 * * * *', () => runScenarioOutcomeChecker());
-    console.log('⏰ ScenarioOutcomeChecker scheduled — every hour');
+    cron.schedule('0 * * * *', guardCron('ScenarioOutcomeChecker', runScenarioOutcomeChecker));
+    logger.info('[ScenarioOutcomeChecker] Scheduled — every hour');
 }
