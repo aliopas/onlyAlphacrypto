@@ -57,12 +57,12 @@ router.delete('/score-records', featureFlagMiddleware, adminAuth, archiveScoreRe
 router.post('/score-records/archive-old', featureFlagMiddleware, adminAuth, archiveOldScoreRecordsHandler);
 router.post('/score-records/:id/reactivate', featureFlagMiddleware, adminAuth, reactivateScoreRecordHandler);
 router.post('/score-records/:id/restore', featureFlagMiddleware, adminAuth, restoreScoreRecordHandler);
+router.post('/signals/:id/close', featureFlagMiddleware, adminAuth, closeScoreRecordHandler);
 
 // Admin Signal Operations (behind separate feature flag)
 router.post('/signals/pause-generation', signalOpsFlagMiddleware, adminAuth, pauseSignalGenerationHandler);
 router.post('/signals/resume-generation', signalOpsFlagMiddleware, adminAuth, resumeSignalGenerationHandler);
 router.patch('/signals/:id/targets', signalOpsFlagMiddleware, adminAuth, raiseTpHandler);
-router.post('/signals/:id/close', signalOpsFlagMiddleware, adminAuth, closeScoreRecordHandler);
 
 // Maintenance Mode — Public status check (no auth)
 router.get('/maintenance/status', getMaintenanceStatusHandler);
