@@ -10,6 +10,7 @@ import {
     archiveOldScoreRecordsHandler,
     reactivateScoreRecordHandler,
     restoreScoreRecordHandler,
+    closeScoreRecordHandler,
     pauseSignalGenerationHandler,
     resumeSignalGenerationHandler,
     raiseTpHandler,
@@ -61,6 +62,7 @@ router.post('/score-records/:id/restore', featureFlagMiddleware, adminAuth, rest
 router.post('/signals/pause-generation', signalOpsFlagMiddleware, adminAuth, pauseSignalGenerationHandler);
 router.post('/signals/resume-generation', signalOpsFlagMiddleware, adminAuth, resumeSignalGenerationHandler);
 router.patch('/signals/:id/targets', signalOpsFlagMiddleware, adminAuth, raiseTpHandler);
+router.post('/signals/:id/close', signalOpsFlagMiddleware, adminAuth, closeScoreRecordHandler);
 
 // Maintenance Mode — Public status check (no auth)
 router.get('/maintenance/status', getMaintenanceStatusHandler);

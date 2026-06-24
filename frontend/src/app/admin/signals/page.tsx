@@ -43,6 +43,7 @@ export default function SignalControlPage() {
         stopLossPrice: '',
     });
     const [tpLoading, setTpLoading] = useState(false);
+    const [closeLoading, setCloseLoading] = useState<number | null>(null);
 
     const fetchSignals = useCallback(async () => {
         setLoading(true);
@@ -125,6 +126,36 @@ export default function SignalControlPage() {
     const closeEdit = () => {
         setEditingSignal(null);
         setTpForm({ takeProfitPrice: '', tp2Price: '', tp3Price: '', stopLossPrice: '' });
+    };
+
+    const handleClose = async (signal: Signal) => {
+        const confirmMessage = `Close #${signal.id} ${signal.coinSymbol}?\n\nThis closes the signal at the current market price and moves it to Closed Signals. It can be restored later from Score Records.`;
+        if (!confirm(confirmMessage)) return;
+
+        setCloseLoading(signal.id);
+        setActionMessage(null);
+        try {
+            const response = await fetchWithAuth(`/admin/signals/${signal.id}/close`, {
+                method: 'POST',
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || 'Close failed');
+            }
+            const data = await response.json();
+            const exit = data?.data?.exitPrice;
+            const pnl = data?.data?.realizedPnl;
+            const exitText = typeof exit === 'number' ? `$${exit.toFixed(2)}` : 'unknown price';
+            const pnlText = typeof pnl === 'number'
+                ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}%`
+                : '';
+            setActionMessage(`Closed #${signal.id} ${signal.coinSymbol} at ${exitText}${pnlText ? ` (${pnlText})` : ''}`);
+            fetchSignals();
+        } catch (err) {
+            setActionMessage(err instanceof Error ? err.message : 'Close failed');
+        } finally {
+            setCloseLoading(null);
+        }
     };
 
     const handleTpRaise = async () => {
@@ -231,12 +262,21 @@ export default function SignalControlPage() {
                                     <td className="px-3 py-2">{signal.stopLossPrice?.toFixed(2) ?? '—'}</td>
                                     <td className="px-3 py-2">{new Date(signal.createdAt).toLocaleDateString()}</td>
                                     <td className="px-3 py-2">
-                                        <button
-                                            onClick={() => openEdit(signal)}
-                                            className="px-2 py-1 bg-blue-900/30 text-blue-400 rounded hover:bg-blue-900/50 text-xs"
-                                        >
-                                            Edit Targets
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => openEdit(signal)}
+                                                className="px-2 py-1 bg-blue-900/30 text-blue-400 rounded hover:bg-blue-900/50 text-xs"
+                                            >
+                                                Edit Targets
+                                            </button>
+                                            <button
+                                                onClick={() => handleClose(signal)}
+                                                disabled={closeLoading === signal.id}
+                                                className="px-2 py-1 bg-red-900/30 text-red-400 rounded hover:bg-red-900/50 text-xs disabled:opacity-50"
+                                            >
+                                                {closeLoading === signal.id ? 'Closing...' : 'Close'}
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

@@ -654,6 +654,112 @@ export async function restoreScoreRecordHandler(req: Request, res: Response): Pr
 }
 
 /**
+ * Manually close an active signal_performance row at the current market price.
+ * Mirrors autoCloseSignal (lifecycle cron) but is admin-triggered; the close
+ * reason is recorded as 'MANUAL'. Closing with archivedAt left null keeps the
+ * record visible on the public scorecard under Closed Signals.
+ */
+export async function closeScoreRecordHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const signalId = parseInt(idParam, 10);
+        if (isNaN(signalId)) {
+            res.status(400).json({ error: 'Invalid signal ID' });
+            return;
+        }
+
+        const adminEmail = req.adminEmail;
+
+        const [signal] = await db
+            .select()
+            .from(signalPerformance)
+            .where(eq(signalPerformance.id, signalId))
+            .limit(1);
+
+        if (!signal) {
+            res.status(404).json({ error: 'Signal not found' });
+            return;
+        }
+
+        if (!signal.isActive) {
+            res.status(400).json({ error: 'Signal is already closed' });
+            return;
+        }
+
+        const priceResult = await getPriceWithFallback(signal.coinSymbol);
+        const currentPrice = priceResult?.price ?? null;
+        if (currentPrice === null || currentPrice <= 0) {
+            res.status(502).json({ error: 'Current price unavailable, try again' });
+            return;
+        }
+
+        const isLong = (signal.takeProfitPrice ?? 0) > signal.entryPrice;
+        const rawPnl = ((currentPrice - signal.entryPrice) / signal.entryPrice) * 100;
+        const realizedPnl = isLong ? rawPnl : -rawPnl;
+
+        const oldValue = {
+            isActive: signal.isActive,
+            signalState: signal.signalState,
+            exitPrice: signal.exitPrice,
+            realizedPnl: signal.realizedPnl,
+            closedAt: signal.closedAt,
+            autoClosedReason: signal.autoClosedReason,
+            closeReason: signal.closeReason,
+        };
+
+        await db
+            .update(signalPerformance)
+            .set({
+                isActive: false,
+                signalState: 'CLOSED',
+                closeReason: 'MANUAL',
+                autoClosedReason: 'MANUAL',
+                exitPrice: currentPrice,
+                realizedPnl,
+                closedAt: new Date(),
+            })
+            .where(eq(signalPerformance.id, signalId));
+
+        await logAdminAction({
+            adminEmail: adminEmail ?? 'unknown',
+            action: 'close_signal',
+            targetTable: 'signal_performance',
+            targetId: String(signalId),
+            oldValue,
+            newValue: {
+                isActive: false,
+                signalState: 'CLOSED',
+                closeReason: 'MANUAL',
+                exitPrice: currentPrice,
+                realizedPnl,
+            },
+            ipAddress: getClientIp(req),
+        });
+
+        try {
+            await deleteCache('scorecard:latest');
+        } catch (error) {
+            console.warn('[CloseScoreRecord] Cache invalidation failed:', error instanceof Error ? error.message : String(error));
+        }
+
+        res.json({
+            success: true,
+            data: {
+                id: signal.id,
+                isActive: false,
+                signalState: 'CLOSED',
+                closeReason: 'MANUAL',
+                exitPrice: currentPrice,
+                realizedPnl,
+            },
+        });
+    } catch (error) {
+        console.error('[CloseScoreRecord] Failed to close signal:', error instanceof Error ? error.message : String(error));
+        res.status(500).json({ error: 'Failed to close signal' });
+    }
+}
+
+/**
  * Pause signal generation
  */
 export async function pauseSignalGenerationHandler(req: Request, res: Response): Promise<void> {
