@@ -154,6 +154,7 @@ export async function getScoreRecordsHandler(req: Request, res: Response): Promi
             id,
             coin,
             state,
+            isActive,
             startDate,
             endDate,
             includeArchived,
@@ -180,6 +181,12 @@ export async function getScoreRecordsHandler(req: Request, res: Response): Promi
 
         if (state && typeof state === 'string') {
             whereConditions.push(eq(signalPerformance.signalState, state));
+        }
+
+        // isActive filter: "open" = currently open positions (isActive=true),
+        // regardless of lifecycle state (NEW/ACTIVE/PARTIAL_TP/BREAKEVEN...).
+        if (isActive && typeof isActive === 'string') {
+            whereConditions.push(eq(signalPerformance.isActive, isActive === 'true'));
         }
 
         if (startDate && typeof startDate === 'string') {

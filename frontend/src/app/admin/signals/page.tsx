@@ -50,7 +50,7 @@ export default function SignalControlPage() {
         setError(null);
         try {
             const params = new URLSearchParams();
-            params.append('state', 'ACTIVE');
+            params.append('isActive', 'true');
             params.append('page', String(page));
             params.append('limit', '50');
 
