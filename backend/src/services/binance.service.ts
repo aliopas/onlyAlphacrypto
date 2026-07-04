@@ -15,7 +15,7 @@ const httpAgent = new http.Agent({
     maxSockets: env.BINANCE_MAX_SOCKETS,
     maxFreeSockets: env.BINANCE_MAX_FREE_SOCKETS,
     timeout: env.BINANCE_TIMEOUT_MS,
-    freeSocketTimeout: 5000,
+    freeSocketTimeout: 10000,
     scheduling: 'lifo',
 } as http.AgentOptions);
 const httpsAgent = new https.Agent({
@@ -24,7 +24,7 @@ const httpsAgent = new https.Agent({
     maxSockets: env.BINANCE_MAX_SOCKETS,
     maxFreeSockets: env.BINANCE_MAX_FREE_SOCKETS,
     timeout: env.BINANCE_TIMEOUT_MS,
-    freeSocketTimeout: 5000,
+    freeSocketTimeout: 10000,
     scheduling: 'lifo',
 } as https.AgentOptions);
 
@@ -187,7 +187,7 @@ function getRequestKey(url: string, params?: Record<string, unknown>): string {
 function isRetryableError(error: unknown): boolean {
     if (!axios.isAxiosError(error)) return false;
 
-    const retryableCodes = ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN'];
+    const retryableCodes = ['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'ECONNREFUSED', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN'];
     if (error.code && retryableCodes.includes(error.code)) return true;
     if (!error.response) return true; // Timeouts / network failures
 
@@ -198,28 +198,19 @@ function isRetryableError(error: unknown): boolean {
 async function executeOnce<T>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> {
     await rateLimiter.throttle();
 
+    const requestConfig: AxiosRequestConfig<T> = {
+        ...config,
+        timeout: env.BINANCE_TIMEOUT_MS,
+        family: 4,
+    } as AxiosRequestConfig<T>;
+
     const start = Date.now();
-    const controller = new AbortController();
-    const requestTimeoutMs = Math.max(1000, (config.timeout ?? env.BINANCE_TIMEOUT_MS) - 500);
-    const timer = setTimeout(() => controller.abort('request timeout'), requestTimeoutMs);
-
-    try {
-        const requestConfig: AxiosRequestConfig<T> = {
-            ...config,
-            timeout: env.BINANCE_TIMEOUT_MS,
-            signal: controller.signal,
-            family: 4,
-        } as AxiosRequestConfig<T>;
-
-        const response = await binanceClient.request<T>(requestConfig);
-        const duration = Date.now() - start;
-        const weight = response.headers['x-mbx-used-weight-1m'];
-        logger.info('[Binance] %s duration=%dms weight=%s', config.url ?? 'unknown', duration, String(weight ?? 'n/a'));
-        rateLimiter.recordHeaders(response.headers);
-        return response;
-    } finally {
-        clearTimeout(timer);
-    }
+    const response = await binanceClient.request<T>(requestConfig);
+    const duration = Date.now() - start;
+    const weight = response.headers['x-mbx-used-weight-1m'];
+    logger.info('[Binance] %s duration=%dms weight=%s', config.url ?? 'unknown', duration, String(weight ?? 'n/a'));
+    rateLimiter.recordHeaders(response.headers);
+    return response;
 }
 
 async function executeWithRetry<T>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> {
