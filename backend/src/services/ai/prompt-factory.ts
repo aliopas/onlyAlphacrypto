@@ -423,7 +423,7 @@ Expand the hook into 3-4 sentences. Must include the most important number from 
 Factual summary using keyFacts from the input JSON. Every paragraph must contain a number. Provide context about the event — who, what, when, where, how much. Write 4-5 substantive sentences.
 
 [WHY IT MATTERS]
-Use analysis.mainDriver and analysis.priceImplication. Explain the market significance and broader implications for the sector. How does this compare to similar events? Write 3-4 substantive sentences.
+Use analysis.mainDriver and analysis.priceImplication. If strategicOutlook exists, weave short-term direction/target/invalidation and long-term market phase/support/resistance into prose. NEVER paste strategicOutlook as JSON. Write 3-4 substantive sentences.
 
 [HISTORY REPEATS?]
 Use _historicalCases from input if available. Cite SPECIFIC past events with dates and percentage outcomes from _historicalCases array. Format: 'In [Month Year], when [coin] faced similar [eventType], the price moved [X]% over 7 days.' If _historicalCases is empty, use analysis.temporalContext. Write 3-4 substantive sentences with at least one concrete number.
@@ -474,7 +474,7 @@ Output STRICT JSON:
   "sections": {
     "HOOK": "<Expand the hook into 3-4 sentences. Must include the most important number from the analysis. Set the scene for why this matters RIGHT NOW.>",
     "WHAT HAPPENED": "<Factual summary using keyFacts from the input JSON. Every paragraph must contain a number. Provide context about the event — who, what, when, where, how much. Write 4-5 substantive sentences.>",
-    "WHY IT MATTERS": "<Use analysis.mainDriver and analysis.priceImplication. Explain the market significance and broader implications for the sector. How does this compare to similar events? Write 3-4 substantive sentences.>",
+    "WHY IT MATTERS": "<Use analysis.mainDriver and analysis.priceImplication. If strategicOutlook exists, weave short-term direction/target/invalidation and long-term market phase into prose. NEVER paste strategicOutlook as JSON. Write 3-4 substantive sentences.>",
     "HISTORY REPEATS?": "<Use _historicalCases from input if available. Cite SPECIFIC past events with dates and percentage outcomes from _historicalCases array. Format: 'In [Month Year], when [coin] faced similar [eventType], the price moved [X]% over 7 days.' If _historicalCases is empty, use analysis.temporalContext. Write 3-4 substantive sentences with at least one concrete number.>"
   }
 }
@@ -559,6 +559,8 @@ Output ONLY a valid JSON object with any of these keys that need updating:
 CRITICAL RULES:
 - metaTitle: MUST be under 60 characters total including spaces. Format: 'Coin Event | OnlyAlpha'. Count characters carefully.
 - metaDescription: MUST be under 160 characters total. Must end with 'Read the analysis on OnlyAlpha.'
+- strategicImpact MUST be readable prose paragraphs (Short-term, Long-term, Action). NEVER dump strategicOutlook as raw JSON, never stringify objects, never include curly-brace JSON blobs.
+- If analysis.strategicOutlook exists, rewrite it into plain English covering direction/target/invalidation, market phase/support/resistance, and stance/risk management.
 - Only include keys that actually changed. Do NOT include keys that didn't change.
 - Output ONLY the JSON object. No preamble. No explanation. No markdown fences.${input.sectionDirective}`
             },

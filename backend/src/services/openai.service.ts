@@ -7,6 +7,7 @@ import { AIGateway, AITruncationError, LONG_RESPONSE_MAX_TOKENS } from './ai/ai-
 import { PromptFactory, DeepAnalysisInput, MasterUpdateInput, MinorUpdateInput } from './ai/prompt-factory';
 import { getRecentMemory } from './coin-memory.service';
 import { coinMasterArticles } from '../models/market.model';
+import { formatStrategicImpactProse, sanitizeStrategicImpactText } from './strategicOutlook.service';
 
 // Define interfaces locally to avoid circular imports
 
@@ -754,9 +755,27 @@ export async function callGptNanoMasterUpdate(analysisResult: DeepAnalysisResult
             filtered[key] = parsedObj[key];
         }
     }
+
+    if (filtered.strategicImpact !== undefined) {
+        const sanitized = sanitizeStrategicImpactText(
+            filtered.strategicImpact,
+            analysisResult.strategicOutlook ?? null
+        );
+        if (sanitized) {
+            filtered.strategicImpact = sanitized;
+        } else if (analysisResult.strategicOutlook) {
+            filtered.strategicImpact = formatStrategicImpactProse(analysisResult.strategicOutlook);
+        } else {
+            delete filtered.strategicImpact;
+        }
+    } else if (analysisResult.strategicOutlook) {
+        // Prefer structured outlook prose over empty/missing strategicImpact
+        filtered.strategicImpact = formatStrategicImpactProse(analysisResult.strategicOutlook);
+    }
+
     filtered.metaTitle = truncateMetaField(filtered.metaTitle, 60);
     filtered.metaDescription = truncateMetaField(filtered.metaDescription, 160);
-    return filtered;
+    return filtered as Partial<typeof coinMasterArticles.$inferInsert>;
 }
 
 function buildFallbackArticle(analysisJson: string): ArticleWriterResult {

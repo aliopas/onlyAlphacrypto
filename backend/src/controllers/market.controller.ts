@@ -7,7 +7,7 @@ import {
     coinMasterArticles, coinTimelineUpdates, coinIntelligenceCache,
     signalPerformance, coinStrategicOutlook
 } from '../models/index';
-import { getStrategicOutlook, getActiveEventResponses } from '../services/strategicOutlook.service';
+import { getStrategicOutlook, getActiveEventResponses, sanitizeStrategicImpactText } from '../services/strategicOutlook.service';
 import { desc, eq, gte, and, asc, sql, isNull } from 'drizzle-orm';
 import { getLivePrices, getTopMovers } from '../services/binance.service';
 import { getPriceWithFallback } from '../services/priceService';
@@ -384,8 +384,13 @@ export async function getMasterArticle(req: Request, res: Response, next: NextFu
             .orderBy(desc(coinTimelineUpdates.createdAt))
             .limit(10);
 
+        const sanitizedStrategicImpact = sanitizeStrategicImpactText(master.strategicImpact);
+        const masterArticle = sanitizedStrategicImpact && sanitizedStrategicImpact !== master.strategicImpact
+            ? { ...master, strategicImpact: sanitizedStrategicImpact }
+            : master;
+
         const result = {
-            masterArticle: master,
+            masterArticle,
             timelineUpdates: timeline,
             convictionScore: master.convictionScore,
             posture: master.posture,

@@ -46,6 +46,7 @@ const PLACEHOLDER_PATTERNS = [
 
 function isSectionIncomplete(value: string | null): boolean {
     if (value === null || value.trim().length < 50) return true;
+    if (value.trim().startsWith('{') && (value.includes('"shortTerm"') || value.includes('"longTerm"'))) return true;
     return PLACEHOLDER_PATTERNS.some(p => value.includes(p));
 }
 

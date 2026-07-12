@@ -23,7 +23,7 @@ import { saveMemory } from '../services/coin-memory.service';
 import { isDuplicateByEmbedding } from '../services/similarity.service';
 import { storeEmbedding } from '../services/embedding.service';
 import { coinNews, radarSignals, rawNewsBuffer, coinMasterArticles, coinTimelineUpdates, signalPerformance, coinNewsHistory } from '../models/market.model';
-import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse } from '../services/strategicOutlook.service';
+import { shouldUpdateOutlook, saveStrategicOutlook, buildSmartEventResponse, formatStrategicImpactProse, sanitizeStrategicImpactText } from '../services/strategicOutlook.service';
 import { decideSignalAction, executeSignalDecision } from '../services/signalManager.service';
 import { classifySignalOutcome, classifySignal, deriveDirectionFromVerdict } from '../services/signalClassification.service';
 import { calculateTpsl } from '../services/tpslCalculator.service';
@@ -628,10 +628,14 @@ const built = await buildMtfContext(symbol);
 
                 // Master article logic
                 const fullArticle = article.fullArticle;
+                const whyItMattersRaw = extractSection(fullArticle, 'WHY IT MATTERS');
+                const strategicImpactText = analysisResult.strategicOutlook
+                    ? formatStrategicImpactProse(analysisResult.strategicOutlook)
+                    : sanitizeStrategicImpactText(whyItMattersRaw);
                 const extractedSections = {
                     coreCatalyst: extractSection(fullArticle, 'HOOK') || article.hook,
                     marketContext: extractSection(fullArticle, 'WHAT HAPPENED'),
-                    strategicImpact: extractSection(fullArticle, 'WHY IT MATTERS'),
+                    strategicImpact: strategicImpactText || whyItMattersRaw,
                     historicalContext: extractSection(fullArticle, 'HISTORY REPEATS?'),
                     technicalLevels: extractSection(fullArticle, 'PRICE PICTURE'),
                     riskAssessment: extractSection(fullArticle, 'RISK CHECK'),

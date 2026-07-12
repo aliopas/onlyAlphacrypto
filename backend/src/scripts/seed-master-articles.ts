@@ -62,7 +62,13 @@ async function processSymbols(symbols: string[]): Promise<void> {
                 triggerType: null,
                 coreCatalyst: extractSection(fullText, 'HOOK') || null,
                 marketContext: extractSection(fullText, 'WHAT HAPPENED') || null,
-                strategicImpact: extractSection(fullText, 'WHY IT MATTERS') || null,
+                strategicImpact: (() => {
+                    const raw = extractSection(fullText, 'WHY IT MATTERS');
+                    if (!raw) return null;
+                    // Avoid storing raw strategicOutlook JSON blobs as article prose
+                    if (raw.trim().startsWith('{') && raw.includes('"shortTerm"')) return null;
+                    return raw;
+                })(),
                 historicalContext: extractSection(fullText, 'HISTORY REPEATS?') || null,
                 technicalLevels: extractSection(fullText, 'PRICE PICTURE') || null,
                 riskAssessment: extractSection(fullText, 'RISK CHECK') || null,

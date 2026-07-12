@@ -20,6 +20,100 @@ export function shouldUpdateOutlook(input: OutlookTriggerInput): boolean {
     return isStructural || isLargePriceMove || input.eventSeverity >= 3;
 }
 
+type StrategicOutlook = NonNullable<DeepAnalysisResult['strategicOutlook']>;
+
+function formatPrice(value: number | null | undefined): string {
+    if (value === null || value === undefined || Number.isNaN(value)) return 'N/A';
+    return `$${value.toLocaleString('en-US')}`;
+}
+
+/** Convert structured strategicOutlook into prose for article sections (never raw JSON). */
+export function formatStrategicImpactProse(outlook: StrategicOutlook): string {
+    const st = outlook.shortTerm ?? {
+        direction: 'neutral',
+        target: null,
+        invalidation: null,
+        catalysts: [],
+        confidence: 0,
+    };
+    const lt = outlook.longTerm ?? {
+        marketPhase: 'accumulation',
+        bullRunProbability: 0,
+        majorSupport: null,
+        majorResistance: null,
+        isBottomIn: false,
+        isTopIn: false,
+        bullEvidence: [],
+        bearEvidence: [],
+    };
+    const action = outlook.action ?? {
+        recommendation: 'watch',
+        rationale: 'Insufficient structured outlook data.',
+        riskManagement: 'Monitor key levels before acting on this scenario.',
+    };
+
+    const catalysts = Array.isArray(st.catalysts) && st.catalysts.length > 0
+        ? st.catalysts.join('; ')
+        : 'no major near-term catalysts listed';
+    const bullEvidence = Array.isArray(lt.bullEvidence) && lt.bullEvidence.length > 0
+        ? lt.bullEvidence.join('; ')
+        : 'limited bullish evidence listed';
+    const bearEvidence = Array.isArray(lt.bearEvidence) && lt.bearEvidence.length > 0
+        ? lt.bearEvidence.join('; ')
+        : 'limited bearish evidence listed';
+
+    const shortTermBlock =
+        `Short-term outlook is ${st.direction} with ${st.confidence}% confidence. ` +
+        `Upside target zone sits near ${formatPrice(st.target)}; risk zone / invalidation is ${formatPrice(st.invalidation)}. ` +
+        `Near-term catalysts: ${catalysts}.`;
+
+    const longTermBlock =
+        `Long-term market phase is ${lt.marketPhase} with a ${lt.bullRunProbability}% bull-run probability reading. ` +
+        `Major support is ${formatPrice(lt.majorSupport)}; major resistance is ${formatPrice(lt.majorResistance)}. ` +
+        `Bottom-in flag: ${lt.isBottomIn ? 'yes' : 'no'}; top-in flag: ${lt.isTopIn ? 'yes' : 'no'}. ` +
+        `Bull evidence: ${bullEvidence}. Bear evidence: ${bearEvidence}.`;
+
+    const actionBlock =
+        `Market stance leans ${action.recommendation}. ${action.rationale} ` +
+        `Risk management: ${action.riskManagement}`;
+
+    return `${shortTermBlock}\n\n${longTermBlock}\n\n${actionBlock}`.trim();
+}
+
+/** If a section stored raw strategicOutlook JSON (or object), convert to prose. */
+export function sanitizeStrategicImpactText(value: unknown, fallbackOutlook?: StrategicOutlook | null): string | null {
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        const obj = value as Record<string, unknown>;
+        if (obj.shortTerm || obj.longTerm || obj.action) {
+            return formatStrategicImpactProse(value as StrategicOutlook);
+        }
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return fallbackOutlook ? formatStrategicImpactProse(fallbackOutlook) : null;
+        }
+        if (trimmed.startsWith('{') && (trimmed.includes('"shortTerm"') || trimmed.includes('"longTerm"'))) {
+            try {
+                const parsed: unknown = JSON.parse(trimmed);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    const obj = parsed as Record<string, unknown>;
+                    if (obj.shortTerm || obj.longTerm || obj.action) {
+                        return formatStrategicImpactProse(parsed as StrategicOutlook);
+                    }
+                }
+            } catch {
+                // keep original string if not valid JSON
+            }
+        }
+        return trimmed;
+    }
+
+    if (fallbackOutlook) return formatStrategicImpactProse(fallbackOutlook);
+    return null;
+}
+
 export async function saveStrategicOutlook(
     coinSymbol: string,
     outlook: NonNullable<DeepAnalysisResult['strategicOutlook']>,
