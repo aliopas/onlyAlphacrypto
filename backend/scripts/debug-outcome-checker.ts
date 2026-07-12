@@ -21,7 +21,7 @@ const BINANCE_BASE = 'https://api.binance.com/api/v3';
 
 const TRACKED_COINS = [
     'BTC', 'ETH', 'SOL', 'BNB', 'XRP',
-    'DOGE', 'ADA', 'AVAX', 'LINK', 'SUI', 'TON',
+    'DOGE', 'ADA', 'AVAX', 'LINK', 'SUI', 'GRAM',
 ] as const;
 
 const TRACKED_COIN_SET: ReadonlySet<string> = new Set(TRACKED_COINS);

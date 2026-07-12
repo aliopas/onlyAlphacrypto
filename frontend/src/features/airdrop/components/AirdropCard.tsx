@@ -14,6 +14,7 @@ const ECOSYSTEM_COLORS: Record<string, { text: string; bg: string }> = {
     ETH: { text: 'text-blue-400', bg: 'bg-blue-400/10' },
     SOL: { text: 'text-purple-400', bg: 'bg-purple-400/10' },
     TON: { text: 'text-cyan-400', bg: 'bg-cyan-400/10' },
+    GRAM: { text: 'text-cyan-400', bg: 'bg-cyan-400/10' },
     BNB: { text: 'text-yellow-400', bg: 'bg-yellow-400/10' },
     Other: { text: 'text-gray-400', bg: 'bg-gray-400/10' },
 };

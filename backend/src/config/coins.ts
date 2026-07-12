@@ -1,6 +1,6 @@
 export const TRACKED_COINS = [
     'BTC', 'ETH', 'SOL', 'BNB', 'XRP',
-    'DOGE', 'ADA', 'AVAX', 'LINK', 'SUI', 'TON',
+    'DOGE', 'ADA', 'AVAX', 'LINK', 'SUI', 'GRAM',
 ] as const;
 
 export type TrackedCoin = typeof TRACKED_COINS[number];

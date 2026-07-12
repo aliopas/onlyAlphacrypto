@@ -5,7 +5,7 @@
 UPDATE coin_news_history
 SET outcome_classification = 'neutral'
 WHERE outcome_classification IS NULL
-  AND coin_symbol NOT IN ('BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK', 'SUI', 'TON');
+  AND coin_symbol NOT IN ('BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK', 'SUI', 'GRAM');
 
 -- Verify: count remaining unclassified rows (should only be TRACKED coins)
 SELECT coin_symbol, COUNT(*) as remaining

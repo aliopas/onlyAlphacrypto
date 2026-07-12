@@ -173,21 +173,21 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
             'Real-time AI analysis and market intelligence for Sui (SUI). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
         keywords: ['Sui analysis', 'SUI signals', 'Sui AI analysis', 'SUI market intelligence', 'Sui outlook'],
     },
-    TON: {
-        symbol: 'TON',
-        name: 'Toncoin',
+    GRAM: {
+        symbol: 'GRAM',
+        name: 'Gram',
         rank: 16,
         category: 'Smart Contract Platform / Messaging',
         consensus: 'Proof of Stake',
         activationDate: '2021-12-23',
         whatIs:
-            'Toncoin (TON) is the native asset of The Open Network, a scalable blockchain originally designed by Telegram for high-speed payments and decentralized services.',
+            'Gram (GRAM), formerly Toncoin (TON), is the native asset of The Open Network — a scalable blockchain originally designed by Telegram for high-speed payments and decentralized services.',
         coverage:
-            'OnlyAlpha follows Toncoin for trend posture, momentum shifts, and volatility regime, translating data into BULLISH or BEARISH signals.',
-        metaTitle: 'Toncoin (TON) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
+            'OnlyAlpha follows Gram for trend posture, momentum shifts, and volatility regime, translating data into BULLISH or BEARISH signals.',
+        metaTitle: 'Gram (GRAM) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
-            'Real-time AI analysis and market intelligence for Toncoin (TON). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['Toncoin analysis', 'TON signals', 'Toncoin AI analysis', 'TON market intelligence', 'Toncoin outlook'],
+            'Real-time AI analysis and market intelligence for Gram (GRAM, formerly TON). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
+        keywords: ['Gram analysis', 'GRAM signals', 'Gram AI analysis', 'GRAM market intelligence', 'Toncoin rebrand', 'GRAM outlook'],
     },
 };
 

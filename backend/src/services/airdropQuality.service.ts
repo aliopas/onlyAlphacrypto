@@ -24,7 +24,7 @@ export interface AirdropQualityResult {
 const ECOSYSTEM_COINS: Record<string, string[]> = {
     ETH: ['ETH', 'BTC'],
     SOL: ['SOL'],
-    TON: ['TON'],
+    TON: ['GRAM', 'TON'],
     BNB: ['BNB'],
 };
 
@@ -36,7 +36,7 @@ function detectEcosystem(project: AirdropProjectInput): Ecosystem {
         return 'ETH';
     }
     if (networkLower.includes('solana') || nameLower.includes('solana')) return 'SOL';
-    if (networkLower.includes('ton') || nameLower.includes('ton')) return 'TON';
+    if (networkLower.includes('ton') || networkLower.includes('gram') || nameLower.includes('ton') || nameLower.includes('gram')) return 'TON';
     if (networkLower.includes('bnb') || networkLower.includes('bsc') || nameLower.includes('bnb')) return 'BNB';
     return 'Other';
 }

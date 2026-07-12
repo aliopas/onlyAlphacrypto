@@ -193,7 +193,7 @@ const SYMBOL_PATTERNS: Record<string, RegExp> = {
     AVAX: /\b(avalanche|avax)\b/i,
     LINK: /\b(chainlink|link)\b/i,
     SUI: /\b(sui)\b/i,
-    TON: /\b(ton\b)/i,
+    GRAM: /\b(gram|toncoin|ton\b|the open network)\b/i,
 };
 
 function inferSymbolFromTitle(title: string): string | null {
