@@ -294,7 +294,7 @@ function calculateConfidenceScore(stats: any, touchCount: number, timeframe: str
     // Incomplete data penalty (simplified)
     if (touchCount < 3) score -= 10;
 
-    return Math.max(0, Math.min(100, score));
+    return Math.round(Math.max(0, Math.min(100, score)));
 }
 
 // ─── Helper: Get Interval in MS ────────────────────────────────────────────
@@ -363,7 +363,7 @@ export async function saveLevels(levels: LevelData[]): Promise<void> {
                         avgBreakPercent: level.avgBreakPercent ? level.avgBreakPercent.toString() : sql`${levelIntelligence.avgBreakPercent}`,
                         volumeAtLevel: level.volumeAtLevel ? level.volumeAtLevel.toString() : sql`${levelIntelligence.volumeAtLevel}`,
                         lastTouchedAt: level.lastTouchedAt || sql`${levelIntelligence.lastTouchedAt}`,
-                        confidenceScore: level.confidenceScore,
+                        confidenceScore: Math.round(level.confidenceScore),
                         updatedAt: new Date(),
                     })
                     .where(eq(levelIntelligence.id, existing[0].id));
@@ -382,7 +382,7 @@ export async function saveLevels(levels: LevelData[]): Promise<void> {
                     avgBreakPercent: level.avgBreakPercent?.toString(),
                     volumeAtLevel: level.volumeAtLevel?.toString(),
                     lastTouchedAt: level.lastTouchedAt,
-                    confidenceScore: level.confidenceScore,
+                    confidenceScore: Math.round(level.confidenceScore),
                     flipped: level.flipped,
                 });
             }
