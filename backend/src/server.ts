@@ -39,6 +39,7 @@ import { startPortfolioMonitorCron } from './crons/portfolioMonitor.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
+import { runScorecardInvestmentModeRepair } from './scripts/repair-scorecard-investment-mode';
 import { logger } from './utils/logger';
 import { startCrons } from './crons/registry';
 import { logFlowStatus } from './config/flows';
@@ -89,6 +90,9 @@ async function bootstrap(): Promise<void> {
         
         // Auto-repair any incomplete master articles on boot (only runs once via DB flag)
         await runArticleRepair();
+
+        // Model Portfolio investment mode data repair (once via migration_flags)
+        await runScorecardInvestmentModeRepair();
 
         // Auto-repair poor/missing meta tags on boot (only runs once via DB flag v3)
         runMetaTagRepair().catch(err =>
