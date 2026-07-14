@@ -4,10 +4,9 @@ import { LogLevel } from 'telegram/extensions/Logger';
 import { db } from '../config/db';
 import { env } from '../config/env';
 import { telegramPortfolioPosts, portfolioCoins } from '../models/scorecard.model';
-import { eq, isNull, and, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { TRACKED_COIN_SET } from '../config/coins';
 import { AIGateway } from './ai/ai-gateway';
-import { Api } from 'telegram';
 
 const writerGateway = new AIGateway({
     apiKey: env.OPENROUTER_API_KEY,
@@ -22,6 +21,7 @@ const writerGateway = new AIGateway({
 export interface VisionExtractionResult {
     symbol: string;
     entryPrice: number;
+    direction: 'LONG' | 'SHORT';
 }
 
 export interface VisionResponse {
@@ -72,25 +72,27 @@ async function downloadPhotoAsBase64(client: TelegramClient, msg: Parameters<Tel
 
 async function callVisionForSymbolExtraction(imageDataUrl: string): Promise<VisionResponse | null> {
     const visionPrompt = `You are analyzing a cryptocurrency tweet/post image.
-Extract ONLY the cryptocurrency ticker symbols and their entry prices mentioned.
+Extract ONLY the cryptocurrency ticker symbols, their entry prices, and direction (LONG or SHORT).
 Return a JSON object with a "symbols" array. Each entry must have:
 - "symbol": the coin ticker (e.g. "ARB", "OP", "INJ")
 - "entryPrice": the price in USD at which the coin was mentioned
+- "direction": "LONG" or "SHORT"
 
 Rules:
-- ONLY return symbol + entryPrice. No TP, no SL, no direction, no narrative.
+- ONLY return symbol + entryPrice + direction.
 - If the image shows multiple coins, extract all of them.
 - Symbol must be a valid ticker (1-10 uppercase letters).
 - entryPrice must be a number > 0.
-- If you see ANY extra data beyond symbol and entryPrice (TP, SL, direction, thesis, etc.), still return only symbol+entryPrice.
+- direction must be exactly "LONG" or "SHORT".
 - If no coin prices are found, return {"symbols": []}
 - If the image is unclear or not a crypto-related post, return {"symbols": []}
 
 Respond with ONLY the JSON object, no preamble.`;
 
     try {
+        const modelToUse = env.SCORECARD_VISION_MODEL || env.WRITER_MODEL;
         const raw = await writerGateway.chatRaw({
-            model: env.WRITER_MODEL,
+            model: modelToUse,
             messages: [
                 {
                     role: 'user',
@@ -124,6 +126,8 @@ function validateExtraction(extraction: VisionExtractionResult): boolean {
     const symbol = extraction.symbol.toUpperCase().trim();
     if (!/^[A-Z]{1,10}$/.test(symbol)) return false;
     if (typeof extraction.entryPrice !== 'number' || extraction.entryPrice <= 0) return false;
+    const dir = extraction.direction?.toUpperCase();
+    if (dir !== 'LONG' && dir !== 'SHORT') return false;
     return true;
 }
 
@@ -143,13 +147,14 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
         return { extracted: [], totalProcessed: 0, postsAnalyzed: 0 };
     }
 
-    const maxCoins = env.SCORECARD_MAX_COINS;
-    console.log(`[ScorecardScraper] Channel: ${channel}, maxCoins: ${maxCoins}`);
+    const maxPosts = env.SCORECARD_BACKFILL_POSTS;
+    console.log(`[ScorecardScraper] Channel: ${channel}, maxPosts: ${maxPosts}`);
     const extracted: VisionExtractionResult[] = [];
     let totalProcessed = 0;
     let postsAnalyzed = 0;
     let offsetId = 0;
     const MAX_PAGES = 10;
+    const processedMessageIds = new Set<string>();
 
     const existingSymbols = new Set<string>();
     const existingCoins = await db
@@ -161,7 +166,7 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
     console.log(`[ScorecardScraper] Existing coins in DB: ${existingCoins.length}`);
 
     let pageCount = 0;
-    while (extracted.length < maxCoins && pageCount < MAX_PAGES) {
+    while (processedMessageIds.size < maxPosts && pageCount < MAX_PAGES) {
         pageCount++;
         console.log(`[ScorecardScraper] Fetching page ${pageCount}/${MAX_PAGES} (offsetId=${offsetId})`);
         const messages = await client.getMessages(channel, {
@@ -189,13 +194,12 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
         const postMap = new Map(existingPosts.map((p) => [p.messageId, p]));
 
         for (const msg of messages) {
-            if (extracted.length >= maxCoins) break;
+            if (processedMessageIds.size >= maxPosts) break;
             if (!msg.id) continue;
 
             offsetId = msg.id;
             processedAnyInBatch = true;
-
-            if (!msg.media) continue;
+            processedMessageIds.add(String(msg.id));
 
             const existingPost = postMap.get(String(msg.id));
 
@@ -205,7 +209,7 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
             }
 
             const media = msg.media as unknown as Record<string, unknown>;
-            const hasPhoto = !!media.photo;
+            const hasPhoto = !!media?.photo;
             console.log(`[ScorecardScraper] msg ${msg.id}: hasPhoto=${hasPhoto}`);
 
             let imageDataUrl: string | null = null;
@@ -244,7 +248,8 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
                         if (extracted.some(e => e.symbol === symbol)) continue;
 
                         console.log(`[ScorecardScraper] msg ${msg.id}: Extracted ${symbol} @ $${item.entryPrice}`);
-                        extracted.push({ symbol, entryPrice: item.entryPrice });
+                        const dir = (item.direction || 'LONG').toUpperCase() as 'LONG' | 'SHORT';
+                        extracted.push({ symbol, entryPrice: item.entryPrice, direction: dir });
                         existingSymbols.add(symbol);
                         postSymbols.push(symbol);
                     }
@@ -255,12 +260,30 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
             }
 
             const contentText = typeof msg.message === 'string' ? msg.message : null;
+            let finalAnalyzed = analyzed;
+            let finalSymbols = postSymbols;
+
+            if (!analyzed && contentText) {
+                const hashMatch = contentText.match(/#([A-Z]{2,10})/);
+                const priceMatch = contentText.match(/\$?\s*([0-9]+(?:\.[0-9]+)?)/);
+                if (hashMatch && priceMatch) {
+                    const symbol = hashMatch[1].toUpperCase();
+                    const price = parseFloat(priceMatch[1]);
+                    if (symbol && price > 0 && !TRACKED_COIN_SET.has(symbol) && !existingSymbols.has(symbol)) {
+                        extracted.push({ symbol, entryPrice: price, direction: 'LONG' });
+                        existingSymbols.add(symbol);
+                        finalSymbols = [symbol];
+                        finalAnalyzed = true;
+                    }
+                }
+            }
+
             const postValues = {
                 content: contentText,
                 imageUrl: hasPhoto ? `tg://msg/${msg.id}` : null,
-                isAnalyzed: analyzed,
-                extractedSymbols: postSymbols.length > 0 ? postSymbols.join(',') : null,
-                analyzedAt: analyzed ? new Date() : null,
+                isAnalyzed: true,
+                extractedSymbols: finalSymbols.length > 0 ? finalSymbols.join(',') : null,
+                analyzedAt: new Date(),
             };
 
             if (existingPost) {
@@ -288,5 +311,6 @@ export async function runScorecardScraper(): Promise<ScraperResult> {
     console.log('[ScorecardScraper] Telegram disconnected');
 
     console.log(`[ScorecardScraper] DONE: Extracted ${extracted.length} coins from ${postsAnalyzed} posts (${pageCount} pages)`);
+    totalProcessed = processedMessageIds.size;
     return { extracted, totalProcessed, postsAnalyzed };
 }

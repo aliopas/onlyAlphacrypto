@@ -28,6 +28,22 @@ export const portfolioCoins = pgTable('portfolio_coins', {
     telegramPostId: varchar('telegram_post_id', { length: 50 }),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
+
+    // T0 Model Portfolio Rebuild — investment mode columns (additive, nullable where needed)
+    direction: varchar('direction', { length: 10 }),
+    postedEntryPrice: numeric('posted_entry_price', { precision: 20, scale: 8 }),
+    averageEntryPrice: numeric('average_entry_price', { precision: 20, scale: 8 }),
+    initialBudget: numeric('initial_budget', { precision: 12, scale: 2 }),
+    dcaBudget: numeric('dca_budget', { precision: 12, scale: 2 }).default('0'),
+    remainingSizeFrac: numeric('remaining_size_frac', { precision: 5, scale: 4 }).default('1'),
+    dcaFilled: boolean('dca_filled').default(false),
+    tp1Hit: boolean('tp1_hit').default(false),
+    tp2Hit: boolean('tp2_hit').default(false),
+    tp3Hit: boolean('tp3_hit').default(false),
+    realizedPnl: numeric('realized_pnl', { precision: 12, scale: 2 }).default('0'),
+    exitPrice: numeric('exit_price', { precision: 20, scale: 8 }),
+    exitedAt: timestamp('exited_at'),
+    exitReason: varchar('exit_reason', { length: 30 }),
 });
 
 export const telegramPortfolioPosts = pgTable('telegram_portfolio_posts', {

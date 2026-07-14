@@ -157,6 +157,25 @@ const envSchema = z.object({
     SCORECARD_STRATEGIC_BUDGET: z.coerce.number().default(300),
     SCORECARD_TOTAL_BUDGET: z.coerce.number().default(10000),
 
+    // Model Portfolio Rebuild T0 — additive only, old keys preserved
+    SCORECARD_MAX_ACTIVE: z.coerce.number().default(50),
+    SCORECARD_POSITION_PCT: z.coerce.number().default(0.02),
+    SCORECARD_INITIAL_ENTRY_PCT: z.coerce.number().default(0.01),
+    SCORECARD_DCA_ENTRY_PCT: z.coerce.number().default(0.01),
+    SCORECARD_DCA_TRIGGER_PCT: z.coerce.number().default(-0.10),
+    SCORECARD_TP1_PCT: z.coerce.number().default(0.30),
+    SCORECARD_TP2_PCT: z.coerce.number().default(0.50),
+    SCORECARD_TP3_PCT: z.coerce.number().default(1.00),
+    SCORECARD_TP4_PCT: z.coerce.number().default(2.00),
+    SCORECARD_TP1_SELL_FRAC: z.coerce.number().default(0.30),
+    SCORECARD_TP2_SELL_FRAC: z.coerce.number().default(0.50),
+    SCORECARD_SL_PCT: z.coerce.number().default(-0.35),
+    SCORECARD_ENTRY_SOFT_BAND_PCT: z.coerce.number().default(0.10),
+    SCORECARD_ENTRY_MAX_UP_PCT: z.coerce.number().default(0.15),
+    SCORECARD_ENTRY_MAX_DOWN_PCT: z.coerce.number().default(-0.35),
+    SCORECARD_BACKFILL_POSTS: z.coerce.number().default(30),
+    SCORECARD_VISION_MODEL: z.string().default(''),
+
     // Admin Authentication
     ADMIN_EMAIL: z.string().email().default('admin@onlyalpha.io'),
     ADMIN_PASSWORD: z.string().min(12).default('change_me_in_prod'),

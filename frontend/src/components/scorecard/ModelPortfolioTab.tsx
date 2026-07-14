@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiClient } from '@/features/shared/api/client';
 import PortfolioSummaryBar from '@/components/scorecard/PortfolioSummaryBar';
 import ActivePortfolioTable from '@/components/scorecard/ActivePortfolioTable';
 import WatchlistTable from '@/components/scorecard/WatchlistTable';
@@ -24,10 +25,24 @@ interface CoinRow {
     qualityScore: number | null;
     createdAt: string;
     updatedAt: string;
+    direction?: string | null;
+    postedEntryPrice?: string | null;
+    averageEntryPrice?: string | null;
+    initialBudget?: string | null;
+    dcaBudget?: string | null;
+    remainingSizeFrac?: string | null;
+    dcaFilled?: boolean | null;
+    tp1Hit?: boolean | null;
+    tp2Hit?: boolean | null;
+    tp3Hit?: boolean | null;
+    realizedPnl?: string | null;
 }
 
 interface ScorecardSummary {
     totalBudget: number;
+    totalCapital?: number;
+    deployed?: number;
+    positionsValue?: number;
     currentValue: number;
     totalPnl: number;
     totalPnlPercent: number;
@@ -46,8 +61,21 @@ interface ModelPortfolioTabProps {
     data: ScorecardData | null;
 }
 
-export default function ModelPortfolioTab({ data }: ModelPortfolioTabProps) {
+export default function ModelPortfolioTab({ data: initialData }: ModelPortfolioTabProps) {
+    const [data, setData] = useState<ScorecardData | null>(initialData);
     const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+
+    useEffect(() => {
+        const interval = setInterval(async () => {
+            try {
+                const { data: fresh } = await apiClient.get<ScorecardData>('/scorecard');
+                setData(fresh);
+            } catch {
+                // silent fail, keep last data
+            }
+        }, 60000);
+        return () => clearInterval(interval);
+    }, []);
 
     return (
         <>

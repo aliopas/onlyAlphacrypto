@@ -97,48 +97,37 @@ export async function createDailySnapshot(): Promise<SnapshotResult | null> {
         .from(portfolioCoins)
         .where(eq(portfolioCoins.status, 'watchlist'));
 
-    const allCoins = [...activeCoins, ...watchlistCoins];
-    const symbols = allCoins.map(c => c.symbol);
-
+    const symbols = activeCoins.map(c => c.symbol);
     const priceMap = await fetchCoinPrices(symbols);
 
-    let totalBudget = 0;
-    let totalCurrentValue = 0;
-    let totalEntryValue = 0;
+    let deployed = 0;
+    let positionsValue = 0;
 
-    for (const coin of allCoins) {
-        const budget = parseFloat(String(coin.allocatedBudget)) || 0;
-        totalBudget += budget;
+    for (const coin of activeCoins) {
+        const risk = (parseFloat(coin.initialBudget || '0') + (coin.dcaFilled ? parseFloat(coin.dcaBudget || '0') : 0)) * parseFloat(coin.remainingSizeFrac || '1');
+        deployed += risk;
 
-        const currentPrice = priceMap.get(coin.symbol.toUpperCase());
-        const entryPrice = parseFloat(String(coin.entryPrice)) || 0;
-
-        if (currentPrice) {
-            const quantity = entryPrice > 0 ? budget / entryPrice : 0;
-            const currentValue = quantity * currentPrice;
-            totalCurrentValue += currentValue;
-            totalEntryValue += budget;
-        } else {
-            totalEntryValue += budget;
-            totalCurrentValue += 0;
+        const live = priceMap.get(coin.symbol.toUpperCase());
+        const avg = parseFloat(coin.averageEntryPrice || coin.entryPrice || '0');
+        if (live && avg > 0) {
+            const qty = risk / avg;
+            positionsValue += qty * live;
         }
     }
 
-    const totalPnl = totalCurrentValue - totalBudget;
-    const totalPnlPercent = totalBudget > 0
-        ? ((totalCurrentValue - totalBudget) / totalBudget) * 100
-        : 0;
+    const totalBudget = env.SCORECARD_TOTAL_BUDGET;
+    const cashBalance = Math.max(0, totalBudget - deployed);
+    const currentValue = cashBalance + positionsValue;
+    const totalPnl = currentValue - totalBudget;
+    const totalPnlPercent = totalBudget > 0 ? (totalPnl / totalBudget) * 100 : 0;
 
-    const totalPortfolioBudget = env.SCORECARD_TOTAL_BUDGET;
-    const cashBalance = Math.max(0, totalPortfolioBudget - totalBudget);
-
-    const maxDrawdownPercent = await calculateMaxDrawdownPercent(totalCurrentValue);
+    const maxDrawdownPercent = await calculateMaxDrawdownPercent(currentValue);
 
     const snapshotAt = new Date();
 
     const inserted = await db.insert(portfolioSnapshots).values({
         totalBudget: String(totalBudget.toFixed(2)),
-        currentValue: String(totalCurrentValue.toFixed(2)),
+        currentValue: String(currentValue.toFixed(2)),
         totalPnl: String(totalPnl.toFixed(2)),
         totalPnlPercent: String(totalPnlPercent.toFixed(4)),
         activeCoins: activeCoins.length,
@@ -155,13 +144,13 @@ export async function createDailySnapshot(): Promise<SnapshotResult | null> {
 
     console.log(
         `[PortfolioSnapshot] Created — budget:${totalBudget.toFixed(2)} ` +
-        `value:${totalCurrentValue.toFixed(2)} pnl:${totalPnl.toFixed(2)} ` +
+        `value:${currentValue.toFixed(2)} pnl:${totalPnl.toFixed(2)} ` +
         `active:${activeCoins.length} watchlist:${watchlistCoins.length}`
     );
 
     return {
         totalBudget,
-        currentValue: totalCurrentValue,
+        currentValue,
         totalPnl,
         totalPnlPercent,
         activeCoins: activeCoins.length,

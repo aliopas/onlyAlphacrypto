@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { db } from '../config/db';
 import { portfolioCoins, portfolioTransactions, portfolioSnapshots } from '../models/scorecard.model';
 import { eq, desc, count, sql, gte, and } from 'drizzle-orm';
+import { getLivePrices as fetchBinancePrices } from '../services/binance.service';
+import { env } from '../config/env';
 
 export interface CoinRow {
     id: number;
@@ -25,6 +27,7 @@ export interface CoinRow {
 export interface TransactionRow {
     id: number;
     coinId: number;
+    symbol: string | null;
     type: string;
     price: string;
     amount: string | null;
@@ -47,6 +50,9 @@ export interface SnapshotRow {
 
 export interface ScorecardSummary {
     totalBudget: number;
+    totalCapital: number;
+    deployed: number;
+    positionsValue: number;
     currentValue: number;
     totalPnl: number;
     totalPnlPercent: number;
@@ -77,30 +83,11 @@ export interface SnapshotsResponse {
     snapshots: SnapshotRow[];
 }
 
-const priceCache: { data: Map<string, number> | null; ts: number } = { data: null, ts: 0 };
-const PRICE_CACHE_TTL = 60_000;
-
-async function getLivePrices(): Promise<Map<string, number>> {
-    const now = Date.now();
-    if (priceCache.data && (now - priceCache.ts) < PRICE_CACHE_TTL) {
-        return priceCache.data;
-    }
-
-    const priceMap = new Map<string, number>();
-    try {
-        const res = await fetch('https://api.binance.com/api/v3/ticker/price');
-        if (!res.ok) return priceCache.data ?? priceMap;
-        const data = await res.json() as Array<{ symbol: string; price: string }>;
-        for (const ticker of data) {
-            const clean = ticker.symbol.replace('USDT', '');
-            priceMap.set(clean, parseFloat(ticker.price));
-        }
-        priceCache.data = priceMap;
-        priceCache.ts = now;
-    } catch {
-        return priceCache.data ?? priceMap;
-    }
-    return priceMap;
+function getOpenRisk(coin: typeof portfolioCoins.$inferSelect): number {
+    const init = parseFloat(coin.initialBudget || '0');
+    const dca = coin.dcaFilled ? parseFloat(coin.dcaBudget || '0') : 0;
+    const frac = parseFloat(coin.remainingSizeFrac || '1');
+    return (init + dca) * frac;
 }
 
 export async function getScorecardSummary(_req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -117,40 +104,49 @@ export async function getScorecardSummary(_req: Request, res: Response, next: Ne
             .where(eq(portfolioCoins.status, 'watchlist'))
             .orderBy(desc(portfolioCoins.createdAt));
 
-        const priceMap = await getLivePrices();
+        const symbols = [...activeRows, ...watchlistRows].map(c => c.symbol);
+        const priceMap = await fetchBinancePrices(symbols);
 
+        const totalCapital = env.SCORECARD_TOTAL_BUDGET;
+        const deployed = activeRows.reduce((sum, c) => sum + getOpenRisk(c), 0);
+        const cashBalance = Math.max(0, totalCapital - deployed);
+
+        let positionsValue = 0;
         const enrichedActive = activeRows.map(coin => {
-            const livePrice = priceMap.get(coin.symbol.toUpperCase());
-            return {
-                ...coin,
-                currentPrice: livePrice ? String(livePrice) : coin.currentPrice,
-            };
+            const livePrice = (priceMap as Record<string, number>)[coin.symbol.toUpperCase()];
+            const currentPriceStr = livePrice ? String(livePrice) : coin.currentPrice;
+            const avg = parseFloat(coin.averageEntryPrice || coin.entryPrice || '0');
+            const risk = getOpenRisk(coin);
+            if (livePrice && avg > 0) {
+                const qty = risk / avg;
+                positionsValue += qty * livePrice;
+            }
+            return { ...coin, currentPrice: currentPriceStr };
         });
 
         const enrichedWatchlist = watchlistRows.map(coin => {
-            const livePrice = priceMap.get(coin.symbol.toUpperCase());
+            const livePrice = (priceMap as Record<string, number>)[coin.symbol.toUpperCase()];
             return {
                 ...coin,
                 currentPrice: livePrice ? String(livePrice) : coin.currentPrice,
             };
         });
 
-        const latestSnapshotArr = await db
-            .select()
-            .from(portfolioSnapshots)
-            .orderBy(desc(portfolioSnapshots.snapshotAt))
-            .limit(1);
-
-        const latestSnapshot = latestSnapshotArr[0];
+        const currentValue = cashBalance + positionsValue;
+        const totalPnl = currentValue - totalCapital;
+        const totalPnlPercent = totalCapital > 0 ? (totalPnl / totalCapital) * 100 : 0;
 
         const summary: ScorecardSummary = {
-            totalBudget: latestSnapshot ? parseFloat(String(latestSnapshot.totalBudget)) : 0,
-            currentValue: latestSnapshot ? parseFloat(String(latestSnapshot.currentValue)) : 0,
-            totalPnl: latestSnapshot ? parseFloat(String(latestSnapshot.totalPnl)) : 0,
-            totalPnlPercent: latestSnapshot ? parseFloat(String(latestSnapshot.totalPnlPercent)) : 0,
-            activeCoins: latestSnapshot ? Number(latestSnapshot.activeCoins) : enrichedActive.length,
-            watchlistCoins: latestSnapshot ? Number(latestSnapshot.watchlistCoins) : enrichedWatchlist.length,
-            cashBalance: latestSnapshot ? parseFloat(String(latestSnapshot.cashBalance)) : 0,
+            totalBudget: totalCapital,
+            totalCapital,
+            deployed,
+            positionsValue,
+            currentValue,
+            totalPnl,
+            totalPnlPercent,
+            activeCoins: activeRows.length,
+            watchlistCoins: watchlistRows.length,
+            cashBalance,
         };
 
         const response: ScorecardSummaryResponse = {
@@ -179,7 +175,8 @@ export async function getScorecardCoinBySymbol(req: Request, res: Response, next
             return;
         }
 
-        const livePrice = await getLivePrices().then(m => m.get(symbol.toUpperCase()));
+        const livePriceMap = await fetchBinancePrices([symbol]);
+        const livePrice = (livePriceMap as Record<string, number>)[symbol.toUpperCase()];
         const coinRow = coin as unknown as CoinRow & {
             projectProfile: unknown;
             technicalAnalysis: unknown;
@@ -215,15 +212,25 @@ export async function getScorecardTransactions(req: Request, res: Response, next
 
         const total = Number(countResult[0]?.count ?? 0);
 
-        const transactions = await db
-            .select()
+        const txRows = await db
+            .select({
+                id: portfolioTransactions.id,
+                coinId: portfolioTransactions.coinId,
+                symbol: portfolioCoins.symbol,
+                type: portfolioTransactions.type,
+                price: portfolioTransactions.price,
+                amount: portfolioTransactions.amount,
+                pnl: portfolioTransactions.pnl,
+                createdAt: portfolioTransactions.createdAt,
+            })
             .from(portfolioTransactions)
+            .leftJoin(portfolioCoins, eq(portfolioTransactions.coinId, portfolioCoins.id))
             .orderBy(desc(portfolioTransactions.createdAt))
             .limit(limit)
             .offset(offset);
 
         const response: TransactionHistoryResponse = {
-            transactions: transactions as TransactionRow[],
+            transactions: txRows as TransactionRow[],
             total,
             limit,
             offset,

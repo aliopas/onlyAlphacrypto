@@ -1,6 +1,6 @@
 import { env } from '../config/env';
-import { redis, getCache, setCache } from '../config/redis';
 import { TRACKED_COIN_SET } from '../config/coins';
+import { getLivePrice } from './binance.service';
 
 export interface ValidationGateResult {
     passed: boolean;
@@ -13,43 +13,18 @@ export interface ValidatedCoin {
     currentPrice: number;
     priceMovement: number;
     cexListings: string;
-}
-
-async function binanceVerifyTradable(symbol: string): Promise<{ price: number; cexListing: string } | null> {
-    const cacheKey = `scorecard:binance:tradable:${symbol}`;
-    const cached = await getCache<{ price: number; cexListing: string }>(cacheKey);
-    if (cached) return cached;
-
-    try {
-        const pair = `${symbol.toUpperCase()}USDT`;
-        const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${pair}`);
-        if (!res.ok) {
-            console.warn(`[ScorecardValidation] Binance price ${pair} failed: HTTP ${res.status}`);
-            return null;
-        }
-
-        const data = await res.json() as { price?: string };
-        if (!data?.price) {
-            console.warn(`[ScorecardValidation] Binance price ${pair}: empty response — coin not on Binance`);
-            return null;
-        }
-
-        const price = parseFloat(data.price);
-        if (price <= 0) return null;
-
-        const result = { price, cexListing: 'Binance' };
-        await setCache(cacheKey, result, 3600);
-        return result;
-    } catch (err) {
-        console.error(`[ScorecardValidation] Binance verify ${symbol} error:`, err instanceof Error ? err.message : String(err));
-        return null;
-    }
+    direction: 'LONG';
 }
 
 export async function validateScorecardCoin(
-    extraction: { symbol: string; entryPrice: number }
+    extraction: { symbol: string; entryPrice: number; direction?: 'LONG' | 'SHORT' }
 ): Promise<ValidatedCoin | null> {
-    const { symbol, entryPrice } = extraction;
+    const { symbol, entryPrice, direction } = extraction;
+
+    if (direction && direction !== 'LONG') {
+        console.log(`[ScorecardValidation] ${symbol}: REJECTED — direction is ${direction} (only LONG allowed)`);
+        return null;
+    }
 
     if (typeof entryPrice !== 'number' || entryPrice <= 0) {
         console.log(`[ScorecardValidation] ${symbol}: REJECTED — invalid entryPrice (${entryPrice})`);
@@ -65,25 +40,31 @@ export async function validateScorecardCoin(
         return null;
     }
 
-    const tradable = await binanceVerifyTradable(symbol);
-    if (!tradable) {
+    const livePrice = await getLivePrice(symbol);
+    if (!livePrice) {
         console.log(`[ScorecardValidation] ${symbol}: REJECTED — no Binance USDT pair (coin not verifiable)`);
         return null;
     }
-    console.log(`[ScorecardValidation] ${symbol}: Verified on Binance @ $${tradable.price} (CEX: ${tradable.cexListing})`);
+    console.log(`[ScorecardValidation] ${symbol}: Verified on Binance @ $${livePrice} (CEX: Binance)`);
 
-    const priceMovement = ((tradable.price - entryPrice) / entryPrice) * 100;
-    if (priceMovement < -50) {
-        console.log(`[ScorecardValidation] ${symbol}: REJECTED — price dropped more than 50% (${priceMovement.toFixed(2)}%)`);
+    const priceMovementFrac = (livePrice - entryPrice) / entryPrice;
+    if (priceMovementFrac > env.SCORECARD_ENTRY_MAX_UP_PCT) {
+        console.log(`[ScorecardValidation] ${symbol}: REJECTED — price moved up too much (${priceMovementFrac.toFixed(4)})`);
+        return null;
+    }
+    if (priceMovementFrac < env.SCORECARD_ENTRY_MAX_DOWN_PCT) {
+        console.log(`[ScorecardValidation] ${symbol}: REJECTED — price moved down too much (${priceMovementFrac.toFixed(4)})`);
         return null;
     }
 
-    console.log(`[ScorecardValidation] ${symbol}: PASSED — price=$${tradable.price}, movement=${priceMovement.toFixed(2)}%`);
+    const priceMovement = priceMovementFrac * 100;
+    console.log(`[ScorecardValidation] ${symbol}: PASSED — price=$${livePrice}, movement=${priceMovement.toFixed(2)}%`);
     return {
         symbol: symbol.toUpperCase(),
         entryPrice,
-        currentPrice: tradable.price,
+        currentPrice: livePrice,
         priceMovement,
-        cexListings: tradable.cexListing,
+        cexListings: 'Binance',
+        direction: 'LONG',
     };
 }

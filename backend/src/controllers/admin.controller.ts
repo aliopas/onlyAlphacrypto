@@ -9,7 +9,8 @@ import { deleteCache } from '../config/redis';
 import { db } from '../config/db';
 import { shadowSignals, signalPerformance } from '../models/market.model';
 import { portfolioCoins, portfolioTransactions } from '../models/scorecard.model';
-import { eq, and, gte, lte, desc, sql, isNull, inArray } from 'drizzle-orm';
+import { eq, and, gte, lte, desc, sql, isNull, inArray, count } from 'drizzle-orm';
+import { env } from '../config/env';
 import type { SignalState } from '../services/signalLifecycle.service';
 
 /**
@@ -1175,7 +1176,11 @@ export async function createPortfolioCoinHandler(req: Request, res: Response): P
             return;
         }
 
-        const validated = await validateScorecardCoin({ symbol, entryPrice: body.entryPrice });
+        const validated = await validateScorecardCoin({
+            symbol,
+            entryPrice: body.entryPrice,
+            direction: 'LONG',
+        });
         if (!validated) {
             res.status(400).json({ error: 'Coin failed validation gate' });
             return;
@@ -1184,12 +1189,41 @@ export async function createPortfolioCoinHandler(req: Request, res: Response): P
         const tpslResult = await calculateScorecardTpsl({
             symbol: validated.symbol,
             entryPrice: validated.entryPrice,
-            classification,
         });
 
-        if (tpslResult.isRejected) {
-            res.status(400).json({ error: 'Coin rejected by TP/SL filter', reason: tpslResult.rejectionReason });
-            return;
+        const initialBudget = env.SCORECARD_TOTAL_BUDGET * env.SCORECARD_INITIAL_ENTRY_PCT;
+        const dcaBudget = env.SCORECARD_TOTAL_BUDGET * env.SCORECARD_DCA_ENTRY_PCT;
+
+        const activeCountArr = await db
+            .select({ count: count() })
+            .from(portfolioCoins)
+            .where(eq(portfolioCoins.status, 'active'))
+            .limit(1);
+        const activeCount = activeCountArr[0]?.count ?? 0;
+
+        let finalStatus = status;
+        let allocated = 0;
+        let insertTx = false;
+
+        if (status === 'active') {
+            if (activeCount >= env.SCORECARD_MAX_ACTIVE) {
+                finalStatus = 'watchlist';
+            } else {
+                const actives = await db.select().from(portfolioCoins).where(eq(portfolioCoins.status, 'active'));
+                const openRisk = actives.reduce((sum, c) => {
+                    const init = parseFloat(c.initialBudget || '0');
+                    const dca = c.dcaFilled ? parseFloat(c.dcaBudget || '0') : 0;
+                    const frac = parseFloat(c.remainingSizeFrac || '1');
+                    return sum + (init + dca) * frac;
+                }, 0);
+                const cash = env.SCORECARD_TOTAL_BUDGET - openRisk;
+                if (cash >= initialBudget) {
+                    allocated = initialBudget;
+                    insertTx = true;
+                } else {
+                    finalStatus = 'watchlist';
+                }
+            }
         }
 
         const inserted = await db.insert(portfolioCoins).values({
@@ -1197,15 +1231,26 @@ export async function createPortfolioCoinHandler(req: Request, res: Response): P
             entryPrice: String(validated.entryPrice),
             currentPrice: String(validated.currentPrice),
             priceMovementAtEntry: String(validated.priceMovement),
-            status,
+            status: finalStatus,
             signalClassification: classification,
             cexListings: validated.cexListings,
-            allocatedBudget: String(tpslResult.allocatedBudget),
+            allocatedBudget: String(allocated),
             tp1: String(tpslResult.tp1),
             tp2: String(tpslResult.tp2),
             tp3: String(tpslResult.tp3),
             stopLoss: String(tpslResult.stopLoss),
-            qualityScore: Math.round(tpslResult.rr * 20),
+            qualityScore: 0,
+            direction: 'LONG',
+            postedEntryPrice: String(validated.entryPrice),
+            averageEntryPrice: String(validated.entryPrice),
+            initialBudget: String(initialBudget),
+            dcaBudget: String(dcaBudget),
+            remainingSizeFrac: '1',
+            dcaFilled: false,
+            tp1Hit: false,
+            tp2Hit: false,
+            tp3Hit: false,
+            realizedPnl: '0',
         } as typeof portfolioCoins.$inferInsert).returning({ id: portfolioCoins.id });
 
         const coinId = inserted[0]?.id;
@@ -1214,12 +1259,14 @@ export async function createPortfolioCoinHandler(req: Request, res: Response): P
             return;
         }
 
-        await db.insert(portfolioTransactions).values({
-            coinId,
-            type: 'entry',
-            price: String(validated.entryPrice),
-            amount: String(tpslResult.allocatedBudget),
-        } as typeof portfolioTransactions.$inferInsert);
+        if (insertTx) {
+            await db.insert(portfolioTransactions).values({
+                coinId,
+                type: 'entry',
+                price: String(validated.entryPrice),
+                amount: String(initialBudget),
+            } as typeof portfolioTransactions.$inferInsert);
+        }
 
         await logAdminAction({
             adminEmail: adminEmail ?? 'unknown',
@@ -1292,12 +1339,15 @@ export async function updatePortfolioCoinHandler(req: Request, res: Response): P
         const oldValues: Record<string, unknown> = {};
         const newValues: Record<string, unknown> = {};
 
+        let newEntryPrice: number | undefined;
         if (body.entryPrice !== undefined) {
             if (typeof body.entryPrice !== 'number' || body.entryPrice <= 0) {
                 res.status(400).json({ error: 'entryPrice must be a positive number' });
                 return;
             }
+            newEntryPrice = body.entryPrice;
             updates.entryPrice = String(body.entryPrice);
+            updates.averageEntryPrice = String(body.entryPrice);
             oldValues.entryPrice = coin.entryPrice;
             newValues.entryPrice = body.entryPrice;
         }
@@ -1374,6 +1424,17 @@ export async function updatePortfolioCoinHandler(req: Request, res: Response): P
 
         if (Object.keys(updates).length === 0) {
             res.status(400).json({ error: 'No valid fields provided for update' });
+            return;
+        }
+
+        const finalEntry = newEntryPrice ?? parseFloat(String(coin.averageEntryPrice || coin.entryPrice));
+        const finalSl = parseFloat(String(updates.stopLoss ?? coin.stopLoss));
+        const finalTp1 = parseFloat(String(updates.tp1 ?? coin.tp1));
+        const finalTp2 = parseFloat(String(updates.tp2 ?? coin.tp2));
+        const finalTp3 = parseFloat(String(updates.tp3 ?? coin.tp3));
+
+        if (finalSl >= finalEntry || finalTp1 <= finalEntry || finalTp2 <= finalTp1 || finalTp3 <= finalTp2) {
+            res.status(400).json({ error: 'Invalid TP/SL ladder: must satisfy sl < avgEntry < tp1 < tp2 < tp3' });
             return;
         }
 
@@ -1465,23 +1526,33 @@ export async function closePortfolioCoinHandler(req: Request, res: Response): Pr
             return;
         }
 
-        const entryPrice = parseFloat(String(coin.entryPrice)) || 0;
-        const allocatedBudget = parseFloat(String(coin.allocatedBudget)) || 0;
+        const avgEntry = parseFloat(String(coin.averageEntryPrice || coin.entryPrice)) || 0;
+        const initialBudget = parseFloat(String(coin.initialBudget)) || 0;
+        const dcaBudget = coin.dcaFilled ? parseFloat(String(coin.dcaBudget)) || 0 : 0;
+        const remainingFrac = parseFloat(String(coin.remainingSizeFrac)) || 1;
         const tp3 = parseFloat(String(coin.tp3)) || 0;
         const stopLoss = parseFloat(String(coin.stopLoss)) || 0;
-        const quantity = entryPrice > 0 ? allocatedBudget / entryPrice : 0;
-        const exitValue = quantity * body.closePrice;
-        const pnl = exitValue - allocatedBudget;
+
+        const openNotional = (initialBudget + dcaBudget) * remainingFrac;
+        const pnl = avgEntry > 0 ? (openNotional * (body.closePrice - avgEntry) / avgEntry) : 0;
 
         const closeType = resolveCloseType(body.type, body.closePrice, tp3, stopLoss);
 
         const now = new Date();
+
+        const realizedSoFar = parseFloat(String(coin.realizedPnl)) || 0;
 
         await db
             .update(portfolioCoins)
             .set({
                 status: 'exited',
                 currentPrice: String(body.closePrice),
+                exitPrice: String(body.closePrice),
+                exitedAt: now,
+                exitReason: closeType,
+                remainingSizeFrac: '0',
+                allocatedBudget: '0',
+                realizedPnl: String((realizedSoFar + pnl).toFixed(2)),
                 updatedAt: now,
             })
             .where(eq(portfolioCoins.id, coinId));
@@ -1490,7 +1561,7 @@ export async function closePortfolioCoinHandler(req: Request, res: Response): Pr
             coinId,
             type: closeType,
             price: String(body.closePrice),
-            amount: String(exitValue.toFixed(2)),
+            amount: String(openNotional.toFixed(2)),
             pnl: String(pnl.toFixed(2)),
         } as typeof portfolioTransactions.$inferInsert);
 

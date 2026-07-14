@@ -1,38 +1,35 @@
 import { db } from '../config/db';
 import { env } from '../config/env';
 import { portfolioCoins, portfolioTransactions, portfolioSnapshots } from '../models';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { getLivePrices } from './binance.service';
 import { logger } from '../utils/logger';
+import { calculateInvestmentTpsl } from './scorecardTpslCalculator.service';
+import { promoteWatchlistCoin } from './scorecardPipeline.service';
 
 export interface PortfolioMonitorResult {
     evaluated: number;
     closed: number;
     tpHits: number;
+    dcaFills: number;
+    promoted: number;
     paused: boolean;
     drawdownPercent: number;
 }
 
 const DRAWDOWN_PAUSE_PERCENT = env.SCORECARD_MAX_DRAWDOWN_PERCENT;
 
-async function fetchBinancePrices(symbols: string[]): Promise<Map<string, number>> {
-    const priceMap = new Map<string, number>();
-    if (symbols.length === 0) return priceMap;
+function parseNumeric(v: string | null | undefined): number {
+    if (!v) return 0;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+}
 
-    try {
-        // Use the resilient binance.service bulk price endpoint (cached, rate-limited, retried)
-        // instead of a raw fetch that downloads ALL thousands of symbols and has no protection.
-        const prices = await getLivePrices(symbols);
-        for (const [symbol, price] of Object.entries(prices)) {
-            if (price > 0) {
-                priceMap.set(symbol, price);
-            }
-        }
-    } catch (err) {
-        logger.error('[PortfolioMonitor] Failed to fetch Binance prices: %s', err instanceof Error ? err.message : String(err));
-    }
-
-    return priceMap;
+function getOpenRisk(coin: typeof portfolioCoins.$inferSelect): number {
+    const init = parseNumeric(coin.initialBudget);
+    const dca = coin.dcaFilled ? parseNumeric(coin.dcaBudget) : 0;
+    const frac = parseNumeric(coin.remainingSizeFrac);
+    return (init + dca) * frac;
 }
 
 async function getLatestDrawdownPercent(): Promise<number> {
@@ -42,162 +39,157 @@ async function getLatestDrawdownPercent(): Promise<number> {
             .from(portfolioSnapshots)
             .orderBy(desc(portfolioSnapshots.snapshotAt))
             .limit(1);
-
-        if (!latest[0]?.maxDrawdownPercent) return 0;
-        return parseFloat(String(latest[0].maxDrawdownPercent)) || 0;
-    } catch (err) {
-        console.error('[PortfolioMonitor] Failed to fetch latest drawdown:', err instanceof Error ? err.message : String(err));
+        return parseNumeric(latest[0]?.maxDrawdownPercent);
+    } catch {
         return 0;
     }
 }
 
-async function getExistingPartialTpHits(coinIds: number[]): Promise<Set<string>> {
-    if (coinIds.length === 0) return new Set<string>();
-
-    const rows = await db
-        .select({
-            coinId: portfolioTransactions.coinId,
-            type: portfolioTransactions.type,
-        })
-        .from(portfolioTransactions)
-        .where(and(
-            inArray(portfolioTransactions.coinId, coinIds),
-            inArray(portfolioTransactions.type, ['tp1_hit', 'tp2_hit'])
-        ));
-
-    return new Set(rows.map(r => `${r.coinId}:${r.type}`));
+async function fetchPrices(symbols: string[]): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    if (!symbols.length) return map;
+    try {
+        const prices = await getLivePrices(symbols);
+        for (const [s, p] of Object.entries(prices)) if (p > 0) map.set(s, p);
+    } catch (e) {
+        logger.error('[PortfolioMonitor] price fetch: %s', e instanceof Error ? e.message : String(e));
+    }
+    return map;
 }
 
-function parseNumeric(value: string | null): number {
-    if (value === null || value === undefined) return 0;
-    const parsed = parseFloat(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function computeRealizedPnl(coin: typeof portfolioCoins.$inferSelect, currentPrice: number): number {
-    const entry = parseNumeric(coin.entryPrice);
-    const budget = parseNumeric(coin.allocatedBudget);
-    if (entry <= 0 || budget <= 0) return 0;
-
-    const quantity = budget / entry;
-    const exitValue = quantity * currentPrice;
-    return exitValue - budget;
-}
-
-async function recordPortfolioTransaction(
-    coinId: number,
-    type: 'tp1_hit' | 'tp2_hit' | 'tp3_hit' | 'sl_hit',
-    currentPrice: number,
-    pnl: number
-): Promise<void> {
+async function recordTx(coinId: number, type: string, price: number, amount: number | null, pnl: number | null) {
     await db.insert(portfolioTransactions).values({
         coinId,
-        type,
-        price: String(currentPrice),
-        amount: null,
-        pnl: String(pnl.toFixed(2)),
+        type: type as 'entry' | 'tp1_hit' | 'tp2_hit' | 'tp3_hit' | 'sl_hit' | 'dca',
+        price: String(price),
+        amount: amount !== null ? String(amount) : null,
+        pnl: pnl !== null ? String(pnl.toFixed(2)) : null,
     });
 }
 
-async function closeCoin(coin: typeof portfolioCoins.$inferSelect, currentPrice: number, reason: 'tp3_hit' | 'sl_hit'): Promise<void> {
-    const pnl = computeRealizedPnl(coin, currentPrice);
-
-    await db.update(portfolioCoins)
-        .set({
-            status: 'exited',
-            currentPrice: String(currentPrice),
-            updatedAt: new Date(),
-        })
-        .where(eq(portfolioCoins.id, coin.id));
-
-    await recordPortfolioTransaction(coin.id, reason, currentPrice, pnl);
-
-    console.log(`[PortfolioMonitor] Closed ${coin.symbol} (${reason}) at $${currentPrice.toFixed(8)} pnl=$${pnl.toFixed(2)}`);
-}
-
-async function recordPartialTp(coin: typeof portfolioCoins.$inferSelect, currentPrice: number, reason: 'tp1_hit' | 'tp2_hit'): Promise<void> {
-    await db.update(portfolioCoins)
-        .set({
-            currentPrice: String(currentPrice),
-            updatedAt: new Date(),
-        })
-        .where(eq(portfolioCoins.id, coin.id));
-
-    await recordPortfolioTransaction(coin.id, reason, currentPrice, 0);
-
-    console.log(`[PortfolioMonitor] ${coin.symbol} ${reason} at $${currentPrice.toFixed(8)}`);
-}
-
 export async function runPortfolioMonitor(): Promise<PortfolioMonitorResult> {
-    const result: PortfolioMonitorResult = {
-        evaluated: 0,
-        closed: 0,
-        tpHits: 0,
-        paused: false,
-        drawdownPercent: 0,
-    };
+    const result: PortfolioMonitorResult = { evaluated: 0, closed: 0, tpHits: 0, dcaFills: 0, promoted: 0, paused: false, drawdownPercent: 0 };
 
     const drawdown = await getLatestDrawdownPercent();
     result.drawdownPercent = drawdown;
+    const paused = drawdown >= DRAWDOWN_PAUSE_PERCENT;
+    result.paused = paused;
+    if (paused) console.warn(`[PortfolioMonitor] PAUSED drawdown=${drawdown.toFixed(2)}%`);
 
-    if (drawdown >= DRAWDOWN_PAUSE_PERCENT) {
-        console.warn(`[PortfolioMonitor] PAUSED — portfolio drawdown ${drawdown.toFixed(2)}% >= ${DRAWDOWN_PAUSE_PERCENT}%`);
-        result.paused = true;
-        return result;
-    }
+    const actives = await db.select().from(portfolioCoins).where(eq(portfolioCoins.status, 'active'));
+    if (!actives.length) return result;
 
-    const activeCoins = await db
-        .select()
-        .from(portfolioCoins)
-        .where(eq(portfolioCoins.status, 'active'));
+    const symbols = actives.map(c => c.symbol);
+    const priceMap = await fetchPrices(symbols);
 
-    if (activeCoins.length === 0) {
-        console.log('[PortfolioMonitor] No active coins to evaluate');
-        return result;
-    }
-
-    const coinIds = activeCoins.map(c => c.id);
-    const existingHits = await getExistingPartialTpHits(coinIds);
-
-    const symbols = activeCoins.map(c => c.symbol);
-    const priceMap = await fetchBinancePrices(symbols);
-
-    for (const coin of activeCoins) {
+    for (const coin of actives) {
         result.evaluated++;
+        const price = priceMap.get(coin.symbol.toUpperCase());
+        if (!price || price <= 0) continue;
 
-        const currentPrice = priceMap.get(coin.symbol.toUpperCase());
-        if (!currentPrice || currentPrice <= 0) {
-            console.warn(`[PortfolioMonitor] No Binance price for ${coin.symbol} — skipping`);
-            continue;
-        }
-
+        const avg = parseNumeric(coin.averageEntryPrice || coin.entryPrice);
         const sl = parseNumeric(coin.stopLoss);
         const tp1 = parseNumeric(coin.tp1);
         const tp2 = parseNumeric(coin.tp2);
         const tp3 = parseNumeric(coin.tp3);
+        const posted = parseNumeric(coin.postedEntryPrice || coin.entryPrice);
+        let frac = parseNumeric(coin.remainingSizeFrac);
+        let dcaFilled = !!coin.dcaFilled;
+        let tp1Hit = !!coin.tp1Hit;
+        let tp2Hit = !!coin.tp2Hit;
+        let realized = parseNumeric(coin.realizedPnl);
 
-        if (sl > 0 && currentPrice <= sl) {
-            await closeCoin(coin, currentPrice, 'sl_hit');
+        // SL
+        if (sl > 0 && price <= sl) {
+            const notional = (parseNumeric(coin.initialBudget) + (dcaFilled ? parseNumeric(coin.dcaBudget) : 0)) * frac;
+            const pnl = notional * ((price - avg) / avg);
+            await db.update(portfolioCoins).set({
+                status: 'exited', exitPrice: String(price), exitedAt: new Date(), exitReason: 'sl_hit',
+                realizedPnl: String((realized + pnl).toFixed(2)), remainingSizeFrac: '0',
+            }).where(eq(portfolioCoins.id, coin.id));
+            await recordTx(coin.id, 'sl_hit', price, notional, pnl);
             result.closed++;
             continue;
         }
 
-        if (tp3 > 0 && currentPrice >= tp3) {
-            await closeCoin(coin, currentPrice, 'tp3_hit');
+        // DCA
+        if (!paused && !dcaFilled) {
+            const trigger = posted * (1 + env.SCORECARD_DCA_TRIGGER_PCT);
+            const plannedDca = env.SCORECARD_TOTAL_BUDGET * env.SCORECARD_DCA_ENTRY_PCT;
+            const cash = env.SCORECARD_TOTAL_BUDGET - actives.reduce((s, c) => s + getOpenRisk(c), 0);
+            if (price <= trigger && cash >= plannedDca) {
+                const newAvg = ((parseNumeric(coin.initialBudget) * posted) + (plannedDca * price)) / (parseNumeric(coin.initialBudget) + plannedDca);
+                const newTpsl = calculateInvestmentTpsl(newAvg, 'LONG');
+                await db.update(portfolioCoins).set({
+                    dcaBudget: String(plannedDca), dcaFilled: true, averageEntryPrice: String(newAvg),
+                    entryPrice: String(newAvg), tp1: String(newTpsl.tp1), tp2: String(newTpsl.tp2),
+                    tp3: String(newTpsl.tp3), stopLoss: String(newTpsl.stopLoss),
+                }).where(eq(portfolioCoins.id, coin.id));
+                await recordTx(coin.id, 'dca', price, plannedDca, 0);
+                dcaFilled = true;
+                result.dcaFills++;
+            }
+        }
+
+        // TP1
+        if (!tp1Hit && tp1 > 0 && price >= tp1) {
+            const sellFrac = env.SCORECARD_TP1_SELL_FRAC;
+            const newFrac = Math.max(0, frac - sellFrac);
+            const originalCapital = parseNumeric(coin.initialBudget) + (dcaFilled ? parseNumeric(coin.dcaBudget) : 0);
+            const notional = originalCapital * sellFrac;
+            const pnl = notional * ((price - avg) / avg);
+            await db.update(portfolioCoins).set({
+                tp1Hit: true, remainingSizeFrac: String(newFrac),
+                realizedPnl: String((realized + pnl).toFixed(2)),
+                allocatedBudget: String((originalCapital * newFrac).toFixed(2)),
+            }).where(eq(portfolioCoins.id, coin.id));
+            await recordTx(coin.id, 'tp1_hit', price, notional, pnl);
+            tp1Hit = true;
+            frac = newFrac;
+            realized += pnl;
+            result.tpHits++;
+            if (newFrac <= 0) continue;
+        }
+
+        // TP2
+        if (tp1Hit && !tp2Hit && tp2 > 0 && price >= tp2) {
+            const sellFrac = env.SCORECARD_TP2_SELL_FRAC;
+            const newFrac = Math.max(0, frac - sellFrac);
+            const originalCapital = parseNumeric(coin.initialBudget) + (dcaFilled ? parseNumeric(coin.dcaBudget) : 0);
+            const notional = originalCapital * sellFrac;
+            const pnl = notional * ((price - avg) / avg);
+            await db.update(portfolioCoins).set({
+                tp2Hit: true, remainingSizeFrac: String(newFrac),
+                realizedPnl: String((realized + pnl).toFixed(2)),
+                allocatedBudget: String((originalCapital * newFrac).toFixed(2)),
+            }).where(eq(portfolioCoins.id, coin.id));
+            await recordTx(coin.id, 'tp2_hit', price, notional, pnl);
+            tp2Hit = true;
+            frac = newFrac;
+            realized += pnl;
+            result.tpHits++;
+            if (newFrac <= 0) continue;
+        }
+
+        // TP3
+        if (tp3 > 0 && price >= tp3) {
+            const notional = (parseNumeric(coin.initialBudget) + (dcaFilled ? parseNumeric(coin.dcaBudget) : 0)) * frac;
+            const pnl = notional * ((price - avg) / avg);
+            await db.update(portfolioCoins).set({
+                status: 'exited', exitPrice: String(price), exitedAt: new Date(), exitReason: 'tp3_hit',
+                tp3Hit: true, realizedPnl: String((realized + pnl).toFixed(2)), remainingSizeFrac: '0',
+            }).where(eq(portfolioCoins.id, coin.id));
+            await recordTx(coin.id, 'tp3_hit', price, notional, pnl);
             result.closed++;
             continue;
         }
+    }
 
-        if (tp2 > 0 && currentPrice >= tp2 && !existingHits.has(`${coin.id}:tp2_hit`)) {
-            await recordPartialTp(coin, currentPrice, 'tp2_hit');
-            result.tpHits++;
-            continue;
-        }
-
-        if (tp1 > 0 && currentPrice >= tp1 && !existingHits.has(`${coin.id}:tp1_hit`)) {
-            await recordPartialTp(coin, currentPrice, 'tp1_hit');
-            result.tpHits++;
-            continue;
+    if (!paused) {
+        const watchlist = await db.select().from(portfolioCoins).where(eq(portfolioCoins.status, 'watchlist')).orderBy(portfolioCoins.createdAt);
+        for (const w of watchlist) {
+            const ok = await promoteWatchlistCoin(w.id);
+            if (ok) { result.promoted++; break; }
         }
     }
 

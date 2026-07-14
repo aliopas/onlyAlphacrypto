@@ -19,6 +19,18 @@ interface CoinRow {
     qualityScore: number | null;
     createdAt: string;
     updatedAt: string;
+    // T8 investment columns
+    direction?: string | null;
+    postedEntryPrice?: string | null;
+    averageEntryPrice?: string | null;
+    initialBudget?: string | null;
+    dcaBudget?: string | null;
+    remainingSizeFrac?: string | null;
+    dcaFilled?: boolean | null;
+    tp1Hit?: boolean | null;
+    tp2Hit?: boolean | null;
+    tp3Hit?: boolean | null;
+    realizedPnl?: string | null;
 }
 
 type SortKey = 'id' | 'symbol' | 'entryPrice' | 'currentPrice' | 'movement' | 'classification';
@@ -37,10 +49,9 @@ function formatPrice(price: string | null): string {
     return `$${num.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 })}`;
 }
 
-function calcMovement(entry: string | null, current: string | null): number | null {
-    if (!entry || !current) return null;
-    const e = parseFloat(entry);
-    const c = parseFloat(current);
+function calcMovement(entry: string | null, current: string | null, avgEntry?: string | null): number | null {
+    const e = parseFloat(avgEntry || entry || '0');
+    const c = parseFloat(current || '0');
     if (isNaN(e) || isNaN(c) || e === 0) return null;
     return ((c - e) / e) * 100;
 }
@@ -78,7 +89,7 @@ export default function ActivePortfolioTable({ coins, onCoinClick }: Props) {
                 cmp = parseFloat(a.currentPrice || '0') - parseFloat(b.currentPrice || '0');
                 break;
             case 'movement':
-                cmp = (calcMovement(a.entryPrice, a.currentPrice) ?? 0) - (calcMovement(b.entryPrice, b.currentPrice) ?? 0);
+                cmp = (calcMovement(a.entryPrice, a.currentPrice, a.averageEntryPrice) ?? 0) - (calcMovement(b.entryPrice, b.currentPrice, b.averageEntryPrice) ?? 0);
                 break;
             case 'classification':
                 cmp = (a.signalClassification || '').localeCompare(b.signalClassification || '');
@@ -125,8 +136,10 @@ export default function ActivePortfolioTable({ coins, onCoinClick }: Props) {
                             <th className="text-left px-4 py-3 font-medium cursor-pointer hover:text-[#888]" onClick={() => toggleSort('symbol')}>
                                 Coin {sortIcon('symbol')}
                             </th>
+                            <th className="text-right px-4 py-3 font-medium">Allocated</th>
+                            <th className="text-right px-4 py-3 font-medium">Remaining</th>
                             <th className="text-right px-4 py-3 font-medium cursor-pointer hover:text-[#888]" onClick={() => toggleSort('entryPrice')}>
-                                Entry {sortIcon('entryPrice')}
+                                Avg Entry {sortIcon('entryPrice')}
                             </th>
                             <th className="text-right px-4 py-3 font-medium cursor-pointer hover:text-[#888]" onClick={() => toggleSort('currentPrice')}>
                                 Current {sortIcon('currentPrice')}
@@ -134,10 +147,12 @@ export default function ActivePortfolioTable({ coins, onCoinClick }: Props) {
                             <th className="text-right px-4 py-3 font-medium cursor-pointer hover:text-[#888]" onClick={() => toggleSort('movement')}>
                                 P&L% {sortIcon('movement')}
                             </th>
+                            <th className="text-right px-4 py-3 font-medium">P&L$</th>
                             <th className="text-right px-4 py-3 font-medium">TP1</th>
                             <th className="text-right px-4 py-3 font-medium">TP2</th>
                             <th className="text-right px-4 py-3 font-medium">TP3</th>
                             <th className="text-right px-4 py-3 font-medium">SL</th>
+                            <th className="text-center px-4 py-3 font-medium">DCA</th>
                             <th className="text-center px-4 py-3 font-medium cursor-pointer hover:text-[#888]" onClick={() => toggleSort('classification')}>
                                 Class {sortIcon('classification')}
                             </th>
@@ -145,7 +160,12 @@ export default function ActivePortfolioTable({ coins, onCoinClick }: Props) {
                     </thead>
                     <tbody>
                         {sorted.map((coin, idx) => {
-                            const movement = calcMovement(coin.entryPrice, coin.currentPrice);
+                            const movement = calcMovement(coin.entryPrice, coin.currentPrice, coin.averageEntryPrice);
+                            const avg = parseFloat(coin.averageEntryPrice || coin.entryPrice || '0');
+                            const risk = parseFloat(coin.allocatedBudget || '0');
+                            const pnlDollar = movement !== null ? risk * (movement / 100) : 0;
+                            const remainingPct = ((parseFloat(coin.remainingSizeFrac || '1')) * 100).toFixed(0) + '%';
+                            const dcaYes = coin.dcaFilled ? 'Yes' : '—';
                             return (
                                 <tr
                                     key={coin.id}
@@ -154,15 +174,21 @@ export default function ActivePortfolioTable({ coins, onCoinClick }: Props) {
                                 >
                                     <td className="px-4 py-3 font-mono text-[#888] text-xs">#{coin.id}</td>
                                     <td className="px-4 py-3 font-mono font-semibold text-white hover:text-emerald-400">{coin.symbol}</td>
-                                    <td className="px-4 py-3 text-right font-mono">{formatPrice(coin.entryPrice)}</td>
+                                    <td className="px-4 py-3 text-right font-mono">{formatPrice(coin.allocatedBudget)}</td>
+                                    <td className="px-4 py-3 text-right font-mono text-purple-400">{remainingPct}</td>
+                                    <td className="px-4 py-3 text-right font-mono">{formatPrice(coin.averageEntryPrice || coin.entryPrice)}</td>
                                     <td className="px-4 py-3 text-right font-mono">{formatPrice(coin.currentPrice)}</td>
                                     <td className={`px-4 py-3 text-right font-mono ${pnlColor(movement)}`}>
                                         {movement !== null ? `${movement >= 0 ? '+' : ''}${movement.toFixed(2)}%` : '—'}
+                                    </td>
+                                    <td className={`px-4 py-3 text-right font-mono ${pnlColor(pnlDollar)}`}>
+                                        {pnlDollar !== 0 ? `${pnlDollar >= 0 ? '+' : ''}$${pnlDollar.toFixed(2)}` : '—'}
                                     </td>
                                     <td className="px-4 py-3 text-right font-mono text-[#666]">{formatPrice(coin.tp1)}</td>
                                     <td className="px-4 py-3 text-right font-mono text-[#666]">{formatPrice(coin.tp2)}</td>
                                     <td className="px-4 py-3 text-right font-mono text-[#666]">{formatPrice(coin.tp3)}</td>
                                     <td className="px-4 py-3 text-right font-mono text-red-400/70">{formatPrice(coin.stopLoss)}</td>
+                                    <td className="px-4 py-3 text-center text-xs text-purple-400">{dcaYes}</td>
                                     <td className="px-4 py-3 text-center">
                                         <span className={`text-xs px-2 py-0.5 rounded font-mono ${classificationBadge(coin.signalClassification)}`}>
                                             {coin.signalClassification || '—'}

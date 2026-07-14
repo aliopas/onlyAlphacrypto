@@ -6,6 +6,7 @@ import { apiClient } from '@/features/shared/api/client';
 interface TransactionRow {
     id: number;
     coinId: number;
+    symbol?: string | null;
     type: string;
     price: string;
     amount: string | null;
@@ -28,6 +29,7 @@ const TX_LABELS: Record<string, string> = {
     sl_hit: 'Stop Loss Hit',
     dca: 'DCA',
     rebalance: 'Rebalance',
+    manual_close: 'Manual Close',
 };
 
 const TX_BADGE: Record<string, string> = {
@@ -38,6 +40,7 @@ const TX_BADGE: Record<string, string> = {
     sl_hit: 'bg-red-500/20 text-red-400',
     dca: 'bg-purple-500/20 text-purple-400',
     rebalance: 'bg-yellow-500/20 text-yellow-400',
+    manual_close: 'bg-orange-500/20 text-orange-400',
 };
 
 function formatPrice(price: string): string {
@@ -125,6 +128,7 @@ export default function TransactionHistory() {
                             <thead>
                                 <tr className="bg-[#0A0A0A] text-[#555] text-xs">
                                     <th className="text-left px-4 py-3 font-medium">Date</th>
+                                    <th className="text-left px-4 py-3 font-medium">Coin</th>
                                     <th className="text-left px-4 py-3 font-medium">Type</th>
                                     <th className="text-right px-4 py-3 font-medium">Price</th>
                                     <th className="text-right px-4 py-3 font-medium">Amount</th>
@@ -138,6 +142,7 @@ export default function TransactionHistory() {
                                         className={`border-t border-[#1A1A1A] ${idx % 2 === 0 ? 'bg-[#0A0A0A]' : 'bg-[#111]'}`}
                                     >
                                         <td className="px-4 py-3 text-[#888] text-xs">{formatDate(tx.createdAt)}</td>
+                                        <td className="px-4 py-3 font-mono text-emerald-400">{tx.symbol ?? '—'}</td>
                                         <td className="px-4 py-3">
                                             <span className={`text-xs px-2 py-0.5 rounded font-mono ${TX_BADGE[tx.type] || 'bg-[#222] text-[#888]'}`}>
                                                 {TX_LABELS[tx.type] || tx.type}
