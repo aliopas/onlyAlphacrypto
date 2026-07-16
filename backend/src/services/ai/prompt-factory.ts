@@ -160,13 +160,14 @@ ${newsBatch.map((item, index) => `${index + 1}. Title: "${item.title}"${item.sou
     }
   ],
   "estValue": "<e.g. $500-$2000>",
-  "aiReport": "<3-4 paragraph professional audit report>"
+  "aiReport": "<2 short paragraphs max professional audit report>"
 }
 Rules:
 - BE GENEROUS: If the project is a tokenless DeFi protocol with TVL, funding, or active users, it likely has a future airdrop. Set isLegitimate = true and use riskVerdict to express confidence level.
 - ONLY set isLegitimate = false for confirmed scams, phishing, or completely inactive/dead projects.
 - Tokenless protocols (no token yet) are prime airdrop candidates — default to isLegitimate = true with MEDIUM or HIGH risk.
-- Infer reasonable tasks based on the protocol type (e.g., provide liquidity, bridge, trade, stake).
+- tasks: max 5 items. Infer reasonable tasks based on the protocol type (e.g., provide liquidity, bridge, trade, stake).
+- Keep the whole JSON compact so it is never truncated.
 - isAutoVerifiable = true ONLY if the task involves a specific on-chain action with a verifiable contract.`
             },
             {
@@ -210,7 +211,8 @@ Rules:
 - projectName: extract the actual protocol name from the article. If unclear, use the most prominent project mentioned.
 - network: the primary blockchain where this airdrop operates. Default to "Unknown" if not specified.
 - snapshotDate / tgeDate: if a specific date is mentioned, return it in ISO 8601 format (YYYY-MM-DD). Otherwise return null.
-- tasks: infer reasonable tasks based on the protocol type (e.g., bridge assets, provide liquidity, trade, stake, follow on social media).
+- tasks: max 5 items. Infer reasonable tasks based on the protocol type (e.g., bridge assets, provide liquidity, trade, stake, follow on social media).
+- aiReport: 2 short paragraphs max (keep total response compact so JSON is never truncated).
 - isAutoVerifiable = true ONLY for specific on-chain actions with verifiable contract addresses.
 - estValue: estimate based on similar projects if not specified. Use ranges like "$100-$500", "$500-$2000".
 - Output ONLY the JSON object. No preamble. No text outside JSON.`

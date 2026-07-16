@@ -361,7 +361,9 @@ export async function validateAirdrop(
         model: env.DEEPSEEK_MODEL, // DeepSeek-R1
         temperature: 0.2,
         responseFormat: { type: 'json_object' },
-        messages
+        messages,
+        maxTokens: LONG_RESPONSE_MAX_TOKENS,
+        maxRetries: 2,
     });
 
     // Store in cache
@@ -386,6 +388,8 @@ export async function validateAirdropFromArticle(
         temperature: 0.2,
         responseFormat: { type: 'json_object' },
         messages,
+        maxTokens: LONG_RESPONSE_MAX_TOKENS,
+        maxRetries: 2,
     });
 
     cache.set(cacheKey, result);
