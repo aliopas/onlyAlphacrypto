@@ -25,6 +25,7 @@ export default function DeepDiveSection({ symbol }: DeepDiveSectionProps) {
     const [timelineData, setTimelineData] = useState<TimelineResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         let cancelled = false;
@@ -74,6 +75,15 @@ export default function DeepDiveSection({ symbol }: DeepDiveSectionProps) {
         .map(s => ({ label: s.label, content: article[s.key] }))
         .filter(s => s.content);
 
+    const isSectionOpen = (label: string) => openSections[label] !== false;
+
+    const toggleSection = (label: string) => {
+        setOpenSections((prev) => ({
+            ...prev,
+            [label]: prev[label] === false ? true : false,
+        }));
+    };
+
     return (
         <div className="mt-8 border-t border-[#222] pt-8 animate-fade-in" id="deep-dive-section">
             <div className="flex items-center gap-3 mb-6">
@@ -97,26 +107,34 @@ export default function DeepDiveSection({ symbol }: DeepDiveSectionProps) {
                     </h2>
 
                     <div className="space-y-0 divide-y divide-[#222] border-t border-[#222]">
-                        {sections.map((section, index) => (
-                            <details
-                                key={section.label}
-                                open={true}
-                                className="group"
-                            >
-                                <summary className="cursor-pointer text-sm font-mono tracking-widest text-[#888] uppercase py-3 hover:text-white transition-colors select-none list-none flex items-center justify-between">
-                                    <span className="flex items-center gap-3">
-                                        <span className="w-1 h-3 rounded-sm bg-emerald-500" />
-                                        {section.label}
-                                    </span>
-                                    <span className="material-symbols-outlined text-[14px] text-[#555] group-open:rotate-180 transition-transform">
-                                        expand_more
-                                    </span>
-                                </summary>
-                                <p className="text-[#CCC] leading-relaxed text-[15px] pl-4 pb-4 whitespace-pre-line">
-                                    {section.content}
-                                </p>
-                            </details>
-                        ))}
+                        {sections.map((section) => {
+                            const open = isSectionOpen(section.label);
+                            return (
+                                <div key={section.label} className="group">
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleSection(section.label)}
+                                        aria-expanded={open}
+                                        className="w-full cursor-pointer text-sm font-mono tracking-widest text-[#888] uppercase py-3 hover:text-white transition-colors select-none flex items-center justify-between text-left"
+                                    >
+                                        <span className="flex items-center gap-3">
+                                            <span className="w-1 h-3 rounded-sm bg-emerald-500" />
+                                            {section.label}
+                                        </span>
+                                        <span
+                                            className={`material-symbols-outlined text-[14px] text-[#555] transition-transform ${open ? 'rotate-180' : ''}`}
+                                        >
+                                            expand_more
+                                        </span>
+                                    </button>
+                                    {open && (
+                                        <p className="text-[#CCC] leading-relaxed text-[15px] pl-4 pb-4 whitespace-pre-line">
+                                            {section.content}
+                                        </p>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             </div>
