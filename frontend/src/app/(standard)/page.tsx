@@ -11,21 +11,40 @@ export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: 'OnlyAlpha — AI-Powered Crypto Intelligence | Real-Time Market Analysis',
-  description: 'Track 11 top cryptocurrencies with AI-powered analysis, airdrop farming, on-chain intelligence, and real-time market signals. Free crypto intelligence platform.',
-  keywords: ['crypto intelligence', 'AI crypto analysis', 'airdrop tracker', 'market signals', 'crypto analysis', 'OnlyAlpha'],
+  description:
+    'Real-time AI crypto analysis for Bitcoin, Ethereum, Solana, and top assets. Market intelligence, algorithmic signals, airdrop tracking, and on-chain context — free.',
+  keywords: [
+    'AI crypto analysis',
+    'crypto market intelligence',
+    'real-time crypto analysis',
+    'Bitcoin AI analysis',
+    'Ethereum market intelligence',
+    'crypto signals dashboard',
+    'airdrop tracker',
+    'OnlyAlpha',
+  ],
   robots: { index: true, follow: true },
   openGraph: {
     title: 'OnlyAlpha — AI-Powered Crypto Intelligence',
-    description: 'Real-time AI market analysis, airdrop tracking, and on-chain intelligence for crypto market participants.',
+    description:
+      'Real-time AI market analysis, algorithmic signals, airdrop tracking, and on-chain intelligence for crypto market participants.',
     url: SITE_URL,
     siteName: 'OnlyAlpha',
     type: 'website',
-    images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'OnlyAlpha — AI-Powered Crypto Intelligence' }],
+    images: [
+      {
+        url: `${SITE_URL}/opengraph-image.png`,
+        width: 1200,
+        height: 630,
+        alt: 'OnlyAlpha — AI-Powered Crypto Intelligence',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'OnlyAlpha — AI-Powered Crypto Intelligence',
-    description: 'Real-time AI market analysis, airdrop tracking, and on-chain intelligence for crypto market participants.',
+    description:
+      'Real-time AI market analysis, algorithmic signals, airdrop tracking, and on-chain intelligence for crypto market participants.',
     images: [`${SITE_URL}/opengraph-image.png`],
   },
   alternates: { canonical: SITE_URL },

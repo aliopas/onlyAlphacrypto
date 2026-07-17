@@ -12,21 +12,40 @@ import { TRACKED_COINS } from '@/config/coins';
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-    title: 'Terminal — Live Crypto Analysis Dashboard',
-    description: 'Real-time AI-powered analysis dashboard for BTC, ETH, SOL, and 8 more cryptocurrencies. Live signals, market regime detection, and deep intelligence reports.',
-    keywords: ['crypto terminal', 'live crypto analysis', 'crypto dashboard', 'BTC analysis', 'ETH analysis', 'OnlyAlpha terminal'],
+    title: 'Terminal — Live Crypto AI Analysis Dashboard | OnlyAlpha',
+    description:
+        'Real-time AI-powered crypto analysis dashboard for Bitcoin, Ethereum, Solana, and 8 more assets. Live market intelligence, regime detection, and algorithmic signals.',
+    keywords: [
+        'crypto AI analysis',
+        'live crypto analysis dashboard',
+        'Bitcoin AI analysis',
+        'Ethereum market intelligence',
+        'real-time crypto signals',
+        'crypto terminal',
+        'OnlyAlpha terminal',
+    ],
+    robots: { index: true, follow: true },
     openGraph: {
-        title: 'Terminal — Live Crypto Analysis Dashboard | OnlyAlpha',
-        description: 'Real-time AI-powered analysis dashboard for 11 top cryptocurrencies.',
+        title: 'Terminal — Live Crypto AI Analysis Dashboard | OnlyAlpha',
+        description:
+            'Real-time AI-powered analysis dashboard for Bitcoin, Ethereum, Solana, and top cryptocurrencies.',
         url: `${SITE_URL}/terminal`,
         siteName: 'OnlyAlpha',
         type: 'website',
-        images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: 'Terminal — Live Crypto Analysis Dashboard | OnlyAlpha' }],
+        images: [
+            {
+                url: `${SITE_URL}/opengraph-image.png`,
+                width: 1200,
+                height: 630,
+                alt: 'Terminal — Live Crypto AI Analysis Dashboard | OnlyAlpha',
+            },
+        ],
     },
     twitter: {
         card: 'summary_large_image',
-        title: 'Terminal — Live Crypto Analysis Dashboard | OnlyAlpha',
-        description: 'Real-time AI-powered analysis dashboard for 11 top cryptocurrencies.',
+        title: 'Terminal — Live Crypto AI Analysis Dashboard | OnlyAlpha',
+        description:
+            'Real-time AI-powered analysis dashboard for Bitcoin, Ethereum, Solana, and top cryptocurrencies.',
         images: [`${SITE_URL}/opengraph-image.png`],
     },
     alternates: { canonical: `${SITE_URL}/terminal` },
@@ -68,14 +87,18 @@ function buildBreadcrumbJsonLd(): Record<string, unknown> {
 function TerminalSeoContent() {
     if (!SEO_CONTENT_ENABLED) return null;
     return (
-        <section className="sr-only" aria-label="Terminal overview">
-            <h2>OnlyAlpha Terminal — Live Crypto Intelligence Dashboard</h2>
-            <p>
-                OnlyAlpha Terminal is a live cryptocurrency intelligence dashboard covering {TRACKED_COINS.join(', ')}.
-                It combines algorithmic market regime detection, multi-timeframe technical context, and AI-generated
-                intelligence reports to highlight BULLISH or BEARISH directional bias for educational purposes only.
+        <section
+            className="shrink-0 border-b border-[#1a1a1a] pb-3 mb-3"
+            aria-label="Terminal overview"
+        >
+            <h1 className="text-sm md:text-base font-semibold text-white tracking-tight">
+                OnlyAlpha Terminal — Live Crypto AI Analysis Dashboard
+            </h1>
+            <p className="mt-1 text-xs text-[#666] max-w-3xl leading-relaxed">
+                Live cryptocurrency intelligence for {TRACKED_COINS.join(', ')}. Algorithmic market regime
+                detection, multi-timeframe technical context, and AI-generated reports with BULLISH or BEARISH
+                directional bias for educational research only. Not Financial Advice.
             </p>
-            <p>Not Financial Advice.</p>
         </section>
     );
 }
@@ -99,8 +122,12 @@ export default async function TerminalPage() {
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(buildBreadcrumbJsonLd()) }}
             />
             <FaqSchema items={TERMINAL_FAQ} />
-            <TerminalSeoContent />
-            <TerminalPageClient initialNews={news} radarSignals={radarSignals} />
+            <div className="flex flex-col h-full min-h-0">
+                <TerminalSeoContent />
+                <div className="flex-1 min-h-0">
+                    <TerminalPageClient initialNews={news} radarSignals={radarSignals} />
+                </div>
+            </div>
         </>
     );
 }

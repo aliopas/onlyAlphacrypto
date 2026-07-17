@@ -27,7 +27,14 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'Bitcoin (BTC) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for Bitcoin (BTC). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['Bitcoin analysis', 'BTC signals', 'Bitcoin AI analysis', 'BTC market intelligence', 'Bitcoin price outlook'],
+        keywords: [
+            'Bitcoin AI analysis',
+            'BTC market intelligence',
+            'Bitcoin live analysis',
+            'BTC signals',
+            'real-time Bitcoin analysis',
+            'OnlyAlpha Bitcoin',
+        ],
     },
     ETH: {
         symbol: 'ETH',
@@ -43,7 +50,14 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'Ethereum (ETH) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for Ethereum (ETH). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['Ethereum analysis', 'ETH signals', 'Ethereum AI analysis', 'ETH market intelligence', 'Ethereum outlook'],
+        keywords: [
+            'Ethereum AI analysis',
+            'ETH market intelligence',
+            'Ethereum live analysis',
+            'ETH signals',
+            'real-time Ethereum analysis',
+            'OnlyAlpha Ethereum',
+        ],
     },
     SOL: {
         symbol: 'SOL',
@@ -59,7 +73,14 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'Solana (SOL) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for Solana (SOL). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['Solana analysis', 'SOL signals', 'Solana AI analysis', 'SOL market intelligence', 'Solana outlook'],
+        keywords: [
+            'Solana AI analysis',
+            'SOL market intelligence',
+            'Solana live analysis',
+            'SOL signals',
+            'real-time Solana analysis',
+            'OnlyAlpha Solana',
+        ],
     },
     BNB: {
         symbol: 'BNB',
@@ -75,7 +96,14 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'BNB Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for BNB. Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['BNB analysis', 'BNB signals', 'BNB AI analysis', 'BNB market intelligence', 'BNB outlook'],
+        keywords: [
+            'BNB AI analysis',
+            'BNB market intelligence',
+            'BNB live analysis',
+            'BNB signals',
+            'real-time BNB analysis',
+            'OnlyAlpha BNB',
+        ],
     },
     XRP: {
         symbol: 'XRP',
@@ -91,7 +119,14 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'XRP Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for XRP. Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['XRP analysis', 'XRP signals', 'XRP AI analysis', 'XRP market intelligence', 'XRP outlook'],
+        keywords: [
+            'XRP AI analysis',
+            'XRP market intelligence',
+            'XRP live analysis',
+            'XRP signals',
+            'real-time XRP analysis',
+            'OnlyAlpha XRP',
+        ],
     },
     DOGE: {
         symbol: 'DOGE',
@@ -107,7 +142,14 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'Dogecoin (DOGE) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for Dogecoin (DOGE). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['Dogecoin analysis', 'DOGE signals', 'Dogecoin AI analysis', 'DOGE market intelligence', 'Dogecoin outlook'],
+        keywords: [
+            'Dogecoin AI analysis',
+            'DOGE market intelligence',
+            'Dogecoin live analysis',
+            'DOGE signals',
+            'real-time Dogecoin analysis',
+            'OnlyAlpha DOGE',
+        ],
     },
     ADA: {
         symbol: 'ADA',
@@ -123,7 +165,14 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'Cardano (ADA) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for Cardano (ADA). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['Cardano analysis', 'ADA signals', 'Cardano AI analysis', 'ADA market intelligence', 'Cardano outlook'],
+        keywords: [
+            'Cardano AI analysis',
+            'ADA market intelligence',
+            'Cardano live analysis',
+            'ADA signals',
+            'real-time Cardano analysis',
+            'OnlyAlpha ADA',
+        ],
     },
     AVAX: {
         symbol: 'AVAX',
@@ -139,7 +188,14 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'Avalanche (AVAX) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for Avalanche (AVAX). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['Avalanche analysis', 'AVAX signals', 'Avalanche AI analysis', 'AVAX market intelligence', 'Avalanche outlook'],
+        keywords: [
+            'Avalanche AI analysis',
+            'AVAX market intelligence',
+            'Avalanche live analysis',
+            'AVAX signals',
+            'real-time Avalanche analysis',
+            'OnlyAlpha AVAX',
+        ],
     },
     LINK: {
         symbol: 'LINK',
@@ -155,7 +211,14 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'Chainlink (LINK) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for Chainlink (LINK). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['Chainlink analysis', 'LINK signals', 'Chainlink AI analysis', 'LINK market intelligence', 'Chainlink outlook'],
+        keywords: [
+            'Chainlink AI analysis',
+            'LINK market intelligence',
+            'Chainlink live analysis',
+            'LINK signals',
+            'real-time Chainlink analysis',
+            'OnlyAlpha LINK',
+        ],
     },
     SUI: {
         symbol: 'SUI',
@@ -171,7 +234,14 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'Sui (SUI) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for Sui (SUI). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['Sui analysis', 'SUI signals', 'Sui AI analysis', 'SUI market intelligence', 'Sui outlook'],
+        keywords: [
+            'Sui AI analysis',
+            'SUI market intelligence',
+            'Sui live analysis',
+            'SUI signals',
+            'real-time Sui analysis',
+            'OnlyAlpha SUI',
+        ],
     },
     GRAM: {
         symbol: 'GRAM',
@@ -187,36 +257,64 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
         metaTitle: 'Gram (GRAM) Live AI Analysis — Market Intelligence & Signals | OnlyAlpha',
         metaDescription:
             'Real-time AI analysis and market intelligence for Gram (GRAM, formerly TON). Track trend regime, momentum, and algorithmic signals on OnlyAlpha.',
-        keywords: ['Gram analysis', 'GRAM signals', 'Gram AI analysis', 'GRAM market intelligence', 'Toncoin rebrand', 'GRAM outlook'],
+        keywords: [
+            'Gram AI analysis',
+            'GRAM market intelligence',
+            'Toncoin AI analysis',
+            'GRAM signals',
+            'real-time Gram analysis',
+            'OnlyAlpha GRAM',
+        ],
     },
 };
 
 interface CoinSeoContentProps {
     symbol: string;
+    /** When true, renders a compact visible block under the terminal UI */
+    visible?: boolean;
 }
 
-export function CoinSeoContent({ symbol }: CoinSeoContentProps) {
+export function CoinSeoContent({ symbol, visible = true }: CoinSeoContentProps) {
     const data = COIN_SEO_DATA[symbol.toUpperCase()];
     if (!data) return null;
 
-    return (
-        <section className="sr-only" aria-label={`${data.name} overview`}>
-            <h2>{data.metaTitle}</h2>
-            <p>{data.whatIs}</p>
+    if (!visible) {
+        return (
+            <section className="sr-only" aria-label={`${data.name} overview`}>
+                <h1>{data.name} ({data.symbol}) Live AI Analysis</h1>
+                <p>{data.whatIs}</p>
+                <h2>What OnlyAlpha tracks for {data.name}</h2>
+                <p>{data.coverage}</p>
+                <p>
+                    Not Financial Advice. OnlyAlpha provides algorithmic and AI-generated market intelligence for educational purposes only.
+                </p>
+            </section>
+        );
+    }
 
-            <h3>Key Metrics</h3>
-            <ul>
-                <li>Name: {data.name}</li>
-                <li>Symbol: {data.symbol}</li>
-                <li>Approximate Market Cap Rank: #{data.rank}</li>
+    return (
+        <section
+            className="mt-4 shrink-0 border border-[#222] bg-[#0A0A0A] rounded-md p-4 md:p-5 max-h-[40vh] overflow-y-auto"
+            aria-label={`${data.name} market intelligence overview`}
+        >
+            <h2 className="text-base md:text-lg font-semibold text-white tracking-tight">
+                {data.name} Market Intelligence Overview
+            </h2>
+            <p className="mt-2 text-sm text-[#aaa] leading-relaxed">{data.whatIs}</p>
+
+            <h3 className="mt-4 text-sm font-medium text-white">
+                What OnlyAlpha tracks for {data.name}
+            </h3>
+            <p className="mt-1.5 text-sm text-[#aaa] leading-relaxed">{data.coverage}</p>
+
+            <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-[#777] font-mono">
                 <li>Category: {data.category}</li>
-                <li>Consensus Mechanism: {data.consensus}</li>
+                <li>Consensus: {data.consensus}</li>
+                <li>Market cap rank (approx.): #{data.rank}</li>
+                <li>Symbol: {data.symbol}</li>
             </ul>
 
-            <h3>What does OnlyAlpha track for {data.name}?</h3>
-            <p>{data.coverage}</p>
-
-            <p>
+            <p className="mt-3 text-[11px] text-[#555] leading-relaxed">
                 Not Financial Advice. OnlyAlpha provides algorithmic and AI-generated market intelligence for educational purposes only.
             </p>
         </section>

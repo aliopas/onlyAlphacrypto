@@ -21,28 +21,43 @@ export function generateStaticParams() {
 type Params = Promise<{ coin: string }>;
 
 function buildArticleJsonLd(symbol: string, masterArticle: MasterArticle | null): Record<string, unknown> {
+    const staticData = COIN_SEO_DATA[symbol];
+    const evergreenHeadline =
+        staticData?.metaTitle ?? `${symbol} Live AI Analysis — Market Intelligence | OnlyAlpha`;
+    const evergreenDescription =
+        staticData?.metaDescription ??
+        `Real-time AI-powered analysis and market intelligence for ${symbol} on OnlyAlpha.`;
+
+    const breadcrumb = {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+            { '@type': 'ListItem', position: 2, name: 'Terminal', item: `${SITE_URL}/terminal` },
+            {
+                '@type': 'ListItem',
+                position: 3,
+                name: `${staticData?.name ?? symbol} Intelligence`,
+                item: `${SITE_URL}/terminal/${symbol.toLowerCase()}`,
+            },
+        ],
+    };
+
     if (!masterArticle) {
         return {
             '@context': 'https://schema.org',
             '@type': 'WebPage',
-            name: `${symbol} Terminal — OnlyAlpha`,
+            name: evergreenHeadline,
+            description: evergreenDescription,
             url: `${SITE_URL}/terminal/${symbol.toLowerCase()}`,
-            breadcrumb: {
-                '@type': 'BreadcrumbList',
-                itemListElement: [
-                    { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
-                    { '@type': 'ListItem', position: 2, name: 'Terminal', item: `${SITE_URL}/terminal` },
-                    { '@type': 'ListItem', position: 3, name: `${symbol} Intelligence`, item: `${SITE_URL}/terminal/${symbol.toLowerCase()}` },
-                ],
-            },
+            breadcrumb,
         };
     }
 
     return {
         '@context': 'https://schema.org',
-        '@type': 'Article',
-        headline: sanitizeForJsonLd(masterArticle.metaTitle) || `${symbol} Terminal — Live Analysis`,
-        description: sanitizeForJsonLd(masterArticle.metaDescription) || `AI-powered analysis for ${symbol}`,
+        '@type': 'WebPage',
+        name: evergreenHeadline,
+        description: evergreenDescription,
         author: { '@type': 'Organization', name: 'OnlyAlpha' },
         publisher: {
             '@type': 'Organization',
@@ -53,14 +68,11 @@ function buildArticleJsonLd(symbol: string, masterArticle: MasterArticle | null)
         datePublished: masterArticle.createdAt,
         dateModified: masterArticle.updatedAt,
         mainEntityOfPage: `${SITE_URL}/terminal/${symbol.toLowerCase()}`,
-        breadcrumb: {
-            '@type': 'BreadcrumbList',
-            itemListElement: [
-                { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
-                { '@type': 'ListItem', position: 2, name: 'Terminal', item: `${SITE_URL}/terminal` },
-                { '@type': 'ListItem', position: 3, name: `${symbol} Intelligence`, item: `${SITE_URL}/terminal/${symbol.toLowerCase()}` },
-            ],
-        },
+        breadcrumb,
+        // News headline kept as secondary signal only — never replaces evergreen page name
+        about: masterArticle.metaTitle
+            ? { '@type': 'Thing', name: sanitizeForJsonLd(masterArticle.metaTitle) }
+            : undefined,
     };
 }
 
@@ -69,24 +81,18 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     const symbol = coin.toUpperCase();
     const staticData = COIN_SEO_DATA[symbol];
 
-    let title = staticData?.metaTitle ?? `${symbol} Terminal — Live Analysis & Intelligence`;
-    let description =
+    // Evergreen primary SEO — never overwrite with volatile AI news headlines
+    const title =
+        staticData?.metaTitle ?? `${symbol} Live AI Analysis — Market Intelligence | OnlyAlpha`;
+    const description =
         staticData?.metaDescription ??
-        `Real-time AI-powered analysis, news, and intelligence for ${symbol}. Track price action, on-chain data, and market sentiment.`;
-    let keywords = staticData?.keywords;
-
-    try {
-        const { masterArticle } = await terminalApi.getMasterArticle(symbol);
-        if (masterArticle) {
-            if (masterArticle.metaTitle) title = masterArticle.metaTitle;
-            if (masterArticle.metaDescription) description = masterArticle.metaDescription;
-            if (masterArticle.seoKeywords && Array.isArray(masterArticle.seoKeywords)) {
-                keywords = masterArticle.seoKeywords;
-            }
-        }
-    } catch (e) {
-        console.error('[SEO] Error fetching master article for metadata:', e);
-    }
+        `Real-time AI-powered analysis, news, and market intelligence for ${symbol}. Track trend regime, momentum, and algorithmic signals on OnlyAlpha.`;
+    const keywords = staticData?.keywords ?? [
+        `${symbol} AI analysis`,
+        `${symbol} market intelligence`,
+        `${symbol} live analysis`,
+        'OnlyAlpha',
+    ];
 
     return {
         title: {
@@ -94,18 +100,27 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
         },
         description,
         keywords,
+        robots: { index: true, follow: true },
         openGraph: {
             title,
             description,
             url: `${SITE_URL}/terminal/${symbol.toLowerCase()}`,
             type: 'website',
             siteName: 'OnlyAlpha',
-            images: [{ url: `${SITE_URL}/opengraph-image.png`, width: 1200, height: 630, alt: `${symbol} Analysis — OnlyAlpha` }],
+            images: [
+                {
+                    url: `${SITE_URL}/opengraph-image.png`,
+                    width: 1200,
+                    height: 630,
+                    alt: `${staticData?.name ?? symbol} AI Analysis — OnlyAlpha`,
+                },
+            ],
         },
         twitter: {
             card: 'summary_large_image',
             title,
             description,
+            images: [`${SITE_URL}/opengraph-image.png`],
         },
         alternates: {
             canonical: `${SITE_URL}/terminal/${symbol.toLowerCase()}`,
@@ -171,6 +186,8 @@ export default async function CoinTerminalPage({
     const jsonLd = buildArticleJsonLd(coinSymbol, masterArticle);
     const coinFaq = isTrackedCoin(coinSymbol) ? buildCoinFaq(coinSymbol) : [];
     const showSeoContent = SEO_CONTENT_ENABLED && isTrackedCoin(coinSymbol);
+    const staticData = COIN_SEO_DATA[coinSymbol];
+    const displayName = staticData?.name ?? coinSymbol;
 
     return (
         <>
@@ -179,14 +196,29 @@ export default async function CoinTerminalPage({
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
             />
             {coinFaq.length > 0 && <FaqSchema items={coinFaq} />}
-            {showSeoContent && <CoinSeoContent symbol={coinSymbol} />}
-            <TerminalPageClient
-                initialNews={news}
-                coin={coinSymbol}
-                radarSignals={radarSignals}
-                initialRadarId={radarId}
-                isAlphaFocus={isAlphaFocus}
-            />
+            <div className="flex flex-col h-full min-h-0 gap-0">
+                {showSeoContent && (
+                    <header className="shrink-0 pb-3 border-b border-[#1a1a1a] mb-3">
+                        <h1 className="text-sm md:text-base font-semibold text-white tracking-tight">
+                            {displayName} ({coinSymbol}) Live AI Analysis
+                        </h1>
+                        <p className="mt-1 text-xs text-[#666] max-w-3xl leading-relaxed">
+                            {staticData?.metaDescription ??
+                                `Real-time AI market intelligence for ${displayName} on OnlyAlpha.`}
+                        </p>
+                    </header>
+                )}
+                <div className="flex-1 min-h-0">
+                    <TerminalPageClient
+                        initialNews={news}
+                        coin={coinSymbol}
+                        radarSignals={radarSignals}
+                        initialRadarId={radarId}
+                        isAlphaFocus={isAlphaFocus}
+                    />
+                </div>
+                {showSeoContent && <CoinSeoContent symbol={coinSymbol} visible />}
+            </div>
         </>
     );
 }

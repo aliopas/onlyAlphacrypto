@@ -3,6 +3,7 @@ import { airdropApi } from '@/features/airdrop/api';
 import { terminalApi } from '@/features/terminal/api';
 import { AirdropProject } from '@/features/airdrop/types';
 import { SITE_URL } from '@/lib/constants';
+import { TRACKED_COINS } from '@/config/coins';
 
 const STATIC_PAGES: MetadataRoute.Sitemap = [
     {
@@ -68,21 +69,24 @@ const STATIC_PAGES: MetadataRoute.Sitemap = [
 ];
 
 async function buildArticleCoinPages(): Promise<MetadataRoute.Sitemap> {
-    let coinsWithArticles: string[] = [];
+    // Always index tracked coin terminals (evergreen SEO targets for US/EU)
+    const coinSet = new Set<string>(TRACKED_COINS.map((c) => c.toUpperCase()));
+
     try {
-        coinsWithArticles = await terminalApi.getMasterArticleCoins();
+        const coinsWithArticles = await terminalApi.getMasterArticleCoins();
+        for (const coin of coinsWithArticles) {
+            coinSet.add(coin.toUpperCase());
+        }
     } catch (error) {
         console.error('[Sitemap] Failed to fetch coins with articles:', error);
     }
 
-    if (coinsWithArticles.length === 0) return [];
-
-    return coinsWithArticles.map((coin) => [
+    return Array.from(coinSet).flatMap((coin) => [
         {
             url: `${SITE_URL}/terminal/${coin.toLowerCase()}`,
             lastModified: new Date(),
             changeFrequency: 'hourly' as const,
-            priority: 0.7,
+            priority: 0.85,
         },
         {
             url: `${SITE_URL}/terminal/${coin.toLowerCase()}/alpha`,
@@ -90,7 +94,7 @@ async function buildArticleCoinPages(): Promise<MetadataRoute.Sitemap> {
             changeFrequency: 'daily' as const,
             priority: 0.8,
         },
-    ]).flat();
+    ]);
 }
 
 async function buildAirdropPages(): Promise<MetadataRoute.Sitemap> {
