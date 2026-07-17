@@ -87,14 +87,9 @@ function buildBreadcrumbJsonLd(): Record<string, unknown> {
 function TerminalSeoContent() {
     if (!SEO_CONTENT_ENABLED) return null;
     return (
-        <section
-            className="shrink-0 border-b border-[#1a1a1a] pb-3 mb-3"
-            aria-label="Terminal overview"
-        >
-            <h1 className="text-sm md:text-base font-semibold text-white tracking-tight">
-                OnlyAlpha Terminal — Live Crypto AI Analysis Dashboard
-            </h1>
-            <p className="mt-1 text-xs text-[#666] max-w-3xl leading-relaxed">
+        <section className="sr-only" aria-label="Terminal overview">
+            <h1>OnlyAlpha Terminal — Live Crypto AI Analysis Dashboard</h1>
+            <p>
                 Live cryptocurrency intelligence for {TRACKED_COINS.join(', ')}. Algorithmic market regime
                 detection, multi-timeframe technical context, and AI-generated reports with BULLISH or BEARISH
                 directional bias for educational research only. Not Financial Advice.
@@ -122,12 +117,8 @@ export default async function TerminalPage() {
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(buildBreadcrumbJsonLd()) }}
             />
             <FaqSchema items={TERMINAL_FAQ} />
-            <div className="flex flex-col h-full min-h-0">
-                <TerminalSeoContent />
-                <div className="flex-1 min-h-0">
-                    <TerminalPageClient initialNews={news} radarSignals={radarSignals} />
-                </div>
-            </div>
+            <TerminalSeoContent />
+            <TerminalPageClient initialNews={news} radarSignals={radarSignals} />
         </>
     );
 }

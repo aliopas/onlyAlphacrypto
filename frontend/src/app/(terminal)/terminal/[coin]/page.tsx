@@ -186,8 +186,6 @@ export default async function CoinTerminalPage({
     const jsonLd = buildArticleJsonLd(coinSymbol, masterArticle);
     const coinFaq = isTrackedCoin(coinSymbol) ? buildCoinFaq(coinSymbol) : [];
     const showSeoContent = SEO_CONTENT_ENABLED && isTrackedCoin(coinSymbol);
-    const staticData = COIN_SEO_DATA[coinSymbol];
-    const displayName = staticData?.name ?? coinSymbol;
 
     return (
         <>
@@ -196,29 +194,14 @@ export default async function CoinTerminalPage({
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
             />
             {coinFaq.length > 0 && <FaqSchema items={coinFaq} />}
-            <div className="flex flex-col h-full min-h-0 gap-0">
-                {showSeoContent && (
-                    <header className="shrink-0 pb-3 border-b border-[#1a1a1a] mb-3">
-                        <h1 className="text-sm md:text-base font-semibold text-white tracking-tight">
-                            {displayName} ({coinSymbol}) Live AI Analysis
-                        </h1>
-                        <p className="mt-1 text-xs text-[#666] max-w-3xl leading-relaxed">
-                            {staticData?.metaDescription ??
-                                `Real-time AI market intelligence for ${displayName} on OnlyAlpha.`}
-                        </p>
-                    </header>
-                )}
-                <div className="flex-1 min-h-0">
-                    <TerminalPageClient
-                        initialNews={news}
-                        coin={coinSymbol}
-                        radarSignals={radarSignals}
-                        initialRadarId={radarId}
-                        isAlphaFocus={isAlphaFocus}
-                    />
-                </div>
-                {showSeoContent && <CoinSeoContent symbol={coinSymbol} visible />}
-            </div>
+            {showSeoContent && <CoinSeoContent symbol={coinSymbol} visible={false} />}
+            <TerminalPageClient
+                initialNews={news}
+                coin={coinSymbol}
+                radarSignals={radarSignals}
+                initialRadarId={radarId}
+                isAlphaFocus={isAlphaFocus}
+            />
         </>
     );
 }

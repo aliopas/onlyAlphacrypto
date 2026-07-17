@@ -270,51 +270,27 @@ export const COIN_SEO_DATA: Record<string, CoinSeoData> = {
 
 interface CoinSeoContentProps {
     symbol: string;
-    /** When true, renders a compact visible block under the terminal UI */
+    /** Always screen-reader / crawler only — never alters terminal UI */
     visible?: boolean;
 }
 
-export function CoinSeoContent({ symbol, visible = true }: CoinSeoContentProps) {
+export function CoinSeoContent({ symbol }: CoinSeoContentProps) {
     const data = COIN_SEO_DATA[symbol.toUpperCase()];
     if (!data) return null;
 
-    if (!visible) {
-        return (
-            <section className="sr-only" aria-label={`${data.name} overview`}>
-                <h1>{data.name} ({data.symbol}) Live AI Analysis</h1>
-                <p>{data.whatIs}</p>
-                <h2>What OnlyAlpha tracks for {data.name}</h2>
-                <p>{data.coverage}</p>
-                <p>
-                    Not Financial Advice. OnlyAlpha provides algorithmic and AI-generated market intelligence for educational purposes only.
-                </p>
-            </section>
-        );
-    }
-
     return (
-        <section
-            className="mt-4 shrink-0 border border-[#222] bg-[#0A0A0A] rounded-md p-4 md:p-5 max-h-[40vh] overflow-y-auto"
-            aria-label={`${data.name} market intelligence overview`}
-        >
-            <h2 className="text-base md:text-lg font-semibold text-white tracking-tight">
-                {data.name} Market Intelligence Overview
-            </h2>
-            <p className="mt-2 text-sm text-[#aaa] leading-relaxed">{data.whatIs}</p>
-
-            <h3 className="mt-4 text-sm font-medium text-white">
-                What OnlyAlpha tracks for {data.name}
-            </h3>
-            <p className="mt-1.5 text-sm text-[#aaa] leading-relaxed">{data.coverage}</p>
-
-            <ul className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-[#777] font-mono">
+        <section className="sr-only" aria-label={`${data.name} overview`}>
+            <h1>{data.name} ({data.symbol}) Live AI Analysis</h1>
+            <p>{data.whatIs}</p>
+            <h2>What OnlyAlpha tracks for {data.name}</h2>
+            <p>{data.coverage}</p>
+            <ul>
                 <li>Category: {data.category}</li>
                 <li>Consensus: {data.consensus}</li>
                 <li>Market cap rank (approx.): #{data.rank}</li>
                 <li>Symbol: {data.symbol}</li>
             </ul>
-
-            <p className="mt-3 text-[11px] text-[#555] leading-relaxed">
+            <p>
                 Not Financial Advice. OnlyAlpha provides algorithmic and AI-generated market intelligence for educational purposes only.
             </p>
         </section>
