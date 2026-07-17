@@ -73,7 +73,8 @@ async function telegramAirdropJob(): Promise<void> {
                     `LINK: ${item.link}`,
                     '',
                     '--- ARTICLE CONTENT ---',
-                    item.content.slice(0, 3200),
+                    // Keep input small so reasoning models leave enough tokens for complete JSON.
+                    item.content.slice(0, 1800),
                 ].join('\n');
 
                 const validation = await validateAirdropFromArticle(context);

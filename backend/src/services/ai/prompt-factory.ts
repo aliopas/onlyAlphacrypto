@@ -145,30 +145,27 @@ ${newsBatch.map((item, index) => `${index + 1}. Title: "${item.title}"${item.sou
         return [
             {
                 role: 'system',
-                content: `You are an expert at identifying legitimate crypto airdrop opportunities vs scams. Analyze the provided project data and return:
+                content: `You are an expert at identifying legitimate crypto airdrop opportunities vs scams. Return a COMPACT JSON object:
 {
   "isLegitimate": <true|false>,
   "riskVerdict": "LOW|MEDIUM|HIGH|SCAM",
   "tasks": [
     {
-      "description": "<human readable task>",
-      "contractAddress": "<optional 0x...>",
-      "minAmount": <optional number>,
-      "tokenSymbol": "<optional>",
-      "chain": "<optional: ethereum|zksync|linea|arbitrum>",
+      "description": "<short task>",
       "isAutoVerifiable": <true|false>
     }
   ],
   "estValue": "<e.g. $500-$2000>",
-  "aiReport": "<2 short paragraphs max professional audit report>"
+  "aiReport": "<one short paragraph, max 2 sentences>"
 }
 Rules:
-- BE GENEROUS: If the project is a tokenless DeFi protocol with TVL, funding, or active users, it likely has a future airdrop. Set isLegitimate = true and use riskVerdict to express confidence level.
-- ONLY set isLegitimate = false for confirmed scams, phishing, or completely inactive/dead projects.
-- Tokenless protocols (no token yet) are prime airdrop candidates — default to isLegitimate = true with MEDIUM or HIGH risk.
-- tasks: max 5 items. Infer reasonable tasks based on the protocol type (e.g., provide liquidity, bridge, trade, stake).
-- Keep the whole JSON compact so it is never truncated.
-- isAutoVerifiable = true ONLY if the task involves a specific on-chain action with a verifiable contract.`
+- BE GENEROUS: Tokenless DeFi with TVL/funding/users → isLegitimate=true; use riskVerdict for confidence.
+- ONLY isLegitimate=false for confirmed scams, phishing, or dead projects.
+- tasks: MAX 3 items. Prefer description + isAutoVerifiable only. OMIT optional keys (contractAddress, minAmount, tokenSymbol, chain) unless a real non-null value is known — never emit null optional fields.
+- isAutoVerifiable=true ONLY for on-chain actions with a known contract address (then include contractAddress).
+- aiReport: ONE short paragraph (max 2 sentences).
+- HARD LIMIT: Keep total JSON under 1200 characters. Prefer fewer tasks and shorter text over completeness.
+- Output ONLY the JSON object. No preamble.`
             },
             {
                 role: 'user',
@@ -182,39 +179,33 @@ Rules:
             {
                 role: 'system',
                 content: `You are an expert at extracting structured airdrop data from raw crypto news articles.
-Analyze the provided article text and return a JSON object with EXACTLY this shape:
+Return a COMPACT JSON object with this shape:
 {
   "isLegitimate": <true|false>,
   "riskVerdict": "LOW|MEDIUM|HIGH|SCAM",
-  "projectName": "<the protocol/project name extracted from the article>",
-  "network": "<primary blockchain, e.g. 'Ethereum', 'Solana', 'zkSync Era'>",
+  "projectName": "<protocol/project name>",
+  "network": "<primary chain, e.g. 'Ethereum', 'Solana'>",
   "tasks": [
     {
-      "description": "<human-readable task>",
-      "contractAddress": "<optional 0x...>",
-      "minAmount": <optional number>,
-      "tokenSymbol": "<optional>",
-      "chain": "<optional: ethereum|zksync|linea|arbitrum|solana>",
+      "description": "<short task>",
       "isAutoVerifiable": <true|false>
     }
   ],
   "estValue": "<e.g. '$500-$2000'>",
-  "snapshotDate": "<ISO 8601 date or null>",
-  "tgeDate": "<ISO 8601 date or null>",
-  "aiReport": "<3-4 paragraph professional analysis of this airdrop opportunity>"
+  "aiReport": "<one short paragraph, max 2 sentences>"
 }
 
 Rules:
-- BE GENEROUS: If the article mentions ANY crypto project with airdrop, token, TGE, snapshot, claim, or testnet reward activity, set isLegitimate = true. Use the riskVerdict field to express uncertainty (MEDIUM or HIGH) instead of rejecting.
-- ONLY set isLegitimate = false if the article is completely unrelated to crypto (e.g., sports, politics, weather) or is clearly a scam warning/phishing alert article.
-- Even brief mentions of upcoming airdrops, token distributions, or testnet incentives are VALID — extract the project and create an entry.
-- projectName: extract the actual protocol name from the article. If unclear, use the most prominent project mentioned.
-- network: the primary blockchain where this airdrop operates. Default to "Unknown" if not specified.
-- snapshotDate / tgeDate: if a specific date is mentioned, return it in ISO 8601 format (YYYY-MM-DD). Otherwise return null.
-- tasks: max 5 items. Infer reasonable tasks based on the protocol type (e.g., bridge assets, provide liquidity, trade, stake, follow on social media).
-- aiReport: 2 short paragraphs max (keep total response compact so JSON is never truncated).
-- isAutoVerifiable = true ONLY for specific on-chain actions with verifiable contract addresses.
-- estValue: estimate based on similar projects if not specified. Use ranges like "$100-$500", "$500-$2000".
+- BE GENEROUS: Any crypto project with airdrop/token/TGE/snapshot/claim/testnet activity → isLegitimate=true; use riskVerdict for uncertainty.
+- ONLY isLegitimate=false if unrelated to crypto or a scam/phishing warning.
+- projectName: actual protocol name; if unclear use the most prominent project mentioned.
+- network: primary blockchain; default "Unknown" if not specified.
+- snapshotDate / tgeDate: include ONLY when a real YYYY-MM-DD date is known; otherwise OMIT the key entirely (do not emit null).
+- tasks: MAX 3 items. Prefer description + isAutoVerifiable only. OMIT optional keys (contractAddress, minAmount, tokenSymbol, chain) unless a real non-null value is known — never emit null optional fields.
+- isAutoVerifiable=true ONLY for on-chain actions with a known contract address (then include contractAddress).
+- aiReport: ONE short paragraph (max 2 sentences). No multi-paragraph analysis.
+- estValue: ranges like "$100-$500", "$500-$2000" if not specified.
+- HARD LIMIT: Keep total JSON under 1500 characters. Prefer fewer tasks and shorter text over completeness.
 - Output ONLY the JSON object. No preamble. No text outside JSON.`
             },
             {

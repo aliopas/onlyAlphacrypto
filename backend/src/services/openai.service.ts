@@ -346,6 +346,54 @@ export async function generateLightweightTriage(
 
 // ─── Airdrop Validation (DeepSeek-R1 — deep analysis) ──────────────────────────────
 
+const MAX_AIRDROP_TASKS = 3;
+
+type AirdropTaskItem = {
+    description: string;
+    contractAddress?: string;
+    minAmount?: number;
+    tokenSymbol?: string;
+    chain?: string;
+    isAutoVerifiable: boolean;
+};
+
+function normalizeAirdropTasks(tasks: unknown): AirdropTaskItem[] {
+    if (!Array.isArray(tasks)) return [];
+    return tasks
+        .slice(0, MAX_AIRDROP_TASKS)
+        .map((raw): AirdropTaskItem | null => {
+            if (typeof raw !== 'object' || raw === null) return null;
+            const t = raw as Record<string, unknown>;
+            const description = typeof t.description === 'string' ? t.description.trim() : '';
+            if (!description) return null;
+            const item: AirdropTaskItem = {
+                description: description.slice(0, 300),
+                isAutoVerifiable: t.isAutoVerifiable === true,
+            };
+            if (typeof t.contractAddress === 'string' && t.contractAddress.trim()) {
+                item.contractAddress = t.contractAddress.trim();
+            }
+            if (typeof t.minAmount === 'number' && Number.isFinite(t.minAmount)) {
+                item.minAmount = t.minAmount;
+            }
+            if (typeof t.tokenSymbol === 'string' && t.tokenSymbol.trim()) {
+                item.tokenSymbol = t.tokenSymbol.trim();
+            }
+            if (typeof t.chain === 'string' && t.chain.trim()) {
+                item.chain = t.chain.trim();
+            }
+            return item;
+        })
+        .filter((t): t is AirdropTaskItem => t !== null);
+}
+
+function clampAirdropText(value: unknown, maxLen: number, fallback: string): string {
+    if (typeof value !== 'string') return fallback;
+    const trimmed = value.trim();
+    if (!trimmed) return fallback;
+    return trimmed.length > maxLen ? trimmed.slice(0, maxLen) : trimmed;
+}
+
 export async function validateAirdrop(
     projectData: string
 ): Promise<AirdropValidationResult> {
@@ -357,7 +405,7 @@ export async function validateAirdrop(
     }
 
     const messages = prompts.buildAirdropValidationMessages(projectData);
-    const result = await gateway.chat<AirdropValidationResult>({
+    const raw = await gateway.chat<AirdropValidationResult>({
         model: env.DEEPSEEK_MODEL, // DeepSeek-R1
         temperature: 0.2,
         responseFormat: { type: 'json_object' },
@@ -365,6 +413,16 @@ export async function validateAirdrop(
         maxTokens: LONG_RESPONSE_MAX_TOKENS,
         maxRetries: 2,
     });
+
+    const result: AirdropValidationResult = {
+        isLegitimate: raw.isLegitimate === true,
+        riskVerdict: (['LOW', 'MEDIUM', 'HIGH', 'SCAM'] as const).includes(raw.riskVerdict)
+            ? raw.riskVerdict
+            : 'HIGH',
+        tasks: normalizeAirdropTasks(raw.tasks),
+        estValue: clampAirdropText(raw.estValue, 64, 'Unknown'),
+        aiReport: clampAirdropText(raw.aiReport, 800, ''),
+    };
 
     // Store in cache
     cache.set(cacheKey, result);
@@ -383,7 +441,7 @@ export async function validateAirdropFromArticle(
     const messages = prompts.buildAirdropFromArticleMessages(articleContext);
     const targetGateway = deepseekGateway || gateway;
     const targetModel = deepseekGateway ? env.DEEPSEEK_MODEL_DIRECT : env.DEEPSEEK_MODEL;
-    const result = await targetGateway.chat<AirdropArticleValidationResult>({
+    const raw = await targetGateway.chat<AirdropArticleValidationResult>({
         model: targetModel,
         temperature: 0.2,
         responseFormat: { type: 'json_object' },
@@ -391,6 +449,20 @@ export async function validateAirdropFromArticle(
         maxTokens: LONG_RESPONSE_MAX_TOKENS,
         maxRetries: 2,
     });
+
+    const result: AirdropArticleValidationResult = {
+        isLegitimate: raw.isLegitimate === true,
+        riskVerdict: (['LOW', 'MEDIUM', 'HIGH', 'SCAM'] as const).includes(raw.riskVerdict)
+            ? raw.riskVerdict
+            : 'HIGH',
+        projectName: clampAirdropText(raw.projectName, 120, 'Unknown'),
+        network: clampAirdropText(raw.network, 64, 'Unknown'),
+        tasks: normalizeAirdropTasks(raw.tasks),
+        estValue: clampAirdropText(raw.estValue, 64, 'Unknown'),
+        snapshotDate: typeof raw.snapshotDate === 'string' ? raw.snapshotDate : null,
+        tgeDate: typeof raw.tgeDate === 'string' ? raw.tgeDate : null,
+        aiReport: clampAirdropText(raw.aiReport, 800, ''),
+    };
 
     cache.set(cacheKey, result);
     return result;

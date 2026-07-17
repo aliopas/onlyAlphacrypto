@@ -128,7 +128,8 @@ export async function getExistingProjectNames(): Promise<Set<string>> {
 }
 
 export function buildProjectContextFromArticle(article: AirdropRSSArticle): string {
-    const MAX_CONTENT_LENGTH = 3200;
+    // Keep input small so reasoning models leave enough tokens for complete JSON.
+    const MAX_CONTENT_LENGTH = 1800;
     const truncatedContent =
         article.content.length > MAX_CONTENT_LENGTH
             ? article.content.slice(0, MAX_CONTENT_LENGTH) + '...[truncated]'
