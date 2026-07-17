@@ -32,6 +32,8 @@
 - [Conviction Score Engine](#conviction-score-engine)
 - [Strategic Intelligence Layer](#strategic-intelligence-layer)
 - [Signal Performance Tracking](#signal-performance-tracking)
+- [Model Portfolio (Educational Simulation)](#model-portfolio-educational-simulation)
+- [Admin Command Center](#admin-command-center)
 - [Semantic Deduplication (pgvector)](#semantic-deduplication-pgvector)
 - [Environment Variables](#environment-variables)
 - [Installation](#installation)
@@ -52,7 +54,7 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 ```
 [SENSE]  →  Ingest every signal from every source simultaneously
 [THINK]  →  AI triage, deep analysis, cross-validation, hallucination filtering
-[ACT]    →  Living Articles + Conviction Scores + Alpha Radar + Strategic Outlook
+[ACT]    →  Living Articles + Conviction + Radar + Strategic Outlook + Scorecard
 ```
 
 **The core principle: AI = analyst, not oracle.**
@@ -67,7 +69,8 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 - **Living Articles** — one persistent document per coin that evolves with the market, not 50 disjointed articles
 - **Incremental Conviction** — algorithmic score (0-100) with zero AI cost, decaying toward neutral over time
 - **Strategic Outlook** — forward-looking intelligence with short/long-term price targets, invalidation levels, and recommended actions
-- **Signal P&L** — every radar signal is tracked at 24h/7d/30d with win rates to measure real alpha
+- **Track Record** — every radar signal tracked at 24h/7d/30d with win rates
+- **Model Portfolio** — educational LONG-only simulation (Telegram intake → validate → TP/SL/DCA monitor), fully decoupled from Track Record
 
 ---
 
@@ -79,7 +82,7 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 </p>
 
 <p align="center">
-  <strong>Signal P&L Scorecard — Win Rates + Multi-Timeframe Tracking</strong><br>
+  <strong>Scorecard — Track Record + Model Portfolio (Educational Simulation)</strong><br>
   <img src="scorecard-full.png" alt="OnlyAlpha Scorecard" width="800" />
 </p>
 
@@ -99,8 +102,9 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 │  /                  /terminal/[coin]    /settings    /airdrops       │
 │  Home (Dashboard)   Alpha Terminal      Billing       Hunter         │
 │                                                                      │
-│  /archive           /scorecard          (Dynamic AI coins)           │
-│  Article Archive    Signal P&L          /terminal/[coin]             │
+│  /archive           /scorecard          /admin/*                     │
+│  Article Archive    Track Record +      Command Center               │
+│                     Model Portfolio     (ops, portfolio, posts)      │
 │                                                                      │
 │  ┌──────────┐  ┌──────────────┐  ┌──────────┐  ┌────────────┐      │
 │  │MarketMood│  │Living Article│  │ Pro Chat │  │ Airdrop    │      │
@@ -114,41 +118,23 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
 │                      BACKEND (Express 5 + TypeScript)                │
 │                                                                      │
 │  ┌────────────────────────────────────────────────────────────┐     │
-│  │                    MIDDLEWARE STACK                         │     │
-│  │  Helmet → CORS → JSON (10KB) → URL-Encoded → Time         │     │
+│  │  Helmet → CORS → JSON → URL-Encoded → Time → Routes        │     │
 │  └────────────────────────────────────────────────────────────┘     │
 │                                                                      │
-│  ┌───────────┐   ┌────────────┐   ┌─────────────────────────┐     │
-│  │  Routes   │──▶│Controllers │──▶│       Services          │     │
-│  └───────────┘   └────────────┘   │                          │     │
-│  ┌──────────────────────────┐     │  14 active crons          │     │
-│  │  AiWorkflow       hourly │     │  (AiWorkflow as central   │     │
-│  │  TerminalEngine  */10min │     │   intelligence pipeline)  │     │
-│  │  TriageEngine     */2h   │     │  └─────────────────────────┘     │
-│  │  ScenarioOutcome  */2h   │                                     │
-│  │  TelegramMonitor */30min │                                     │
-│  │  SignalPerformance */6h  │                                     │
-│  │  AirdropRSS       */6h  │                                     │
-│  │  AirdropDiscovery */6h  │                                     │
-│  │  ConvictionUpdate */6h  │                                     │
-│  │  AirdropHunter    */12h │                                     │
-│  │  DailyAlpha       06:00 │                                     │
-│  │  MarketMood       07:00 │                                     │
-│  │  HistoricalNews   04:00 │                                     │
-│  │  BufferCleanup    00:00 │                                     │
-│  └──────────────────────────┘                                     │
-│  Bootstrap Scripts:                                                 │
-│  ├─ Radar Cleanup (dedup)                                           │
-│  ├─ Article Repair (incomplete)                                     │
-│  └─ Meta Tag Repair (poor/generic meta titles + descriptions)       │
+│  Flow-based cron registry (news / signals / market / portfolio /     │
+│  airdrop) — master FLOW_* switches + per-feature sub-flags           │
+│  ~25 crons: AiWorkflow, Terminal, Triage, Telegram, Portfolio        │
+│  Monitor/Scraper/Snapshot, TpslMonitor, SignalLifecycle, OHLCV, …    │
+│                                                                      │
+│  Bootstrap: Radar cleanup · Article repair · Meta tag repair         │
 └──────────┬───────────────────┬──────────────────┬────────────────────┘
             │                   │                  │
      ┌──────▼──────┐   ┌───────▼───────┐  ┌───────▼───────┐
      │ PostgreSQL  │   │    Redis      │  │ External APIs │
      │ (Native pg) │   │              │  │               │
      │  pgvector   │   │  Cache Layer │  │  OpenRouter   │
-     │  25 tables  │   │  Mutex Locks │  │  DeepSeek Dir │
-     │  Drizzle    │   │  Cron State  │  │  GLM/Zhipu AI │
+     │  29+ tables │   │  Sessions    │  │  DeepSeek Dir │
+     │  Drizzle    │   │  Mutex Locks │  │  GLM/Zhipu AI │
      │  Schema     │   │  Rate Limits │  │  Telegram     │
      └─────────────┘   └──────────────┘  │  Binance      │
                                          │  Moralis      │
@@ -157,70 +143,6 @@ OnlyAlpha is not a news aggregator. It is a **multi-agent intelligence system** 
                                          │  Alternative.me│
                                          │  Birdeye      │
                                          └───────────────┘
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                      FRONTEND (Next.js 16 App Router)                │
-│                                                                      │
-│  /                  /terminal/[coin]    /settings    /airdrops       │
-│  Home (Dashboard)   Alpha Terminal      Billing       Hunter         │
-│                                                                      │
-│  /archive           /scorecard          (Dynamic AI coins)           │
-│  Article Archive    Signal P&L          /terminal/[coin]             │
-│                                                                      │
-│  ┌──────────┐  ┌──────────────┐  ┌──────────┐  ┌────────────┐      │
-│  │MarketMood│  │Living Article│  │ Pro Chat │  │ Airdrop    │      │
-│  │AlphaFocus│  │ Wire Feed    │  │ Context  │  │ TaskTracker│      │
-│  │RadarGrid │  │ TimelineFeed │  │ Streaming│  │ Wallet Mgr │      │
-│  │TopMovers │  │ AlphaStream  │  │          │  │            │      │
-│  └──────────┘  └──────────────┘  └──────────┘  └────────────┘      │
-└────────────────────────┬─────────────────────────────────────────────┘
-                         │  REST API (JSON) + SSE (Chat Stream)
-┌────────────────────────▼─────────────────────────────────────────────┐
-│                      BACKEND (Express 5 + TypeScript)                │
-│                                                                      │
-│  ┌────────────────────────────────────────────────────────────┐     │
-│  │                    MIDDLEWARE STACK                         │     │
-│  │  Helmet → CORS → JSON (10KB) → URL-Encoded → Time         │     │
-│  └────────────────────────────────────────────────────────────┘     │
-│                                                                      │
-│  ┌───────────┐   ┌────────────┐   ┌─────────────────────────┐     │
-│  │  Routes   │──▶│Controllers │──▶│       Services          │     │
-│  └───────────┘   └────────────┘   │                          │     │
-│  ┌──────────────────────────┐     │  14 active crons          │     │
-│  │  AiWorkflow       hourly │     │  (AiWorkflow as central   │     │
-│  │  TerminalEngine  */10min │     │   intelligence pipeline)  │     │
-│  │  TriageEngine     */2h   │     │  └─────────────────────────┘     │
-│  │  ScenarioOutcome  */2h   │                                     │
-│  │  TelegramMonitor */30min │                                     │
-│  │  SignalPerformance */6h  │                                     │
-│  │  AirdropRSS       */6h  │                                     │
-│  │  AirdropDiscovery */6h  │                                     │
-│  │  ConvictionUpdate */6h  │                                     │
-│  │  AirdropHunter    */12h │                                     │
-│  │  DailyAlpha       06:00 │                                     │
-│  │  MarketMood       07:00 │                                     │
-│  │  HistoricalNews   04:00 │                                     │
-│  │  BufferCleanup    00:00 │                                     │
-│  └──────────────────────────┘                                     │
-│  Bootstrap Scripts:                                                 │
-│  ├─ Radar Cleanup (dedup)                                           │
-│  ├─ Article Repair (incomplete)                                     │
-│  └─ Meta Tag Repair (poor/generic meta titles + descriptions)       │
-└──────────┬───────────────────┬──────────────────┬────────────────────┘
-            │                   │                  │
-     ┌──────▼──────┐   ┌───────▼───────┐  ┌───────▼───────┐
-     │ PostgreSQL  │   │    Redis      │  │ External APIs │
-    │ (Native pg) │   │              │  │               │
-    │  pgvector   │   │  Cache Layer │  │  OpenRouter   │
-    │  25 tables  │   │  Mutex Locks │  │  DeepSeek Dir │
-    │  Drizzle    │   │  Rate Limits │  │  GLM/Zhipu AI │
-    │  Schema     │   │  Cron State  │  │  Telegram     │
-    └─────────────┘   └──────────────┘  │  Binance      │
-                                        │  DexScreener  │
-                                        │  Moralis      │
-                                        │  Tavily/CoinCap│
-                                        │  Alternative.me│
-                                        └───────────────┘
 ```
 
 ---
@@ -602,60 +524,73 @@ Skipped for normal news to save cost. If audit service is unavailable, article i
 | `user_progress` | Per-user task completion — tracks wallet, completion status, verification method (auto/manual), tx hash |
 | `airdrop_pipeline_runs` | Pipeline health monitoring — `runType`, `articlesFound/Processed`, `projectsInserted/Rejected`, `errors`, `durationMs`, `notes` |
 
+### Model Portfolio Tables (`models/scorecard.model.ts`) — 4 tables
+
+| Table | Purpose |
+|---|---|
+| `portfolio_coins` | Simulated positions (active/watchlist/exited), investment-mode TP/SL/DCA flags, budgets, profiles |
+| `telegram_portfolio_posts` | Scraped Telegram channel posts for Model Portfolio intake |
+| `portfolio_transactions` | entry / dca / tp*_hit / sl_hit / manual_close ledger |
+| `portfolio_snapshots` | Daily portfolio NAV, cash, drawdown |
+
 ---
 
 ## Cron Jobs
 
-All crons are registered in `server.ts` and start sequentially with a **5-second stagger** to prevent simultaneous boot:
+Crons are registered in `server.ts` via a **flow-based registry** (`startCrons` + `logFlowStatus`). Each job belongs to a flow (`news` | `signals` | `market` | `portfolio` | `airdrop`). Master switches `FLOW_*_ENABLED` and optional sub-flags gate startup. Jobs start with a **5-second stagger**.
 
-```typescript
-const crons = [
-    { name: 'AiWorkflow', fn: startAiWorkflowCron },
-    { name: 'AirdropHunter', fn: startAirdropHunterCron },
-    { name: 'AirdropRSSHunter', fn: startAirdropRSSCron },
-    { name: 'AirdropDiscovery', fn: startAirdropDiscoveryCron },
-    { name: 'DailyAlpha', fn: startDailyAlphaCron },
-    { name: 'HistoricalNews', fn: startHistoricalNewsCron },
-    { name: 'MarketMood', fn: startMarketMoodCron },
-    { name: 'TerminalEngine', fn: startTerminalEngineCron },
-    { name: 'TriageEngine', fn: startTriageEngineCron },
-    { name: 'BufferCleanup', fn: startBufferCleanupCron },
-    { name: 'ConvictionUpdate', fn: startConvictionUpdateCron },
-    { name: 'TelegramMonitor', fn: startTelegramMonitorCron },
-    { name: 'SignalPerformance', fn: startSignalPerformanceCron },
-    { name: 'ScenarioOutcomeChecker', fn: startScenarioOutcomeCheckerCron },
-];
-
-crons.forEach((cron, index) => {
-    setTimeout(() => cron.fn(), index * 5000);
-});
-```
+### News flow
 
 | Cron | Schedule | File | What It Does |
 |---|---|---|---|
-| **AiWorkflow** | `0 * * * *` (hourly) | `aiWorkflow.cron.ts` | Full pipeline: dedup → composite algorithm verdict → analysis → article → quality audit → memory → radar → strategic outlook → cache invalidation |
-| **TriageEngine** | `0 */2 * * *` (every 2h) | `triageEngine.cron.ts` | Classifies 50 news items in batches of 10 |
-| **TerminalEngine** | `*/10 * * * *` (every 10min) | `terminalEngine.cron.ts` | Pulls 4 RSS feeds into buffer |
-| **TelegramMonitor** | `*/30 * * * *` (news), `0 */4 * * *` (airdrops) | `telegramMonitor.cron.ts` | Scrapes 7 Telegram channels (4 news + 3 airdrop) with spam filtering |
-| **ConvictionUpdate** | `0 */6 * * *` (every 6h) | `convictionUpdate.cron.ts` | Recalculates conviction scores with incremental delta + time decay |
-| **SignalPerformance** | `0 */6 * * *` (every 6h) | `signalPerformance.cron.ts` | Tracks P&L of radar signals at 24h/7d/30d intervals, calculates win rates |
-| **AirdropRSSHunter** | `0 */6 * * *` (every 6h) | `airdropRssHunter.cron.ts` | RSS-based airdrop discovery with Redis dedup + AI validation + GLM enrichment |
-| **AirdropDiscovery** | `0 */6 * * *` (every 6h) | `airdropDiscovery.cron.ts` | DeFiLlama + GLM/Z.ai web search discovery pipeline for airdrop projects |
-| **AirdropHunter** | `0 */12 * * *` (every 12h) | `airdropHunter.cron.ts` | Airdrop routine sync |
-| **DailyAlpha** | `0 6 * * *` (06:00 UTC) | `dailyAlpha.cron.ts` | Selects the strongest coin as "Alpha of the Day" (composite scoring) |
-| **MarketMood** | `0 7 * * *` (07:00 UTC) | `marketMood.cron.ts` | Blends external Fear & Greed with internal radar signals |
-| **HistoricalNews** | `0 4 * * *` (04:00 UTC) | `historicalNews.cron.ts` | Backfills historical news + 7-day price outcomes |
-| **BufferCleanup** | `0 0 * * *` (midnight) | `bufferCleanup.cron.ts` | Deletes expired TTL entries from buffer |
-| **ScenarioOutcomeChecker** | `0 */2 * * *` (every 2h) | `scenarioOutcomeChecker.cron.ts` | Checks pending scenarios for close conditions (TP/SL/time expiry) |
+| **TerminalEngine** | `*/10 * * * *` | `terminalEngine.cron.ts` | Pulls 4 RSS feeds into buffer |
+| **TelegramMonitor** | `*/30` news, `*/4h` airdrops | `telegramMonitor.cron.ts` | Scrapes Telegram news + airdrop channels |
+| **TriageEngine** | `0 */2 * * *` | `triageEngine.cron.ts` | Classifies buffer items in batches of 10 |
+| **AiWorkflow** | `0 * * * *` | `aiWorkflow.cron.ts` | Central pipeline (also requires signals flow) |
+| **HistoricalNews** | `0 4 * * *` | `historicalNews.cron.ts` | Historical news + 7d price outcomes |
+| **BufferCleanup** | `0 0 * * *` | `bufferCleanup.cron.ts` | TTL cleanup |
+| **ConvictionUpdate** | `0 */6 * * *` | `convictionUpdate.cron.ts` | Conviction delta + time decay |
 
-**Concurrency protection:** All crons use an in-memory `isRunning` flag to prevent concurrent execution. AiWorkflow additionally uses a **Redis mutex lock** (`SET NX EX 900`) for cross-instance safety.
+### Signals flow
 
-**Workflow timeout:** AiWorkflow has a hard 10-minute timeout — if it exceeds this, the lock is force-released to prevent deadlock.
+| Cron | File | What It Does |
+|---|---|---|
+| **SignalPerformance** | `signalPerformance.cron.ts` | Track Record P&L at 24h/7d/30d |
+| **TpslMonitor** | `tpslMonitor.cron.ts` | TP/SL monitor for tracked signals (Binance-only prices for tracked coins) |
+| **SignalLifecycle** | `signalLifecycle.cron.ts` | Lifecycle V2 (`SIGNAL_LIFECYCLE_ENABLED`) |
+| **ShadowChecker** | `shadowChecker.cron.ts` | Algorithm vs AI shadow mode (`SHADOW_MODE_ENABLED`) |
+| **ScenarioOutcomeChecker** | `scenarioOutcomeChecker.cron.ts` | Scenario close conditions |
+| **EventOutcomeChecker** / **EventImpact\*** / **LevelIntelligence** | respective files | Event impact + level intelligence (feature-flagged) |
 
-**Bootstrap scripts** (run once on server startup):
-- `runRadarCleanup()` — Deduplicates radar signals
-- `runArticleRepair()` — Auto-repairs incomplete master articles (guarded by `migration_flags` table)
-- `runMetaTagRepair()` — Auto-repairs poor/generic meta titles and descriptions on master articles (non-blocking, guarded by `migration_flags` table)
+### Market flow
+
+| Cron | File | What It Does |
+|---|---|---|
+| **DailyAlpha** | `dailyAlpha.cron.ts` | Alpha of the Day |
+| **MarketMood** | `marketMood.cron.ts` | Composite Fear & Greed |
+| **MarketFilter** / **RegimeUpdate** / **DailyTrend** | respective files | Filter, regime, daily trend (flagged) |
+| **OhlcvSnapshot** | `ohlcvSnapshot.cron.ts` | Multi-TF OHLCV snapshots (`OHLCV_SNAPSHOT_ENABLED`) |
+| **Monitoring** | `monitoringCron.ts` | Ops monitoring (`MONITORING_CRON_ENABLED`) |
+
+### Portfolio flow (Model Portfolio)
+
+| Cron | Sub-flag | File | What It Does |
+|---|---|---|---|
+| **TelegramPortfolioScraper** | `SCORECARD_SCRAPER_ENABLED` | `telegramPortfolioScraper.cron.ts` | Scrapes portfolio Telegram channel (vision + text) |
+| **PortfolioSnapshot** | `SCORECARD_SNAPSHOT_ENABLED` | `portfolioSnapshot.cron.ts` | Daily NAV / cash / drawdown snapshots |
+| **PortfolioMonitor** | `SCORECARD_MONITOR_ENABLED` | `portfolioMonitor.cron.ts` | SL → DCA → TP1 → TP2 → TP3 execution (simulation) |
+
+### Airdrop flow
+
+| Cron | File | What It Does |
+|---|---|---|
+| **AirdropHunter** | `airdropHunter.cron.ts` | Routine airdrop sync |
+| **AirdropRSSHunter** | `airdropRssHunter.cron.ts` | RSS discovery + AI validation |
+| **AirdropDiscovery** | `airdropDiscovery.cron.ts` | DeFiLlama + GLM discovery |
+
+**Concurrency protection:** In-memory `isRunning` flags; AiWorkflow uses Redis mutex (`SET NX EX 900`). Hard 10-minute AiWorkflow timeout force-releases the lock.
+
+**Bootstrap scripts** (startup, `migration_flags`-guarded): radar dedup, incomplete article repair, meta tag repair.
 
 ---
 
@@ -757,6 +692,10 @@ Graceful degradation: if Redis is down, development mode allows all requests thr
 **API Keys:** `POST /api/api-keys`, `GET /api/api-keys`, `DELETE /api/api-keys/:id`
 
 **Airdrops:** `GET /api/airdrops`, `GET /api/airdrops/:id`, `GET /api/airdrops/:id/tasks`, `POST /api/airdrops/:id/tasks/:taskId/progress`
+
+**Scorecard / Model Portfolio:** `GET /api/scorecard` (Model Portfolio live summary) · Track Record via `GET /api/market/scorecard`
+
+**Admin** (feature-flagged, `adminAuth`): login/logout, score-records, signals ops, portfolio coins/posts/reset, shadow stats, maintenance, telemetry — see [Admin Command Center](#admin-command-center)
 
 ---
 
@@ -984,7 +923,88 @@ SignalPerformance Cron (every 6h):
 - Bearish signals (SELL/STRONG_SELL): P&L = negative of price change percentage (profit when price drops)
 - Win = P&L > 0 for directional signals
 
-**Frontend:** `/scorecard` page displays aggregate win rates, average P&L, and per-signal breakdown.
+**Frontend:** `/scorecard` → **Track Record** tab displays aggregate win rates, average P&L, and per-signal breakdown.
+
+**Admin ops:** `/admin/score-records` — list, archive, reactivate, and **Restore to Active** (clears false-closure fields; entry/TP/SL immutable). Price authority for tracked coins is Binance-only (DEC-038).
+
+---
+
+## Model Portfolio (Educational Simulation)
+
+Educational LONG-only portfolio simulation, **decoupled** from Track Record / `signal_performance` / Phase C lifecycle. Public UI: `/scorecard` → **Model Portfolio** tab. Admin: `/admin/portfolio`, `/admin/portfolio-posts`.
+
+### Product rules (binding)
+
+| Concern | Rule |
+|--------|------|
+| Direction | LONG only |
+| Exchange | Binance USDT required |
+| Capital | `SCORECARD_TOTAL_BUDGET` (default **$10,000**) |
+| Sizing | 1% initial + 1% DCA per coin (2% full position) |
+| Max active | `SCORECARD_MAX_ACTIVE` (default 50); overflow → watchlist; promote on exit |
+| TP ladder | +30% sell 30% · +50% sell 50% · +100% close runner 20% |
+| SL | −35% from average entry |
+| DCA | After −10% from **posted** first entry; one tranche only |
+| Drawdown pause | `SCORECARD_MAX_DRAWDOWN_PERCENT` (default 30%) — blocks entry/DCA/promote only |
+
+### Data model (`models/scorecard.model.ts`)
+
+| Table | Purpose |
+|---|---|
+| `portfolio_coins` | Positions: entry/avg entry, status (active/watchlist/exited), TP1–3/SL, budgets, DCA/TP hit flags, profile JSON |
+| `telegram_portfolio_posts` | Scraped channel posts + `extractedSymbols` (history kept on hard reset) |
+| `portfolio_transactions` | entry / dca / tp1–3_hit / sl_hit / manual_close |
+| `portfolio_snapshots` | Daily NAV, cash balance, drawdown |
+
+### Pipeline
+
+```
+Telegram channel (SCORECARD_TELEGRAM_CHANNEL)
+        │
+        ▼
+TelegramPortfolioScraper (vision + text extract → symbols + entry)
+        │
+        ▼
+validateScorecardCoin (LONG + Binance USDT + entry bands)
+        │
+        ▼
+scorecardPipeline → profile builder → investment TP/SL → active or watchlist + entry tx
+        │
+        ▼
+PortfolioMonitor (SL → DCA → TP1 → TP2 → TP3) + PortfolioSnapshot (daily NAV)
+```
+
+### Public + admin APIs
+
+| Method | Route | Description |
+|---|---|---|
+| GET | `/api/scorecard` | Live Model Portfolio summary (NAV, cash, positions) |
+| GET | `/api/market/scorecard` | Track Record (signal performance) |
+| GET | `/api/admin/portfolio/coins` | Admin list / CRUD positions |
+| POST | `/api/admin/portfolio/coins` | Manual add coin |
+| PATCH | `/api/admin/portfolio/coins/:id` | Edit coin |
+| PATCH | `/api/admin/portfolio/coins/:id/close` | Manual close |
+| GET | `/api/admin/portfolio/posts` | List scraped Telegram posts (`page`, `limit`, `analyzed`) |
+| POST | `/api/admin/portfolio/posts/:id/process` | Re-extract one post → validate + insert (per-symbol outcomes) |
+| POST | `/api/admin/portfolio/reset` | Hard reset: body `{ confirm: "RESET_MODEL_PORTFOLIO" }` — deletes txs → coins → snapshots; keeps posts; capital → `SCORECARD_TOTAL_BUDGET` |
+
+**Not financial advice.** No real order placement. Simulation only.
+
+---
+
+## Admin Command Center
+
+Feature-flagged ops UI under `/admin/*` (`ADMIN_COMMAND_CENTER_ENABLED`). Auth: session (Redis-backed with in-memory fallback) + `adminAuth` middleware.
+
+| Page | Purpose |
+|---|---|
+| `/admin` | Dashboard entry |
+| `/admin/score-records` | Track Record signals — archive, reactivate, restore |
+| `/admin/signals` | Signal ops (pause/resume generation, raise TP) when `ADMIN_SIGNAL_OPS_ENABLED` |
+| `/admin/portfolio` | Model Portfolio coins + hard-reset modal |
+| `/admin/portfolio-posts` | Channel posts list + **Process** (manual intake results panel) |
+| `/admin/shadow` | Shadow mode algorithm vs AI stats |
+| `/admin/system` | Maintenance / telemetry |
 
 ---
 
@@ -1079,6 +1099,29 @@ All variables are validated at startup via Zod (`config/env.ts`). The server **r
 | `TELEGRAM_API_HASH` | `''` | Telegram MTProto API hash (required for Telegram monitoring) |
 | `TELEGRAM_SESSION_STRING` | `''` | Telegram session string (required for Telegram monitoring) |
 | `GLM_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` | GLM API endpoint |
+| `SCORECARD_SCRAPER_ENABLED` | `false` | Enable Telegram portfolio scraper cron |
+| `SCORECARD_MONITOR_ENABLED` | `false` | Enable Model Portfolio monitor (SL/DCA/TP) |
+| `SCORECARD_SNAPSHOT_ENABLED` | `false` | Enable daily portfolio snapshots |
+| `SCORECARD_TELEGRAM_CHANNEL` | `''` | Telegram channel username for portfolio posts |
+| `SCORECARD_TOTAL_BUDGET` | `10000` | Simulated capital after reset |
+| `SCORECARD_MAX_ACTIVE` | `50` | Max active positions; overflow → watchlist |
+| `SCORECARD_INITIAL_ENTRY_PCT` | `0.01` | Initial allocation (1%) |
+| `SCORECARD_DCA_ENTRY_PCT` | `0.01` | DCA tranche (1%) |
+| `SCORECARD_DCA_TRIGGER_PCT` | `-0.10` | DCA trigger from posted entry |
+| `SCORECARD_TP1_PCT` / `TP2` / `TP3` | `0.30` / `0.50` / `1.00` | TP ladder from average entry |
+| `SCORECARD_TP1_SELL_FRAC` / `TP2` | `0.30` / `0.50` | Partial sell fractions |
+| `SCORECARD_SL_PCT` | `-0.35` | Stop loss from average entry |
+| `SCORECARD_MAX_DRAWDOWN_PERCENT` | `30` | Drawdown pause threshold |
+| `SCORECARD_ENTRY_SOFT_BAND_PCT` | `0.10` | Soft entry band vs posted price |
+| `SCORECARD_ENTRY_MAX_UP_PCT` / `MAX_DOWN` | `0.15` / `-0.35` | Hard entry acceptance bands |
+| `ADMIN_COMMAND_CENTER_ENABLED` | `false` | Enable admin routes + UI |
+| `ADMIN_SIGNAL_OPS_ENABLED` | `false` | Enable signal ops (pause/raise TP) |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | — | Admin login credentials |
+| `ADMIN_SESSION_SECRET` | 32 chars | Session signing secret |
+| `SIGNAL_LIFECYCLE_ENABLED` | `false` | Lifecycle V2 cron |
+| `MTF_CONTEXT_ENABLED` | `false` | Multi-timeframe context in prompts/TP-SL |
+| `BINANCE_TIMEOUT_MS` | `30000` | Binance HTTP timeout |
+| `BINANCE_MAX_CONCURRENT` | `3` | Binance concurrency semaphore |
 
 ---
 
@@ -1169,86 +1212,38 @@ OnlyAlpha/
 │   │   │   ├── env.ts             ← Zod-validated env schema (server won't start if invalid)
 │   │   │   └── redis.ts           ← ioredis (lazy connect) + getCache/setCache/deleteCache
 │   │   │
-│   │   ├── crons/                 ← 13 scheduled task files (all active)
-│   │   │   ├── aiWorkflow.cron.ts       ← Central intelligence pipeline (hourly)
-│   │   │   ├── triageEngine.cron.ts     ← Phase 1B: news classification (every 2h)
-│   │   │   ├── terminalEngine.cron.ts   ← Phase 1A: RSS gathering (every 10min)
-│   │   │   ├── telegramMonitor.cron.ts  ← Telegram channel scraping (*/30min news, */4h airdrops)
-│   │   │   ├── convictionUpdate.cron.ts ← Incremental conviction scoring (every 6h)
-│   │   │   ├── signalPerformance.cron.ts← Signal P&L tracking (every 6h)
-│   │   │   ├── airdropRssHunter.cron.ts ← RSS-based airdrop discovery (every 6h)
-│   │   │   ├── airdropDiscovery.cron.ts ← DeFiLlama + Z.ai airdrop discovery (every 6h)
-│   │   │   ├── airdropHunter.cron.ts    ← Airdrop routine sync (every 12h)
-│   │   │   ├── marketMood.cron.ts       ← Composite Fear & Greed (07:00 UTC)
-│   │   │   ├── dailyAlpha.cron.ts       ← Daily spotlight selection (06:00 UTC)
-│   │   │   ├── historicalNews.cron.ts   ← Historical backfill (04:00 UTC)
-│   │   │   └── bufferCleanup.cron.ts    ← TTL cleanup (midnight)
+│   │   ├── crons/                 ← Flow-registered scheduled jobs
+│   │   │   ├── registry.ts              ← startCrons + flow status logging
+│   │   │   ├── aiWorkflow.cron.ts       ← Central intelligence pipeline
+│   │   │   ├── triageEngine.cron.ts / terminalEngine.cron.ts / telegramMonitor.cron.ts
+│   │   │   ├── signalPerformance.cron.ts / tpslMonitor.cron.ts / signalLifecycle.cron.ts
+│   │   │   ├── portfolioMonitor.cron.ts / portfolioSnapshot.cron.ts
+│   │   │   ├── telegramPortfolioScraper.cron.ts
+│   │   │   ├── ohlcvSnapshot.cron.ts / marketFilter.cron.ts / regimeUpdate.cron.ts
+│   │   │   ├── airdrop*.cron.ts / dailyAlpha / marketMood / historicalNews / bufferCleanup
+│   │   │   └── shadowChecker / scenarioOutcome / event* / monitoring / levelIntelligence
 │   │   │
-│   │   ├── services/              ← 30 service files (24 top-level + 5 in ai/)
-│   │   │   ├── ai/                ← AI infrastructure layer (5 files)
-│   │   │   │   ├── ai-gateway.ts        ← Multi-provider routing + streaming + timeout
-│   │   │   │   ├── cache-manager.ts     ← LRU in-memory cache (1h TTL, 1000 max)
-│   │   │   │   ├── prompt-factory.ts    ← All prompts centralized
-│   │   │   │   ├── quality-auditor.ts   ← Cross-model review (DeepSeek audits writer)
-│   │   │   │   └── factual-grounding.ts ← Hallucination filter (±50% price sanity)
-│   │   │   │
-│   │   │   ├── openai.service.ts        ← AI orchestration (triage/analysis/write/chat)
-│   │   │   ├── signalManager.service.ts ← Multi-timeframe signal management (upgrade/close/replace)
-│   │   │   ├── embedding.service.ts     ← pgvector embeddings generation + storage
-│   │   │   ├── similarity.service.ts    ← Dedup coordinator (embedding + keyword fallback)
-│   │   │   ├── conviction.service.ts    ← Algorithmic scoring engine
-│   │   │   ├── strategicOutlook.service.ts ← Forward-looking intelligence (outlook + events)
-│   │   │   ├── coinIntelligence.service.ts ← ATH, 52w range, trend, wiki background
-│   │   │   ├── temporalIntelligence.service.ts ← Historical pattern matching
-│   │   │   ├── dynamicThreshold.service.ts   ← Adaptive relevance threshold
-│   │   │   ├── priceService.ts          ← Multi-source price fetching
-│   │   │   ├── circuitBreaker.service.ts ← Per-service failure protection
-│   │   │   ├── binance.service.ts       ← Market data + Fear & Greed
-│   │   │   ├── binanceHistory.service.ts← Historical price data
-│   │   │   ├── dexscreener.service.ts   ← DEX trending + liquidity
-│   │   │   ├── defillama.service.ts     ← DeFi protocol data (TVL, token info)
-│   │   │   ├── cryptopanic.service.ts   ← News aggregation (available, not wired)
-│   │   │   ├── rssNews.service.ts       ← RSS feed aggregator (4 sources, primary)
-│   │   │   ├── tavily.service.ts        ← Emergency web search (available, not wired)
-│   │   │   ├── moralis.service.ts       ← On-chain data
-│   │   │   ├── wikipedia.service.ts     ← Background research
-│   │   │   ├── coin-memory.service.ts   ← AI event memory
-│   │   │   ├── verification.service.ts  ← Data verification
-│   │   │   ├── telegram.service.ts      ← Telegram MTProto channel scraper (news + airdrops)
-│   │   │   ├── airdropRss.service.ts    ← RSS-based airdrop discovery (5 verified sources)
-│   │   │   └── zhipuWebSearch.service.ts← GLM/Zhipu web search + airdrop context enrichment
+│   │   ├── services/              ← Domain services + AI layer
+│   │   │   ├── ai/                ← ai-gateway, cache-manager, prompt-factory,
+│   │   │   │                       quality-auditor, factual-grounding
+│   │   │   ├── openai.service.ts / binance.service.ts / telegram.service.ts
+│   │   │   ├── scorecardPipeline.service.ts / scorecardValidation.service.ts
+│   │   │   ├── scorecardTpslCalculator.service.ts / scorecardProfileBuilder.service.ts
+│   │   │   ├── portfolioMonitor.service.ts / portfolioSnapshot.service.ts
+│   │   │   ├── telegramPortfolioScraper.service.ts
+│   │   │   ├── signalLifecycle.service.ts / signalManager.service.ts
+│   │   │   ├── mtfContext.service.ts / conviction.service.ts / strategicOutlook.service.ts
+│   │   │   └── … (price, embedding, RSS, airdrop, circuit breaker, etc.)
 │   │   │
-│   │   ├── middleware/            ← 7 middleware files
-│   │   │   ├── auth.middleware.ts       ← JWT verification
-│   │   │   ├── rateLimit.middleware.ts  ← Redis Lua atomic rate limiting
-│   │   │   ├── chat-quota.middleware.ts ← Daily message quotas (Redis)
-│   │   │   ├── guest-limit.middleware.ts← Guest access restrictions
-│   │   │   ├── apiKey.middleware.ts     ← API key authentication
-│   │   │   ├── time.middleware.ts       ← X-Response-Time header
-│   │   │   └── errorHandler.ts          ← Centralized error responses
+│   │   ├── middleware/            ← auth, adminAuth, rateLimit, chat-quota, guest-limit,
+│   │   │                           apiKey, time, errorHandler
 │   │   │
-│   │   ├── models/                ← Drizzle ORM schema definitions (25 tables total)
-│   │   │   ├── index.ts               ← Re-exports all tables
-│   │   │   ├── market.model.ts        ← 16 market tables
-│   │   │   ├── user.model.ts          ← 5 user tables
-│   │   │   └── airdrop.model.ts       ← 4 airdrop tables
+│   │   ├── models/                ← Drizzle schemas (29+ tables)
+│   │   │   ├── market.model.ts / user.model.ts / airdrop.model.ts
+│   │   │   └── scorecard.model.ts  ← portfolio_coins, posts, txs, snapshots
 │   │   │
-│   │   ├── controllers/           ← 7 API endpoint handlers
-│   │   │   ├── health.controller.ts
-│   │   │   ├── market.controller.ts    ← + archive, outlook, scorecard handlers
-│   │   │   ├── chat.controller.ts
-│   │   │   ├── chart.controller.ts
-│   │   │   ├── user.controller.ts
-│   │   │   ├── apiKey.controller.ts
-│   │   │   └── airdrop.controller.ts
-│   │   │
-│   │   ├── routes/                ← 6 Express router files
-│   │   │   ├── index.ts
-│   │   │   ├── market.routes.ts        ← + archive, outlook, scorecard endpoints
-│   │   │   ├── chat.routes.ts
-│   │   │   ├── chart.routes.ts
-│   │   │   ├── user.routes.ts
-│   │   │   └── airdrop.routes.ts
+│   │   ├── controllers/           ← market, scorecard, admin, chat, chart, user, airdrop, …
+│   │   ├── routes/                ← market, scorecard, admin, chat, chart, user, airdrop
 │   │   │
 │   │   ├── scripts/               ← Maintenance & migration scripts
 │   │   │   ├── clean-duplicate-radars.ts      ← Deduplicate radar signals
@@ -1284,47 +1279,32 @@ OnlyAlpha/
 │   │   │   │   ├── airdrops/[id]/page.tsx    ← Airdrop detail + tasks
 │   │   │   │   ├── archive/page.tsx          ← Article archive (year/month grouping)
 │   │   │   │   ├── archive/loading.tsx       ← Archive loading skeleton
-│   │   │   │   ├── scorecard/page.tsx        ← Signal P&L scorecard
-│   │   │   │   ├── about/page.tsx            ← About OnlyAlpha
-│   │   │   │   ├── contact/page.tsx          ← Contact information
-│   │   │   │   ├── privacy/page.tsx          ← Privacy policy (GDPR/CCPA)
-│   │   │   │   ├── terms/page.tsx            ← Terms of service
-│   │   │   │   └── disclaimer/page.tsx       ← Legal disclaimer (NFA)
+│   │   │   │   ├── scorecard/page.tsx        ← Track Record + Model Portfolio tabs
+│   │   │   │   ├── about|contact|privacy|terms|disclaimer
 │   │   │   │
-│   │   │   ├── (terminal)/           ← Terminal layout (full-screen, no Sidebar)
-│   │   │   │   ├── terminal/page.tsx         ← Terminal landing
-│   │   │   │   ├── terminal/[coin]/page.tsx  ← Coin terminal detail
-│   │   │   │   └── terminal/[coin]/alpha/page.tsx ← Living Article view
+│   │   │   ├── (terminal)/           ← Terminal layout
+│   │   │   │   └── terminal/[coin]/…     ← Coin terminal + Living Article
 │   │   │   │
-│   │   │   ├── layout.tsx                  ← Root layout (global providers)
-│   │   │   └── not-found.tsx               ← Custom 404 page
+│   │   │   ├── admin/                 ← Command Center (feature-flagged)
+│   │   │   │   ├── page.tsx / system / shadow / signals
+│   │   │   │   ├── score-records/page.tsx
+│   │   │   │   ├── portfolio/page.tsx
+│   │   │   │   └── portfolio-posts/page.tsx
+│   │   │   │
+│   │   │   ├── layout.tsx / not-found.tsx
 │   │   │
-│   │   ├── features/              ← Feature-scoped modules (50 files)
-│   │   │   ├── shared/            ← Footer, CookieBanner, TickerBar, Sidebar,
-│   │   │   │                       SectionHeader, ErrorBoundary + api/client.ts
-│   │   │   ├── home/              ← RadarGrid, AlphaFocusCard, MarketMoodGauge,
-│   │   │   │                       TopMovers, AirdropWatchlist + api.ts + types.ts
-│   │   │   ├── terminal/          ← TerminalChat, TerminalWire, TerminalChart,
-│   │   │   │                       LivingArticle, TimelineFeed, AlphaStream,
-│   │   │   │                       AlphaSnapshot, DeepDiveSection, DeepDiveSkeleton,
-│   │   │   │                       TerminalPageClient, TerminalMobileNav
-│   │   │   │                       + hooks/ + api.ts + types.ts
-│   │   │   ├── settings/          ← PricingCards, WalletManager, ApiKeyManager,
-│   │   │   │                       PreferencesPanel, OgBadge + api.ts + types.ts
-│   │   │   ├── airdrop/           ← TaskList, AirdropsPageClient, AirdropDetailClient,
-│   │   │   │                       AiReportStructured, FarmingStreak + api.ts + types.ts
-│   │   │   └── archive/           ← ArchivePageClient + api.ts + types.ts
-│   │   │
-│   │   └── lib/                   ← Global utilities
-│   │       ├── utils.ts             ← Tailwind merge
-│   │       └── constants.ts         ← Site URL + shared constants
+│   │   ├── components/scorecard/  ← TrackRecordTab, ModelPortfolioTab, ScorecardTabs,
+│   │   │                           ActivePortfolioTable, WatchlistTable, …
+│   │   ├── features/              ← home, terminal, settings, airdrop, archive, shared
+│   │   └── lib/                   ← utils, constants
 │   │
 │   └── package.json
 │
-├── agent_gedens/                  ← Project state, agent logs, execution protocol
-├── netlify.toml                   ← Frontend CI/CD (Netlify + @netlify/plugin-nextjs)
-├── plans/                         ← Execution plans & task tracking
-└── doc/                           ← Feature specs, AI audit logs, terminal reports
+├── agent_gedens/                  ← PROJECT_STATE.md, AGENT_LOGS.md
+├── .kilo/plans/                   ← Active plans
+├── plans/                         ← Decisions & historical plans
+├── netlify.toml
+└── doc/
 ```
 
 ---
@@ -1416,12 +1396,12 @@ A comprehensive migration discipline has been established to ensure safe databas
                        │  API Proxy (/api/*)
 ┌──────────────────────▼──────────────────────────────┐
 │              Backend Server (Node.js 20)             │
-│          Express 5 + 13 Cron Jobs + SSE             │
+│     Express 5 + flow-based crons + SSE + Admin       │
 │                                                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
 │  │  PostgreSQL  │  │    Redis     │  │  AI APIs  │ │
-│  │  pgvector    │  │  (optional)  │  │  Multi-   │ │
-│  │  25 tables   │  │  Cache+Lock  │  │  Provider │ │
+│  │  pgvector    │  │  Cache+Lock  │  │  Multi-   │ │
+│  │  29+ tables  │  │  Sessions    │  │  Provider │ │
 │  └──────────────┘  └──────────────┘  └───────────┘ │
 └─────────────────────────────────────────────────────┘
 ```
@@ -1433,10 +1413,11 @@ A comprehensive migration discipline has been established to ensure safe databas
 - **Legal:** 5 AdSense-compliant pages (Privacy, Terms, About, Contact, Disclaimer) + Cookie Consent Banner
 
 ### Backend (Node.js)
-- **Entry:** `server.ts` — Express 5 with sequential cron boot (5s stagger)
+- **Entry:** `server.ts` — Express 5 with flow-based cron registry (5s stagger)
 - **Graceful Shutdown:** `SIGTERM`/`SIGINT` → close DB pool + Redis + stop crons
 - **Health:** `GET /api/market/health` returns DB connection status + timestamp
 - **Concurrency:** In-memory `isRunning` flags + Redis mutex locks (AiWorkflow) prevent double-execution
+- **Admin:** Redis sessions + feature flags (`ADMIN_COMMAND_CENTER_ENABLED`)
 
 ### Monitoring & Diagnostics
 - **Structured Logging:** Winston (debug/info/warn/error) with timestamp + level
@@ -1481,6 +1462,34 @@ This project is **proprietary**. All rights reserved.
 ---
 
 ## Changelog
+
+### Phase 30 — Model Portfolio Admin Ops (July 17, 2026)
+- **MP-ADMIN-OPS:** Admin channel posts UI + hard reset
+- `GET /admin/portfolio/posts` · `POST /admin/portfolio/posts/:id/process` (single-post re-extract → validate → investment insert)
+- `POST /admin/portfolio/reset` with confirm string `RESET_MODEL_PORTFOLIO` (txs → coins → snapshots; keeps Telegram posts)
+- Frontend: `/admin/portfolio-posts`, hard-reset modal on `/admin/portfolio`
+- Compact airdrop article extraction prompt (JSON truncation fix)
+
+### Phase 29 — Model Portfolio Product Rebuild (July 2026)
+- Investment mode: LONG-only, Binance USDT, $10k capital, 1%+1% DCA, max 50 active
+- TP ladder +30%/+50%/+100%, SL −35%, entry bands, watchlist overflow
+- Portfolio monitor order: SL → DCA → TP1 → TP2 → TP3; drawdown pause blocks entry/DCA/promote only
+- Live NAV on `GET /scorecard`; dual-tab UI (Track Record | Model Portfolio)
+
+### Phase 28 — Track Record Integrity & Admin Restore (June 2026)
+- DEC-038: Binance-only price authority for tracked coins (stops DexScreener false TP closes)
+- DEC-039: Unified `POST /admin/score-records/:id/restore` (closed / archived recovery)
+- DEC-037: Reactivate closed Track Record signals without mutating entry/TP/SL
+- HF-BINANCE-001: timeout/concurrency/Redis L2 cache for Binance client
+
+### Phase 27 — HF Model Portfolio Monitor (June 2026)
+- Standalone portfolio monitor (Phase-C independent)
+- Long-term TP/SL retuning, cash balance on snapshots, drawdown env knob
+- Scorecard SC-0→SC-8 complete (scraper → validation → profile → TP/SL → monitor → snapshot → API/UI → admin)
+
+### Phase 26 — Intelligent Lifecycle + MTF (2026)
+- Phase A/B/C intelligent upgrade track (MTF context, lifecycle V2, shadow mode)
+- Flow-based cron registry with master `FLOW_*` switches
 
 ### Phase 23 — Composite Algorithm Verdict + Bug Fixes (May 13-14, 2026)
 - Phase A bug fix batch: 7 fixes (FIX-1 to FIX-7) to unblock algorithm signal generation
