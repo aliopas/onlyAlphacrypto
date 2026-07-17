@@ -12,6 +12,7 @@ const NAV_ITEMS = [
     { href: '/admin/score-records', label: 'Score Records', icon: '📋' },
     { href: '/admin/signals', label: 'Signal Control', icon: '🎯' },
     { href: '/admin/portfolio', label: 'Portfolio', icon: '💼' },
+    { href: '/admin/portfolio-posts', label: 'Portfolio Posts', icon: '📨' },
     { href: '/admin/system', label: 'System', icon: '⚙️' },
 ];
 

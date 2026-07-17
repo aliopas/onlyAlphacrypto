@@ -131,6 +131,81 @@ function validateExtraction(extraction: VisionExtractionResult): boolean {
     return true;
 }
 
+function normalizeVisionSymbols(symbols: VisionExtractionResult[]): VisionExtractionResult[] {
+    const out: VisionExtractionResult[] = [];
+    const seen = new Set<string>();
+    for (const item of symbols) {
+        if (!validateExtraction(item)) continue;
+        const symbol = item.symbol.toUpperCase().trim();
+        if (TRACKED_COIN_SET.has(symbol)) continue;
+        if (seen.has(symbol)) continue;
+        seen.add(symbol);
+        const dir = (item.direction || 'LONG').toUpperCase() as 'LONG' | 'SHORT';
+        out.push({ symbol, entryPrice: item.entryPrice, direction: dir });
+    }
+    return out;
+}
+
+export function extractFromTextContent(content: string | null | undefined): VisionExtractionResult[] {
+    if (!content) return [];
+    const hashMatch = content.match(/#([A-Z]{2,10})/i);
+    const priceMatch = content.match(/\$?\s*([0-9]+(?:\.[0-9]+)?)/);
+    if (!hashMatch || !priceMatch) return [];
+    const symbol = hashMatch[1].toUpperCase();
+    const price = parseFloat(priceMatch[1]);
+    if (!symbol || !(price > 0) || TRACKED_COIN_SET.has(symbol)) return [];
+    return [{ symbol, entryPrice: price, direction: 'LONG' }];
+}
+
+/**
+ * Re-extract symbol+entry+direction for a single stored telegram post (no channel scrape).
+ * Prefers vision on the original Telegram message photo; falls back to text heuristics.
+ */
+export async function extractFromStoredPortfolioPost(post: {
+    messageId: string;
+    content: string | null;
+    imageUrl: string | null;
+}): Promise<VisionExtractionResult[]> {
+    const messageIdNum = parseInt(post.messageId, 10);
+    const channel = env.SCORECARD_TELEGRAM_CHANNEL;
+
+    if (channel && Number.isFinite(messageIdNum) && messageIdNum > 0) {
+        const client = await getTelegramClient();
+        if (client) {
+            try {
+                const messages = await client.getMessages(channel, { ids: [messageIdNum] });
+                const msg = messages[0];
+                if (msg) {
+                    const media = msg.media as unknown as Record<string, unknown> | undefined;
+                    const hasPhoto = !!media?.photo;
+                    if (hasPhoto) {
+                        const imageDataUrl = await downloadPhotoAsBase64(client, msg);
+                        if (imageDataUrl) {
+                            const visionResult = await callVisionForSymbolExtraction(imageDataUrl);
+                            if (visionResult?.symbols && Array.isArray(visionResult.symbols)) {
+                                const fromVision = normalizeVisionSymbols(visionResult.symbols);
+                                if (fromVision.length > 0) return fromVision;
+                            }
+                        }
+                    }
+                    const contentText = typeof msg.message === 'string' ? msg.message : post.content;
+                    const fromText = extractFromTextContent(contentText);
+                    if (fromText.length > 0) return fromText;
+                }
+            } catch (err) {
+                console.warn(
+                    '[TelegramPortfolioScraper] Single-post extract failed:',
+                    err instanceof Error ? err.message : String(err)
+                );
+            } finally {
+                await client.disconnect();
+            }
+        }
+    }
+
+    return extractFromTextContent(post.content);
+}
+
 export async function runScorecardScraper(): Promise<ScraperResult> {
     console.log('[ScorecardScraper] Step 1: Connecting to Telegram...');
     const client = await getTelegramClient();

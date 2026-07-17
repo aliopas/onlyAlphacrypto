@@ -22,6 +22,9 @@ import {
     createPortfolioCoinHandler,
     updatePortfolioCoinHandler,
     closePortfolioCoinHandler,
+    getPortfolioPostsHandler,
+    processPortfolioPostHandler,
+    resetModelPortfolioHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -79,5 +82,10 @@ router.get('/portfolio/coins', featureFlagMiddleware, adminAuth, getPortfolioCoi
 router.post('/portfolio/coins', featureFlagMiddleware, adminAuth, createPortfolioCoinHandler);
 router.patch('/portfolio/coins/:id', featureFlagMiddleware, adminAuth, updatePortfolioCoinHandler);
 router.patch('/portfolio/coins/:id/close', featureFlagMiddleware, adminAuth, closePortfolioCoinHandler);
+
+// Portfolio Posts Manual Intake + Hard Reset (MP-ADMIN-OPS)
+router.get('/portfolio/posts', featureFlagMiddleware, adminAuth, getPortfolioPostsHandler);
+router.post('/portfolio/posts/:id/process', featureFlagMiddleware, adminAuth, processPortfolioPostHandler);
+router.post('/portfolio/reset', featureFlagMiddleware, adminAuth, resetModelPortfolioHandler);
 
 export default router;

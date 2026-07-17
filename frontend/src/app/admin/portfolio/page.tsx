@@ -70,6 +70,10 @@ export default function PortfolioPage() {
     const [closePrice, setClosePrice] = useState('');
     const [closeLoading, setCloseLoading] = useState(false);
 
+    const [isResetOpen, setIsResetOpen] = useState(false);
+    const [resetConfirm, setResetConfirm] = useState('');
+    const [resetLoading, setResetLoading] = useState(false);
+
     const fetchCoins = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -207,6 +211,40 @@ export default function PortfolioPage() {
         }
     };
 
+    const handleReset = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (resetConfirm !== 'RESET_MODEL_PORTFOLIO') {
+            setMessage('Type RESET_MODEL_PORTFOLIO exactly to confirm');
+            return;
+        }
+        setResetLoading(true);
+        setMessage(null);
+        try {
+            const response = await fetchWithAuth('/admin/portfolio/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirm: 'RESET_MODEL_PORTFOLIO' }),
+            });
+            const data = await response.json() as {
+                ok?: boolean;
+                deleted?: { coins: number; transactions: number; snapshots: number };
+                totalCapital?: number;
+                error?: string;
+            };
+            if (!response.ok) throw new Error(data.error || 'Reset failed');
+            setMessage(
+                `Model Portfolio reset. Deleted coins=${data.deleted?.coins ?? 0}, txs=${data.deleted?.transactions ?? 0}, snapshots=${data.deleted?.snapshots ?? 0}. Capital=$${data.totalCapital ?? 10000}`
+            );
+            setIsResetOpen(false);
+            setResetConfirm('');
+            fetchCoins();
+        } catch (err) {
+            setMessage(err instanceof Error ? err.message : 'Reset failed');
+        } finally {
+            setResetLoading(false);
+        }
+    };
+
     const formatNum = (value: string | null) => {
         if (value === null || value === undefined) return '—';
         const num = Number(value);
@@ -217,12 +255,24 @@ export default function PortfolioPage() {
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold">Portfolio Management</h1>
-                <button
-                    onClick={() => setIsAddOpen(true)}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                >
-                    Add Coin
-                </button>
+                <div className="flex gap-2">
+                    <button
+                        onClick={() => {
+                            setIsResetOpen(true);
+                            setResetConfirm('');
+                            setMessage(null);
+                        }}
+                        className="px-4 py-2 bg-red-800 text-white rounded hover:bg-red-700 border border-red-600"
+                    >
+                        Reset Model Portfolio
+                    </button>
+                    <button
+                        onClick={() => setIsAddOpen(true)}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                        Add Coin
+                    </button>
+                </div>
             </div>
 
             {message && (
@@ -552,6 +602,54 @@ export default function PortfolioPage() {
                                 <button
                                     type="button"
                                     onClick={() => setClosingCoin(null)}
+                                    className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Reset Model Portfolio Modal */}
+            {isResetOpen && (
+                <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+                    <div className="bg-[#0A0A0A] border border-red-900/60 rounded-lg p-6 w-full max-w-md">
+                        <h3 className="text-lg font-bold mb-2 text-red-400">Reset Model Portfolio</h3>
+                        <p className="text-sm text-gray-400 mb-4">
+                            Deletes all portfolio coins, transactions, and snapshots. Telegram posts are kept.
+                            Capital returns to SCORECARD_TOTAL_BUDGET. This cannot be undone.
+                        </p>
+                        <form onSubmit={handleReset} className="space-y-3">
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">
+                                    Type <span className="font-mono text-red-300">RESET_MODEL_PORTFOLIO</span> to confirm
+                                </label>
+                                <input
+                                    type="text"
+                                    value={resetConfirm}
+                                    onChange={(e) => setResetConfirm(e.target.value)}
+                                    className="w-full border border-[#333] bg-[#0D0D0D] p-2 rounded text-white font-mono"
+                                    placeholder="RESET_MODEL_PORTFOLIO"
+                                    autoComplete="off"
+                                    required
+                                />
+                            </div>
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    type="submit"
+                                    disabled={resetLoading || resetConfirm !== 'RESET_MODEL_PORTFOLIO'}
+                                    className="flex-1 px-4 py-2 bg-red-700 text-white rounded hover:bg-red-600 disabled:opacity-50"
+                                >
+                                    {resetLoading ? 'Resetting...' : 'Confirm Hard Reset'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsResetOpen(false);
+                                        setResetConfirm('');
+                                    }}
                                     className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
                                 >
                                     Cancel

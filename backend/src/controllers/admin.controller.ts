@@ -8,10 +8,14 @@ import { getPriceWithFallback } from '../services/priceService';
 import { deleteCache } from '../config/redis';
 import { db } from '../config/db';
 import { shadowSignals, signalPerformance } from '../models/market.model';
-import { portfolioCoins, portfolioTransactions } from '../models/scorecard.model';
+import { portfolioCoins, portfolioTransactions, telegramPortfolioPosts } from '../models/scorecard.model';
 import { eq, and, gte, lte, desc, sql, isNull, inArray, count } from 'drizzle-orm';
 import { env } from '../config/env';
 import type { SignalState } from '../services/signalLifecycle.service';
+import {
+    processTelegramPortfolioPost,
+    resetModelPortfolio,
+} from '../services/scorecardPipeline.service';
 
 /**
  * Get shadow mode statistics
@@ -1585,5 +1589,155 @@ export async function closePortfolioCoinHandler(req: Request, res: Response): Pr
     } catch (error) {
         console.error('[AdminPortfolio] Failed to close coin:', error instanceof Error ? error.message : String(error));
         res.status(500).json({ error: 'Failed to close portfolio coin' });
+    }
+}
+
+// ─── Portfolio Posts Manual Intake + Hard Reset (MP-ADMIN-OPS) ───────────────
+
+export async function getPortfolioPostsHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const { page = '1', limit = '50', analyzed } = req.query;
+
+        const pageNum = parseInt(page as string, 10) || 1;
+        const limitNum = Math.min(parseInt(limit as string, 10) || 50, 100);
+        const offset = (pageNum - 1) * limitNum;
+
+        const whereConditions = [];
+        if (analyzed === 'true') {
+            whereConditions.push(eq(telegramPortfolioPosts.isAnalyzed, true));
+        } else if (analyzed === 'false') {
+            whereConditions.push(eq(telegramPortfolioPosts.isAnalyzed, false));
+        }
+
+        const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+        const totalResult = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(telegramPortfolioPosts)
+            .where(whereClause);
+
+        const total = Number(totalResult[0]?.count || 0);
+
+        const posts = await db
+            .select({
+                id: telegramPortfolioPosts.id,
+                messageId: telegramPortfolioPosts.messageId,
+                content: telegramPortfolioPosts.content,
+                imageUrl: telegramPortfolioPosts.imageUrl,
+                isAnalyzed: telegramPortfolioPosts.isAnalyzed,
+                extractedSymbols: telegramPortfolioPosts.extractedSymbols,
+                analyzedAt: telegramPortfolioPosts.analyzedAt,
+                createdAt: telegramPortfolioPosts.createdAt,
+            })
+            .from(telegramPortfolioPosts)
+            .where(whereClause)
+            .orderBy(desc(telegramPortfolioPosts.createdAt))
+            .limit(limitNum)
+            .offset(offset);
+
+        res.json({
+            posts: posts.map((p) => ({
+                id: p.id,
+                messageId: p.messageId,
+                content: p.content,
+                imageUrl: p.imageUrl,
+                isAnalyzed: p.isAnalyzed ?? false,
+                extractedSymbols: p.extractedSymbols,
+                analyzedAt: p.analyzedAt ? p.analyzedAt.toISOString() : null,
+                createdAt: p.createdAt ? p.createdAt.toISOString() : '',
+            })),
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total,
+                totalPages: Math.ceil(total / limitNum) || 0,
+            },
+        });
+    } catch (error) {
+        console.error('[AdminPortfolio] Failed to fetch posts:', error instanceof Error ? error.message : String(error));
+        res.status(500).json({ error: 'Failed to fetch portfolio posts' });
+    }
+}
+
+export async function processPortfolioPostHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const postId = parseInt(idParam, 10);
+        if (isNaN(postId)) {
+            res.status(400).json({ error: 'Invalid post ID' });
+            return;
+        }
+
+        const adminEmail = req.adminEmail;
+
+        try {
+            const result = await processTelegramPortfolioPost(postId);
+
+            await logAdminAction({
+                adminEmail: adminEmail ?? 'unknown',
+                action: 'process_portfolio_post',
+                targetTable: 'telegram_portfolio_posts',
+                targetId: String(postId),
+                newValue: {
+                    messageId: result.messageId,
+                    summary: result.summary,
+                    results: result.results,
+                },
+                ipAddress: getClientIp(req),
+            });
+
+            res.json(result);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === 'POST_NOT_FOUND') {
+                res.status(404).json({ error: 'Post not found' });
+                return;
+            }
+            if (msg === 'NO_EXTRACTED_SYMBOLS') {
+                res.status(400).json({ error: 'Post has no extracted symbols' });
+                return;
+            }
+            throw err;
+        }
+    } catch (error) {
+        console.error('[AdminPortfolio] Failed to process post:', error instanceof Error ? error.message : String(error));
+        res.status(500).json({ error: 'Failed to process portfolio post' });
+    }
+}
+
+interface ResetModelPortfolioBody {
+    confirm?: string;
+}
+
+export async function resetModelPortfolioHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const body = req.body as ResetModelPortfolioBody;
+        if (body.confirm !== 'RESET_MODEL_PORTFOLIO') {
+            res.status(400).json({
+                error: 'Confirmation required',
+                hint: 'Body must include { "confirm": "RESET_MODEL_PORTFOLIO" }',
+            });
+            return;
+        }
+
+        const adminEmail = req.adminEmail;
+        const result = await resetModelPortfolio();
+
+        await logAdminAction({
+            adminEmail: adminEmail ?? 'unknown',
+            action: 'reset_model_portfolio',
+            targetTable: 'portfolio_coins',
+            targetId: 'all',
+            newValue: {
+                deleted: result.deleted,
+                totalCapital: result.totalCapital,
+            },
+            ipAddress: getClientIp(req),
+        });
+
+        res.json(result);
+    } catch (error) {
+        console.error('[AdminPortfolio] Failed to reset portfolio:', error instanceof Error ? error.message : String(error));
+        res.status(500).json({ error: 'Failed to reset model portfolio' });
     }
 }
