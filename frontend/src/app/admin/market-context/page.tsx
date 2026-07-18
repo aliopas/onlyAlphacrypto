@@ -57,6 +57,28 @@ interface SnapshotRow {
     sectionCount: number;
 }
 
+interface SnapshotSection {
+    content: string;
+    updatedAt: string;
+    sourceNewsIds: number[];
+}
+
+interface SnapshotDetail extends Omit<SnapshotRow, 'sectionCount'> {
+    sections: Partial<Record<string, SnapshotSection>>;
+    updatedAt: string | null;
+}
+
+const SECTION_PREVIEW_ORDER = [
+    'overview',
+    'btcCorrelation',
+    'liquidity',
+    'newsSensitivity',
+    'geopolitics',
+    'thisWeek',
+    'outlook',
+    'faq',
+] as const;
+
 export default function MarketContextAdminPage() {
     const { fetchWithAuth } = useAdminAuth();
     const [tab, setTab] = useState<'news' | 'channels' | 'snapshots'>('news');
@@ -93,6 +115,8 @@ export default function MarketContextAdminPage() {
     const [snapshotsLoading, setSnapshotsLoading] = useState(false);
     const [snapshotStatusFilter, setSnapshotStatusFilter] = useState('draft');
     const [generating, setGenerating] = useState(false);
+    const [preview, setPreview] = useState<SnapshotDetail | null>(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
 
     const fetchNews = useCallback(async () => {
         setLoading(true);
@@ -167,6 +191,26 @@ export default function MarketContextAdminPage() {
     useEffect(() => {
         if (tab === 'snapshots') fetchSnapshots();
     }, [tab, fetchSnapshots]);
+
+    const handlePreviewSnapshot = async (id: number) => {
+        setPreviewLoading(true);
+        setMessage(null);
+        setError(null);
+        try {
+            const response = await fetchWithAuth(`/admin/market-context/snapshots/${id}`);
+            const data = (await response.json()) as {
+                error?: string;
+                snapshot?: SnapshotDetail;
+            };
+            if (!response.ok) throw new Error(data.error || 'Failed to load snapshot');
+            if (!data.snapshot) throw new Error('Snapshot not found');
+            setPreview(data.snapshot);
+        } catch (err) {
+            setMessage(err instanceof Error ? err.message : 'Preview failed');
+        } finally {
+            setPreviewLoading(false);
+        }
+    };
 
     const handleGenerateSnapshot = async () => {
         setGenerating(true);
@@ -766,6 +810,19 @@ export default function MarketContextAdminPage() {
                                             </td>
                                             <td className="px-3 py-2">
                                                 <div className="flex flex-wrap gap-1">
+                                                    <button
+                                                        type="button"
+                                                        disabled={previewLoading && busyId === s.id}
+                                                        onClick={() => {
+                                                            setBusyId(s.id);
+                                                            void handlePreviewSnapshot(s.id).finally(
+                                                                () => setBusyId(null)
+                                                            );
+                                                        }}
+                                                        className="px-2 py-1 text-xs rounded border border-blue-800 text-blue-300 hover:bg-blue-900/30 disabled:opacity-40"
+                                                    >
+                                                        Preview
+                                                    </button>
                                                     {s.status !== 'published' &&
                                                         s.status !== 'archived' && (
                                                             <button
@@ -798,6 +855,75 @@ export default function MarketContextAdminPage() {
                             </tbody>
                         </table>
                     </div>
+
+                    {previewLoading && !preview && (
+                        <p className="mt-4 text-sm text-gray-500">Loading preview…</p>
+                    )}
+
+                    {preview && (
+                        <div className="mt-6 bg-[#0A0A0A] border border-[#333] rounded p-4 md:p-6">
+                            <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                                <div>
+                                    <h2 className="text-lg font-semibold text-white">
+                                        Preview snapshot #{preview.id}
+                                    </h2>
+                                    <p className="text-xs text-gray-500 font-mono mt-1">
+                                        {preview.snapshotKey} · {preview.status} · {preview.kind}
+                                        {preview.weekLabel ? ` · ${preview.weekLabel}` : ''} ·{' '}
+                                        {preview.generatorVersion}
+                                    </p>
+                                    <p className="text-xs text-gray-600 mt-1">
+                                        Trusted news IDs: {(preview.newsIds ?? []).join(', ') || '—'}
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setPreview(null)}
+                                    className="px-3 py-1.5 text-xs rounded border border-[#333] text-gray-400 hover:bg-[#222]"
+                                >
+                                    Close preview
+                                </button>
+                            </div>
+
+                            <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
+                                {SECTION_PREVIEW_ORDER.map((key) => {
+                                    const section = preview.sections?.[key];
+                                    if (!section?.content?.trim()) return null;
+                                    return (
+                                        <section
+                                            key={key}
+                                            className="border-t border-[#222] pt-4 first:border-t-0 first:pt-0"
+                                        >
+                                            <h3 className="text-sm font-mono uppercase tracking-wider text-blue-400 mb-2">
+                                                {key}
+                                            </h3>
+                                            <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans leading-relaxed">
+                                                {section.content}
+                                            </pre>
+                                            {section.sourceNewsIds?.length > 0 && (
+                                                <p className="text-[10px] text-gray-600 mt-2 font-mono">
+                                                    sourceNewsIds: {section.sourceNewsIds.join(', ')}
+                                                </p>
+                                            )}
+                                        </section>
+                                    );
+                                })}
+                            </div>
+
+                            {preview.status === 'draft' && (
+                                <div className="mt-4 pt-4 border-t border-[#333] flex gap-2">
+                                    <button
+                                        type="button"
+                                        disabled={busyId === preview.id}
+                                        onClick={() => handlePublishSnapshot(preview.id)}
+                                        className="px-4 py-2 text-sm rounded border border-green-800 text-green-400 hover:bg-green-900/30 disabled:opacity-40"
+                                    >
+                                        Publish this draft
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </>
             )}
 

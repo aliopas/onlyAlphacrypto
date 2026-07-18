@@ -26,6 +26,7 @@ import { normalizeAndUpsertNewsItem } from '../services/marketNews.service';
 import {
     generateMarketContextSnapshot,
     listMarketContextSnapshots,
+    getMarketContextSnapshotById,
     publishMarketContextSnapshot,
     archiveMarketContextSnapshot,
     unpublishMarketContextSnapshot,
@@ -2443,6 +2444,34 @@ export async function getMarketContextSnapshotsHandler(
             error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({ error: 'Failed to list market context snapshots' });
+    }
+}
+
+export async function getMarketContextSnapshotByIdHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const snapshotId = parseInt(idParam, 10);
+        if (isNaN(snapshotId)) {
+            res.status(400).json({ error: 'Invalid snapshot ID' });
+            return;
+        }
+
+        const snapshot = await getMarketContextSnapshotById(snapshotId);
+        if (!snapshot) {
+            res.status(404).json({ error: 'Snapshot not found' });
+            return;
+        }
+
+        res.json({ snapshot });
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to get snapshot:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to fetch market context snapshot' });
     }
 }
 

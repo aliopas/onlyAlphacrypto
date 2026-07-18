@@ -451,6 +451,57 @@ export async function listMarketContextSnapshots(options?: {
     };
 }
 
+/**
+ * Full snapshot including sections — admin review/preview (draft or published).
+ */
+export async function getMarketContextSnapshotById(id: number): Promise<{
+    id: number;
+    snapshotKey: string;
+    kind: string;
+    weekLabel: string | null;
+    status: string;
+    sections: Partial<MarketContextSections>;
+    newsIds: number[];
+    marketDataVersion: string | null;
+    generatorVersion: string;
+    generatedAt: string | null;
+    publishedAt: string | null;
+    createdBy: string | null;
+    createdAt: string;
+    updatedAt: string | null;
+} | null> {
+    const rows = await db
+        .select()
+        .from(marketContextSnapshots)
+        .where(eq(marketContextSnapshots.id, id))
+        .limit(1);
+
+    if (rows.length === 0) return null;
+
+    const s = rows[0];
+    const sections =
+        s.sections && typeof s.sections === 'object'
+            ? (s.sections as Partial<MarketContextSections>)
+            : {};
+
+    return {
+        id: s.id,
+        snapshotKey: s.snapshotKey,
+        kind: s.kind,
+        weekLabel: s.weekLabel,
+        status: s.status,
+        sections,
+        newsIds: Array.isArray(s.newsIds) ? s.newsIds : [],
+        marketDataVersion: s.marketDataVersion,
+        generatorVersion: s.generatorVersion,
+        generatedAt: s.generatedAt ? s.generatedAt.toISOString() : null,
+        publishedAt: s.publishedAt ? s.publishedAt.toISOString() : null,
+        createdBy: s.createdBy,
+        createdAt: s.createdAt ? s.createdAt.toISOString() : '',
+        updatedAt: s.updatedAt ? s.updatedAt.toISOString() : null,
+    };
+}
+
 /** Exposed for tests / admin preview of hash stability */
 export function hashMarketDataVersionSeed(seed: string): string {
     return createHash('sha256').update(seed).digest('hex').slice(0, 16);

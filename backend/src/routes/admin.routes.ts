@@ -33,6 +33,7 @@ import {
     patchMarketContextTelegramChannelHandler,
     postMarketContextSnapshotGenerateHandler,
     getMarketContextSnapshotsHandler,
+    getMarketContextSnapshotByIdHandler,
     patchMarketContextSnapshotPublishHandler,
     patchMarketContextSnapshotArchiveHandler,
     patchMarketContextSnapshotUnpublishHandler,
@@ -157,6 +158,12 @@ router.get(
     marketContextFlagMiddleware,
     adminAuth,
     getMarketContextSnapshotsHandler
+);
+router.get(
+    '/market-context/snapshots/:id',
+    marketContextFlagMiddleware,
+    adminAuth,
+    getMarketContextSnapshotByIdHandler
 );
 router.patch(
     '/market-context/snapshots/:id/publish',
