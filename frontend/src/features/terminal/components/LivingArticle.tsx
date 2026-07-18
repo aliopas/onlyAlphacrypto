@@ -85,7 +85,7 @@ export const LivingArticle: React.FC<LivingArticleProps> = ({ symbol }) => {
                         {sections.map((section, index) => (
                             <details
                                 key={section.label}
-                                open={index < 2}
+                                defaultOpen={index < 2}
                                 className="group"
                             >
                                 <summary className="cursor-pointer text-sm font-mono tracking-widest text-[#888] uppercase py-3 hover:text-white transition-colors select-none list-none flex items-center justify-between">
