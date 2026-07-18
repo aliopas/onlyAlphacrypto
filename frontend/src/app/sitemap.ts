@@ -113,9 +113,39 @@ async function buildAirdropPages(): Promise<MetadataRoute.Sitemap> {
     }));
 }
 
+async function buildMarketContextPage(): Promise<MetadataRoute.Sitemap> {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+    try {
+        const res = await fetch(`${apiBase}/market/market-context`, {
+            next: { revalidate: 3600 },
+        });
+        if (!res.ok) return [];
+        const data = (await res.json()) as {
+            available?: boolean;
+            snapshot?: { publishedAt?: string | null } | null;
+        };
+        if (!data.available || !data.snapshot) return [];
+        const lastMod = data.snapshot.publishedAt
+            ? new Date(data.snapshot.publishedAt)
+            : new Date();
+        return [
+            {
+                url: `${SITE_URL}/blog/market-context`,
+                lastModified: lastMod,
+                changeFrequency: 'weekly' as const,
+                priority: 0.85,
+            },
+        ];
+    } catch (error) {
+        console.error('[Sitemap] Failed to fetch market context:', error);
+        return [];
+    }
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const airdropPages = await buildAirdropPages();
     const coinPages = await buildArticleCoinPages();
+    const marketContextPage = await buildMarketContextPage();
 
-    return [...STATIC_PAGES, ...coinPages, ...airdropPages];
+    return [...STATIC_PAGES, ...coinPages, ...airdropPages, ...marketContextPage];
 }

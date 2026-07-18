@@ -9,6 +9,12 @@ import { deleteCache } from '../config/redis';
 import { db } from '../config/db';
 import { shadowSignals, signalPerformance } from '../models/market.model';
 import { portfolioCoins, portfolioTransactions, telegramPortfolioPosts } from '../models/scorecard.model';
+import {
+    marketNewsItems,
+    marketTelegramChannels,
+    type MarketNewsSourceType,
+    type MarketNewsTrust,
+} from '../models/marketContext.model';
 import { eq, and, gte, lte, desc, sql, isNull, inArray, count } from 'drizzle-orm';
 import { env } from '../config/env';
 import type { SignalState } from '../services/signalLifecycle.service';
@@ -16,6 +22,14 @@ import {
     processTelegramPortfolioPost,
     resetModelPortfolio,
 } from '../services/scorecardPipeline.service';
+import { normalizeAndUpsertNewsItem } from '../services/marketNews.service';
+import {
+    generateMarketContextSnapshot,
+    listMarketContextSnapshots,
+    publishMarketContextSnapshot,
+    archiveMarketContextSnapshot,
+    unpublishMarketContextSnapshot,
+} from '../services/marketContextGenerator.service';
 
 /**
  * Get shadow mode statistics
@@ -1739,5 +1753,870 @@ export async function resetModelPortfolioHandler(req: Request, res: Response): P
     } catch (error) {
         console.error('[AdminPortfolio] Failed to reset portfolio:', error instanceof Error ? error.message : String(error));
         res.status(500).json({ error: 'Failed to reset model portfolio' });
+    }
+}
+
+// ─── Market Context Admin (MC-2 / DEC-040) ───────────────────────────────────
+
+const MARKET_NEWS_TRUST_VALUES: readonly MarketNewsTrust[] = ['pending', 'trusted', 'rejected'];
+const MARKET_NEWS_SOURCE_VALUES: readonly MarketNewsSourceType[] = [
+    'terminal',
+    'rss',
+    'telegram',
+    'manual',
+];
+
+function isMarketNewsTrust(value: string): value is MarketNewsTrust {
+    return (MARKET_NEWS_TRUST_VALUES as readonly string[]).includes(value);
+}
+
+function isMarketNewsSourceType(value: string): value is MarketNewsSourceType {
+    return (MARKET_NEWS_SOURCE_VALUES as readonly string[]).includes(value);
+}
+
+function parseSymbolsInput(raw: unknown): string[] {
+    if (Array.isArray(raw)) {
+        return raw
+            .filter((s): s is string => typeof s === 'string')
+            .map((s) => s.trim().toUpperCase())
+            .filter((s) => s.length > 0);
+    }
+    if (typeof raw === 'string' && raw.trim()) {
+        return raw
+            .split(',')
+            .map((s) => s.trim().toUpperCase())
+            .filter((s) => s.length > 0);
+    }
+    return [];
+}
+
+export async function getMarketContextNewsHandler(req: Request, res: Response): Promise<void> {
+    try {
+        const { page = '1', limit = '50', trust, sourceType, q } = req.query;
+
+        const pageNum = parseInt(page as string, 10) || 1;
+        const limitNum = Math.min(parseInt(limit as string, 10) || 50, 100);
+        const offset = (pageNum - 1) * limitNum;
+
+        const whereConditions = [];
+
+        if (typeof trust === 'string' && isMarketNewsTrust(trust)) {
+            whereConditions.push(eq(marketNewsItems.trust, trust));
+        }
+        if (typeof sourceType === 'string' && isMarketNewsSourceType(sourceType)) {
+            whereConditions.push(eq(marketNewsItems.sourceType, sourceType));
+        }
+        if (typeof q === 'string' && q.trim()) {
+            const pattern = `%${q.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+            whereConditions.push(
+                sql`${marketNewsItems.title} ILIKE ${pattern} ESCAPE '\\'`
+            );
+        }
+
+        const whereClause = whereConditions.length > 0 ? and(...whereConditions) : undefined;
+
+        const totalResult = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(marketNewsItems)
+            .where(whereClause);
+
+        const total = Number(totalResult[0]?.count || 0);
+
+        const rows = await db
+            .select({
+                id: marketNewsItems.id,
+                sourceType: marketNewsItems.sourceType,
+                externalId: marketNewsItems.externalId,
+                sourceHash: marketNewsItems.sourceHash,
+                title: marketNewsItems.title,
+                body: marketNewsItems.body,
+                url: marketNewsItems.url,
+                sourceName: marketNewsItems.sourceName,
+                publishedAt: marketNewsItems.publishedAt,
+                symbols: marketNewsItems.symbols,
+                trust: marketNewsItems.trust,
+                trustNote: marketNewsItems.trustNote,
+                createdAt: marketNewsItems.createdAt,
+                updatedAt: marketNewsItems.updatedAt,
+            })
+            .from(marketNewsItems)
+            .where(whereClause)
+            .orderBy(desc(marketNewsItems.publishedAt), desc(marketNewsItems.id))
+            .limit(limitNum)
+            .offset(offset);
+
+        res.json({
+            items: rows.map((r) => ({
+                id: r.id,
+                sourceType: r.sourceType,
+                externalId: r.externalId,
+                sourceHash: r.sourceHash,
+                title: r.title,
+                body: r.body,
+                url: r.url,
+                sourceName: r.sourceName,
+                publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+                symbols: Array.isArray(r.symbols) ? r.symbols : [],
+                trust: r.trust,
+                trustNote: r.trustNote,
+                createdAt: r.createdAt ? r.createdAt.toISOString() : '',
+                updatedAt: r.updatedAt ? r.updatedAt.toISOString() : '',
+            })),
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total,
+                totalPages: Math.ceil(total / limitNum) || 0,
+            },
+        });
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to list news:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to fetch market context news' });
+    }
+}
+
+interface PatchNewsTrustBody {
+    trust?: string;
+    note?: string;
+}
+
+export async function patchMarketContextNewsTrustHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const newsId = parseInt(idParam, 10);
+        if (isNaN(newsId)) {
+            res.status(400).json({ error: 'Invalid news ID' });
+            return;
+        }
+
+        const body = req.body as PatchNewsTrustBody;
+        if (!body.trust || !isMarketNewsTrust(body.trust)) {
+            res.status(400).json({
+                error: 'Invalid trust',
+                hint: 'trust must be pending | trusted | rejected',
+            });
+            return;
+        }
+
+        const existing = await db
+            .select({
+                id: marketNewsItems.id,
+                trust: marketNewsItems.trust,
+                trustNote: marketNewsItems.trustNote,
+                title: marketNewsItems.title,
+            })
+            .from(marketNewsItems)
+            .where(eq(marketNewsItems.id, newsId))
+            .limit(1);
+
+        if (existing.length === 0) {
+            res.status(404).json({ error: 'News item not found' });
+            return;
+        }
+
+        const note =
+            typeof body.note === 'string' ? body.note.trim() || null : existing[0].trustNote;
+
+        const updated = await db
+            .update(marketNewsItems)
+            .set({
+                trust: body.trust,
+                trustNote: note,
+                updatedAt: new Date(),
+            })
+            .where(eq(marketNewsItems.id, newsId))
+            .returning({
+                id: marketNewsItems.id,
+                trust: marketNewsItems.trust,
+                trustNote: marketNewsItems.trustNote,
+            });
+
+        await logAdminAction({
+            adminEmail: req.adminEmail ?? 'unknown',
+            action: 'market_context_news_trust',
+            targetTable: 'market_news_items',
+            targetId: String(newsId),
+            oldValue: {
+                trust: existing[0].trust,
+                trustNote: existing[0].trustNote,
+                title: existing[0].title,
+            },
+            newValue: {
+                trust: updated[0].trust,
+                trustNote: updated[0].trustNote,
+            },
+            ipAddress: getClientIp(req),
+        });
+
+        res.json({
+            id: updated[0].id,
+            trust: updated[0].trust,
+            trustNote: updated[0].trustNote,
+        });
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to patch trust:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to update news trust' });
+    }
+}
+
+interface ManualNewsBody {
+    title?: string;
+    body?: string;
+    url?: string;
+    sourceName?: string;
+    publishedAt?: string;
+    symbols?: string[] | string;
+    trust?: string;
+    trustNote?: string;
+}
+
+export async function postMarketContextNewsManualHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        const body = req.body as ManualNewsBody;
+        const title = typeof body.title === 'string' ? body.title.trim() : '';
+        if (!title) {
+            res.status(400).json({ error: 'title is required' });
+            return;
+        }
+
+        let trust: MarketNewsTrust = 'pending';
+        if (body.trust !== undefined) {
+            if (!isMarketNewsTrust(body.trust)) {
+                res.status(400).json({ error: 'Invalid trust value' });
+                return;
+            }
+            trust = body.trust;
+        }
+
+        let publishedAt: Date | null = null;
+        if (typeof body.publishedAt === 'string' && body.publishedAt.trim()) {
+            const d = new Date(body.publishedAt);
+            if (Number.isNaN(d.getTime())) {
+                res.status(400).json({ error: 'Invalid publishedAt' });
+                return;
+            }
+            publishedAt = d;
+        } else {
+            publishedAt = new Date();
+        }
+
+        const symbols = parseSymbolsInput(body.symbols);
+        const url = typeof body.url === 'string' ? body.url.trim() || null : null;
+        const sourceName =
+            typeof body.sourceName === 'string' ? body.sourceName.trim() || 'manual' : 'manual';
+        const newsBody = typeof body.body === 'string' ? body.body : null;
+        const trustNote =
+            typeof body.trustNote === 'string' ? body.trustNote.trim() || null : null;
+
+        const outcome = await normalizeAndUpsertNewsItem({
+            sourceType: 'manual',
+            externalId: null,
+            title,
+            body: newsBody,
+            url,
+            sourceName,
+            publishedAt,
+            symbols,
+            trust,
+            trustNote,
+            rawRef: { injectedBy: req.adminEmail ?? 'unknown' },
+        });
+
+        if (outcome === 'skipped') {
+            res.status(409).json({
+                error: 'Duplicate or empty item (sourceHash conflict)',
+                outcome,
+            });
+            return;
+        }
+
+        const inserted = await db
+            .select({
+                id: marketNewsItems.id,
+                sourceHash: marketNewsItems.sourceHash,
+                trust: marketNewsItems.trust,
+                title: marketNewsItems.title,
+            })
+            .from(marketNewsItems)
+            .where(
+                and(
+                    eq(marketNewsItems.sourceType, 'manual'),
+                    eq(marketNewsItems.title, title)
+                )
+            )
+            .orderBy(desc(marketNewsItems.id))
+            .limit(1);
+
+        const item = inserted[0];
+
+        await logAdminAction({
+            adminEmail: req.adminEmail ?? 'unknown',
+            action: 'market_context_news_manual',
+            targetTable: 'market_news_items',
+            targetId: item ? String(item.id) : undefined,
+            newValue: {
+                title,
+                trust,
+                url,
+                sourceName,
+                symbols,
+            },
+            ipAddress: getClientIp(req),
+        });
+
+        res.status(201).json({
+            outcome: 'inserted',
+            item: item
+                ? {
+                      id: item.id,
+                      sourceHash: item.sourceHash,
+                      trust: item.trust,
+                      title: item.title,
+                  }
+                : null,
+        });
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to inject manual news:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to inject manual news' });
+    }
+}
+
+export async function getMarketContextTelegramChannelsHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        const rows = await db
+            .select()
+            .from(marketTelegramChannels)
+            .orderBy(desc(marketTelegramChannels.id));
+
+        res.json({
+            channels: rows.map((c) => ({
+                id: c.id,
+                usernameOrId: c.usernameOrId,
+                title: c.title,
+                enabled: c.enabled,
+                lastCursor: c.lastCursor,
+                notes: c.notes,
+                createdAt: c.createdAt ? c.createdAt.toISOString() : '',
+                updatedAt: c.updatedAt ? c.updatedAt.toISOString() : '',
+            })),
+        });
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to list channels:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to fetch telegram channels' });
+    }
+}
+
+interface CreateChannelBody {
+    usernameOrId?: string;
+    title?: string;
+    enabled?: boolean;
+    notes?: string;
+}
+
+export async function postMarketContextTelegramChannelHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        const body = req.body as CreateChannelBody;
+        const usernameOrId =
+            typeof body.usernameOrId === 'string' ? body.usernameOrId.trim() : '';
+        if (!usernameOrId) {
+            res.status(400).json({ error: 'usernameOrId is required' });
+            return;
+        }
+
+        const enabled = body.enabled === undefined ? true : Boolean(body.enabled);
+        const title = typeof body.title === 'string' ? body.title.trim() || null : null;
+        const notes = typeof body.notes === 'string' ? body.notes.trim() || null : null;
+
+        try {
+            const inserted = await db
+                .insert(marketTelegramChannels)
+                .values({
+                    usernameOrId,
+                    title,
+                    enabled,
+                    notes,
+                    updatedAt: new Date(),
+                })
+                .returning();
+
+            const channel = inserted[0];
+
+            await logAdminAction({
+                adminEmail: req.adminEmail ?? 'unknown',
+                action: 'market_context_channel_create',
+                targetTable: 'market_telegram_channels',
+                targetId: String(channel.id),
+                newValue: {
+                    usernameOrId: channel.usernameOrId,
+                    title: channel.title,
+                    enabled: channel.enabled,
+                    notes: channel.notes,
+                },
+                ipAddress: getClientIp(req),
+            });
+
+            res.status(201).json({
+                channel: {
+                    id: channel.id,
+                    usernameOrId: channel.usernameOrId,
+                    title: channel.title,
+                    enabled: channel.enabled,
+                    lastCursor: channel.lastCursor,
+                    notes: channel.notes,
+                    createdAt: channel.createdAt ? channel.createdAt.toISOString() : '',
+                    updatedAt: channel.updatedAt ? channel.updatedAt.toISOString() : '',
+                },
+            });
+        } catch (insertErr) {
+            const msg = insertErr instanceof Error ? insertErr.message : String(insertErr);
+            if (msg.includes('unique') || msg.includes('duplicate')) {
+                res.status(409).json({ error: 'Channel usernameOrId already exists' });
+                return;
+            }
+            throw insertErr;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to create channel:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to create telegram channel' });
+    }
+}
+
+interface PatchChannelBody {
+    title?: string;
+    enabled?: boolean;
+    notes?: string;
+    usernameOrId?: string;
+}
+
+export async function patchMarketContextTelegramChannelHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const channelId = parseInt(idParam, 10);
+        if (isNaN(channelId)) {
+            res.status(400).json({ error: 'Invalid channel ID' });
+            return;
+        }
+
+        const existing = await db
+            .select()
+            .from(marketTelegramChannels)
+            .where(eq(marketTelegramChannels.id, channelId))
+            .limit(1);
+
+        if (existing.length === 0) {
+            res.status(404).json({ error: 'Channel not found' });
+            return;
+        }
+
+        const body = req.body as PatchChannelBody;
+        const updates: {
+            title?: string | null;
+            enabled?: boolean;
+            notes?: string | null;
+            usernameOrId?: string;
+            updatedAt: Date;
+        } = { updatedAt: new Date() };
+
+        if (body.title !== undefined) {
+            updates.title = typeof body.title === 'string' ? body.title.trim() || null : null;
+        }
+        if (body.enabled !== undefined) {
+            updates.enabled = Boolean(body.enabled);
+        }
+        if (body.notes !== undefined) {
+            updates.notes = typeof body.notes === 'string' ? body.notes.trim() || null : null;
+        }
+        if (body.usernameOrId !== undefined) {
+            const u =
+                typeof body.usernameOrId === 'string' ? body.usernameOrId.trim() : '';
+            if (!u) {
+                res.status(400).json({ error: 'usernameOrId cannot be empty' });
+                return;
+            }
+            updates.usernameOrId = u;
+        }
+
+        try {
+            const updated = await db
+                .update(marketTelegramChannels)
+                .set(updates)
+                .where(eq(marketTelegramChannels.id, channelId))
+                .returning();
+
+            const channel = updated[0];
+
+            await logAdminAction({
+                adminEmail: req.adminEmail ?? 'unknown',
+                action: 'market_context_channel_update',
+                targetTable: 'market_telegram_channels',
+                targetId: String(channelId),
+                oldValue: {
+                    usernameOrId: existing[0].usernameOrId,
+                    title: existing[0].title,
+                    enabled: existing[0].enabled,
+                    notes: existing[0].notes,
+                },
+                newValue: {
+                    usernameOrId: channel.usernameOrId,
+                    title: channel.title,
+                    enabled: channel.enabled,
+                    notes: channel.notes,
+                },
+                ipAddress: getClientIp(req),
+            });
+
+            res.json({
+                channel: {
+                    id: channel.id,
+                    usernameOrId: channel.usernameOrId,
+                    title: channel.title,
+                    enabled: channel.enabled,
+                    lastCursor: channel.lastCursor,
+                    notes: channel.notes,
+                    createdAt: channel.createdAt ? channel.createdAt.toISOString() : '',
+                    updatedAt: channel.updatedAt ? channel.updatedAt.toISOString() : '',
+                },
+            });
+        } catch (updateErr) {
+            const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+            if (msg.includes('unique') || msg.includes('duplicate')) {
+                res.status(409).json({ error: 'Channel usernameOrId already exists' });
+                return;
+            }
+            throw updateErr;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to patch channel:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to update telegram channel' });
+    }
+}
+
+// ─── Market Context Snapshots (MC-3 / DEC-040) ────────────────────────────────
+
+interface GenerateSnapshotBody {
+    kind?: string;
+    weekLabel?: string;
+    newsLimit?: number;
+    newsDaysBack?: number;
+    marketDataVersion?: string;
+}
+
+export async function postMarketContextSnapshotGenerateHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        if (!env.MARKET_CONTEXT_ENABLED) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const body = (req.body ?? {}) as GenerateSnapshotBody;
+        const adminEmail = req.adminEmail ?? 'unknown';
+
+        try {
+            const result = await generateMarketContextSnapshot({
+                kind: typeof body.kind === 'string' ? body.kind : undefined,
+                weekLabel: typeof body.weekLabel === 'string' ? body.weekLabel : undefined,
+                newsLimit:
+                    typeof body.newsLimit === 'number' ? body.newsLimit : undefined,
+                newsDaysBack:
+                    typeof body.newsDaysBack === 'number' ? body.newsDaysBack : undefined,
+                marketDataVersion:
+                    typeof body.marketDataVersion === 'string'
+                        ? body.marketDataVersion
+                        : undefined,
+                createdBy: adminEmail,
+            });
+
+            const snap = result.snapshot;
+
+            await logAdminAction({
+                adminEmail,
+                action: 'market_context_snapshot_generate',
+                targetTable: 'market_context_snapshots',
+                targetId: String(snap.id),
+                newValue: {
+                    snapshotKey: snap.snapshotKey,
+                    kind: snap.kind,
+                    weekLabel: snap.weekLabel,
+                    status: snap.status,
+                    newsCount: result.newsCount,
+                    generatorVersion: snap.generatorVersion,
+                    marketDataVersion: snap.marketDataVersion,
+                },
+                ipAddress: getClientIp(req),
+            });
+
+            res.status(201).json({
+                snapshot: {
+                    id: snap.id,
+                    snapshotKey: snap.snapshotKey,
+                    kind: snap.kind,
+                    weekLabel: snap.weekLabel,
+                    status: snap.status,
+                    newsIds: Array.isArray(snap.newsIds) ? snap.newsIds : [],
+                    marketDataVersion: snap.marketDataVersion,
+                    generatorVersion: snap.generatorVersion,
+                    generatedAt: snap.generatedAt ? snap.generatedAt.toISOString() : null,
+                    publishedAt: snap.publishedAt ? snap.publishedAt.toISOString() : null,
+                    createdBy: snap.createdBy,
+                    createdAt: snap.createdAt ? snap.createdAt.toISOString() : '',
+                    sectionKeys: result.sectionKeys,
+                    newsCount: result.newsCount,
+                },
+            });
+        } catch (genErr) {
+            const msg = genErr instanceof Error ? genErr.message : String(genErr);
+            if (msg === 'MARKET_CONTEXT_DISABLED') {
+                res.status(404).json({ error: 'Not found' });
+                return;
+            }
+            throw genErr;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to generate snapshot:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to generate market context snapshot' });
+    }
+}
+
+export async function getMarketContextSnapshotsHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        const { page = '1', limit = '20', status } = req.query;
+        const pageNum = parseInt(page as string, 10) || 1;
+        const limitNum = Math.min(parseInt(limit as string, 10) || 20, 50);
+
+        let statusFilter: 'draft' | 'published' | 'archived' | undefined;
+        if (status === 'draft' || status === 'published' || status === 'archived') {
+            statusFilter = status;
+        }
+
+        const result = await listMarketContextSnapshots({
+            status: statusFilter,
+            page: pageNum,
+            limit: limitNum,
+        });
+
+        res.json(result);
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to list snapshots:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to list market context snapshots' });
+    }
+}
+
+export async function patchMarketContextSnapshotPublishHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const snapshotId = parseInt(idParam, 10);
+        if (isNaN(snapshotId)) {
+            res.status(400).json({ error: 'Invalid snapshot ID' });
+            return;
+        }
+
+        const adminEmail = req.adminEmail ?? 'unknown';
+
+        try {
+            const snap = await publishMarketContextSnapshot(snapshotId, adminEmail);
+
+            await logAdminAction({
+                adminEmail,
+                action: 'market_context_snapshot_publish',
+                targetTable: 'market_context_snapshots',
+                targetId: String(snapshotId),
+                newValue: {
+                    status: snap.status,
+                    publishedAt: snap.publishedAt ? snap.publishedAt.toISOString() : null,
+                    snapshotKey: snap.snapshotKey,
+                },
+                ipAddress: getClientIp(req),
+            });
+
+            res.json({
+                snapshot: {
+                    id: snap.id,
+                    snapshotKey: snap.snapshotKey,
+                    status: snap.status,
+                    publishedAt: snap.publishedAt ? snap.publishedAt.toISOString() : null,
+                },
+            });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === 'SNAPSHOT_NOT_FOUND') {
+                res.status(404).json({ error: 'Snapshot not found' });
+                return;
+            }
+            if (msg === 'SNAPSHOT_ARCHIVED') {
+                res.status(400).json({ error: 'Cannot publish archived snapshot' });
+                return;
+            }
+            if (msg === 'MARKET_CONTEXT_DISABLED') {
+                res.status(404).json({ error: 'Not found' });
+                return;
+            }
+            throw err;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to publish snapshot:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to publish snapshot' });
+    }
+}
+
+export async function patchMarketContextSnapshotArchiveHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const snapshotId = parseInt(idParam, 10);
+        if (isNaN(snapshotId)) {
+            res.status(400).json({ error: 'Invalid snapshot ID' });
+            return;
+        }
+
+        const adminEmail = req.adminEmail ?? 'unknown';
+
+        try {
+            const snap = await archiveMarketContextSnapshot(snapshotId);
+
+            await logAdminAction({
+                adminEmail,
+                action: 'market_context_snapshot_archive',
+                targetTable: 'market_context_snapshots',
+                targetId: String(snapshotId),
+                newValue: { status: snap.status },
+                ipAddress: getClientIp(req),
+            });
+
+            res.json({
+                snapshot: {
+                    id: snap.id,
+                    snapshotKey: snap.snapshotKey,
+                    status: snap.status,
+                },
+            });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === 'SNAPSHOT_NOT_FOUND') {
+                res.status(404).json({ error: 'Snapshot not found' });
+                return;
+            }
+            if (msg === 'MARKET_CONTEXT_DISABLED') {
+                res.status(404).json({ error: 'Not found' });
+                return;
+            }
+            throw err;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to archive snapshot:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to archive snapshot' });
+    }
+}
+
+export async function patchMarketContextSnapshotUnpublishHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const snapshotId = parseInt(idParam, 10);
+        if (isNaN(snapshotId)) {
+            res.status(400).json({ error: 'Invalid snapshot ID' });
+            return;
+        }
+
+        const adminEmail = req.adminEmail ?? 'unknown';
+
+        try {
+            const snap = await unpublishMarketContextSnapshot(snapshotId);
+
+            await logAdminAction({
+                adminEmail,
+                action: 'market_context_snapshot_unpublish',
+                targetTable: 'market_context_snapshots',
+                targetId: String(snapshotId),
+                newValue: { status: snap.status },
+                ipAddress: getClientIp(req),
+            });
+
+            res.json({
+                snapshot: {
+                    id: snap.id,
+                    snapshotKey: snap.snapshotKey,
+                    status: snap.status,
+                },
+            });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === 'SNAPSHOT_NOT_FOUND') {
+                res.status(404).json({ error: 'Snapshot not found' });
+                return;
+            }
+            if (msg === 'SNAPSHOT_NOT_PUBLISHED') {
+                res.status(400).json({ error: 'Snapshot is not published' });
+                return;
+            }
+            if (msg === 'MARKET_CONTEXT_DISABLED') {
+                res.status(404).json({ error: 'Not found' });
+                return;
+            }
+            throw err;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to unpublish snapshot:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to unpublish snapshot' });
     }
 }

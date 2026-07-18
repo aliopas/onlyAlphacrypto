@@ -36,6 +36,7 @@ import { startDailyTrendCron } from './crons/dailyTrend.cron';
 import { startTelegramPortfolioScraperCron } from './crons/telegramPortfolioScraper.cron';
 import { startPortfolioSnapshotCron } from './crons/portfolioSnapshot.cron';
 import { startPortfolioMonitorCron } from './crons/portfolioMonitor.cron';
+import { startMarketNewsIngestCron } from './crons/marketNewsIngest.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -119,6 +120,8 @@ async function bootstrap(): Promise<void> {
         logger.info('│ SCENARIO_TRACKER_ENABLED     : %s', String(env.SCENARIO_TRACKER_ENABLED));
         logger.info('│ OHLCV_SNAPSHOT_ENABLED       : %s', String(env.OHLCV_SNAPSHOT_ENABLED));
         logger.info('│ MARKET_FILTER_ENABLED        : %s', String(env.MARKET_FILTER_ENABLED));
+        logger.info('│ MARKET_CONTEXT_ENABLED       : %s', String(env.MARKET_CONTEXT_ENABLED));
+        logger.info('│ MARKET_CONTEXT_INGEST_ENABLED: %s', String(env.MARKET_CONTEXT_INGEST_ENABLED));
         logger.info('└─────────────────────────────────────────────┘');
 
         app.listen(PORT, () => {
@@ -165,6 +168,13 @@ async function bootstrap(): Promise<void> {
             { name: 'DailyTrend',          start: startDailyTrendCron,          flow: 'market', subFlag: env.DAILY_TREND_ENABLED, subFlagName: 'DAILY_TREND_ENABLED' },
             { name: 'OhlcvSnapshot',       start: startOhlcvSnapshotCron,       flow: 'market', subFlag: env.OHLCV_SNAPSHOT_ENABLED, subFlagName: 'OHLCV_SNAPSHOT_ENABLED' },
             { name: 'Monitoring',          start: startMonitoringCron,          flow: 'market', subFlag: env.MONITORING_CRON_ENABLED, subFlagName: 'MONITORING_CRON_ENABLED' },
+            {
+                name: 'MarketNewsIngest',
+                start: startMarketNewsIngestCron,
+                flow: 'market',
+                subFlag: env.MARKET_CONTEXT_ENABLED && env.MARKET_CONTEXT_INGEST_ENABLED,
+                subFlagName: 'MARKET_CONTEXT_INGEST_ENABLED',
+            },
 
             // ── PORTFOLIO flow ─────────────────────────────────────────────────
             { name: 'TelegramPortfolioScraper', start: startTelegramPortfolioScraperCron, flow: 'portfolio', subFlag: env.SCORECARD_SCRAPER_ENABLED, subFlagName: 'SCORECARD_SCRAPER_ENABLED' },

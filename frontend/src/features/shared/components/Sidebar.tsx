@@ -6,8 +6,9 @@ import { usePathname } from 'next/navigation';
 const NAV_ITEMS = [
     { href: '/', icon: 'home', label: 'Home', disabled: false },
     { href: '/terminal', icon: 'terminal', label: 'Terminal', disabled: false },
+    { href: '/blog/market-context', icon: 'newspaper', label: 'Market Context', disabled: false },
     { href: '/airdrops', icon: 'flight_takeoff', label: 'Airdrops', disabled: false },
-    { href: '/scorecard', icon: 'leaderboard', label: 'Scorecard', disabled: false }
+    { href: '/scorecard', icon: 'leaderboard', label: 'Scorecard', disabled: false },
 ];
 
 export function Sidebar() {
@@ -29,7 +30,7 @@ export function Sidebar() {
             </div>
 
             {/* Nav items */}
-            <div className="w-full h-full pt-1 md:pt-0 grid grid-cols-5 md:flex md:flex-col md:gap-6 md:px-0 items-center justify-items-center md:justify-start md:h-auto">
+            <div className="w-full h-full pt-1 md:pt-0 grid grid-cols-5 md:flex md:flex-col md:gap-5 md:px-0 items-center justify-items-center md:justify-start md:h-auto">
                 {NAV_ITEMS.map(({ href, icon, label, disabled }) => {
                     const isActive = !disabled && (pathname === href || (href !== '/' && pathname.startsWith(href)));
                     const navClassName = `group relative flex w-full h-full md:h-auto md:w-auto items-center justify-center p-2.5 rounded-lg transition-all duration-300 ${disabled

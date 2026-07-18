@@ -13,6 +13,7 @@ import { getLivePrices, getTopMovers } from '../services/binance.service';
 import { getPriceWithFallback } from '../services/priceService';
 import { AppError } from '../middleware/errorHandler';
 import { compareWithHistoricalEvents } from '../services/historicalEventComparison.service';
+import { getLatestPublishedMarketContext } from '../services/marketContextGenerator.service';
 
 export async function getCoinInsight(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -36,6 +37,31 @@ export async function getCoinInsight(req: Request, res: Response, next: NextFunc
         await setCache(cacheKey, insight, 300);
         res.json(insight);
     } catch (err) { next(err); }
+}
+
+/**
+ * Public Market Context hub payload (DEC-040 MC-4).
+ * Returns latest published snapshot only — never drafts.
+ */
+export async function getPublicMarketContextHandler(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const cacheKey = 'market-context:public:latest';
+        const cached = await getCache(cacheKey);
+        if (cached) {
+            res.json(cached);
+            return;
+        }
+
+        const payload = await getLatestPublishedMarketContext();
+        await setCache(cacheKey, payload, 120);
+        res.json(payload);
+    } catch (err) {
+        next(err);
+    }
 }
 
 export async function getAlphaFocus(req: Request, res: Response, next: NextFunction): Promise<void> {

@@ -658,4 +658,108 @@ Remember: This is historical context, not a prediction. Past events do not guara
 `;
     }
 
+    /**
+     * Market Context hub snapshot (DEC-040 MC-3).
+     * Prompt order: Intent → Primary KW → Supporting → PAA → Trusted News → Market Data → Constraints.
+     */
+    buildMarketContextSnapshotMessages(input: {
+        searchIntentPack: {
+            primaryIntent: 'Informational' | 'Educational' | 'Mixed';
+            primaryKeyword: string;
+            supportingKeywords: string[];
+            peopleAlsoAsk: string[];
+            writingConstraints: string[];
+        };
+        trustedNews: Array<{
+            id: number;
+            title: string;
+            body?: string | null;
+            sourceName?: string | null;
+            publishedAt?: string | null;
+            symbols?: string[];
+        }>;
+        marketDataVersion: string;
+        generatorVersion: string;
+        weekLabel?: string | null;
+        sectionKeys: string[];
+        sectionPublicH2: Record<string, string>;
+    }): ChatCompletionMessageParam[] {
+        const pack = input.searchIntentPack;
+        const newsBlock =
+            input.trustedNews.length === 0
+                ? '(No trusted news items in window — write short evergreen frameworks only; do not invent news events.)'
+                : input.trustedNews
+                      .map((n, i) => {
+                          const body = n.body ? n.body.slice(0, 400) : '';
+                          const symbols =
+                              n.symbols && n.symbols.length > 0
+                                  ? ` symbols=[${n.symbols.join(',')}]`
+                                  : '';
+                          return `[#${n.id}] ${n.title}${symbols}\n  source=${n.sourceName ?? 'unknown'} published=${n.publishedAt ?? 'n/a'}\n  ${body}`;
+                      })
+                      .join('\n\n');
+
+        const h2Lines = input.sectionKeys
+            .map((k) => `- ${k}: default public H2 "${input.sectionPublicH2[k] ?? k}"`)
+            .join('\n');
+
+        const constraints = pack.writingConstraints.map((c) => `- ${c}`).join('\n');
+
+        return [
+            {
+                role: 'system',
+                content: `You are the Market Context educational writer for OnlyAlpha (NOT a live Terminal analyst).
+You produce structured section objects for a market-wide educational hub page.
+English only. No BUY/SELL language. No price targets. NFA. No keyword stuffing.
+Every section must satisfy at least one search intent (G17). Do not pad empty SEO spam.
+Evergreen sections (btcCorrelation, liquidity, newsSensitivity, geopolitics) are frameworks.
+Fresh sections (thisWeek, outlook, faq) use trusted news when available.
+Hybrid: overview = evergreen spine + fresh lead.
+
+Return ONLY valid JSON (no markdown fences) with this shape:
+{
+  "sections": {
+    "overview": { "content": "markdown EN prose with H2 first line", "sourceNewsIds": [1,2] },
+    "btcCorrelation": { "content": "...", "sourceNewsIds": [] },
+    "liquidity": { "content": "...", "sourceNewsIds": [] },
+    "newsSensitivity": { "content": "...", "sourceNewsIds": [] },
+    "geopolitics": { "content": "...", "sourceNewsIds": [] },
+    "thisWeek": { "content": "...", "sourceNewsIds": [] },
+    "outlook": { "content": "...", "sourceNewsIds": [] },
+    "faq": { "content": "Q/A markdown, >=5 questions", "sourceNewsIds": [] }
+  }
+}
+content must start with an intent-led H2 line. sourceNewsIds must only use provided news ids.
+generatorVersion=${input.generatorVersion}. marketDataVersion=${input.marketDataVersion}.`,
+            },
+            {
+                role: 'user',
+                content: `1) PRIMARY INTENT: ${pack.primaryIntent}
+
+2) PRIMARY KEYWORD: ${pack.primaryKeyword}
+
+3) SUPPORTING KEYWORDS:
+${pack.supportingKeywords.map((k) => `- ${k}`).join('\n')}
+
+4) PEOPLE ALSO ASK:
+${pack.peopleAlsoAsk.map((q) => `- ${q}`).join('\n')}
+
+5) TRUSTED NEWS (use only these facts; cite via sourceNewsIds):
+${newsBlock}
+
+6) MARKET DATA VERSION: ${input.marketDataVersion}
+WEEK LABEL (display only): ${input.weekLabel ?? 'n/a'}
+
+7) WRITING CONSTRAINTS:
+${constraints}
+
+SECTION KEYS TO PRODUCE (all required):
+${h2Lines}
+
+Write educational macro context only. CTA to live analysis is out of scope for this JSON.
+Respond with JSON only.`,
+            },
+        ];
+    }
+
 }

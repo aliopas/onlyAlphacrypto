@@ -25,6 +25,17 @@ import {
     getPortfolioPostsHandler,
     processPortfolioPostHandler,
     resetModelPortfolioHandler,
+    getMarketContextNewsHandler,
+    patchMarketContextNewsTrustHandler,
+    postMarketContextNewsManualHandler,
+    getMarketContextTelegramChannelsHandler,
+    postMarketContextTelegramChannelHandler,
+    patchMarketContextTelegramChannelHandler,
+    postMarketContextSnapshotGenerateHandler,
+    getMarketContextSnapshotsHandler,
+    patchMarketContextSnapshotPublishHandler,
+    patchMarketContextSnapshotArchiveHandler,
+    patchMarketContextSnapshotUnpublishHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -39,6 +50,14 @@ function featureFlagMiddleware(req: Request, res: Response, next: NextFunction):
 
 function signalOpsFlagMiddleware(req: Request, res: Response, next: NextFunction): void {
     if (!env.ADMIN_SIGNAL_OPS_ENABLED) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+    }
+    next();
+}
+
+function marketContextFlagMiddleware(req: Request, res: Response, next: NextFunction): void {
+    if (!env.ADMIN_COMMAND_CENTER_ENABLED || !env.MARKET_CONTEXT_ENABLED) {
         res.status(404).json({ error: 'Not found' });
         return;
     }
@@ -87,5 +106,75 @@ router.patch('/portfolio/coins/:id/close', featureFlagMiddleware, adminAuth, clo
 router.get('/portfolio/posts', featureFlagMiddleware, adminAuth, getPortfolioPostsHandler);
 router.post('/portfolio/posts/:id/process', featureFlagMiddleware, adminAuth, processPortfolioPostHandler);
 router.post('/portfolio/reset', featureFlagMiddleware, adminAuth, resetModelPortfolioHandler);
+
+// Market Context Admin (MC-2 / DEC-040)
+router.get(
+    '/market-context/news',
+    marketContextFlagMiddleware,
+    adminAuth,
+    getMarketContextNewsHandler
+);
+router.patch(
+    '/market-context/news/:id/trust',
+    marketContextFlagMiddleware,
+    adminAuth,
+    patchMarketContextNewsTrustHandler
+);
+router.post(
+    '/market-context/news/manual',
+    marketContextFlagMiddleware,
+    adminAuth,
+    postMarketContextNewsManualHandler
+);
+router.get(
+    '/market-context/telegram-channels',
+    marketContextFlagMiddleware,
+    adminAuth,
+    getMarketContextTelegramChannelsHandler
+);
+router.post(
+    '/market-context/telegram-channels',
+    marketContextFlagMiddleware,
+    adminAuth,
+    postMarketContextTelegramChannelHandler
+);
+router.patch(
+    '/market-context/telegram-channels/:id',
+    marketContextFlagMiddleware,
+    adminAuth,
+    patchMarketContextTelegramChannelHandler
+);
+
+// Market Context Snapshots (MC-3)
+router.post(
+    '/market-context/snapshots/generate',
+    marketContextFlagMiddleware,
+    adminAuth,
+    postMarketContextSnapshotGenerateHandler
+);
+router.get(
+    '/market-context/snapshots',
+    marketContextFlagMiddleware,
+    adminAuth,
+    getMarketContextSnapshotsHandler
+);
+router.patch(
+    '/market-context/snapshots/:id/publish',
+    marketContextFlagMiddleware,
+    adminAuth,
+    patchMarketContextSnapshotPublishHandler
+);
+router.patch(
+    '/market-context/snapshots/:id/archive',
+    marketContextFlagMiddleware,
+    adminAuth,
+    patchMarketContextSnapshotArchiveHandler
+);
+router.patch(
+    '/market-context/snapshots/:id/unpublish',
+    marketContextFlagMiddleware,
+    adminAuth,
+    patchMarketContextSnapshotUnpublishHandler
+);
 
 export default router;

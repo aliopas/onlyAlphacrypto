@@ -230,6 +230,138 @@ async function runMigrations(): Promise<void> {
 
             console.log('✅ Scorecard investment mode migration complete');
         }
+
+        // ─── Market Context news layer (DEC-040 MC-1) ─────────────────────────
+        const marketContextV1Flag = await client.query(
+            "SELECT 1 FROM migration_flags WHERE flag_name = 'market_context_v1'"
+        );
+
+        if (marketContextV1Flag.rows.length === 0) {
+            console.log('📦 Running market context v1 migration...');
+
+            await client.query(`
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'market_news_source_type') THEN
+                        CREATE TYPE market_news_source_type AS ENUM ('terminal', 'rss', 'telegram', 'manual');
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'market_news_trust') THEN
+                        CREATE TYPE market_news_trust AS ENUM ('pending', 'trusted', 'rejected');
+                    END IF;
+                END $$;
+            `);
+
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS market_news_items (
+                    id SERIAL PRIMARY KEY,
+                    source_type market_news_source_type NOT NULL,
+                    external_id VARCHAR(255),
+                    source_hash VARCHAR(64) NOT NULL,
+                    title TEXT NOT NULL,
+                    body TEXT,
+                    url VARCHAR(1000),
+                    source_name VARCHAR(255),
+                    published_at TIMESTAMP,
+                    symbols JSONB DEFAULT '[]'::jsonb,
+                    trust market_news_trust NOT NULL DEFAULT 'pending',
+                    trust_note TEXT,
+                    raw_ref JSONB,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    CONSTRAINT market_news_items_source_hash_unique UNIQUE (source_hash)
+                )
+            `);
+
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS idx_market_news_items_trust
+                    ON market_news_items (trust)
+            `);
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS idx_market_news_items_published_at
+                    ON market_news_items (published_at DESC NULLS LAST)
+            `);
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS idx_market_news_items_source_type
+                    ON market_news_items (source_type)
+            `);
+
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS market_telegram_channels (
+                    id SERIAL PRIMARY KEY,
+                    username_or_id VARCHAR(255) NOT NULL,
+                    title VARCHAR(255),
+                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    last_cursor VARCHAR(100),
+                    notes TEXT,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    CONSTRAINT market_telegram_channels_username_unique UNIQUE (username_or_id)
+                )
+            `);
+
+            await client.query(
+                "INSERT INTO migration_flags (flag_name, executed_at) VALUES ('market_context_v1', NOW())"
+            );
+
+            console.log('✅ Market context v1 migration complete');
+        }
+
+        // ─── Market Context snapshots (DEC-040 MC-3) ──────────────────────────
+        const marketContextSnapshotsFlag = await client.query(
+            "SELECT 1 FROM migration_flags WHERE flag_name = 'market_context_snapshots_v1'"
+        );
+
+        if (marketContextSnapshotsFlag.rows.length === 0) {
+            console.log('📦 Running market context snapshots migration...');
+
+            await client.query(`
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'market_context_snapshot_status') THEN
+                        CREATE TYPE market_context_snapshot_status AS ENUM ('draft', 'published', 'archived');
+                    END IF;
+                END $$;
+            `);
+
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS market_context_snapshots (
+                    id SERIAL PRIMARY KEY,
+                    snapshot_key VARCHAR(100) NOT NULL,
+                    kind VARCHAR(50) NOT NULL DEFAULT 'weekly',
+                    week_label VARCHAR(20),
+                    status market_context_snapshot_status NOT NULL DEFAULT 'draft',
+                    sections JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    news_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    market_data_version VARCHAR(100),
+                    generator_version VARCHAR(50) NOT NULL DEFAULT 'MC-v1',
+                    generated_at TIMESTAMP,
+                    published_at TIMESTAMP,
+                    created_by VARCHAR(255),
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                    CONSTRAINT market_context_snapshots_key_unique UNIQUE (snapshot_key)
+                )
+            `);
+
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS idx_market_context_snapshots_status
+                    ON market_context_snapshots (status)
+            `);
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS idx_market_context_snapshots_kind
+                    ON market_context_snapshots (kind)
+            `);
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS idx_market_context_snapshots_generated_at
+                    ON market_context_snapshots (generated_at DESC NULLS LAST)
+            `);
+
+            await client.query(
+                "INSERT INTO migration_flags (flag_name, executed_at) VALUES ('market_context_snapshots_v1', NOW())"
+            );
+
+            console.log('✅ Market context snapshots migration complete');
+        }
     } catch (err) {
         console.error('⚠️ Alpha focus migration warning:', err instanceof Error ? err.message : String(err));
     } finally {

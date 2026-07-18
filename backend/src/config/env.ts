@@ -185,6 +185,11 @@ const envSchema = z.object({
     ADMIN_COMMAND_CENTER_ENABLED: z.coerce.boolean().default(false),
     ADMIN_SIGNAL_OPS_ENABLED: z.coerce.boolean().default(false),
 
+    // Market Context (DEC-040) — news data layer; all default off
+    MARKET_CONTEXT_ENABLED: z.coerce.boolean().default(false),
+    MARKET_CONTEXT_INGEST_ENABLED: z.coerce.boolean().default(false),
+    MARKET_CONTEXT_TELEGRAM_POLL_LIMIT: z.coerce.number().default(50),
+
     // Monitoring Cron
     MONITORING_CRON_ENABLED: z.boolean().default(false),
 

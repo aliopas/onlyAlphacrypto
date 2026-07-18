@@ -13,6 +13,7 @@ const NAV_ITEMS = [
     { href: '/admin/signals', label: 'Signal Control', icon: '🎯' },
     { href: '/admin/portfolio', label: 'Portfolio', icon: '💼' },
     { href: '/admin/portfolio-posts', label: 'Portfolio Posts', icon: '📨' },
+    { href: '/admin/market-context', label: 'Market Context', icon: '📰' },
     { href: '/admin/system', label: 'System', icon: '⚙️' },
 ];
 
