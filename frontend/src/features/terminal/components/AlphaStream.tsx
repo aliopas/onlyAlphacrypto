@@ -81,7 +81,17 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
     const [article, setArticle] = useState<CoinNews | null>(null);
     const [loading, setLoading] = useState(false);
     const [showDeepDive, setShowDeepDive] = useState(true);
+    const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+    const isSectionOpen = (key: string) => openSections[key] !== false;
+
+    const toggleSection = (key: string) => {
+        setOpenSections((prev) => ({
+            ...prev,
+            [key]: prev[key] === false ? true : false,
+        }));
+    };
 
     useEffect(() => {
         // If we are given a radar signal directly, we don't need to fetch news.
@@ -246,26 +256,32 @@ export function AlphaStream({ newsId, radarSignal }: Props) {
 
                     {!isRadarType && article?.summary ? (
                         <div className="space-y-0 divide-y divide-[#222] border-t border-[#222]">
-                            {sections.length > 0 ? sections.map((section) => (
-                                <details
-                                    key={section.key}
-                                    defaultOpen
-                                    className="group"
-                                >
-                                    <summary className="cursor-pointer text-sm font-mono tracking-widest text-[#888] uppercase py-3 hover:text-white transition-colors select-none list-none flex items-center justify-between">
-                                        <span className="flex items-center gap-3">
-                                            <span className={`w-1 h-3 rounded-sm bg-emerald-500`} />
-                                            {section.label}
-                                        </span>
-                                        <span className="material-symbols-outlined text-[14px] text-[#555] group-open:rotate-180 transition-transform">
-                                            expand_more
-                                        </span>
-                                    </summary>
-                                    <p className="text-[#CCC] leading-relaxed text-[15px] pl-4 pb-4 whitespace-pre-line">
-                                        {section.content}
-                                    </p>
-                                </details>
-                            )) : (
+                            {sections.length > 0 ? sections.map((section) => {
+                                const open = isSectionOpen(section.key);
+                                return (
+                                    <div key={section.key} className="group">
+                                        <button
+                                            type="button"
+                                            onClick={() => toggleSection(section.key)}
+                                            aria-expanded={open}
+                                            className="w-full cursor-pointer text-sm font-mono tracking-widest text-[#888] uppercase py-3 hover:text-white transition-colors select-none flex items-center justify-between text-left"
+                                        >
+                                            <span className="flex items-center gap-3">
+                                                <span className="w-1 h-3 rounded-sm bg-emerald-500" />
+                                                {section.label}
+                                            </span>
+                                            <span className={`material-symbols-outlined text-[14px] text-[#555] transition-transform ${open ? 'rotate-180' : ''}`}>
+                                                expand_more
+                                            </span>
+                                        </button>
+                                        {open && (
+                                            <p className="text-[#CCC] leading-relaxed text-[15px] pl-4 pb-4 whitespace-pre-line">
+                                                {section.content}
+                                            </p>
+                                        )}
+                                    </div>
+                                );
+                            }) : (
                                 <p className="text-[#CCC] leading-relaxed text-[15px] py-4 whitespace-pre-line">
                                     {article.summary}
                                 </p>
