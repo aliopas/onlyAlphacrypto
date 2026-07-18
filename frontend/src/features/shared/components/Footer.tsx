@@ -39,6 +39,13 @@ export function Footer() {
                     </Link>
                     <span className="text-[#333]">·</span>
                     <Link
+                        href="/blog/market-context"
+                        className="text-[#555] hover:text-[var(--color-primary)] transition-colors"
+                    >
+                        Market Context
+                    </Link>
+                    <span className="text-[#333]">·</span>
+                    <Link
                         href="/contact"
                         className="text-[#555] hover:text-[var(--color-primary)] transition-colors"
                     >

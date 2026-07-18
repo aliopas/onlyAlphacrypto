@@ -332,12 +332,21 @@ export default async function MarketContextPublicPage() {
                     <strong className="text-white">Not Financial Advice (NFA).</strong> Educational
                     frameworks only — no BUY/SELL recommendations or price targets.
                 </div>
-                <Link
-                    href="/terminal"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded bg-blue-900/40 text-blue-300 border border-blue-800 hover:bg-blue-900/60 text-sm"
-                >
-                    Live intelligence → Terminal
-                </Link>
+                <div className="p-5 border border-[#2a2a2a] rounded-lg bg-[#0A0A0A]">
+                    <h2 className="text-base font-semibold text-white mb-1">
+                        Need live intelligence?
+                    </h2>
+                    <p className="text-gray-400 text-sm mb-4">
+                        Market Context explains structure. Terminal shows what is happening right
+                        now — per-coin AI analysis, radar, and live wire.
+                    </p>
+                    <Link
+                        href="/terminal"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded bg-blue-900/40 text-blue-300 border border-blue-800 hover:bg-blue-900/60 text-sm font-medium"
+                    >
+                        Open Terminal for live intelligence →
+                    </Link>
+                </div>
             </article>
         );
     }
@@ -380,11 +389,22 @@ export default async function MarketContextPublicPage() {
                 </p>
             </header>
 
-            <div className="p-4 border border-yellow-900/40 bg-yellow-900/10 rounded text-sm text-yellow-200/90 mb-8">
+            <div className="p-4 border border-yellow-900/40 bg-yellow-900/10 rounded text-sm text-yellow-200/90 mb-6">
                 <strong className="text-yellow-100">Not Financial Advice (NFA).</strong> This page
                 explains structural frameworks (liquidity, dominance, macro, news sensitivity). It
-                does not provide BUY/SELL signals or price targets. For live per-coin intelligence,
-                use Terminal.
+                does not provide BUY/SELL signals or price targets.
+            </div>
+
+            <div className="mb-10 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+                <span className="text-[#666] text-xs font-mono uppercase tracking-wider">
+                    Live tools
+                </span>
+                <Link
+                    href="/terminal"
+                    className="text-blue-400/90 hover:text-blue-300 transition-colors text-sm"
+                >
+                    Open Terminal for live intelligence →
+                </Link>
             </div>
 
             {SECTION_ORDER.map((key) => {
@@ -408,26 +428,38 @@ export default async function MarketContextPublicPage() {
                 );
             })}
 
-            <div className="mt-12 p-6 border border-[#333] rounded-lg bg-[#0A0A0A]">
-                <h2 className="text-lg font-semibold text-white mb-2">
-                    Live intelligence → Terminal
-                </h2>
-                <p className="text-gray-400 text-sm mb-4">
-                    Market Context is educational and market-wide. For real-time AI analysis per
-                    coin, open the Terminal.
+            <div className="mt-12 p-6 border border-[#2a2a2a] rounded-lg bg-[#0A0A0A]">
+                <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-[#666] mb-2">
+                    Next step
                 </p>
-                <Link
-                    href="/terminal"
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded bg-blue-900/40 text-blue-300 border border-blue-800 hover:bg-blue-900/60 text-sm"
-                >
-                    Open Terminal
-                </Link>
-                <p className="text-xs text-gray-600 mt-4">
-                    Also see{' '}
+                <h2 className="text-lg font-semibold text-white mb-2">
+                    Open Terminal for live intelligence
+                </h2>
+                <p className="text-gray-400 text-sm mb-4 leading-relaxed">
+                    This edition is educational and market-wide — why structure, liquidity, and
+                    macro matter. For real-time per-coin AI analysis, radar signals, and the live
+                    wire, open the Intelligence Platform Terminal.
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                    <Link
+                        href="/terminal"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded bg-blue-900/40 text-blue-300 border border-blue-800 hover:bg-blue-900/60 text-sm font-medium"
+                    >
+                        Open Terminal for live intelligence →
+                    </Link>
+                    <Link
+                        href="/terminal"
+                        className="text-xs font-mono text-[#666] hover:text-[#aaa] transition-colors"
+                    >
+                        Live wire &amp; radar
+                    </Link>
+                </div>
+                <p className="text-xs text-gray-600 mt-5">
+                    Not financial advice.{' '}
                     <Link href="/disclaimer" className="text-gray-400 underline">
                         Disclaimer
-                    </Link>{' '}
-                    and{' '}
+                    </Link>
+                    {' · '}
                     <Link href="/about" className="text-gray-400 underline">
                         About
                     </Link>

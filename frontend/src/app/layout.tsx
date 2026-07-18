@@ -2,8 +2,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { Sidebar } from '@/features/shared/components/Sidebar';
-import { TickerBar } from '@/features/shared/components/TickerBar';
+import { AppChrome } from '@/features/shared/components/AppChrome';
 import { CookieBanner } from '@/features/shared/components/CookieBanner';
 import { SITE_URL, GA_MEASUREMENT_ID } from '@/lib/constants';
 
@@ -113,17 +112,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className={`${inter.variable} font-sans bg-black text-white h-screen flex flex-col md:flex-row overflow-hidden`}>
-        {/* Left sidebar nav (Desktop) / Bottom nav (Mobile) */}
-        <Sidebar />
-
-        {/* Main content area */}
-        <main className="flex-1 flex flex-col h-full min-w-0 bg-black pb-[72px] md:pb-0">
-          {/* Top ticker bar */}
-          <TickerBar />
-
-          {/* Page content — rendered by route group layouts */}
-          {children}
-        </main>
+        <AppChrome>{children}</AppChrome>
         <CookieBanner />
       </body>
     </html>

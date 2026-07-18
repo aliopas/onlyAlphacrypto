@@ -6,6 +6,7 @@ import { RadarGrid } from '@/features/home/components/RadarGrid';
 import { MarketMoodGauge } from '@/features/home/components/MarketMoodGauge';
 import { TopMovers } from '@/features/home/components/TopMovers';
 import { AirdropWatchlist } from '@/features/home/components/AirdropWatchlist';
+import { FeaturedMarketContextCard } from '@/features/market-context/components/FeaturedMarketContextCard';
 
 export const revalidate = 60;
 
@@ -91,6 +92,8 @@ export default async function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
       />
+      <div className="flex flex-col gap-4">
+      <FeaturedMarketContextCard />
       <div className="flex flex-col lg:flex-row gap-4">
       {/* Left — 70% */}
       <div className="w-full lg:w-[70%] flex flex-col gap-4">
@@ -103,6 +106,7 @@ export default async function HomePage() {
         <MarketMoodGauge mood={mood} previousScore={previousScore} lastUpdated={lastUpdated} />
         <TopMovers />
         <AirdropWatchlist />
+      </div>
       </div>
       </div>
     </>

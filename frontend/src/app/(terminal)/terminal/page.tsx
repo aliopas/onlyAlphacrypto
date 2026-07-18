@@ -8,6 +8,7 @@ import { RadarSignal } from '@/features/home/types';
 import { FaqSchema, FaqItem } from '@/components/seo/FaqSchema';
 import { SEO_CONTENT_ENABLED } from '@/lib/env';
 import { TRACKED_COINS } from '@/config/coins';
+import { TerminalRelatedReading } from '@/features/market-context/components/TerminalRelatedReading';
 
 export const revalidate = 60;
 
@@ -111,14 +112,17 @@ export default async function TerminalPage() {
     }
 
     return (
-        <>
+        <div className="flex flex-col gap-3 h-full min-h-0">
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(buildBreadcrumbJsonLd()) }}
             />
             <FaqSchema items={TERMINAL_FAQ} />
             <TerminalSeoContent />
-            <TerminalPageClient initialNews={news} radarSignals={radarSignals} />
-        </>
+            <TerminalRelatedReading />
+            <div className="flex-1 min-h-0 flex flex-col">
+                <TerminalPageClient initialNews={news} radarSignals={radarSignals} />
+            </div>
+        </div>
     );
 }
