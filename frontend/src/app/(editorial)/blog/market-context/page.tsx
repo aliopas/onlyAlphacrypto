@@ -4,54 +4,40 @@ import { apiClient } from '@/features/shared/api/client';
 import { SITE_URL } from '@/lib/constants';
 import { sanitizeForJsonLd } from '@/lib/json-ld';
 import { FaqSchema, type FaqItem } from '@/components/seo/FaqSchema';
+import {
+    ReadingMeasure,
+    Chapter,
+    KeyInsight,
+    KeyTakeaway,
+    SourceNote,
+    CalmNfaNotice,
+    EditionIdentity,
+    ContinueLiveIntelligence,
+    ed,
+    SECTION_ORDER,
+    SECTION_CHAPTER_LABELS,
+    stripMarkdownNoise,
+    extractH2,
+    isMeaningfulSection,
+    countVerifiedSources,
+    deriveConfidence,
+    formatEditionLabel,
+    formatDisplayDate,
+    sameCalendarDay,
+    extractDek,
+    extractKeyInsightSentence,
+    extractTakeawayFromOutlook,
+    renderChapterBodyHtml,
+    type PublicSnapshot,
+    type SectionKey,
+} from '@/features/market-context/editorial';
 
 export const revalidate = 3600;
-
-type SectionKey =
-    | 'overview'
-    | 'btcCorrelation'
-    | 'liquidity'
-    | 'newsSensitivity'
-    | 'geopolitics'
-    | 'thisWeek'
-    | 'outlook'
-    | 'faq';
-
-interface MarketContextSection {
-    content: string;
-    updatedAt: string;
-    sourceNewsIds: number[];
-}
-
-interface PublicSnapshot {
-    id: number;
-    snapshotKey: string;
-    kind: string;
-    weekLabel: string | null;
-    status: 'published';
-    sections: Partial<Record<SectionKey, MarketContextSection>>;
-    marketDataVersion: string | null;
-    generatorVersion: string;
-    generatedAt: string | null;
-    publishedAt: string | null;
-    updatedAt: string | null;
-}
 
 interface PublicMarketContextResponse {
     available: boolean;
     snapshot: PublicSnapshot | null;
 }
-
-const SECTION_ORDER: SectionKey[] = [
-    'overview',
-    'btcCorrelation',
-    'liquidity',
-    'newsSensitivity',
-    'geopolitics',
-    'thisWeek',
-    'outlook',
-    'faq',
-];
 
 const PAGE_PATH = '/blog/market-context';
 const CANONICAL = `${SITE_URL}${PAGE_PATH}`;
@@ -70,94 +56,6 @@ async function fetchPublicMarketContext(): Promise<PublicMarketContextResponse> 
     } catch {
         return { available: false, snapshot: null };
     }
-}
-
-function stripMarkdownNoise(text: string): string {
-    return text
-        .replace(/^#{1,6}\s+/gm, '')
-        .replace(/\*\*([^*]+)\*\*/g, '$1')
-        .replace(/\*([^*]+)\*/g, '$1')
-        .replace(/`([^`]+)`/g, '$1')
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .trim();
-}
-
-function extractH2(content: string): string | null {
-    const match = content.match(/^##\s+(.+)$/m);
-    return match ? match[1].trim() : null;
-}
-
-function renderMarkdownToSafeHtml(md: string): string {
-    const escaped = md
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-
-    const lines = escaped.split('\n');
-    const htmlParts: string[] = [];
-    let inList = false;
-
-    const flushList = () => {
-        if (inList) {
-            htmlParts.push('</ul>');
-            inList = false;
-        }
-    };
-
-    for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-            flushList();
-            continue;
-        }
-
-        if (trimmed.startsWith('### ')) {
-            flushList();
-            htmlParts.push(
-                `<h3 class="text-lg font-semibold text-white mt-4 mb-2">${inlineFormat(trimmed.slice(4))}</h3>`
-            );
-            continue;
-        }
-        if (trimmed.startsWith('## ')) {
-            flushList();
-            htmlParts.push(
-                `<h2 class="text-xl md:text-2xl font-bold text-white mt-8 mb-3 tracking-tight">${inlineFormat(trimmed.slice(3))}</h2>`
-            );
-            continue;
-        }
-        if (trimmed.startsWith('# ')) {
-            flushList();
-            htmlParts.push(
-                `<h2 class="text-xl md:text-2xl font-bold text-white mt-8 mb-3 tracking-tight">${inlineFormat(trimmed.slice(2))}</h2>`
-            );
-            continue;
-        }
-        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-            if (!inList) {
-                htmlParts.push('<ul class="list-disc pl-5 space-y-1 text-gray-300 mb-3">');
-                inList = true;
-            }
-            htmlParts.push(`<li>${inlineFormat(trimmed.slice(2))}</li>`);
-            continue;
-        }
-
-        flushList();
-        htmlParts.push(
-            `<p class="text-gray-300 leading-relaxed mb-3">${inlineFormat(trimmed)}</p>`
-        );
-    }
-    flushList();
-    return htmlParts.join('\n');
-}
-
-function inlineFormat(text: string): string {
-    return text
-        .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
-        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-        .replace(
-            /`([^`]+)`/g,
-            '<code class="text-xs bg-[#111] border border-[#333] px-1 rounded">$1</code>'
-        );
 }
 
 function parseFaqItems(faqContent: string | undefined): FaqItem[] {
@@ -306,53 +204,69 @@ function buildBreadcrumbJsonLd(): Record<string, unknown> {
     };
 }
 
+function EmptyEditionState() {
+    return (
+        <ReadingMeasure>
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{
+                    __html: JSON.stringify(buildBreadcrumbJsonLd()),
+                }}
+            />
+            <p className={`${ed.type.wordmark} mb-6`}>Market Context</p>
+            <h1 className={`${ed.type.h1} mb-4`}>The next edition is in progress</h1>
+            <p className={`${ed.type.dek} mb-8`}>
+                Market Context publishes educational market-wide editions on a regular cycle. No
+                edition is live for readers yet — check back after the next editorial publish.
+            </p>
+            <CalmNfaNotice />
+            <p className={`${ed.type.bodySm} mb-8`}>
+                When an edition is published, you will find structural context on liquidity,
+                Bitcoin correlation, macro, and the week&apos;s narrative — written for understanding,
+                not for trading signals.
+            </p>
+            <p className={ed.type.meta}>
+                <Link href="/" className={ed.colors.link}>
+                    Return to OnlyAlpha
+                </Link>
+                <span className="text-[#333] mx-2" aria-hidden>
+                    ·
+                </span>
+                <Link href="/terminal" className={ed.type.exitLink}>
+                    Exit to Terminal
+                </Link>
+            </p>
+        </ReadingMeasure>
+    );
+}
+
 export default async function MarketContextPublicPage() {
     const data = await fetchPublicMarketContext();
     const snapshot = data.available ? data.snapshot : null;
     const faqItems = parseFaqItems(snapshot?.sections.faq?.content);
 
     if (!snapshot) {
-        return (
-            <article className="max-w-3xl mx-auto">
-                <script
-                    type="application/ld+json"
-                    dangerouslySetInnerHTML={{
-                        __html: JSON.stringify(buildBreadcrumbJsonLd()),
-                    }}
-                />
-                <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-4">
-                    Why is the crypto market moving today?
-                </h1>
-                <p className="text-gray-400 mb-6 leading-relaxed">
-                    Market Context is OnlyAlpha&apos;s educational, market-wide intelligence layer.
-                    A published snapshot is not available yet. Check back after the next editorial
-                    publish cycle.
-                </p>
-                <div className="p-4 border border-[#333] rounded bg-[#0A0A0A] text-sm text-gray-400 mb-8">
-                    <strong className="text-white">Not Financial Advice (NFA).</strong> Educational
-                    frameworks only — no BUY/SELL recommendations or price targets.
-                </div>
-                <div className="p-5 border border-[#2a2a2a] rounded-lg bg-[#0A0A0A]">
-                    <h2 className="text-base font-semibold text-white mb-1">
-                        Need live intelligence?
-                    </h2>
-                    <p className="text-gray-400 text-sm mb-4">
-                        Market Context explains structure. Terminal shows what is happening right
-                        now — per-coin AI analysis, radar, and live wire.
-                    </p>
-                    <Link
-                        href="/terminal"
-                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded bg-blue-900/40 text-blue-300 border border-blue-800 hover:bg-blue-900/60 text-sm font-medium"
-                    >
-                        Open Terminal for live intelligence →
-                    </Link>
-                </div>
-            </article>
-        );
+        return <EmptyEditionState />;
     }
 
+    const meaningfulKeys = SECTION_ORDER.filter((key) =>
+        isMeaningfulSection(snapshot.sections[key]?.content)
+    );
+    const sourceCount = countVerifiedSources(snapshot.sections);
+    const confidence = deriveConfidence(sourceCount, meaningfulKeys.length);
+    const editionLabel = formatEditionLabel(snapshot);
+    const publishedLabel = formatDisplayDate(snapshot.publishedAt ?? snapshot.generatedAt);
+    const updatedLabel = formatDisplayDate(snapshot.updatedAt);
+    const showUpdated = Boolean(
+        snapshot.updatedAt &&
+            !sameCalendarDay(snapshot.updatedAt, snapshot.publishedAt ?? snapshot.generatedAt)
+    );
+    const dek = extractDek(snapshot.sections.overview?.content);
+    const insight = extractKeyInsightSentence(snapshot.sections.overview?.content);
+    const takeaway = extractTakeawayFromOutlook(snapshot.sections.outlook?.content);
+
     return (
-        <article className="max-w-3xl mx-auto">
+        <article className={ed.measure + ' mx-auto w-full'}>
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{
@@ -367,105 +281,75 @@ export default async function MarketContextPublicPage() {
             />
             {faqItems.length > 0 && <FaqSchema items={faqItems} />}
 
-            <header className="mb-8">
-                <p className="text-xs uppercase tracking-widest text-blue-400 mb-2">
-                    Market Context
-                    {snapshot.weekLabel ? ` · ${snapshot.weekLabel}` : ''}
-                </p>
-                <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-3">
+            {/* MC-ED-11 Edition Identity */}
+            <EditionIdentity
+                editionLabel={editionLabel}
+                publishedLabel={publishedLabel}
+                updatedLabel={updatedLabel}
+                showUpdated={showUpdated}
+                sourceCount={sourceCount}
+                confidenceLabel={confidence.label}
+                confidenceBand={confidence.band}
+                confidenceDetail={confidence.detail}
+            />
+
+            {/* MC-ED-2 Edition hero */}
+            <header className={ed.space.heroBottom}>
+                <h1 className={`${ed.type.h1} mb-4`}>
                     Why is the crypto market moving today?
                 </h1>
-                <p className="text-gray-400 text-sm">
-                    Educational market-wide context
-                    {snapshot.publishedAt
-                        ? ` · Updated ${new Date(snapshot.publishedAt).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric',
-                          })}`
-                        : ''}
-                    {' · '}
-                    English only
-                </p>
+                <p className={ed.type.dek}>{dek}</p>
             </header>
 
-            <div className="p-4 border border-yellow-900/40 bg-yellow-900/10 rounded text-sm text-yellow-200/90 mb-6">
-                <strong className="text-yellow-100">Not Financial Advice (NFA).</strong> This page
-                explains structural frameworks (liquidity, dominance, macro, news sensitivity). It
-                does not provide BUY/SELL signals or price targets.
-            </div>
+            <CalmNfaNotice />
 
-            <div className="mb-10 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-                <span className="text-[#666] text-xs font-mono uppercase tracking-wider">
-                    Live tools
-                </span>
-                <Link
-                    href="/terminal"
-                    className="text-blue-400/90 hover:text-blue-300 transition-colors text-sm"
-                >
-                    Open Terminal for live intelligence →
-                </Link>
-            </div>
+            {/* MC-ED-5 sparse modules before chapters */}
+            {insight && <KeyInsight>{insight}</KeyInsight>}
 
-            {SECTION_ORDER.map((key) => {
+            {/* MC-ED-4 Chapters — ER-1 omit empty */}
+            {meaningfulKeys.map((key: SectionKey) => {
                 const section = snapshot.sections[key];
                 if (!section?.content?.trim()) return null;
                 const h2 = extractH2(section.content);
+                const title = h2 ?? SECTION_CHAPTER_LABELS[key];
+                const thinChapter =
+                    confidence.band === 'limited' &&
+                    (section.sourceNewsIds?.length ?? 0) === 0 &&
+                    key !== 'overview';
+
                 return (
-                    <section key={key} id={key} className="mb-2">
-                        {!h2 && (
-                            <h2 className="text-xl md:text-2xl font-bold text-white mt-8 mb-3">
-                                {key}
-                            </h2>
+                    <Chapter
+                        key={key}
+                        id={key}
+                        label={SECTION_CHAPTER_LABELS[key]}
+                        title={title}
+                    >
+                        {thinChapter && (
+                            <p className={`${ed.type.bodySm} mb-4 italic text-[#8a8680]`}>
+                                Evidence for this chapter is limited in the current verified window.
+                            </p>
                         )}
                         <div
-                            className="prose-market-context"
                             dangerouslySetInnerHTML={{
-                                __html: renderMarkdownToSafeHtml(section.content),
+                                __html: renderChapterBodyHtml(section.content),
                             }}
                         />
-                    </section>
+                    </Chapter>
                 );
             })}
 
-            <div className="mt-12 p-6 border border-[#2a2a2a] rounded-lg bg-[#0A0A0A]">
-                <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-[#666] mb-2">
-                    Next step
-                </p>
-                <h2 className="text-lg font-semibold text-white mb-2">
-                    Open Terminal for live intelligence
-                </h2>
-                <p className="text-gray-400 text-sm mb-4 leading-relaxed">
-                    This edition is educational and market-wide — why structure, liquidity, and
-                    macro matter. For real-time per-coin AI analysis, radar signals, and the live
-                    wire, open the Intelligence Platform Terminal.
-                </p>
-                <div className="flex flex-wrap items-center gap-3">
-                    <Link
-                        href="/terminal"
-                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded bg-blue-900/40 text-blue-300 border border-blue-800 hover:bg-blue-900/60 text-sm font-medium"
-                    >
-                        Open Terminal for live intelligence →
-                    </Link>
-                    <Link
-                        href="/terminal"
-                        className="text-xs font-mono text-[#666] hover:text-[#aaa] transition-colors"
-                    >
-                        Live wire &amp; radar
-                    </Link>
-                </div>
-                <p className="text-xs text-gray-600 mt-5">
-                    Not financial advice.{' '}
-                    <Link href="/disclaimer" className="text-gray-400 underline">
-                        Disclaimer
-                    </Link>
-                    {' · '}
-                    <Link href="/about" className="text-gray-400 underline">
-                        About
-                    </Link>
-                    .
-                </p>
-            </div>
+            {takeaway && <KeyTakeaway>{takeaway}</KeyTakeaway>}
+
+            {sourceCount > 0 && (
+                <SourceNote>
+                    This edition synthesizes {sourceCount} verified source
+                    {sourceCount === 1 ? '' : 's'} from the OnlyAlpha intake pipeline (trusted news
+                    only). Operational tooling lives in Terminal — this page is educational context.
+                </SourceNote>
+            )}
+
+            {/* MC-ED-6 — only after body */}
+            <ContinueLiveIntelligence />
         </article>
     );
 }
