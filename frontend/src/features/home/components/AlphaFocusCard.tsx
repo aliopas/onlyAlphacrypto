@@ -11,6 +11,7 @@ interface Props {
 
 export function AlphaFocusCard({ data }: Props) {
     const [sparklinePath, setSparklinePath] = useState<string>('M0,50 L400,50');
+    const [sparklineAreaPath, setSparklineAreaPath] = useState<string>('');
     const [sparklineLoading, setSparklineLoading] = useState(true);
 
     useEffect(() => {
@@ -34,13 +35,21 @@ export function AlphaFocusCard({ data }: Props) {
                 const width = 400;
                 const height = 100;
 
-                const points = prices.map((price: number, i: number) => {
-                    const x = (i / (prices.length - 1)) * width;
+                const coords = prices.map((price: number, i: number) => {
+                    const x = prices.length === 1 ? width / 2 : (i / (prices.length - 1)) * width;
                     const y = height - ((price - min) / range) * (height - 10) - 5;
-                    return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+                    return { x, y };
                 });
 
-                setSparklinePath(points.join(' '));
+                const linePath = coords
+                    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`)
+                    .join(' ');
+                const first = coords[0];
+                const last = coords[coords.length - 1];
+                const areaPath = `${linePath} L${last.x},${height} L${first.x},${height} Z`;
+
+                setSparklinePath(linePath);
+                setSparklineAreaPath(areaPath);
             } catch (error) {
                 console.error('[AlphaFocusCard] Sparkline fetch failed:', error);
             } finally {
@@ -72,59 +81,81 @@ export function AlphaFocusCard({ data }: Props) {
     const isUp = (data.priceChange24h ?? 0) >= 0;
 
     return (
-        <div className="bg-[#0A0A0A] border border-[#333] p-8 relative flex flex-col">
-            <div className="flex justify-between items-start mb-10">
-                <div className="space-y-4">
+        <div className="bg-[#0A0A0A] border border-[#333] p-4 md:p-8 relative flex flex-col">
+            <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-start mb-6 md:mb-10">
+                <div className="space-y-3 md:space-y-4 min-w-0">
                     <span className="text-[10px] font-mono text-[#888] uppercase tracking-[0.2em] block">
                         Today&apos;s Alpha Focus
                     </span>
-                    <div className="flex items-center gap-4 flex-wrap">
-                        <h2 className="text-4xl font-bold text-white tracking-tighter uppercase truncate max-w-[400px]" title={data.coin}>${data.coin}</h2>
-                        <div className="px-4 py-1.5 bg-[#135bec] flex items-center gap-2.5 whitespace-nowrap">
+                    <div className="flex items-center gap-3 md:gap-4 flex-wrap">
+                        <h2 className="text-3xl md:text-4xl font-bold text-white tracking-tighter uppercase truncate max-w-full md:max-w-[400px]" title={data.coin}>${data.coin}</h2>
+                        <div className="px-3 py-1 md:px-4 md:py-1.5 bg-[#135bec] flex items-center gap-2 md:gap-2.5 whitespace-nowrap">
                             <span className="w-2 h-2 rounded-full bg-white" />
-                            <span className="text-[12px] font-mono font-bold text-white uppercase tracking-wider">
+                            <span className="text-[11px] md:text-[12px] font-mono font-bold text-white uppercase tracking-wider">
                                 AI VERDICT: {data.verdict}
                             </span>
                         </div>
-                        <span className="text-[12px] font-mono text-[#555] ml-2 whitespace-nowrap">
+                        <span className="text-[12px] font-mono text-[#555] whitespace-nowrap">
                             <span className="font-mono-nums">{data.confidence}%</span> Confidence
                         </span>
                     </div>
                 </div>
-                <div className="text-right">
+                <div className="text-left md:text-right shrink-0">
                     <span className="text-[10px] font-mono text-[#888] uppercase block mb-1">Current Price</span>
-                    <div className="text-3xl font-mono-nums font-bold text-white tracking-tight">${data.price != null ? data.price.toLocaleString() : '—'}</div>
+                    <div className="text-2xl md:text-3xl font-mono-nums font-bold text-white tracking-tight">${data.price != null ? data.price.toLocaleString() : '—'}</div>
                     <div className={`text-[12px] font-mono-nums ${isUp ? 'text-[#10b981]' : 'text-[#ef4444]'}`}>
                         {isUp ? '+' : ''}{data.priceChange24h != null ? data.priceChange24h.toFixed(2) : '0.00'}% (24H)
                     </div>
                 </div>
             </div>
 
-            <div className="flex gap-12 items-center">
-                <div className="flex-1 h-36 relative">
-                    <svg className="w-full h-full text-[#00ff88] drop-shadow-[0_0_8px_rgba(0,255,136,0.3)]"
-                        preserveAspectRatio="none" viewBox="0 0 400 100">
+            <div className="flex flex-col gap-4 md:flex-row md:gap-12 md:items-center">
+                <div className="w-full md:flex-1 h-24 md:h-36 relative min-w-0">
+                    <svg
+                        className="w-full h-full text-[#00ff88] drop-shadow-[0_0_8px_rgba(0,255,136,0.3)]"
+                        preserveAspectRatio="xMidYMid meet"
+                        viewBox="0 0 400 100"
+                    >
+                        <defs>
+                            <linearGradient id="alphaSparkFill" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="currentColor" stopOpacity="0.22" />
+                                <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+                            </linearGradient>
+                        </defs>
                         {sparklineLoading ? (
                             <line x1="0" y1="50" x2="400" y2="50" stroke="currentColor" strokeWidth="1" opacity="0.3" />
                         ) : (
-                            <path d={sparklinePath} fill="none" stroke="currentColor" strokeWidth="2.5" />
+                            <>
+                                {sparklineAreaPath ? (
+                                    <path d={sparklineAreaPath} fill="url(#alphaSparkFill)" stroke="none" />
+                                ) : null}
+                                <path
+                                    d={sparklinePath}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    vectorEffect="non-scaling-stroke"
+                                />
+                            </>
                         )}
                     </svg>
-                    <div className="absolute bottom-0 left-0 text-[10px] font-mono text-[#444] uppercase tracking-widest">
+                    <div className="hidden md:block absolute bottom-0 left-0 text-[10px] font-mono text-[#444] uppercase tracking-widest">
                         24H High-Density Execution Path
                     </div>
                 </div>
 
-                <div className="w-[320px] space-y-4">
+                <div className="w-full md:w-[320px] md:shrink-0 space-y-3 md:space-y-4">
                     <div className="space-y-2">
                         <h3 className="text-[11px] font-mono text-[#888] uppercase tracking-widest border-b border-[#333] pb-1">
                             Executive Summary
                         </h3>
-                        <p className="text-[14px] text-[#888] leading-relaxed line-clamp-5 overflow-hidden" title={data.summary}>
+                        <p className="text-[13px] md:text-[14px] text-[#888] leading-relaxed line-clamp-3 md:line-clamp-5 overflow-hidden" title={data.summary}>
                             {data.summary}
                         </p>
                     </div>
-                    <Link href={`/terminal/${data.coin}?alpha=true`} className="text-[11px] font-mono text-white flex items-center gap-2 hover:translate-x-1 transition-transform group mt-2 w-fit">
+                    <Link href={`/terminal/${data.coin}?alpha=true`} className="text-[11px] font-mono text-white flex items-center gap-2 hover:translate-x-1 transition-transform group mt-1 md:mt-2 w-fit">
                         <span className="border-b border-white/30 group-hover:border-white">EXPLORE FULL ON-CHAIN ANALYSIS</span>
                         <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
                     </Link>
