@@ -1,4 +1,4 @@
-// Types for the Airdrops features
+// Types for the Airdrops features (DEC-041 AD-4 portfolio card)
 
 export type AirdropTask = {
     id: number;
@@ -12,25 +12,79 @@ export type AirdropTask = {
     orderIndex: number;
 };
 
+/** Portfolio card task (may lack DB id) */
+export type PortfolioTaskItem = {
+    id: number | null;
+    description: string;
+    isAutoVerifiable: boolean;
+    chain: string | null;
+};
+
+export type PortfolioMoodStrip = {
+    window: '24h' | '7d';
+    moodLabel: 'cold' | 'warming' | 'hot' | 'toxic';
+    mentionCount: number;
+    uniqueSourceCount: number;
+    hypeScore: number;
+    fudScore: number;
+    controversyFlag: boolean;
+    computedAt: string | null;
+};
+
+export type PortfolioDateSignal = {
+    kind: string;
+    isoDate: string | null;
+    raw?: string;
+    confidence: 'low' | 'medium' | 'high';
+};
+
+export type PortfolioProvenanceLink = {
+    label: string;
+    url: string;
+    kind: 'signal' | 'cited' | 'official' | 'social';
+};
+
 export type AirdropProject = {
     id: number;
     name: string;
-    logoUrl?: string;
+    logoUrl?: string | null;
     network: string;
-    estValue?: string;
-    aiReport?: string;
-    riskVerdict: 'SAFE' | 'MEDIUM_RISK' | 'HIGH_RISK' | 'SCAM';
+    estValue?: string | null;
+    aiReport?: string | null;
+    riskVerdict: string;
     isActive: boolean;
-    snapshotAt?: string;
-    tgeAt?: string;
+    snapshotAt?: string | null;
+    tgeAt?: string | null;
     createdAt: string;
     updatedAt: string;
-    tasks?: AirdropTask[];
+    tasks?: Array<AirdropTask | PortfolioTaskItem>;
     progressPercent?: number;
-    ecosystem?: string;
-    effortLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
-    rewardConfidence?: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNVERIFIED';
+    ecosystem?: string | null;
+    effortLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | string | null;
+    rewardConfidence?: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNVERIFIED' | string | null;
     qualityScore?: number;
+    /** AD-4 portfolio fields */
+    pipelineStatus?: string;
+    publishPath?: string;
+    whyFarmNow?: string;
+    teamSummary?: string;
+    docsSummary?: string;
+    fundingSummary?: string;
+    howItWorks?: string;
+    dates?: PortfolioDateSignal[];
+    mood?: {
+        strip24h: PortfolioMoodStrip | null;
+        strip7d: PortfolioMoodStrip | null;
+    };
+    moodLabel?: string | null;
+    provenanceLinks?: PortfolioProvenanceLink[];
+    provenanceCount?: number;
+    taskCount?: number;
+    websiteUrl?: string | null;
+    twitterUrl?: string | null;
+    discordUrl?: string | null;
+    fundingRound?: string | null;
+    nfaDisclaimer?: string;
 };
 
 export type UserProgress = {
@@ -58,6 +112,7 @@ export type UrgentAirdrop = {
     daysLeft: number | null;
     isNew: boolean;
     progressPercent: number;
+    qualityScore?: number;
 };
 
 export type ProgressResponse = {

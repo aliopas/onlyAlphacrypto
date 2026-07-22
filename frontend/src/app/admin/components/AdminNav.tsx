@@ -14,6 +14,8 @@ const NAV_ITEMS = [
     { href: '/admin/portfolio', label: 'Portfolio', icon: '💼' },
     { href: '/admin/portfolio-posts', label: 'Portfolio Posts', icon: '📨' },
     { href: '/admin/market-context', label: 'Market Context', icon: '📰' },
+    { href: '/admin/sources', label: 'Sources', icon: '📡' },
+    { href: '/admin/airdrop-ops', label: 'Airdrop Ops', icon: '🪂' },
     { href: '/admin/system', label: 'System', icon: '⚙️' },
 ];
 

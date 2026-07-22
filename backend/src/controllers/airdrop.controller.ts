@@ -1,12 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../config/db';
 import { airdropProjects, airdropPipelineRuns } from '../models/index';
-import { desc, eq, asc } from 'drizzle-orm';
+import { desc, asc, sql } from 'drizzle-orm';
 import { AppError } from '../middleware/errorHandler';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { getCache, setCache, deleteCache } from '../config/redis';
+import { getCache, setCache } from '../config/redis';
 import { logger } from '../utils/logger';
 import { calculateAirdropQuality } from '../services/airdropQuality.service';
+import {
+    buildPortfolioCard,
+    getPublicPortfolioCardById,
+    listPublicPortfolioCards,
+    publicPublishFilter,
+    toPortfolioListItem,
+} from '../services/airdropPortfolio.service';
 
 function parseEstValue(raw: string | null | undefined): number {
     if (!raw) return 0;
@@ -22,33 +29,42 @@ function parseEstValue(raw: string | null | undefined): number {
 
 export async function getProjects(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-        const cacheKey = 'airdrop:projects';
-        let projects = await getCache<Record<string, unknown>[]>(cacheKey);
-        if (!projects) {
-            projects = await db
-                .select()
-                .from(airdropProjects)
-                .where(eq(airdropProjects.isActive, true))
-                .orderBy(desc(airdropProjects.updatedAt));
-            await setCache(cacheKey, projects, 300);
+        const cacheKey = 'airdrop:projects:portfolio:v1';
+        const cached = await getCache<Record<string, unknown>[]>(cacheKey);
+        if (cached) {
+            res.json(cached);
+            return;
         }
-        res.json(projects.map((p) => ({ ...p, progressPercent: 0 })));
-    } catch (err) { next(err); }
+
+        const cards = await listPublicPortfolioCards();
+        const payload = cards.map(toPortfolioListItem);
+        await setCache(cacheKey, payload, 120);
+        res.json(payload);
+    } catch (err) {
+        next(err);
+    }
 }
 
 export async function getProjectById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
         const id = parseInt(String(req.params['id']), 10);
-        const cacheKey = `airdrop:project:${id}`;
+        if (isNaN(id)) throw new AppError('Invalid project id', 400);
+
+        const cacheKey = `airdrop:project:portfolio:v1:${id}`;
         const cached = await getCache(cacheKey);
-        if (cached) { res.json(cached); return; }
+        if (cached) {
+            res.json(cached);
+            return;
+        }
 
-        const [project] = await db.select().from(airdropProjects).where(eq(airdropProjects.id, id));
-        if (!project) throw new AppError('Project not found', 404);
+        const card = await getPublicPortfolioCardById(id);
+        if (!card) throw new AppError('Project not found', 404);
 
-        await setCache(cacheKey, project, 300);
-        res.json(project);
-    } catch (err) { next(err); }
+        await setCache(cacheKey, card, 120);
+        res.json(card);
+    } catch (err) {
+        next(err);
+    }
 }
 
 export async function getProgress(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -61,9 +77,12 @@ export async function triggerVerification(req: AuthRequest, res: Response, next:
 
 export async function getDeadlines(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const cacheKey = 'airdrop:deadlines';
+        const cacheKey = 'airdrop:deadlines:v1';
         const cached = await getCache(cacheKey);
-        if (cached) { res.json(cached); return; }
+        if (cached) {
+            res.json(cached);
+            return;
+        }
 
         const projects = await db
             .select({
@@ -74,12 +93,14 @@ export async function getDeadlines(req: Request, res: Response, next: NextFuncti
                 tgeAt: airdropProjects.tgeAt,
             })
             .from(airdropProjects)
-            .where(eq(airdropProjects.isActive, true));
+            .where(publicPublishFilter);
 
         const withDeadlines = projects.filter((p) => p.snapshotAt || p.tgeAt);
         await setCache(cacheKey, withDeadlines, 300);
         res.json(withDeadlines);
-    } catch (err) { next(err); }
+    } catch (err) {
+        next(err);
+    }
 }
 
 export async function getStats(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
@@ -87,7 +108,7 @@ export async function getStats(req: AuthRequest, res: Response, next: NextFuncti
         const projects = await db
             .select({ estValue: airdropProjects.estValue })
             .from(airdropProjects)
-            .where(eq(airdropProjects.isActive, true));
+            .where(publicPublishFilter);
 
         let totalValue = 0;
         for (const p of projects) {
@@ -115,9 +136,12 @@ export async function getActivity(req: AuthRequest, res: Response, next: NextFun
 
 export async function getUrgentAirdrops(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-        const cacheKey = 'airdrop:urgent';
+        const cacheKey = 'airdrop:urgent:v1';
         const cached = await getCache(cacheKey);
-        if (cached) { res.json(cached); return; }
+        if (cached) {
+            res.json(cached);
+            return;
+        }
 
         const projects = await db
             .select({
@@ -133,7 +157,7 @@ export async function getUrgentAirdrops(req: AuthRequest, res: Response, next: N
                 qualityScore: airdropProjects.qualityScore,
             })
             .from(airdropProjects)
-            .where(eq(airdropProjects.isActive, true));
+            .where(publicPublishFilter);
 
         const now = new Date();
         const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
@@ -179,7 +203,9 @@ export async function getUrgentAirdrops(req: AuthRequest, res: Response, next: N
 
         await setCache(cacheKey, serialized, 60);
         res.json(serialized);
-    } catch (err) { next(err); }
+    } catch (err) {
+        next(err);
+    }
 }
 
 export async function getSidebarDeadlines(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -192,14 +218,14 @@ export async function getSidebarDeadlines(req: Request, res: Response, next: Nex
                 tgeAt: airdropProjects.tgeAt,
             })
             .from(airdropProjects)
-            .where(eq(airdropProjects.isActive, true))
+            .where(publicPublishFilter)
             .orderBy(asc(airdropProjects.snapshotAt))
             .limit(5);
 
         const now = new Date();
         const result = projects
-            .filter(p => p.snapshotAt || p.tgeAt)
-            .map(p => {
+            .filter((p) => p.snapshotAt || p.tgeAt)
+            .map((p) => {
                 const deadline = p.snapshotAt || p.tgeAt;
                 const diffMs = deadline!.getTime() - now.getTime();
                 const daysLeft = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
@@ -226,9 +252,12 @@ export async function getSidebarDeadlines(req: Request, res: Response, next: Nex
 
 export async function getPipelineStatusHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-        const [latestRun] = await db.select()
+        const [latestRun] = await db
+            .select()
             .from(airdropPipelineRuns)
-            .where(eq(airdropPipelineRuns.runType, 'rss_discovery'))
+            .where(
+                sql`${airdropPipelineRuns.runType} IN ('rss_discovery', 'gate_pipeline', 'signal_ingest', 'defillama_discovery')`
+            )
             .orderBy(desc(airdropPipelineRuns.runAt))
             .limit(1);
 
@@ -243,9 +272,11 @@ export async function getPipelineStatusHandler(req: Request, res: Response, next
         res.json({
             lastScan,
             nextScan,
-            sources: 5,
+            sources: 0,
         });
-    } catch (err) { next(err); }
+    } catch (err) {
+        next(err);
+    }
 }
 
 export async function insertProjectWithQuality(data: {
@@ -276,24 +307,33 @@ export async function insertProjectWithQuality(data: {
         throw new Error(`Project ${data.name} does not meet quality threshold (score: ${quality.qualityScore})`);
     }
 
-    const [inserted] = await db.insert(airdropProjects).values({
-        name: data.name.slice(0, 100),
-        network: data.network.slice(0, 50),
-        estValue: data.estValue?.slice(0, 255) ?? null,
-        aiReport: data.aiReport ?? null,
-        riskVerdict: data.riskVerdict ?? 'MEDIUM',
-        fundingRound: data.fundingRound?.slice(0, 100) ?? null,
-        twitterUrl: data.twitterUrl?.slice(0, 300) ?? null,
-        discordUrl: data.discordUrl?.slice(0, 300) ?? null,
-        websiteUrl: data.websiteUrl?.slice(0, 300) ?? null,
-        ecosystem: quality.ecosystem,
-        effortLevel: quality.effortLevel,
-        rewardConfidence: quality.rewardConfidence,
-        qualityScore: quality.qualityScore,
-        isActive: true,
-        snapshotAt: data.snapshotAt ?? null,
-        tgeAt: data.tgeAt ?? null,
-    }).returning({ id: airdropProjects.id });
+    const [inserted] = await db
+        .insert(airdropProjects)
+        .values({
+            name: data.name.slice(0, 100),
+            network: data.network.slice(0, 50),
+            estValue: data.estValue?.slice(0, 255) ?? null,
+            aiReport: data.aiReport ?? null,
+            riskVerdict: data.riskVerdict ?? 'MEDIUM',
+            fundingRound: data.fundingRound?.slice(0, 100) ?? null,
+            twitterUrl: data.twitterUrl?.slice(0, 300) ?? null,
+            discordUrl: data.discordUrl?.slice(0, 300) ?? null,
+            websiteUrl: data.websiteUrl?.slice(0, 300) ?? null,
+            ecosystem: quality.ecosystem,
+            effortLevel: quality.effortLevel,
+            rewardConfidence: quality.rewardConfidence,
+            qualityScore: quality.qualityScore,
+            isActive: true,
+            snapshotAt: data.snapshotAt ?? null,
+            tgeAt: data.tgeAt ?? null,
+            // AD-4: inserts are not public until Gate pipeline sets auto_publish
+            pipelineStatus: 'discovering',
+            publishPath: 'none',
+        })
+        .returning({ id: airdropProjects.id });
 
     return inserted.id;
 }
+
+// Keep buildPortfolioCard export path used by tests if needed
+export { buildPortfolioCard };

@@ -1,16 +1,12 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
 import { rawNewsBuffer } from '../models/market.model';
-import { fetchNewsFromTelegram, fetchAirdropsFromTelegram } from '../services/telegram.service';
-import { filterAirdropRelevant, getExistingProjectNames } from '../services/airdropRss.service';
-import { validateAirdropFromArticle } from '../services/openai.service';
-import { deleteCache, deleteCachePattern } from '../config/redis';
-import { insertProjectWithQuality } from '../controllers/airdrop.controller';
+import { fetchNewsFromTelegram } from '../services/telegram.service';
 import { env } from '../config/env';
 import { guardedCronRun, guardCron } from '../utils/cronGuard';
 import { logger } from '../utils/logger';
-
-const MAX_AIRDROP_AI_CALLS = 3;
+import { runAirdropSignalIngest } from '../services/airdropSignalIngest.service';
+import { runAirdropGatePipeline } from '../services/airdropGatePipeline.service';
 
 async function telegramNewsJob(): Promise<void> {
     if (!env.TELEGRAM_SESSION_STRING) return;
@@ -47,73 +43,32 @@ async function telegramNewsJob(): Promise<void> {
     }
 }
 
+/**
+ * Airdrop TG path (DEC-041 AD-3): unified signal ingest + gates.
+ * Legacy single-pass validateAirdropFromArticle + insert removed (no GLM, no single-source publish).
+ */
 async function telegramAirdropJob(): Promise<void> {
     if (!env.TELEGRAM_SESSION_STRING) return;
-    console.log('[TelegramMonitor] Airdrop scan started');
+    console.log('[TelegramMonitor] Airdrop scan started (intelligence path)');
 
     try {
-        const items = await fetchAirdropsFromTelegram(6);
-        const airdropItems = items.filter(item => filterAirdropRelevant(`${item.title} ${item.content}`));
-
-        if (airdropItems.length === 0) {
-            console.log('[TelegramMonitor] No airdrop-relevant messages found');
+        if (!env.AIRDROP_INTELLIGENCE_ENABLED || !env.AIRDROP_INTELLIGENCE_INGEST_ENABLED) {
+            console.log(
+                '[TelegramMonitor] Airdrop intelligence flags off — skip TG airdrop auto-insert (AD-3)'
+            );
             return;
         }
 
-        const existingNames = await getExistingProjectNames();
-        const candidates = airdropItems.slice(0, MAX_AIRDROP_AI_CALLS);
-        let inserted = 0;
-
-        for (const item of candidates) {
-            try {
-                const context = [
-                    `ARTICLE TITLE: ${item.title}`,
-                    `SOURCE: ${item.source}`,
-                    `PUBLISHED: ${item.pubDate}`,
-                    `LINK: ${item.link}`,
-                    '',
-                    '--- ARTICLE CONTENT ---',
-                    // Keep input small so reasoning models leave enough tokens for complete JSON.
-                    item.content.slice(0, 1800),
-                ].join('\n');
-
-                const validation = await validateAirdropFromArticle(context);
-
-                if (!validation.isLegitimate || validation.riskVerdict === 'SCAM') continue;
-                if (existingNames.has(validation.projectName.toLowerCase())) continue;
-
-                try {
-                    await insertProjectWithQuality({
-                        name: validation.projectName,
-                        network: validation.network,
-                        estValue: validation.estValue,
-                        aiReport: validation.aiReport,
-                        riskVerdict: validation.riskVerdict,
-                    });
-                    existingNames.add(validation.projectName.toLowerCase());
-                    inserted++;
-                    console.log(`[TelegramMonitor] Inserted airdrop: ${validation.projectName}`);
-                } catch (err) {
-                    if (err instanceof Error && err.message.includes('quality threshold')) {
-                        console.log(`[TelegramMonitor] Rejected by quality filter: "${validation.projectName}"`);
-                    } else {
-                        throw err;
-                    }
-                }
-            } catch (err) {
-                console.error(`[TelegramMonitor] Error processing airdrop:`, err instanceof Error ? err.message : String(err));
-            }
-        }
-
-        if (inserted > 0) {
-            await deleteCache('airdrop:projects');
-            await deleteCache('airdrop:deadlines');
-            await deleteCachePattern('airdrop:project:*');
-        }
-
-        console.log(`[TelegramMonitor] Airdrop scan complete — ${inserted} new projects`);
+        const ingest = await runAirdropSignalIngest();
+        const gates = await runAirdropGatePipeline();
+        console.log(
+            `[TelegramMonitor] Airdrop scan complete — signals tgAlpha=${ingest.telegramAlpha.inserted} community=${ingest.telegramCommunity.inserted} gates auto=${gates.autoPublish} hold=${gates.holdRecheck} reject=${gates.reject}`
+        );
     } catch (err) {
-        console.error('[TelegramMonitor] Airdrop job failed:', err instanceof Error ? err.message : String(err));
+        console.error(
+            '[TelegramMonitor] Airdrop job failed:',
+            err instanceof Error ? err.message : String(err)
+        );
     }
 }
 

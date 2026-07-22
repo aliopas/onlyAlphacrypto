@@ -37,6 +37,8 @@ import { startTelegramPortfolioScraperCron } from './crons/telegramPortfolioScra
 import { startPortfolioSnapshotCron } from './crons/portfolioSnapshot.cron';
 import { startPortfolioMonitorCron } from './crons/portfolioMonitor.cron';
 import { startMarketNewsIngestCron } from './crons/marketNewsIngest.cron';
+import { startAirdropSignalIngestCron } from './crons/airdropSignalIngest.cron';
+import { startAirdropGatePipelineCron } from './crons/airdropGatePipeline.cron';
 import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
@@ -122,6 +124,8 @@ async function bootstrap(): Promise<void> {
         logger.info('│ MARKET_FILTER_ENABLED        : %s', String(env.MARKET_FILTER_ENABLED));
         logger.info('│ MARKET_CONTEXT_ENABLED       : %s', String(env.MARKET_CONTEXT_ENABLED));
         logger.info('│ MARKET_CONTEXT_INGEST_ENABLED: %s', String(env.MARKET_CONTEXT_INGEST_ENABLED));
+        logger.info('│ AIRDROP_INTELLIGENCE_ENABLED : %s', String(env.AIRDROP_INTELLIGENCE_ENABLED));
+        logger.info('│ AIRDROP_INTELLIGENCE_INGEST  : %s', String(env.AIRDROP_INTELLIGENCE_INGEST_ENABLED));
         logger.info('└─────────────────────────────────────────────┘');
 
         app.listen(PORT, () => {
@@ -185,6 +189,20 @@ async function bootstrap(): Promise<void> {
             { name: 'AirdropHunter',      start: startAirdropHunterCron,      flow: 'airdrop' },
             { name: 'AirdropRSSHunter',   start: startAirdropRSSCron,         flow: 'airdrop' },
             { name: 'AirdropDiscovery',   start: startAirdropDiscoveryCron,   flow: 'airdrop' },
+            {
+                name: 'AirdropSignalIngest',
+                start: startAirdropSignalIngestCron,
+                flow: 'airdrop',
+                subFlag: env.AIRDROP_INTELLIGENCE_ENABLED && env.AIRDROP_INTELLIGENCE_INGEST_ENABLED,
+                subFlagName: 'AIRDROP_INTELLIGENCE_INGEST_ENABLED',
+            },
+            {
+                name: 'AirdropGatePipeline',
+                start: startAirdropGatePipelineCron,
+                flow: 'airdrop',
+                subFlag: env.AIRDROP_INTELLIGENCE_ENABLED,
+                subFlagName: 'AIRDROP_INTELLIGENCE_ENABLED',
+            },
         ], cronStartDelay);
 
     } catch (error) {

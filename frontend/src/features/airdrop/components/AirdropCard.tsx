@@ -34,6 +34,7 @@ const NETWORK_CHIP: Record<string, { text: string; bg: string }> = {
 
 const RISK_COLOR: Record<string, { text: string; bg: string; border: string }> = {
     SAFE: { text: 'text-emerald-500', bg: 'bg-emerald-500/5', border: 'border-emerald-500/30' },
+    LOW: { text: 'text-emerald-500', bg: 'bg-emerald-500/5', border: 'border-emerald-500/30' },
     MEDIUM: { text: 'text-yellow-500', bg: 'bg-yellow-500/5', border: 'border-yellow-500/30' },
     MEDIUM_RISK: { text: 'text-yellow-500', bg: 'bg-yellow-500/5', border: 'border-yellow-500/30' },
     HIGH: { text: 'text-orange-500', bg: 'bg-orange-500/5', border: 'border-orange-500/30' },
@@ -42,7 +43,14 @@ const RISK_COLOR: Record<string, { text: string; bg: string; border: string }> =
     TESTNET: { text: 'text-yellow-500', bg: 'bg-yellow-500/5', border: 'border-yellow-500/30' },
 };
 
-function formatEstValue(value: string | undefined): string {
+const MOOD_COLOR: Record<string, string> = {
+    cold: 'text-slate-400',
+    warming: 'text-amber-400',
+    hot: 'text-orange-400',
+    toxic: 'text-red-400',
+};
+
+function formatEstValue(value: string | null | undefined): string {
     if (!value) return 'TBD';
     const trimmed = value.trim();
     if (trimmed.toUpperCase() === 'TBD' || trimmed === '') return 'TBD';
@@ -76,17 +84,24 @@ interface AirdropCardProps {
 
 export function AirdropCard({ project, onClick }: AirdropCardProps) {
     const ecosystem = project.ecosystem ?? 'Other';
-    const effortLevel = project.effortLevel ?? 'HIGH';
-    const rewardConfidence = project.rewardConfidence ?? 'UNVERIFIED';
+    const effortLevel = (project.effortLevel ?? 'HIGH') as EffortLevel;
+    const rewardConfidence = (project.rewardConfidence ?? 'UNVERIFIED') as RewardConfidence;
     const qualityScore = project.qualityScore ?? 0;
 
-    const verdict = project.riskVerdict || 'SAFE';
-    const c = RISK_COLOR[verdict] || RISK_COLOR.SAFE;
+    const verdict = project.riskVerdict || 'MEDIUM';
+    const c = RISK_COLOR[verdict] || RISK_COLOR.MEDIUM;
     const networkChip = NETWORK_CHIP[project.network] ?? { text: 'text-[#888]', bg: 'bg-[#888]/10' };
     const effortColors = EFFORT_COLORS[effortLevel] ?? EFFORT_COLORS.HIGH;
     const ecoColors = ECOSYSTEM_COLORS[ecosystem] ?? ECOSYSTEM_COLORS.Other;
     const confColors = CONFIDENCE_COLORS[rewardConfidence] ?? CONFIDENCE_COLORS.UNVERIFIED;
     const deadline = formatDeadline(project.snapshotAt ?? project.tgeAt ?? null);
+    const moodLabel =
+        project.moodLabel ??
+        project.mood?.strip24h?.moodLabel ??
+        project.mood?.strip7d?.moodLabel ??
+        null;
+    const moodClass = moodLabel ? MOOD_COLOR[moodLabel] ?? 'text-[#888]' : 'text-[#555]';
+    const blurb = project.whyFarmNow ?? project.aiReport ?? '';
 
     return (
         <Link
@@ -97,26 +112,48 @@ export function AirdropCard({ project, onClick }: AirdropCardProps) {
             <div className="flex justify-between items-start mb-3">
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="text-lg font-bold tracking-tight uppercase text-white truncate">{project.name}</h3>
-                        <span className={`text-[9px] font-mono px-1.5 py-0.5 ${ecoColors.text} ${ecoColors.bg} uppercase shrink-0`}>
+                        <h3 className="text-lg font-bold tracking-tight uppercase text-white truncate">
+                            {project.name}
+                        </h3>
+                        <span
+                            className={`text-[9px] font-mono px-1.5 py-0.5 ${ecoColors.text} ${ecoColors.bg} uppercase shrink-0`}
+                        >
                             {ecosystem}
                         </span>
-                        <span className={`text-[9px] font-mono px-1.5 py-0.5 ${effortColors.text} ${effortColors.bg} uppercase shrink-0`}>
+                        <span
+                            className={`text-[9px] font-mono px-1.5 py-0.5 ${effortColors.text} ${effortColors.bg} uppercase shrink-0`}
+                        >
                             {effortLevel}
                         </span>
+                        {moodLabel && (
+                            <span className={`text-[9px] font-mono px-1.5 py-0.5 bg-white/5 uppercase shrink-0 ${moodClass}`}>
+                                mood:{moodLabel}
+                            </span>
+                        )}
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-[9px] font-mono px-2 py-0.5 border ${c.border} ${c.text} ${c.bg} tracking-wider uppercase`}>
+                        <span
+                            className={`text-[9px] font-mono px-2 py-0.5 border ${c.border} ${c.text} ${c.bg} tracking-wider uppercase`}
+                        >
                             {verdict}
                         </span>
-                        <span className={`text-[8px] font-mono px-1.5 py-0.5 ${networkChip.text} ${networkChip.bg}`}>
+                        <span
+                            className={`text-[8px] font-mono px-1.5 py-0.5 ${networkChip.text} ${networkChip.bg}`}
+                        >
                             {project.network}
                         </span>
+                        {typeof project.provenanceCount === 'number' && project.provenanceCount > 0 && (
+                            <span className="text-[8px] font-mono text-[#666]">
+                                {project.provenanceCount} sources
+                            </span>
+                        )}
                     </div>
                 </div>
                 <div className="text-right shrink-0 ml-3">
                     <span className="text-[10px] font-mono text-[#555] block">EST. VALUE</span>
-                    <span className="text-lg font-mono-nums font-bold text-white">{formatEstValue(project.estValue)}</span>
+                    <span className="text-lg font-mono-nums font-bold text-white">
+                        {formatEstValue(project.estValue)}
+                    </span>
                 </div>
             </div>
 
@@ -144,10 +181,8 @@ export function AirdropCard({ project, onClick }: AirdropCardProps) {
                 )}
             </div>
 
-            {project.aiReport && (
-                <p className="text-[10px] font-mono text-[#555] line-clamp-2 leading-relaxed">
-                    {project.aiReport.slice(0, 120)}...
-                </p>
+            {blurb && (
+                <p className="text-[10px] font-mono text-[#555] line-clamp-2 leading-relaxed">{blurb}</p>
             )}
         </Link>
     );

@@ -3,12 +3,18 @@ import { db } from '../config/db';
 import { airdropProjects, airdropPipelineRuns } from '../models/index';
 import { validateAirdrop } from '../services/openai.service';
 import { deleteCache, deleteCachePattern } from '../config/redis';
-import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
 import { eq } from 'drizzle-orm';
+import { env } from '../config/env';
+import { processEntityGates } from '../services/airdropGatePipeline.service';
 
+/**
+ * Routine sync of active projects (DEC-041 AD-3).
+ * GLM/Z.ai enrichment removed — validate from local project fields only.
+ * When intelligence enabled, re-run gate pipeline for entity-linked projects.
+ */
 async function runRoutineSync(): Promise<void> {
     const startTime = Date.now();
-    console.log('[AirdropHunter] Routine sync of active projects...');
+    console.log('[AirdropHunter] Routine sync of active projects (no GLM)...');
 
     const activeProjects = await db
         .select()
@@ -23,8 +29,23 @@ async function runRoutineSync(): Promise<void> {
     let syncErrors = 0;
     for (const project of activeProjects) {
         try {
-            let raw = `Project: ${project.name}\nNetwork: ${project.network}${project.fundingRound ? `\nFunding: ${project.fundingRound}` : ''}`;
-            raw = await enrichAirdropContext(project.name, raw);
+            if (env.AIRDROP_INTELLIGENCE_ENABLED && project.entityId) {
+                await processEntityGates(project.entityId);
+                console.log(`[AirdropHunter] Gate re-eval: ${project.name} (entity=${project.entityId})`);
+                continue;
+            }
+
+            const raw = [
+                `PROJECT NAME: ${project.name}`,
+                `Network: ${project.network}`,
+                project.fundingRound ? `Funding: ${project.fundingRound}` : '',
+                project.websiteUrl ? `Website: ${project.websiteUrl}` : '',
+                project.twitterUrl ? `Twitter: ${project.twitterUrl}` : '',
+                project.aiReport ? `Prior report: ${project.aiReport.slice(0, 400)}` : '',
+            ]
+                .filter(Boolean)
+                .join('\n');
+
             const validation = await validateAirdrop(raw);
 
             await db
@@ -64,12 +85,18 @@ async function runRoutineSync(): Promise<void> {
             projectsRejected: 0,
             errors: syncErrors,
             durationMs,
+            notes: 'GLM enrichment stripped (AD-3)',
         });
     } catch (logErr) {
-        console.error('[AirdropHunter] Failed to log pipeline run:', logErr instanceof Error ? logErr.message : String(logErr));
+        console.error(
+            '[AirdropHunter] Failed to log pipeline run:',
+            logErr instanceof Error ? logErr.message : String(logErr)
+        );
     }
 
-    console.log(`[AirdropHunter] Routine sync complete — ${activeProjects.length} projects processed`);
+    console.log(
+        `[AirdropHunter] Routine sync complete — ${activeProjects.length} projects processed`
+    );
 }
 
 export function startAirdropHunterCron(): void {

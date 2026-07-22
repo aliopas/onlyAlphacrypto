@@ -3,15 +3,11 @@ import { StringSession } from 'telegram/sessions';
 import { LogLevel } from 'telegram/extensions/Logger';
 import { createHash } from 'crypto';
 import { env } from '../config/env';
+import { listEnabledAirdropSources } from './contentSources.service';
 
 const NEWS_CHANNELS: string[] = [
     'whale_alert_io',
     'cointelegraph',
-];
-
-const AIRDROP_CHANNELS: string[] = [
-    'airdrops_io',
-    'airdropofficial',
 ];
 
 const SPAM_PATTERNS: RegExp[] = [
@@ -116,9 +112,22 @@ export async function fetchNewsFromTelegram(minutesBack: number = 30): Promise<T
 export async function fetchAirdropsFromTelegram(hoursBack: number = 6): Promise<TelegramAirdropItem[]> {
     const cutoff = new Date(Date.now() - hoursBack * 60 * 60 * 1000);
 
+    const dbSources = await listEnabledAirdropSources({
+        kind: 'telegram',
+        purposes: ['airdrop_alpha'],
+    });
+    const channels = dbSources
+        .map((s) => s.identifier.trim().replace(/^@/, ''))
+        .filter((id) => id.length > 0);
+
+    if (channels.length === 0) {
+        console.warn('[Telegram] No enabled airdrop_alpha telegram sources in content_sources');
+        return [];
+    }
+
     const results = await withClient(async (client) => {
         const items: TelegramAirdropItem[] = [];
-        for (const channel of AIRDROP_CHANNELS) {
+        for (const channel of channels) {
             try {
                 const messages = await client.getMessages(channel, { limit: 15 });
                 for (const msg of messages) {
@@ -145,7 +154,7 @@ export async function fetchAirdropsFromTelegram(hoursBack: number = 6): Promise<
         return items;
     });
 
-    console.log(`[Telegram] Fetched ${results?.length ?? 0} airdrop items from ${AIRDROP_CHANNELS.length} channels`);
+    console.log(`[Telegram] Fetched ${results?.length ?? 0} airdrop items from ${channels.length} channels (DB)`);
     return results ?? [];
 }
 

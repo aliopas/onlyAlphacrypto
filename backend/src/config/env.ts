@@ -190,6 +190,10 @@ const envSchema = z.object({
     MARKET_CONTEXT_INGEST_ENABLED: z.coerce.boolean().default(false),
     MARKET_CONTEXT_TELEGRAM_POLL_LIMIT: z.coerce.number().default(50),
 
+    // Airdrop Intelligence (DEC-041) — schema/flags only in AD-0; all default off
+    AIRDROP_INTELLIGENCE_ENABLED: z.coerce.boolean().default(false),
+    AIRDROP_INTELLIGENCE_INGEST_ENABLED: z.coerce.boolean().default(false),
+
     // Monitoring Cron
     MONITORING_CRON_ENABLED: z.boolean().default(false),
 

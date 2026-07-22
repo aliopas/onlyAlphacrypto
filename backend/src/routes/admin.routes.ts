@@ -37,6 +37,18 @@ import {
     patchMarketContextSnapshotPublishHandler,
     patchMarketContextSnapshotArchiveHandler,
     patchMarketContextSnapshotUnpublishHandler,
+    getContentSourcesHandler,
+    postContentSourceHandler,
+    patchContentSourceHandler,
+    deleteContentSourceHandler,
+    getAirdropOpsMetricsHandler,
+    getAirdropOpsProjectsHandler,
+    postAirdropOpsKillSwitchHandler,
+    getAirdropOpsEntitiesHandler,
+    getAirdropOpsEntityByIdHandler,
+    postAirdropOpsEntityAliasHandler,
+    postAirdropOpsEntityMergeHandler,
+    postAirdropOpsEntitySplitHandler,
 } from '../controllers/admin.controller';
 
 const router = Router();
@@ -59,6 +71,14 @@ function signalOpsFlagMiddleware(req: Request, res: Response, next: NextFunction
 
 function marketContextFlagMiddleware(req: Request, res: Response, next: NextFunction): void {
     if (!env.ADMIN_COMMAND_CENTER_ENABLED || !env.MARKET_CONTEXT_ENABLED) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+    }
+    next();
+}
+
+function airdropIntelligenceFlagMiddleware(req: Request, res: Response, next: NextFunction): void {
+    if (!env.ADMIN_COMMAND_CENTER_ENABLED || !env.AIRDROP_INTELLIGENCE_ENABLED) {
         res.status(404).json({ error: 'Not found' });
         return;
     }
@@ -182,6 +202,82 @@ router.patch(
     marketContextFlagMiddleware,
     adminAuth,
     patchMarketContextSnapshotUnpublishHandler
+);
+
+// Content Sources Admin (AD-1 / DEC-041)
+router.get(
+    '/sources',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    getContentSourcesHandler
+);
+router.post(
+    '/sources',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    postContentSourceHandler
+);
+router.patch(
+    '/sources/:id',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    patchContentSourceHandler
+);
+router.delete(
+    '/sources/:id',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    deleteContentSourceHandler
+);
+
+// Airdrop Ops (AD-5 / DEC-041) — metrics, kill-switch, entity merge/split — NO trust queue
+router.get(
+    '/airdrop-ops/metrics',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    getAirdropOpsMetricsHandler
+);
+router.get(
+    '/airdrop-ops/projects',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    getAirdropOpsProjectsHandler
+);
+router.post(
+    '/airdrop-ops/projects/:id/kill-switch',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    postAirdropOpsKillSwitchHandler
+);
+router.get(
+    '/airdrop-ops/entities',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    getAirdropOpsEntitiesHandler
+);
+router.get(
+    '/airdrop-ops/entities/:id',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    getAirdropOpsEntityByIdHandler
+);
+router.post(
+    '/airdrop-ops/entities/:id/aliases',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    postAirdropOpsEntityAliasHandler
+);
+router.post(
+    '/airdrop-ops/entities/merge',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    postAirdropOpsEntityMergeHandler
+);
+router.post(
+    '/airdrop-ops/entities/split',
+    airdropIntelligenceFlagMiddleware,
+    adminAuth,
+    postAirdropOpsEntitySplitHandler
 );
 
 export default router;

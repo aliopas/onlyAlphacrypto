@@ -1,57 +1,73 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
-import { airdropProjects, airdropPipelineRuns } from '../models/index';
-import { validateAirdropFromArticle } from '../services/openai.service';
-import {
-    fetchAirdropRSSFeeds,
-    buildProjectContextFromArticle,
-    getExistingProjectNames,
-    type AirdropRSSArticle,
-} from '../services/airdropRss.service';
-import { deleteCache, deleteCachePattern, redis } from '../config/redis';
-import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
-import { insertProjectWithQuality } from '../controllers/airdrop.controller';
+import { airdropPipelineRuns } from '../models/index';
+import { fetchAirdropRSSFeeds, type AirdropRSSArticle } from '../services/airdropRss.service';
+import { env } from '../config/env';
+import { runAirdropSignalIngest } from '../services/airdropSignalIngest.service';
+import { runAirdropGatePipeline } from '../services/airdropGatePipeline.service';
 
-const MAX_AI_CALLS_PER_RUN = 5;
-const PROCESSED_HASHES_MAX = 1000;
-
-const REDIS_HASH_KEY = 'airdrop:processed_hashes';
-
-const localHashes: Set<string> = new Set();
-
-async function isHashProcessed(hash: string): Promise<boolean> {
-    if (!redis) return localHashes.has(hash);
-    try {
-        const result = await redis.sismember(REDIS_HASH_KEY, hash);
-        return result === 1;
-    } catch {
-        return localHashes.has(hash);
-    }
-}
-
-async function addProcessedHash(hash: string): Promise<void> {
-    localHashes.add(hash);
-    if (!redis) return;
-    try {
-        await redis.sadd(REDIS_HASH_KEY, hash);
-        await redis.expire(REDIS_HASH_KEY, 7 * 24 * 60 * 60);
-    } catch {
-        // Redis unavailable — local fallback sufficient
-    }
-}
-
-function parseOptionalDate(dateStr: string | null): Date | null {
-    if (!dateStr) return null;
-    const parsed = new Date(dateStr);
-    if (isNaN(parsed.getTime())) return null;
-    return parsed;
-}
-
+/**
+ * RSS hunter (DEC-041 AD-3).
+ * Legacy path that validated+inserted via GLM enrichment is removed.
+ * When intelligence flags are on: signal ingest already covers RSS; this cron
+ * triggers ingest+gates. When off: fetch-only health check (no GLM, no auto-insert).
+ */
 async function runAirdropRSSDiscovery(): Promise<void> {
     const startTime = Date.now();
-    console.log('[AirdropRSS] Discovery run started');
+    console.log('[AirdropRSS] Discovery run started (no GLM)');
 
-    let articles: AirdropRSSArticle[];
+    if (env.AIRDROP_INTELLIGENCE_ENABLED && env.AIRDROP_INTELLIGENCE_INGEST_ENABLED) {
+        try {
+            const ingest = await runAirdropSignalIngest();
+            let gates = {
+                autoPublish: 0,
+                holdRecheck: 0,
+                reject: 0,
+                processed: 0,
+            };
+            if (env.AIRDROP_INTELLIGENCE_ENABLED) {
+                const g = await runAirdropGatePipeline();
+                gates = {
+                    autoPublish: g.autoPublish,
+                    holdRecheck: g.holdRecheck,
+                    reject: g.reject,
+                    processed: g.processed,
+                };
+            }
+
+            const durationMs = Date.now() - startTime;
+            await db.insert(airdropPipelineRuns).values({
+                runType: 'rss_discovery',
+                articlesFound:
+                    ingest.telegramAlpha.attempted +
+                    ingest.telegramCommunity.attempted +
+                    ingest.rssAlpha.attempted,
+                articlesProcessed:
+                    ingest.telegramAlpha.inserted +
+                    ingest.telegramCommunity.inserted +
+                    ingest.rssAlpha.inserted,
+                projectsInserted: gates.autoPublish,
+                projectsRejected: gates.holdRecheck + gates.reject,
+                errors: 0,
+                durationMs,
+                notes: JSON.stringify({ path: 'intelligence_ingest_gates', gates, ingest }),
+            });
+
+            console.log(
+                `[AirdropRSS] Intelligence path complete — signals inserted, gates auto=${gates.autoPublish} hold=${gates.holdRecheck} reject=${gates.reject}`
+            );
+            return;
+        } catch (error) {
+            console.error(
+                '[AirdropRSS] Intelligence path failed:',
+                error instanceof Error ? error.message : String(error)
+            );
+            return;
+        }
+    }
+
+    // Legacy health: fetch only, do not AI-insert (GLM stripped; avoid single-source auto-publish)
+    let articles: AirdropRSSArticle[] = [];
     try {
         articles = await fetchAirdropRSSFeeds();
     } catch (error) {
@@ -62,131 +78,31 @@ async function runAirdropRSSDiscovery(): Promise<void> {
         return;
     }
 
-    console.log(`[AirdropRSS] Articles after keyword filter: ${articles.length}`);
-
-    const unprocessedArticles = [];
-    for (const article of articles) {
-        const seen = await isHashProcessed(article.hash);
-        if (!seen) unprocessedArticles.push(article);
-    }
-    const candidates = unprocessedArticles.slice(0, MAX_AI_CALLS_PER_RUN);
-
-    console.log(
-        `[AirdropRSS] After dedup — ${unprocessedArticles.length} new, ${candidates.length} AI calls to make`
-    );
-
-    if (candidates.length === 0) {
-        console.log('[AirdropRSS] No new articles to process');
-        return;
-    }
-
-    const existingProjectNames = await getExistingProjectNames();
-    let projectsInserted = 0;
-    let rejections = 0;
-
-    for (const article of candidates) {
-        try {
-            let context = buildProjectContextFromArticle(article);
-            context = await enrichAirdropContext(article.title, context);
-            const validation = await validateAirdropFromArticle(context);
-
-            if (!validation.isLegitimate || validation.riskVerdict === 'SCAM') {
-                console.log(
-                    `[AirdropRSS] Rejected: "${article.title}" — legitimate=${validation.isLegitimate}, risk=${validation.riskVerdict}`
-                );
-                rejections++;
-                await addProcessedHash(article.hash);
-                continue;
-            }
-
-            const normalizedName = validation.projectName.toLowerCase();
-            if (existingProjectNames.has(normalizedName)) {
-                console.log(
-                    `[AirdropRSS] Duplicate project skipped: "${validation.projectName}"`
-                );
-                rejections++;
-                await addProcessedHash(article.hash);
-                continue;
-            }
-
-            const snapshotAt = parseOptionalDate(validation.snapshotDate);
-            const tgeAt = parseOptionalDate(validation.tgeDate);
-
-            try {
-                await insertProjectWithQuality({
-                    name: validation.projectName,
-                    network: validation.network,
-                    estValue: validation.estValue,
-                    aiReport: validation.aiReport,
-                    riskVerdict: validation.riskVerdict,
-                    snapshotAt,
-                    tgeAt,
-                });
-                existingProjectNames.add(normalizedName);
-                await addProcessedHash(article.hash);
-                projectsInserted++;
-
-                console.log(
-                    `[AirdropRSS] Inserted project: "${validation.projectName}" (${validation.network})`
-                );
-            } catch (err) {
-                if (err instanceof Error && err.message.includes('quality threshold')) {
-                    console.log(`[AirdropRSS] Rejected by quality filter: "${validation.projectName}"`);
-                    rejections++;
-                } else {
-                    throw err;
-                }
-            }
-        } catch (error) {
-            console.error(
-                `[AirdropRSS] Error processing article "${article.title}":`,
-                error instanceof Error ? error.message : String(error)
-            );
-            await addProcessedHash(article.hash);
-        }
-    }
-
-    if (localHashes.size > PROCESSED_HASHES_MAX) {
-        const hashArray = Array.from(localHashes);
-        const trimmed = hashArray.slice(hashArray.length - PROCESSED_HASHES_MAX);
-        localHashes.clear();
-        for (const h of trimmed) {
-            localHashes.add(h);
-        }
-    }
-
-    try {
-        await deleteCache('airdrop:projects');
-        await deleteCache('airdrop:deadlines');
-        await deleteCachePattern('airdrop:project:*');
-    } catch (error) {
-        console.error(
-            '[AirdropRSS] Redis cache invalidation failed:',
-            error instanceof Error ? error.message : String(error)
-        );
-    }
-
     const durationMs = Date.now() - startTime;
     try {
         await db.insert(airdropPipelineRuns).values({
             runType: 'rss_discovery',
             articlesFound: articles.length,
-            articlesProcessed: candidates.length,
-            projectsInserted,
-            projectsRejected: rejections,
+            articlesProcessed: 0,
+            projectsInserted: 0,
+            projectsRejected: 0,
             errors: 0,
             durationMs,
+            notes: 'legacy_fetch_only — enable AIRDROP_INTELLIGENCE_* for gate pipeline; GLM stripped',
         });
     } catch (logErr) {
-        console.error('[AirdropRSS] Failed to log pipeline run:', logErr instanceof Error ? logErr.message : String(logErr));
+        console.error(
+            '[AirdropRSS] Failed to log pipeline run:',
+            logErr instanceof Error ? logErr.message : String(logErr)
+        );
     }
 
     console.log(
-        `[AirdropRSS] Discovery run complete — inserted: ${projectsInserted}, rejected: ${rejections}, processed hashes: ${localHashes.size}`
+        `[AirdropRSS] Fetch-only complete — ${articles.length} articles (no auto-insert without intelligence flags)`
     );
 }
 
 export function startAirdropRSSCron(): void {
     cron.schedule('0 */6 * * *', runAirdropRSSDiscovery);
-    console.log('[AirdropRSS] Cron scheduled — Discovery: every 6 hours');
+    console.log('[AirdropRSS] Cron scheduled — Discovery: every 6 hours (no GLM)');
 }

@@ -15,6 +15,11 @@ import {
     type MarketNewsSourceType,
     type MarketNewsTrust,
 } from '../models/marketContext.model';
+import {
+    contentSources,
+    type ContentSourceKind,
+    type ContentSourcePurpose,
+} from '../models/airdrop.model';
 import { eq, and, gte, lte, desc, sql, isNull, inArray, count } from 'drizzle-orm';
 import { env } from '../config/env';
 import type { SignalState } from '../services/signalLifecycle.service';
@@ -31,6 +36,20 @@ import {
     archiveMarketContextSnapshot,
     unpublishMarketContextSnapshot,
 } from '../services/marketContextGenerator.service';
+import {
+    listContentSources,
+    serializeContentSource,
+} from '../services/contentSources.service';
+import {
+    getAirdropPipelineMetrics,
+    listAdminAirdropProjects,
+    killSwitchDeactivateProject,
+    listAdminEntities,
+    getEntityDetail,
+    addEntityAlias,
+    mergeEntities,
+    splitEntity,
+} from '../services/airdropAdminOps.service';
 
 /**
  * Get shadow mode statistics
@@ -2647,5 +2666,686 @@ export async function patchMarketContextSnapshotUnpublishHandler(
             error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({ error: 'Failed to unpublish snapshot' });
+    }
+}
+
+// ─── Content Sources Admin (AD-1 / DEC-041) ───────────────────────────────────
+
+const ADMIN_CONTENT_SOURCE_KINDS: readonly ContentSourceKind[] = ['telegram', 'rss'];
+const ADMIN_CONTENT_SOURCE_PURPOSES: readonly ContentSourcePurpose[] = [
+    'airdrop_alpha',
+    'airdrop_community',
+    'news',
+    'market_context',
+];
+
+function parseContentSourceKind(value: unknown): ContentSourceKind | null {
+    if (typeof value !== 'string') return null;
+    const v = value.trim() as ContentSourceKind;
+    return ADMIN_CONTENT_SOURCE_KINDS.includes(v) ? v : null;
+}
+
+function parseContentSourcePurpose(value: unknown): ContentSourcePurpose | null {
+    if (typeof value !== 'string') return null;
+    const v = value.trim() as ContentSourcePurpose;
+    return ADMIN_CONTENT_SOURCE_PURPOSES.includes(v) ? v : null;
+}
+
+function normalizeSourceIdentifier(kind: ContentSourceKind, raw: string): string {
+    const trimmed = raw.trim();
+    if (kind === 'telegram') {
+        return trimmed.replace(/^@/, '');
+    }
+    return trimmed;
+}
+
+function isValidHttpUrl(value: string): boolean {
+    try {
+        const u = new URL(value);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
+export async function getContentSourcesHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!env.AIRDROP_INTELLIGENCE_ENABLED) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const kindParam = typeof req.query.kind === 'string' ? req.query.kind : undefined;
+        const purposeParam = typeof req.query.purpose === 'string' ? req.query.purpose : undefined;
+        const enabledParam = typeof req.query.enabled === 'string' ? req.query.enabled : undefined;
+
+        let kind: ContentSourceKind | undefined;
+        if (kindParam !== undefined && kindParam.length > 0) {
+            const parsed = parseContentSourceKind(kindParam);
+            if (!parsed) {
+                res.status(400).json({ error: 'Invalid kind (telegram|rss)' });
+                return;
+            }
+            kind = parsed;
+        }
+
+        let purpose: ContentSourcePurpose | undefined;
+        if (purposeParam !== undefined && purposeParam.length > 0) {
+            const parsed = parseContentSourcePurpose(purposeParam);
+            if (!parsed) {
+                res.status(400).json({ error: 'Invalid purpose' });
+                return;
+            }
+            purpose = parsed;
+        }
+
+        let enabled: boolean | undefined;
+        if (enabledParam === 'true') enabled = true;
+        else if (enabledParam === 'false') enabled = false;
+
+        const rows = await listContentSources({ kind, purpose, enabled });
+        const sources = rows
+            .filter((r) => r.kind === 'telegram' || r.kind === 'rss')
+            .map(serializeContentSource);
+
+        res.json({ sources });
+    } catch (error) {
+        console.error(
+            '[AdminContentSources] Failed to list sources:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to fetch content sources' });
+    }
+}
+
+interface CreateContentSourceBody {
+    kind?: string;
+    purpose?: string;
+    identifier?: string;
+    title?: string;
+    enabled?: boolean;
+    notes?: string;
+    lastCursor?: string;
+}
+
+export async function postContentSourceHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!env.AIRDROP_INTELLIGENCE_ENABLED) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const body = req.body as CreateContentSourceBody;
+        const kind = parseContentSourceKind(body.kind);
+        if (!kind) {
+            res.status(400).json({ error: 'kind is required (telegram|rss)' });
+            return;
+        }
+
+        const purpose = parseContentSourcePurpose(body.purpose);
+        if (!purpose) {
+            res.status(400).json({ error: 'purpose is required' });
+            return;
+        }
+
+        const rawId = typeof body.identifier === 'string' ? body.identifier : '';
+        const identifier = normalizeSourceIdentifier(kind, rawId);
+        if (!identifier) {
+            res.status(400).json({ error: 'identifier is required' });
+            return;
+        }
+
+        if (kind === 'rss' && !isValidHttpUrl(identifier)) {
+            res.status(400).json({ error: 'identifier must be a valid URL for rss' });
+            return;
+        }
+
+        const enabled = body.enabled === undefined ? true : Boolean(body.enabled);
+        const title = typeof body.title === 'string' ? body.title.trim() || null : null;
+        const notes = typeof body.notes === 'string' ? body.notes.trim() || null : null;
+        const lastCursor =
+            typeof body.lastCursor === 'string' ? body.lastCursor.trim() || null : null;
+
+        try {
+            const inserted = await db
+                .insert(contentSources)
+                .values({
+                    kind,
+                    purpose,
+                    identifier,
+                    title,
+                    enabled,
+                    notes,
+                    lastCursor,
+                    updatedAt: new Date(),
+                })
+                .returning();
+
+            const source = inserted[0];
+
+            await logAdminAction({
+                adminEmail: req.adminEmail ?? 'unknown',
+                action: 'content_source_create',
+                targetTable: 'content_sources',
+                targetId: String(source.id),
+                newValue: {
+                    kind: source.kind,
+                    purpose: source.purpose,
+                    identifier: source.identifier,
+                    title: source.title,
+                    enabled: source.enabled,
+                    notes: source.notes,
+                    lastCursor: source.lastCursor,
+                },
+                ipAddress: getClientIp(req),
+            });
+
+            res.status(201).json({ source: serializeContentSource(source) });
+        } catch (insertErr) {
+            const msg = insertErr instanceof Error ? insertErr.message : String(insertErr);
+            if (msg.includes('unique') || msg.includes('duplicate')) {
+                res.status(409).json({ error: 'Source kind+identifier already exists' });
+                return;
+            }
+            throw insertErr;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminContentSources] Failed to create source:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to create content source' });
+    }
+}
+
+interface PatchContentSourceBody {
+    purpose?: string;
+    identifier?: string;
+    title?: string;
+    enabled?: boolean;
+    notes?: string;
+    lastCursor?: string;
+}
+
+export async function patchContentSourceHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!env.AIRDROP_INTELLIGENCE_ENABLED) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const sourceId = parseInt(idParam, 10);
+        if (isNaN(sourceId)) {
+            res.status(400).json({ error: 'Invalid source ID' });
+            return;
+        }
+
+        const existing = await db
+            .select()
+            .from(contentSources)
+            .where(eq(contentSources.id, sourceId))
+            .limit(1);
+
+        if (existing.length === 0) {
+            res.status(404).json({ error: 'Source not found' });
+            return;
+        }
+
+        const current = existing[0];
+        if (current.kind !== 'telegram' && current.kind !== 'rss') {
+            res.status(400).json({ error: 'Only telegram|rss sources are admin-editable' });
+            return;
+        }
+
+        const body = req.body as PatchContentSourceBody;
+        const updates: {
+            purpose?: ContentSourcePurpose;
+            identifier?: string;
+            title?: string | null;
+            enabled?: boolean;
+            notes?: string | null;
+            lastCursor?: string | null;
+            updatedAt: Date;
+        } = { updatedAt: new Date() };
+
+        if (body.purpose !== undefined) {
+            const purpose = parseContentSourcePurpose(body.purpose);
+            if (!purpose) {
+                res.status(400).json({ error: 'Invalid purpose' });
+                return;
+            }
+            updates.purpose = purpose;
+        }
+
+        if (body.identifier !== undefined) {
+            const identifier = normalizeSourceIdentifier(
+                current.kind,
+                typeof body.identifier === 'string' ? body.identifier : ''
+            );
+            if (!identifier) {
+                res.status(400).json({ error: 'identifier cannot be empty' });
+                return;
+            }
+            if (current.kind === 'rss' && !isValidHttpUrl(identifier)) {
+                res.status(400).json({ error: 'identifier must be a valid URL for rss' });
+                return;
+            }
+            updates.identifier = identifier;
+        }
+
+        if (body.title !== undefined) {
+            updates.title = typeof body.title === 'string' ? body.title.trim() || null : null;
+        }
+        if (body.enabled !== undefined) {
+            updates.enabled = Boolean(body.enabled);
+        }
+        if (body.notes !== undefined) {
+            updates.notes = typeof body.notes === 'string' ? body.notes.trim() || null : null;
+        }
+        if (body.lastCursor !== undefined) {
+            updates.lastCursor =
+                typeof body.lastCursor === 'string' ? body.lastCursor.trim() || null : null;
+        }
+
+        try {
+            const updated = await db
+                .update(contentSources)
+                .set(updates)
+                .where(eq(contentSources.id, sourceId))
+                .returning();
+
+            const source = updated[0];
+
+            await logAdminAction({
+                adminEmail: req.adminEmail ?? 'unknown',
+                action: 'content_source_update',
+                targetTable: 'content_sources',
+                targetId: String(sourceId),
+                oldValue: {
+                    kind: current.kind,
+                    purpose: current.purpose,
+                    identifier: current.identifier,
+                    title: current.title,
+                    enabled: current.enabled,
+                    notes: current.notes,
+                    lastCursor: current.lastCursor,
+                },
+                newValue: {
+                    kind: source.kind,
+                    purpose: source.purpose,
+                    identifier: source.identifier,
+                    title: source.title,
+                    enabled: source.enabled,
+                    notes: source.notes,
+                    lastCursor: source.lastCursor,
+                },
+                ipAddress: getClientIp(req),
+            });
+
+            res.json({ source: serializeContentSource(source) });
+        } catch (updateErr) {
+            const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+            if (msg.includes('unique') || msg.includes('duplicate')) {
+                res.status(409).json({ error: 'Source kind+identifier already exists' });
+                return;
+            }
+            throw updateErr;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminContentSources] Failed to patch source:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to update content source' });
+    }
+}
+
+export async function deleteContentSourceHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!env.AIRDROP_INTELLIGENCE_ENABLED) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const sourceId = parseInt(idParam, 10);
+        if (isNaN(sourceId)) {
+            res.status(400).json({ error: 'Invalid source ID' });
+            return;
+        }
+
+        const existing = await db
+            .select()
+            .from(contentSources)
+            .where(eq(contentSources.id, sourceId))
+            .limit(1);
+
+        if (existing.length === 0) {
+            res.status(404).json({ error: 'Source not found' });
+            return;
+        }
+
+        const current = existing[0];
+        if (current.kind !== 'telegram' && current.kind !== 'rss') {
+            res.status(400).json({ error: 'Only telegram|rss sources are admin-deletable' });
+            return;
+        }
+
+        await db.delete(contentSources).where(eq(contentSources.id, sourceId));
+
+        await logAdminAction({
+            adminEmail: req.adminEmail ?? 'unknown',
+            action: 'content_source_delete',
+            targetTable: 'content_sources',
+            targetId: String(sourceId),
+            oldValue: {
+                kind: current.kind,
+                purpose: current.purpose,
+                identifier: current.identifier,
+                title: current.title,
+                enabled: current.enabled,
+            },
+            ipAddress: getClientIp(req),
+        });
+
+        res.json({ ok: true, id: sourceId });
+    } catch (error) {
+        console.error(
+            '[AdminContentSources] Failed to delete source:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to delete content source' });
+    }
+}
+
+// ─── Airdrop Ops Admin (AD-5 / DEC-041) — no trust queue ─────────────────────
+
+function requireAirdropIntel(res: Response): boolean {
+    if (!env.AIRDROP_INTELLIGENCE_ENABLED) {
+        res.status(404).json({ error: 'Not found' });
+        return false;
+    }
+    return true;
+}
+
+export async function getAirdropOpsMetricsHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!requireAirdropIntel(res)) return;
+        const metrics = await getAirdropPipelineMetrics();
+        res.json({ metrics });
+    } catch (error) {
+        console.error(
+            '[AdminAirdropOps] metrics failed:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to fetch airdrop metrics' });
+    }
+}
+
+export async function getAirdropOpsProjectsHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!requireAirdropIntel(res)) return;
+        const status =
+            typeof req.query.pipelineStatus === 'string' ? req.query.pipelineStatus : undefined;
+        const limitRaw = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 50;
+        const projects = await listAdminAirdropProjects({
+            pipelineStatus: status,
+            limit: Number.isFinite(limitRaw) ? limitRaw : 50,
+        });
+        res.json({ projects });
+    } catch (error) {
+        console.error(
+            '[AdminAirdropOps] list projects failed:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to list airdrop projects' });
+    }
+}
+
+export async function postAirdropOpsKillSwitchHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!requireAirdropIntel(res)) return;
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const projectId = parseInt(idParam, 10);
+        if (isNaN(projectId)) {
+            res.status(400).json({ error: 'Invalid project ID' });
+            return;
+        }
+
+        try {
+            const result = await killSwitchDeactivateProject(projectId);
+            await logAdminAction({
+                adminEmail: req.adminEmail ?? 'unknown',
+                action: 'airdrop_kill_switch',
+                targetTable: 'airdrop_projects',
+                targetId: String(projectId),
+                newValue: result,
+                ipAddress: getClientIp(req),
+            });
+            res.json({ project: result });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === 'PROJECT_NOT_FOUND') {
+                res.status(404).json({ error: 'Project not found' });
+                return;
+            }
+            throw err;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminAirdropOps] kill-switch failed:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to deactivate project' });
+    }
+}
+
+export async function getAirdropOpsEntitiesHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!requireAirdropIntel(res)) return;
+        const limitRaw = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 50;
+        const entities = await listAdminEntities(Number.isFinite(limitRaw) ? limitRaw : 50);
+        res.json({ entities });
+    } catch (error) {
+        console.error(
+            '[AdminAirdropOps] list entities failed:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to list entities' });
+    }
+}
+
+export async function getAirdropOpsEntityByIdHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!requireAirdropIntel(res)) return;
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const entityId = parseInt(idParam, 10);
+        if (isNaN(entityId)) {
+            res.status(400).json({ error: 'Invalid entity ID' });
+            return;
+        }
+        const detail = await getEntityDetail(entityId);
+        if (!detail) {
+            res.status(404).json({ error: 'Entity not found' });
+            return;
+        }
+        res.json({
+            entity: {
+                id: detail.entity.id,
+                canonicalName: detail.entity.canonicalName,
+                slug: detail.entity.slug,
+                defillamaSlug: detail.entity.defillamaSlug,
+                createdAt: detail.entity.createdAt.toISOString(),
+                updatedAt: detail.entity.updatedAt.toISOString(),
+            },
+            aliases: detail.aliases,
+        });
+    } catch (error) {
+        console.error(
+            '[AdminAirdropOps] get entity failed:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to fetch entity' });
+    }
+}
+
+export async function postAirdropOpsEntityAliasHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!requireAirdropIntel(res)) return;
+        const idParam = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const entityId = parseInt(idParam, 10);
+        if (isNaN(entityId)) {
+            res.status(400).json({ error: 'Invalid entity ID' });
+            return;
+        }
+        const body = req.body as { alias?: string };
+        const alias = typeof body.alias === 'string' ? body.alias : '';
+        try {
+            const created = await addEntityAlias({ entityId, alias });
+            await logAdminAction({
+                adminEmail: req.adminEmail ?? 'unknown',
+                action: 'airdrop_entity_alias_add',
+                targetTable: 'airdrop_entity_aliases',
+                targetId: String(created.id),
+                newValue: { entityId, ...created },
+                ipAddress: getClientIp(req),
+            });
+            res.status(201).json({ alias: created });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === 'ENTITY_NOT_FOUND') {
+                res.status(404).json({ error: 'Entity not found' });
+                return;
+            }
+            if (msg === 'ALIAS_TOO_SHORT' || msg === 'ALIAS_INVALID') {
+                res.status(400).json({ error: 'Invalid alias' });
+                return;
+            }
+            if (msg === 'ALIAS_EXISTS') {
+                res.status(409).json({ error: 'Alias already exists' });
+                return;
+            }
+            throw err;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminAirdropOps] add alias failed:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to add alias' });
+    }
+}
+
+export async function postAirdropOpsEntityMergeHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!requireAirdropIntel(res)) return;
+        const body = req.body as { targetEntityId?: unknown; sourceEntityId?: unknown };
+        const targetEntityId =
+            typeof body.targetEntityId === 'number'
+                ? body.targetEntityId
+                : parseInt(String(body.targetEntityId ?? ''), 10);
+        const sourceEntityId =
+            typeof body.sourceEntityId === 'number'
+                ? body.sourceEntityId
+                : parseInt(String(body.sourceEntityId ?? ''), 10);
+
+        if (isNaN(targetEntityId) || isNaN(sourceEntityId)) {
+            res.status(400).json({ error: 'targetEntityId and sourceEntityId required' });
+            return;
+        }
+
+        try {
+            const result = await mergeEntities({ targetEntityId, sourceEntityId });
+            await logAdminAction({
+                adminEmail: req.adminEmail ?? 'unknown',
+                action: 'airdrop_entity_merge',
+                targetTable: 'airdrop_entities',
+                targetId: String(targetEntityId),
+                oldValue: { sourceEntityId },
+                newValue: result,
+                ipAddress: getClientIp(req),
+            });
+            res.json({ merge: result });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === 'SAME_ENTITY') {
+                res.status(400).json({ error: 'Cannot merge entity into itself' });
+                return;
+            }
+            if (msg === 'ENTITY_NOT_FOUND') {
+                res.status(404).json({ error: 'Entity not found' });
+                return;
+            }
+            throw err;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminAirdropOps] merge failed:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to merge entities' });
+    }
+}
+
+export async function postAirdropOpsEntitySplitHandler(req: Request, res: Response): Promise<void> {
+    try {
+        if (!requireAirdropIntel(res)) return;
+        const body = req.body as {
+            sourceEntityId?: unknown;
+            newCanonicalName?: unknown;
+            moveAliasIds?: unknown;
+        };
+        const sourceEntityId =
+            typeof body.sourceEntityId === 'number'
+                ? body.sourceEntityId
+                : parseInt(String(body.sourceEntityId ?? ''), 10);
+        const newCanonicalName =
+            typeof body.newCanonicalName === 'string' ? body.newCanonicalName : '';
+        const moveAliasIds = Array.isArray(body.moveAliasIds)
+            ? body.moveAliasIds
+                  .map((x) => (typeof x === 'number' ? x : parseInt(String(x), 10)))
+                  .filter((n) => !isNaN(n))
+            : undefined;
+
+        if (isNaN(sourceEntityId) || !newCanonicalName.trim()) {
+            res.status(400).json({ error: 'sourceEntityId and newCanonicalName required' });
+            return;
+        }
+
+        try {
+            const result = await splitEntity({
+                sourceEntityId,
+                newCanonicalName,
+                moveAliasIds,
+            });
+            await logAdminAction({
+                adminEmail: req.adminEmail ?? 'unknown',
+                action: 'airdrop_entity_split',
+                targetTable: 'airdrop_entities',
+                targetId: String(result.newEntityId),
+                oldValue: { sourceEntityId },
+                newValue: result,
+                ipAddress: getClientIp(req),
+            });
+            res.status(201).json({ split: result });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg === 'ENTITY_NOT_FOUND') {
+                res.status(404).json({ error: 'Entity not found' });
+                return;
+            }
+            if (msg === 'NAME_TOO_SHORT' || msg === 'SLUG_INVALID') {
+                res.status(400).json({ error: 'Invalid new name' });
+                return;
+            }
+            throw err;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminAirdropOps] split failed:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to split entity' });
     }
 }

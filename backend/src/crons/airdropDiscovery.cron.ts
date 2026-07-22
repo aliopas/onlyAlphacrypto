@@ -1,8 +1,7 @@
 import cron from 'node-cron';
 import { db } from '../config/db';
-import { airdropProjects, airdropPipelineRuns } from '../models/index';
+import { airdropPipelineRuns, airdropProjects } from '../models/index';
 import { validateAirdrop } from '../services/openai.service';
-import { enrichAirdropContext } from '../services/zhipuWebSearch.service';
 import { insertProjectWithQuality } from '../controllers/airdrop.controller';
 import { deleteCache, deleteCachePattern } from '../config/redis';
 import {
@@ -11,85 +10,20 @@ import {
     buildCandidateContext,
     type AirdropCandidate,
 } from '../services/defillama.service';
-import { searchWeb } from '../services/zhipuWebSearch.service';
+import { resolveOrCreateEntity } from '../services/entityResolve.service';
+import { env } from '../config/env';
+import { eq } from 'drizzle-orm';
 
 const CONFIDENCE_THRESHOLD = 40;
 const MAX_AI_CALLS_PER_RUN = 5;
 
-const ZAI_DISCOVERY_QUERIES = [
-    'crypto airdrop claim eligible 2026',
-    'token generation event TGE confirmed upcoming',
-    'airdrop snapshot retroactive crypto new',
-    'testnet airdrop rewards incentivized',
-    'new crypto airdrop upcoming 2026',
-];
-
-interface ZAISearchCandidate {
-    projectName: string;
-    context: string;
-    source: string;
-}
-
-const EXTRACT_EXCLUDE = new Set(['airdrop', 'the', 'new', 'how', 'what', 'this', 'claim', 'token', 'snapshot', 'tge', 'crypto']);
-
-function extractProjectNameFromSearchResult(content: string): string | null {
-    const patterns = [
-        /^([A-Z][a-zA-Z0-9]+)\s+(?:airdrop|token|TGE|snapshot|claim)/im,
-        /(?:airdrop|claim|snapshot|TGE).*?(?:from|by|on)\s+([A-Z][a-zA-Z0-9]+)/im,
-    ];
-
-    for (const pattern of patterns) {
-        const match = content.match(pattern);
-        if (match?.[1] && match[1].length > 2 && match[1].length < 40) {
-            const name = match[1].trim();
-            if (!EXTRACT_EXCLUDE.has(name.toLowerCase())) {
-                return name;
-            }
-        }
-    }
-    return null;
-}
-
-async function runZAIDiscovery(): Promise<ZAISearchCandidate[]> {
-    const candidates: ZAISearchCandidate[] = [];
-
-    for (const query of ZAI_DISCOVERY_QUERIES) {
-        try {
-            const results = await searchWeb(query);
-            for (const result of results) {
-                const projectName = extractProjectNameFromSearchResult(result.content);
-                if (projectName) {
-                    candidates.push({
-                        projectName,
-                        context: result.content.slice(0, 1500),
-                        source: 'zai_web_search',
-                    });
-                }
-            }
-        } catch (err) {
-            console.error('[AirdropDiscovery] Z.ai search failed:', err instanceof Error ? err.message : String(err));
-        }
-    }
-
-    const seen = new Set<string>();
-    return candidates.filter(c => {
-        const key = c.projectName.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-}
-
-function parseOptionalDate(dateStr: string | null): Date | null {
-    if (!dateStr) return null;
-    const parsed = new Date(dateStr);
-    if (isNaN(parsed.getTime())) return null;
-    return parsed;
-}
-
+/**
+ * DeFiLlama-only discovery (DEC-041 AD-3).
+ * GLM/Z.ai web search discovery removed from airdrop backbone.
+ */
 async function runAirdropDiscovery(): Promise<void> {
     const startTime = Date.now();
-    console.log('[AirdropDiscovery] Run started — DeFiLlama + Z.ai pipeline');
+    console.log('[AirdropDiscovery] Run started — DeFiLlama only (no GLM)');
 
     let totalCandidates = 0;
     let projectsInserted = 0;
@@ -97,122 +31,152 @@ async function runAirdropDiscovery(): Promise<void> {
     let errors = 0;
 
     const existingProjectNames = new Set(
-        (await db.select({ name: airdropProjects.name }).from(airdropProjects))
-            .map(p => p.name.toLowerCase())
+        (await db.select({ name: airdropProjects.name }).from(airdropProjects)).map((p) =>
+            p.name.toLowerCase()
+        )
     );
 
-    // Layer 1: DeFiLlama tokenless protocols
     let defillamaCandidates: AirdropCandidate[] = [];
     try {
         const tokenlessProtocols = await fetchTokenlessProtocols();
         defillamaCandidates = await buildAirdropCandidates(tokenlessProtocols, 15);
         console.log(`[AirdropDiscovery] DeFiLlama: ${defillamaCandidates.length} candidates`);
     } catch (err) {
-        console.error('[AirdropDiscovery] DeFiLlama fetch failed:', err instanceof Error ? err.message : String(err));
+        console.error(
+            '[AirdropDiscovery] DeFiLlama fetch failed:',
+            err instanceof Error ? err.message : String(err)
+        );
         errors++;
     }
 
-    // Layer 2: Z.ai web search discovery
-    let zaiCandidates: ZAISearchCandidate[] = [];
-    try {
-        zaiCandidates = await runZAIDiscovery();
-        console.log(`[AirdropDiscovery] Z.ai: ${zaiCandidates.length} candidates`);
-    } catch (err) {
-        console.error('[AirdropDiscovery] Z.ai discovery failed:', err instanceof Error ? err.message : String(err));
-        errors++;
-    }
+    const prioritizedCandidates = defillamaCandidates
+        .filter((c) => c.confidenceScore >= CONFIDENCE_THRESHOLD)
+        .map((c) => ({
+            name: c.name,
+            context: buildCandidateContext(c),
+            source: 'defillama' as const,
+            confidence: c.confidenceScore,
+            candidate: c,
+        }))
+        .sort((a, b) => b.confidence - a.confidence);
 
-    // Merge & deduplicate candidates
-    const allCandidateNames = new Set<string>();
-    const prioritizedCandidates: Array<{
-        name: string;
-        context: string;
-        source: string;
-        confidence: number;
-    }> = [];
-
-    for (const c of defillamaCandidates) {
-        if (!allCandidateNames.has(c.name.toLowerCase()) && c.confidenceScore >= CONFIDENCE_THRESHOLD) {
-            allCandidateNames.add(c.name.toLowerCase());
-            prioritizedCandidates.push({
-                name: c.name,
-                context: buildCandidateContext(c),
-                source: 'defillama',
-                confidence: c.confidenceScore,
-            });
-        }
-    }
-
-    for (const c of zaiCandidates) {
-        if (!allCandidateNames.has(c.projectName.toLowerCase())) {
-            allCandidateNames.add(c.projectName.toLowerCase());
-            prioritizedCandidates.push({
-                name: c.projectName,
-                context: c.context,
-                source: c.source,
-                confidence: 30,
-            });
-        }
-    }
-
-    prioritizedCandidates.sort((a, b) => b.confidence - a.confidence);
     totalCandidates = prioritizedCandidates.length;
 
-    const toProcess = prioritizedCandidates.filter(c => !existingProjectNames.has(c.name.toLowerCase()))
+    const toProcess = prioritizedCandidates
+        .filter((c) => !existingProjectNames.has(c.name.toLowerCase()))
         .slice(0, MAX_AI_CALLS_PER_RUN);
 
-    console.log(`[AirdropDiscovery] ${totalCandidates} unique candidates, ${toProcess.length} to process (after dedup + threshold)`);
+    console.log(
+        `[AirdropDiscovery] ${totalCandidates} candidates, ${toProcess.length} to process (no Z.ai)`
+    );
 
     for (const candidate of toProcess) {
         try {
-            let context = candidate.context;
-            context = await enrichAirdropContext(candidate.name, context);
-
+            // Context is DeFiLlama structured data only — no GLM enrichment
+            const context = candidate.context;
             const validation = await validateAirdrop(context);
 
             if (!validation.isLegitimate || validation.riskVerdict === 'SCAM') {
-                console.log(`[AirdropDiscovery] Rejected: "${candidate.name}" — legitimate=${validation.isLegitimate}, risk=${validation.riskVerdict}`);
+                console.log(
+                    `[AirdropDiscovery] Rejected: "${candidate.name}" — legitimate=${validation.isLegitimate}, risk=${validation.riskVerdict}`
+                );
                 rejections++;
                 continue;
             }
+
             const projectName = candidate.name;
-            const network = candidate.source === 'defillama'
-                ? 'Multi-chain'
-                : 'Unknown';
-
             if (existingProjectNames.has(projectName.toLowerCase())) {
-                console.log(`[AirdropDiscovery] Duplicate skipped: "${projectName}"`);
                 rejections++;
                 continue;
             }
 
-            try {
-                await insertProjectWithQuality({
-                    name: projectName,
-                    network,
-                    estValue: validation.estValue,
-                    aiReport: validation.aiReport,
-                    riskVerdict: validation.riskVerdict,
-                    fundingRound: undefined,
-                    twitterUrl: undefined,
-                    discordUrl: undefined,
-                    websiteUrl: undefined,
-                });
-                existingProjectNames.add(projectName.toLowerCase());
-                projectsInserted++;
-            } catch (err) {
-                if (err instanceof Error && err.message.includes('quality threshold')) {
-                    console.log(`[AirdropDiscovery] Rejected by quality filter: "${projectName}"`);
-                    rejections++;
-                } else {
-                    throw err;
+            const resolved = await resolveOrCreateEntity(projectName, 'ingest');
+            const entityId = resolved?.entity.id ?? null;
+
+            // When intelligence pipeline is on, stage as hold until Gate pipeline evaluates
+            if (env.AIRDROP_INTELLIGENCE_ENABLED && entityId) {
+                const qualityEligible = true; // insertProjectWithQuality still enforces threshold
+                try {
+                    const id = await insertProjectWithQuality({
+                        name: projectName,
+                        network: candidate.candidate.chains[0] ?? 'Multi-chain',
+                        estValue: validation.estValue,
+                        aiReport: validation.aiReport,
+                        riskVerdict: validation.riskVerdict,
+                        websiteUrl: candidate.candidate.url ?? undefined,
+                        twitterUrl: candidate.candidate.twitter
+                            ? candidate.candidate.twitter.startsWith('http')
+                                ? candidate.candidate.twitter
+                                : `https://twitter.com/${candidate.candidate.twitter.replace(/^@/, '')}`
+                            : undefined,
+                        fundingRound: candidate.candidate.latestRound ?? undefined,
+                    });
+                    await db
+                        .update(airdropProjects)
+                        .set({
+                            entityId,
+                            pipelineStatus: 'hold_recheck',
+                            publishPath: 'hold_recheck',
+                            isActive: false,
+                            provenanceSummary: {
+                                source: 'defillama_discovery',
+                                defillamaMatched: true,
+                                stagedForGate: true,
+                            },
+                            updatedAt: new Date(),
+                        })
+                        .where(eq(airdropProjects.id, id));
+                    existingProjectNames.add(projectName.toLowerCase());
+                    projectsInserted++;
+                    console.log(
+                        `[AirdropDiscovery] Staged hold_recheck: "${projectName}" (entity=${entityId}) qualityEligible=${qualityEligible}`
+                    );
+                } catch (err) {
+                    if (err instanceof Error && err.message.includes('quality threshold')) {
+                        console.log(
+                            `[AirdropDiscovery] Rejected by quality filter: "${projectName}"`
+                        );
+                        rejections++;
+                    } else {
+                        throw err;
+                    }
+                }
+            } else {
+                try {
+                    await insertProjectWithQuality({
+                        name: projectName,
+                        network: candidate.candidate.chains[0] ?? 'Multi-chain',
+                        estValue: validation.estValue,
+                        aiReport: validation.aiReport,
+                        riskVerdict: validation.riskVerdict,
+                        websiteUrl: candidate.candidate.url ?? undefined,
+                        twitterUrl: candidate.candidate.twitter
+                            ? candidate.candidate.twitter.startsWith('http')
+                                ? candidate.candidate.twitter
+                                : `https://twitter.com/${candidate.candidate.twitter.replace(/^@/, '')}`
+                            : undefined,
+                        fundingRound: candidate.candidate.latestRound ?? undefined,
+                    });
+                    existingProjectNames.add(projectName.toLowerCase());
+                    projectsInserted++;
+                    console.log(`[AirdropDiscovery] Inserted: "${projectName}" (legacy path)`);
+                } catch (err) {
+                    if (err instanceof Error && err.message.includes('quality threshold')) {
+                        console.log(
+                            `[AirdropDiscovery] Rejected by quality filter: "${projectName}"`
+                        );
+                        rejections++;
+                    } else {
+                        throw err;
+                    }
                 }
             }
-
-            console.log(`[AirdropDiscovery] Inserted: "${projectName}" (${candidate.source})`);
         } catch (err) {
             errors++;
-            console.error(`[AirdropDiscovery] Error processing "${candidate.name}":`, err instanceof Error ? err.message : String(err));
+            console.error(
+                `[AirdropDiscovery] Error processing "${candidate.name}":`,
+                err instanceof Error ? err.message : String(err)
+            );
         }
     }
 
@@ -221,7 +185,10 @@ async function runAirdropDiscovery(): Promise<void> {
         await deleteCache('airdrop:deadlines');
         await deleteCachePattern('airdrop:project:*');
     } catch (err) {
-        console.error('[AirdropDiscovery] Cache invalidation failed:', err instanceof Error ? err.message : String(err));
+        console.error(
+            '[AirdropDiscovery] Cache invalidation failed:',
+            err instanceof Error ? err.message : String(err)
+        );
     }
 
     const durationMs = Date.now() - startTime;
@@ -234,10 +201,13 @@ async function runAirdropDiscovery(): Promise<void> {
             projectsRejected: rejections,
             errors,
             durationMs,
-            notes: `sources: defillama+zai, candidates_dl=${defillamaCandidates.length}, candidates_zai=${zaiCandidates.length}`,
+            notes: `sources: defillama_only (GLM stripped AD-3), candidates_dl=${defillamaCandidates.length}`,
         });
     } catch (logErr) {
-        console.error('[AirdropDiscovery] Failed to log pipeline run:', logErr instanceof Error ? logErr.message : String(logErr));
+        console.error(
+            '[AirdropDiscovery] Failed to log pipeline run:',
+            logErr instanceof Error ? logErr.message : String(logErr)
+        );
     }
 
     console.log(
@@ -247,7 +217,7 @@ async function runAirdropDiscovery(): Promise<void> {
 
 export function startAirdropDiscoveryCron(): void {
     cron.schedule('0 */6 * * *', runAirdropDiscovery);
-    console.log('[AirdropDiscovery] Cron scheduled — DeFiLlama+Z.ai discovery: every 6 hours');
+    console.log('[AirdropDiscovery] Cron scheduled — DeFiLlama only: every 6 hours');
 }
 
-export { runAirdropDiscovery, extractProjectNameFromSearchResult };
+export { runAirdropDiscovery };

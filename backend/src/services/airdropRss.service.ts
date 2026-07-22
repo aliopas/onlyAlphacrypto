@@ -2,6 +2,7 @@ import Parser from 'rss-parser';
 import { createHash } from 'crypto';
 import { db } from '../config/db';
 import { airdropProjects } from '../models/index';
+import { listEnabledAirdropSources } from './contentSources.service';
 
 export interface AirdropRSSArticle {
     title: string;
@@ -17,18 +18,6 @@ interface RSSSource {
     name: string;
     url: string;
 }
-
-// Verified RSS sources (Apr 25, 2026):
-// - The Block (200, valid XML), Decrypt (200, valid XML), CoinDesk (308→200, valid XML),
-//   CoinTelegraph (200, valid XML), BeInCrypto (200, valid XML)
-// Removed: CoinMarketCap (404), CryptoSlate (Cloudflare block), CoinGape (HTML redirect)
-const AIRDROP_RSS_SOURCES: RSSSource[] = [
-    { name: 'The Block', url: 'https://www.theblock.co/rss.xml' },
-    { name: 'Decrypt', url: 'https://decrypt.co/feed' },
-    { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
-    { name: 'CoinTelegraph', url: 'https://cointelegraph.com/rss' },
-    { name: 'BeInCrypto', url: 'https://beincrypto.com/feed' },
-];
 
 const AIRDROP_KEYWORDS: string[] = [
     'airdrop', 'airdrops', 'snapshot', 'tge', 'token generation',
@@ -65,7 +54,23 @@ export function generateArticleHash(title: string, link: string): string {
 export async function fetchAirdropRSSFeeds(): Promise<AirdropRSSArticle[]> {
     const dedupMap = new Map<string, AirdropRSSArticle>();
 
-    const fetchPromises = AIRDROP_RSS_SOURCES.map(async (source) => {
+    const dbSources = await listEnabledAirdropSources({
+        kind: 'rss',
+        purposes: ['airdrop_alpha'],
+    });
+    const sources: RSSSource[] = dbSources
+        .map((s) => ({
+            name: (s.title && s.title.trim()) || s.identifier,
+            url: s.identifier.trim(),
+        }))
+        .filter((s) => s.url.length > 0);
+
+    if (sources.length === 0) {
+        console.warn('[AirdropRSS] No enabled airdrop_alpha rss sources in content_sources');
+        return [];
+    }
+
+    const fetchPromises = sources.map(async (source) => {
         try {
             const feed = await parser.parseURL(source.url);
             const items = feed.items.slice(0, 15);
@@ -75,13 +80,17 @@ export async function fetchAirdropRSSFeeds(): Promise<AirdropRSSArticle[]> {
                 const link = item.link || '';
                 const contentSnippet = item.contentSnippet || '';
                 const content =
-                    (item as Record<string, string>)['content:encoded'] ||
-                    item.content ||
+                    (typeof item.content === 'string' ? item.content : undefined) ||
                     item.contentSnippet ||
                     '';
+                const contentEncoded = (item as { 'content:encoded'?: unknown })['content:encoded'];
+                const resolvedContent =
+                    typeof contentEncoded === 'string' && contentEncoded.length > 0
+                        ? contentEncoded
+                        : content;
                 const pubDate = item.pubDate || '';
 
-                const combinedText = `${title} ${contentSnippet} ${content}`;
+                const combinedText = `${title} ${contentSnippet} ${resolvedContent}`;
                 if (!filterAirdropRelevant(combinedText)) {
                     continue;
                 }
@@ -95,7 +104,7 @@ export async function fetchAirdropRSSFeeds(): Promise<AirdropRSSArticle[]> {
                         pubDate,
                         contentSnippet,
                         source: source.name,
-                        content,
+                        content: resolvedContent,
                         hash,
                     });
                 }
