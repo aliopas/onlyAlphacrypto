@@ -1,11 +1,24 @@
 import { apiClient } from '@/features/shared/api/client';
-import { AirdropProject, ProgressResponse, UrgentAirdrop } from './types';
+import {
+    AirdropProject,
+    AirdropPublicStats,
+    AirdropResearchDetail,
+    ProgressResponse,
+    ResearchListResult,
+    UrgentAirdrop,
+} from './types';
 
 export interface AirdropStats {
     totalValue: number;
     walletCount: number;
     txCount: number;
     completedTasks: number;
+    projectsScanned?: number;
+    recommended?: number;
+    underReview?: number;
+    notRecommended?: number;
+    acceptanceRatePercent?: number;
+    lastPipelineAt?: string | null;
 }
 
 export interface AirdropActivity {
@@ -116,6 +129,61 @@ export const airdropApi = {
             return data;
         } catch {
             return null;
+        }
+    },
+
+    /** DEC-042: public trust / filter stats */
+    getPublicStats: async (): Promise<AirdropPublicStats | null> => {
+        try {
+            const { data } = await apiClient.get<AirdropPublicStats>('/airdrop/public-stats');
+            return data;
+        } catch (error) {
+            console.error('[API] getPublicStats failed:', error);
+            return null;
+        }
+    },
+
+    getResearchList: async (params?: {
+        tier?: 'not_recommended' | 'under_review';
+        page?: number;
+        limit?: number;
+    }): Promise<ResearchListResult | null> => {
+        try {
+            const { data } = await apiClient.get<ResearchListResult>('/airdrop/research', {
+                params: {
+                    tier: params?.tier ?? 'not_recommended',
+                    page: params?.page ?? 1,
+                    limit: params?.limit ?? 20,
+                },
+            });
+            return data;
+        } catch (error) {
+            console.error('[API] getResearchList failed:', error);
+            return null;
+        }
+    },
+
+    getResearchBySlug: async (slug: string): Promise<AirdropResearchDetail | null> => {
+        try {
+            const { data } = await apiClient.get<AirdropResearchDetail>(
+                `/airdrop/research/${encodeURIComponent(slug)}`
+            );
+            return data;
+        } catch (error) {
+            console.error('[API] getResearchBySlug failed:', error);
+            return null;
+        }
+    },
+
+    getResearchSeoSlugs: async (): Promise<Array<{ slug: string; updatedAt: string }>> => {
+        try {
+            const { data } = await apiClient.get<{ slugs: Array<{ slug: string; updatedAt: string }> }>(
+                '/airdrop/research/seo-slugs'
+            );
+            return data.slugs ?? [];
+        } catch (error) {
+            console.error('[API] getResearchSeoSlugs failed:', error);
+            return [];
         }
     },
 };

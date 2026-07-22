@@ -2,11 +2,17 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { airdropApi, AirdropStats, AirdropActivity, AirdropDeadline } from '@/features/airdrop/api';
-import { AirdropProject } from '@/features/airdrop/types';
+import {
+    AirdropProject,
+    AirdropPublicStats,
+    AirdropResearchListItem,
+} from '@/features/airdrop/types';
 import Link from 'next/link';
 import { TrendingUp, X, AlertTriangle, DollarSign } from 'lucide-react';
 import { AirdropCard } from './AirdropCard';
 import { FarmingStreak } from '@/features/airdrop/components/FarmingStreak';
+import { AirdropStatsStrip } from '@/features/airdrop/components/AirdropStatsStrip';
+import { ResearchArchiveCard } from '@/features/airdrop/components/ResearchArchiveCard';
 
 type CardState = 'CRITICAL_DEADLINE' | 'NEEDS_ATTENTION' | 'NEWLY_DISCOVERED' | 'ON_TRACK';
 
@@ -168,12 +174,29 @@ function GridSkeleton() {
     );
 }
 
-export function AirdropsPageClient({ initialProjects, initialError }: { initialProjects: AirdropProject[]; initialError?: boolean }) {
+export function AirdropsPageClient({
+    initialProjects,
+    initialError,
+    initialPublicStats,
+    initialResearchTeaser,
+}: {
+    initialProjects: AirdropProject[];
+    initialError?: boolean;
+    initialPublicStats?: AirdropPublicStats | null;
+    initialResearchTeaser?: AirdropResearchListItem[];
+}) {
     const [projects, setProjects] = useState<AirdropProject[]>(initialProjects);
     const [stats, setStats] = useState<AirdropStats | null>(null);
+    const [publicStats, setPublicStats] = useState<AirdropPublicStats | null>(
+        initialPublicStats ?? null
+    );
+    const [researchTeaser, setResearchTeaser] = useState<AirdropResearchListItem[]>(
+        initialResearchTeaser ?? []
+    );
     const [activity, setActivity] = useState<AirdropActivity[]>([]);
     const [deadlines, setDeadlines] = useState<AirdropDeadline[]>([]);
     const [sidebarLoading, setSidebarLoading] = useState(true);
+    const [publicStatsLoading, setPublicStatsLoading] = useState(!initialPublicStats);
     const [bannerDismissed, setBannerDismissed] = useState(false);
     const [fetchError] = useState(initialError ?? false);
     const [gridLoading, setGridLoading] = useState(true);
@@ -181,18 +204,38 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
 
     const loadSidebarData = useCallback(async () => {
         try {
-            const [statsData, activityData, deadlinesData] = await Promise.all([
-                airdropApi.getStats(),
-                airdropApi.getActivity(),
-                airdropApi.getDeadlines(),
-            ]);
+            const [statsData, activityData, deadlinesData, pubStats, research] =
+                await Promise.all([
+                    airdropApi.getStats(),
+                    airdropApi.getActivity(),
+                    airdropApi.getDeadlines(),
+                    airdropApi.getPublicStats(),
+                    airdropApi.getResearchList({
+                        tier: 'not_recommended',
+                        page: 1,
+                        limit: 6,
+                    }),
+                ]);
             if (statsData) setStats(statsData);
             if (activityData) setActivity(activityData);
             if (deadlinesData) setDeadlines(deadlinesData);
+            if (pubStats) setPublicStats(pubStats);
+            else if (statsData && typeof statsData.projectsScanned === 'number') {
+                setPublicStats({
+                    projectsScanned: statsData.projectsScanned ?? 0,
+                    recommended: statsData.recommended ?? 0,
+                    underReview: statsData.underReview ?? 0,
+                    notRecommended: statsData.notRecommended ?? 0,
+                    acceptanceRatePercent: statsData.acceptanceRatePercent ?? 0,
+                    lastPipelineAt: statsData.lastPipelineAt ?? null,
+                });
+            }
+            if (research?.items) setResearchTeaser(research.items.slice(0, 6));
         } catch (error) {
             console.error('[Airdrops] Failed to load sidebar data:', error);
         } finally {
             setSidebarLoading(false);
+            setPublicStatsLoading(false);
         }
     }, []);
 
@@ -239,6 +282,8 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
     return (
         <div className="flex-1 overflow-y-auto flex flex-col lg:flex-row gap-6 h-full">
             <div className="w-full lg:w-[70%] flex flex-col gap-6">
+
+                <AirdropStatsStrip stats={publicStats} loading={publicStatsLoading} />
 
                 <div className="bg-gradient-to-r from-[#0D0D0D] to-[#0A0A0A] border border-[#333] p-5 flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-8">
                     <div className="flex items-center gap-3">
@@ -342,11 +387,21 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
                             <TrendingUp className="w-7 h-7 text-blue-400/60" />
                         </div>
                         <div className="text-center">
-                            <h3 className="text-[14px] font-bold text-white uppercase tracking-tight mb-2">No Active Airdrops Tracked</h3>
+                            <h3 className="text-[14px] font-bold text-white uppercase tracking-tight mb-2">
+                                No Recommended Farms Right Now
+                            </h3>
                             <p className="text-[11px] font-mono text-[#555] max-w-md leading-relaxed">
-                                Our AI pipeline scans for new airdrop opportunities every 6 hours. New verified projects will appear here automatically.
+                                {publicStats
+                                    ? `We scanned ${publicStats.projectsScanned} projects. ${publicStats.recommended} recommended, ${publicStats.underReview} under review, ${publicStats.notRecommended} not recommended (acceptance ${publicStats.acceptanceRatePercent}%). Low acceptance is intentional.`
+                                    : 'Our algorithmic pipeline only surfaces projects that pass multi-source legitimacy gates. Strict filter — empty grid does not mean the product is broken.'}
                             </p>
                         </div>
+                        <Link
+                            href="/airdrops/research"
+                            className="text-[10px] font-mono text-slate-300 border border-[#333] px-4 py-2 hover:bg-[#141414] transition-colors uppercase tracking-widest"
+                        >
+                            Browse Research Archive →
+                        </Link>
                         <div className="flex items-center gap-2 mt-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                             <span className="text-[9px] font-mono text-[#444] uppercase tracking-wider">Pipeline Active — Scanning Sources</span>
@@ -360,6 +415,30 @@ export function AirdropsPageClient({ initialProjects, initialError }: { initialP
                         <AirdropCard key={p.id} project={p} />
                     ))}
                 </div>
+                )}
+
+                {researchTeaser.length > 0 && (
+                    <div className="mt-4 border-t border-[#1a1a1a] pt-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-[11px] font-mono text-[#666] uppercase tracking-[0.2em] flex items-center gap-2">
+                                <span className="w-2 h-2 bg-rose-500/50 inline-block" /> Recent Research Archive
+                            </h2>
+                            <Link
+                                href="/airdrops/research"
+                                className="text-[10px] font-mono text-[#666] hover:text-[#999] uppercase tracking-widest"
+                            >
+                                View all →
+                            </Link>
+                        </div>
+                        <p className="text-[10px] font-mono text-[#444] mb-4 max-w-xl">
+                            Educational entries for projects we did not recommend. No farm tasks. NFA.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-90">
+                            {researchTeaser.slice(0, 4).map((item) => (
+                                <ResearchArchiveCard key={item.id} item={item} />
+                            ))}
+                        </div>
+                    </div>
                 )}
             </div>
 

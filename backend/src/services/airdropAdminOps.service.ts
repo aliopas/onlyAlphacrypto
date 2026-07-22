@@ -209,7 +209,9 @@ async function bustPublicAirdropCache(): Promise<void> {
         await deleteCache('airdrop:deadlines');
         await deleteCache('airdrop:deadlines:v1');
         await deleteCache('airdrop:urgent:v1');
+        await deleteCache('airdrop:stats:v1');
         await deleteCachePattern('airdrop:project:*');
+        await deleteCachePattern('airdrop:research:*');
     } catch {
         // non-blocking
     }

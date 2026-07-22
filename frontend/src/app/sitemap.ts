@@ -105,12 +105,38 @@ async function buildAirdropPages(): Promise<MetadataRoute.Sitemap> {
         console.error('[Sitemap] Failed to fetch airdrop projects:', error);
     }
 
-    return projects.map((p) => ({
+    const farmPages = projects.map((p) => ({
         url: `${SITE_URL}/airdrops/${p.id}`,
         lastModified: new Date(),
         changeFrequency: 'daily' as const,
         priority: 0.6,
     }));
+
+    // DEC-042: research hub + seoEligible not_recommended only (no under_review)
+    const researchHub: MetadataRoute.Sitemap = [
+        {
+            url: `${SITE_URL}/airdrops/research`,
+            lastModified: new Date(),
+            changeFrequency: 'daily',
+            priority: 0.7,
+        },
+    ];
+
+    let researchSlugs: Array<{ slug: string; updatedAt: string }> = [];
+    try {
+        researchSlugs = await airdropApi.getResearchSeoSlugs();
+    } catch (error) {
+        console.error('[Sitemap] Failed to fetch research slugs:', error);
+    }
+
+    const researchPages = researchSlugs.map((s) => ({
+        url: `${SITE_URL}/airdrops/research/${s.slug}`,
+        lastModified: s.updatedAt ? new Date(s.updatedAt) : new Date(),
+        changeFrequency: 'weekly' as const,
+        priority: 0.55,
+    }));
+
+    return [...farmPages, ...researchHub, ...researchPages];
 }
 
 async function buildMarketContextPage(): Promise<MetadataRoute.Sitemap> {

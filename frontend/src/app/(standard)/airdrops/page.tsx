@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 import { airdropApi } from '@/features/airdrop/api';
-import { AirdropProject } from '@/features/airdrop/types';
+import {
+    AirdropProject,
+    AirdropPublicStats,
+    AirdropResearchListItem,
+} from '@/features/airdrop/types';
 import { AirdropsPageClient } from '@/features/airdrop/components/AirdropsPageClient';
 import { SITE_URL } from '@/lib/constants';
 import { FaqSchema, FaqItem } from '@/components/seo/FaqSchema';
@@ -10,11 +14,20 @@ export const revalidate = 60;
 
 export const metadata: Metadata = {
     title: 'Airdrop Farm Grid — Track Active Crypto Airdrops',
-    description: 'Discover and track active crypto airdrops. AI-powered risk assessment, farming progress tracking, and deadline monitoring for DeFi airdrops.',
-    keywords: ['crypto airdrops', 'free airdrops', 'airdrop tracker', 'airdrop farm', 'OnlyAlpha airdrops', 'DeFi airdrops', 'crypto rewards'],
+    description:
+        'Track OnlyAlpha recommended crypto airdrops that passed algorithmic legitimacy gates. Research Archive covers projects we did not recommend. Educational tools only — not financial advice.',
+    keywords: [
+        'crypto airdrops',
+        'airdrop tracker',
+        'airdrop farm',
+        'OnlyAlpha airdrops',
+        'DeFi airdrops',
+        'airdrop research',
+    ],
     openGraph: {
         title: 'Airdrop Farm Grid — OnlyAlpha',
-        description: 'Discover and track active crypto airdrops with AI-powered risk assessment.',
+        description:
+            'Recommended farms that passed multi-gate filters. See Research Archive for not-recommended research.',
         url: `${SITE_URL}/airdrops`,
         siteName: 'OnlyAlpha',
         type: 'website',
@@ -23,7 +36,8 @@ export const metadata: Metadata = {
     twitter: {
         card: 'summary_large_image',
         title: 'Airdrop Farm Grid — OnlyAlpha',
-        description: 'Discover and track active crypto airdrops with AI-powered risk assessment.',
+        description:
+            'Recommended farms + Research Archive for projects we did not recommend. NFA.',
     },
     alternates: {
         canonical: `${SITE_URL}/airdrops`,
@@ -62,8 +76,17 @@ function buildBreadcrumbJsonLd(): Record<string, unknown> {
 export default async function AirdropsPage() {
     let projects: AirdropProject[] = [];
     let fetchError = false;
+    let publicStats: AirdropPublicStats | null = null;
+    let researchTeaser: AirdropResearchListItem[] = [];
     try {
-        projects = await airdropApi.getProjects();
+        const [proj, stats, research] = await Promise.all([
+            airdropApi.getProjects(),
+            airdropApi.getPublicStats(),
+            airdropApi.getResearchList({ tier: 'not_recommended', page: 1, limit: 6 }),
+        ]);
+        projects = proj;
+        publicStats = stats;
+        researchTeaser = research?.items?.slice(0, 6) ?? [];
     } catch (error) {
         console.error('[Airdrops] Failed to load projects on server:', error);
         fetchError = true;
@@ -100,7 +123,12 @@ export default async function AirdropsPage() {
                 dangerouslySetInnerHTML={{ __html: JSON.stringify(buildBreadcrumbJsonLd()) }}
             />
             <FaqSchema items={AIRDROP_FAQ} />
-            <AirdropsPageClient initialProjects={projects} initialError={fetchError} />
+            <AirdropsPageClient
+                initialProjects={projects}
+                initialError={fetchError}
+                initialPublicStats={publicStats}
+                initialResearchTeaser={researchTeaser}
+            />
         </>
     );
 }

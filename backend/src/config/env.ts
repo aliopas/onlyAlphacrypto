@@ -193,6 +193,8 @@ const envSchema = z.object({
     // Airdrop Intelligence (DEC-041) — schema/flags only in AD-0; all default off
     AIRDROP_INTELLIGENCE_ENABLED: z.coerce.boolean().default(false),
     AIRDROP_INTELLIGENCE_INGEST_ENABLED: z.coerce.boolean().default(false),
+    // DEC-042 AR-4: lazy AI research blurb on seoEligible detail only (default off)
+    AIRDROP_RESEARCH_BLURB_ENABLED: z.coerce.boolean().default(false),
 
     // Monitoring Cron
     MONITORING_CRON_ENABLED: z.boolean().default(false),

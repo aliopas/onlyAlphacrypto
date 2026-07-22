@@ -121,3 +121,62 @@ export type ProgressResponse = {
     totalCount: number;
     userProgress: UserProgress[];
 };
+
+/** DEC-042 Research Archive */
+export type ResearchTier = 'recommended' | 'under_review' | 'not_recommended';
+export type EvidenceStrength = 'low' | 'medium' | 'high';
+export type PublicVerdictLabel =
+    | 'not_recommended'
+    | 'under_review'
+    | 'high_risk'
+    | 'insufficient_evidence'
+    | 'failed_legitimacy_checks';
+
+export type AirdropPublicStats = {
+    projectsScanned: number;
+    recommended: number;
+    underReview: number;
+    notRecommended: number;
+    acceptanceRatePercent: number;
+    lastPipelineAt: string | null;
+    /** Legacy farm sidebar fields (optional on pure public-stats) */
+    totalValue?: number;
+    walletCount?: number;
+    txCount?: number;
+    completedTasks?: number;
+};
+
+export type AirdropResearchListItem = {
+    id: number;
+    slug: string;
+    name: string;
+    network: string;
+    tier: 'not_recommended' | 'under_review';
+    verdictLabel: PublicVerdictLabel;
+    evidenceStrength: EvidenceStrength;
+    riskVerdict: string | null;
+    reasonsPublic: string[];
+    analyzedAt: string;
+    seoEligible: boolean;
+    logoUrl: string | null;
+};
+
+export type AirdropResearchDetail = AirdropResearchListItem & {
+    summary: string;
+    headline: string;
+    websiteUrl: string | null;
+    twitterUrl: string | null;
+    qualityScore: number | null;
+    nfaDisclaimer: string;
+    methodologyBlurb: string;
+    /** DEC-042 AR-4 AI note; null when flag off or unavailable */
+    researchBlurb: string | null;
+};
+
+export type ResearchListResult = {
+    items: AirdropResearchListItem[];
+    page: number;
+    limit: number;
+    total: number;
+    tier: 'not_recommended' | 'under_review';
+};

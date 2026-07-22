@@ -126,6 +126,7 @@ async function bootstrap(): Promise<void> {
         logger.info('│ MARKET_CONTEXT_INGEST_ENABLED: %s', String(env.MARKET_CONTEXT_INGEST_ENABLED));
         logger.info('│ AIRDROP_INTELLIGENCE_ENABLED : %s', String(env.AIRDROP_INTELLIGENCE_ENABLED));
         logger.info('│ AIRDROP_INTELLIGENCE_INGEST  : %s', String(env.AIRDROP_INTELLIGENCE_INGEST_ENABLED));
+        logger.info('│ AIRDROP_RESEARCH_BLURB       : %s', String(env.AIRDROP_RESEARCH_BLURB_ENABLED));
         logger.info('└─────────────────────────────────────────────┘');
 
         app.listen(PORT, () => {

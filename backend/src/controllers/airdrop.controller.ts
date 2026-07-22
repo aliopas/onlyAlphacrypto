@@ -14,6 +14,12 @@ import {
     publicPublishFilter,
     toPortfolioListItem,
 } from '../services/airdropPortfolio.service';
+import {
+    getAirdropPublicStats,
+    getResearchBySlug,
+    listResearchArchive,
+    listSeoEligibleResearchSlugs,
+} from '../services/airdropResearch.service';
 
 function parseEstValue(raw: string | null | undefined): number {
     if (!raw) return 0;
@@ -118,15 +124,97 @@ export async function getStats(req: AuthRequest, res: Response, next: NextFuncti
             }
         }
 
+        // DEC-042: hub trust metrics (same path; legacy farm fields kept)
+        const publicStats = await getAirdropPublicStats();
+
         res.json({
             totalValue: Math.round(totalValue),
             walletCount: 0,
             txCount: 0,
             completedTasks: 0,
+            projectsScanned: publicStats.projectsScanned,
+            recommended: publicStats.recommended,
+            underReview: publicStats.underReview,
+            notRecommended: publicStats.notRecommended,
+            acceptanceRatePercent: publicStats.acceptanceRatePercent,
+            lastPipelineAt: publicStats.lastPipelineAt,
         });
     } catch (error) {
         logger.error('[Airdrop] getStats failed:', error);
         res.status(500).json({ error: 'Failed to fetch stats' });
+    }
+}
+
+/** DEC-042 AR-1: pure public trust stats (alias of filter metrics) */
+export async function getPublicStatsHandler(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const stats = await getAirdropPublicStats();
+        res.json(stats);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/** DEC-042 AR-1: Research Archive list */
+export async function listResearchHandler(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const tierRaw = typeof req.query['tier'] === 'string' ? req.query['tier'] : 'not_recommended';
+        const tier =
+            tierRaw === 'under_review' || tierRaw === 'under-review'
+                ? 'under_review'
+                : 'not_recommended';
+        const page = parseInt(String(req.query['page'] ?? '1'), 10);
+        const limit = parseInt(String(req.query['limit'] ?? '20'), 10);
+
+        const result = await listResearchArchive({
+            tier,
+            page: Number.isFinite(page) ? page : 1,
+            limit: Number.isFinite(limit) ? limit : 20,
+        });
+        res.json(result);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/** DEC-042 AR-1: Research Archive detail by slug */
+export async function getResearchBySlugHandler(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const slug = String(req.params['slug'] ?? '').trim();
+        if (!slug) throw new AppError('Invalid slug', 400);
+
+        const detail = await getResearchBySlug(slug);
+        if (!detail) throw new AppError('Research entry not found', 404);
+
+        res.json(detail);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/** DEC-042 AR-3 sitemap helper — seoEligible not_recommended only */
+export async function listResearchSeoSlugsHandler(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const slugs = await listSeoEligibleResearchSlugs();
+        res.json({ slugs });
+    } catch (err) {
+        next(err);
     }
 }
 

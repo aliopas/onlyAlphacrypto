@@ -219,6 +219,55 @@ Rules:
      * Gate-2 structural validate (DEC-041 AD-3 / G1).
      * Untrusted TG/RSS bodies MUST only appear inside UNTRUSTED delimiters in the user message.
      */
+    /**
+     * DEC-042 AR-4 — short public research blurb for seoEligible Not Recommended pages only.
+     * Input is already public-safe (whitelist reasons). No raw TG bodies.
+     */
+    buildAirdropResearchBlurbMessages(input: {
+        name: string;
+        network: string;
+        verdictLabel: string;
+        evidenceStrength: string;
+        reasonsPublic: string[];
+        qualityScore: number | null;
+    }): ChatCompletionMessageParam[] {
+        const reasons = input.reasonsPublic.slice(0, 6).join(' | ') || 'Did not meet recommendation criteria.';
+        const qs =
+            typeof input.qualityScore === 'number' ? String(input.qualityScore) : 'n/a';
+        return [
+            {
+                role: 'system',
+                content: `You write short educational research notes for OnlyAlpha Airdrop Research Archive (DEC-042).
+
+Output COMPACT JSON only:
+{ "blurb": "<2-4 sentences, max 480 characters>" }
+
+Rules:
+- English only. Calm research-desk tone. Not financial advice.
+- Explain why the project is Not Recommended / High risk / failed checks using the given verdict and public reasons.
+- NEVER say "X is a scam" as a legal fact. Prefer: "signals consistent with malicious patterns", "failed our legitimacy checks", "insufficient independent evidence".
+- NEVER invent farm tasks, claim steps, URLs, token prices, or team names not in the input.
+- No BUY/SELL/guaranteed returns. No seed phrase or connect-wallet language.
+- Do not dump raw internal codes. Paraphrase the public reasons.
+- HARD LIMIT: JSON under 600 characters. Output ONLY JSON.`,
+            },
+            {
+                role: 'user',
+                content: [
+                    'SAFE_PUBLIC_FACTS (structured only — no untrusted channel prose):',
+                    JSON.stringify({
+                        name: input.name.slice(0, 100),
+                        network: input.network.slice(0, 50),
+                        verdictLabel: input.verdictLabel,
+                        evidenceStrength: input.evidenceStrength,
+                        qualityScore: qs,
+                        reasonsPublic: reasons,
+                    }),
+                ].join('\n'),
+            },
+        ];
+    }
+
     buildAirdropGate2Messages(input: {
         entityName: string;
         structuredFactsJson: string;
