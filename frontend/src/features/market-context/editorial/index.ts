@@ -17,6 +17,8 @@ export { EditorialFooter } from './EditorialFooter';
 export {
     SECTION_ORDER,
     SECTION_CHAPTER_LABELS,
+    COIN_SECTION_ORDER,
+    COIN_SECTION_CHAPTER_LABELS,
     stripMarkdownNoise,
     extractH2,
     isMeaningfulSection,
@@ -31,7 +33,10 @@ export {
     renderMarkdownToSafeHtml,
     renderChapterBodyHtml,
     type SectionKey,
+    type CoinSectionKey,
     type MarketContextSection,
     type PublicSnapshot,
+    type PublicCoinSnapshot,
+    type PublicCoinSeoMeta,
     type ConfidenceBand,
 } from './content';

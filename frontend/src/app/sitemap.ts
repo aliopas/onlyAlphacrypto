@@ -141,31 +141,70 @@ async function buildAirdropPages(): Promise<MetadataRoute.Sitemap> {
 
 async function buildMarketContextPage(): Promise<MetadataRoute.Sitemap> {
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+    const entries: MetadataRoute.Sitemap = [
+        {
+            url: `${SITE_URL}/blog`,
+            lastModified: new Date(),
+            changeFrequency: 'daily' as const,
+            priority: 0.9,
+        },
+    ];
+
     try {
         const res = await fetch(`${apiBase}/market/market-context`, {
             next: { revalidate: 3600 },
         });
-        if (!res.ok) return [];
-        const data = (await res.json()) as {
-            available?: boolean;
-            snapshot?: { publishedAt?: string | null } | null;
-        };
-        if (!data.available || !data.snapshot) return [];
-        const lastMod = data.snapshot.publishedAt
-            ? new Date(data.snapshot.publishedAt)
-            : new Date();
-        return [
-            {
-                url: `${SITE_URL}/blog/market-context`,
-                lastModified: lastMod,
-                changeFrequency: 'weekly' as const,
-                priority: 0.85,
-            },
-        ];
+        if (res.ok) {
+            const data = (await res.json()) as {
+                available?: boolean;
+                snapshot?: { publishedAt?: string | null } | null;
+            };
+            if (data.available && data.snapshot) {
+                const lastMod = data.snapshot.publishedAt
+                    ? new Date(data.snapshot.publishedAt)
+                    : new Date();
+                entries.push({
+                    url: `${SITE_URL}/blog/market-context`,
+                    lastModified: lastMod,
+                    changeFrequency: 'weekly' as const,
+                    priority: 0.85,
+                });
+            }
+        }
     } catch (error) {
         console.error('[Sitemap] Failed to fetch market context:', error);
-        return [];
     }
+
+    try {
+        const coinsRes = await fetch(`${apiBase}/market/market-context/coins`, {
+            next: { revalidate: 3600 },
+        });
+        if (coinsRes.ok) {
+            const data = (await coinsRes.json()) as {
+                coins?: Array<{
+                    symbol: string;
+                    publishedAt?: string | null;
+                    updatedAt?: string | null;
+                }>;
+            };
+            for (const c of data.coins ?? []) {
+                if (!c.symbol) continue;
+                const lastMod = c.updatedAt || c.publishedAt
+                    ? new Date(c.updatedAt || c.publishedAt || Date.now())
+                    : new Date();
+                entries.push({
+                    url: `${SITE_URL}/blog/${c.symbol.toLowerCase()}`,
+                    lastModified: lastMod,
+                    changeFrequency: 'weekly' as const,
+                    priority: 0.8,
+                });
+            }
+        }
+    } catch (error) {
+        console.error('[Sitemap] Failed to fetch blog coins:', error);
+    }
+
+    return entries;
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

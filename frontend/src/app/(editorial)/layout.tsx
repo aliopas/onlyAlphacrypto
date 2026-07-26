@@ -35,7 +35,9 @@ export default function EditorialLayout({ children }: { children: React.ReactNod
                         <span className="text-[#2a2a2a] select-none" aria-hidden>
                             /
                         </span>
-                        <span className={ed.type.wordmark}>Market Context</span>
+                        <Link href="/blog" className={ed.type.wordmark}>
+                            OnlyAlpha Insights
+                        </Link>
                     </div>
                     <Link href="/terminal" className={ed.type.exitLink}>
                         Exit to Terminal

@@ -7,7 +7,23 @@ import {
     boolean,
     jsonb,
     pgEnum,
+    integer,
+    customType,
 } from 'drizzle-orm/pg-core';
+
+/** Match platform embedding dim (raw_news_buffer / text-embedding-3-small) */
+const vector = customType<{ data: number[]; driverData: string }>({
+    dataType() {
+        return 'vector(1536)';
+    },
+    toDriver(value: number[]): string {
+        return `[${value.join(',')}]`;
+    },
+    fromDriver(value: string | Buffer): number[] {
+        const str = typeof value === 'string' ? value : value.toString('utf-8');
+        return str.slice(1, -1).split(',').map(Number);
+    },
+});
 
 export const marketNewsSourceTypeEnum = pgEnum('market_news_source_type', [
     'terminal',
@@ -21,6 +37,8 @@ export const marketNewsTrustEnum = pgEnum('market_news_trust', [
     'trusted',
     'rejected',
 ]);
+
+export type MarketNewsClassification = 'MAJOR' | 'MINOR' | 'NOISE';
 
 export const marketNewsItems = pgTable('market_news_items', {
     id: serial('id').primaryKey(),
@@ -36,6 +54,10 @@ export const marketNewsItems = pgTable('market_news_items', {
     trust: marketNewsTrustEnum('trust').notNull().default('pending'),
     trustNote: text('trust_note'),
     rawRef: jsonb('raw_ref').$type<Record<string, unknown> | null>(),
+    eventSeverity: integer('event_severity'),
+    relevanceScore: integer('relevance_score'),
+    classification: text('classification').$type<MarketNewsClassification | null>(),
+    embedding: vector('embedding'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -66,6 +88,7 @@ export const marketContextSnapshotStatusEnum = pgEnum('market_context_snapshot_s
     'archived',
 ]);
 
+/** Weekly market edition section keys (DEC-040 — unchanged) */
 export type MarketContextSectionKey =
     | 'overview'
     | 'btcCorrelation'
@@ -76,6 +99,16 @@ export type MarketContextSectionKey =
     | 'outlook'
     | 'faq';
 
+/** Coin blog section keys (DEC-043) */
+export type CoinBlogSectionKey =
+    | 'heroWhatIs'
+    | 'historicalStructure'
+    | 'eventTimeline'
+    | 'newsImpact'
+    | 'structuralOutlook'
+    | 'relatedCoins'
+    | 'faq';
+
 export interface MarketContextSection {
     content: string;
     updatedAt: string;
@@ -83,6 +116,30 @@ export interface MarketContextSection {
 }
 
 export type MarketContextSections = Record<MarketContextSectionKey, MarketContextSection>;
+export type CoinBlogSections = Record<CoinBlogSectionKey, MarketContextSection>;
+
+/** AI-generated SEO meta for coin pages (DEC-043 D6) */
+export interface MarketContextSeoMeta {
+    metaTitle: string;
+    metaDescription: string;
+    seoKeywords: string[];
+}
+
+export type SeoScoreBand = 'green' | 'yellow' | 'red';
+
+export interface SeoScoreCheck {
+    id: string;
+    passed: boolean;
+    detail?: string;
+}
+
+export interface MarketContextSeoScore {
+    band: SeoScoreBand;
+    score: number;
+    checks: SeoScoreCheck[];
+}
+
+export type MarketContextSnapshotKind = 'weekly' | 'coin';
 
 export const marketContextSnapshots = pgTable('market_context_snapshots', {
     id: serial('id').primaryKey(),
@@ -90,13 +147,20 @@ export const marketContextSnapshots = pgTable('market_context_snapshots', {
     kind: varchar('kind', { length: 50 }).notNull().default('weekly'),
     weekLabel: varchar('week_label', { length: 20 }),
     status: marketContextSnapshotStatusEnum('status').notNull().default('draft'),
-    sections: jsonb('sections').$type<Partial<MarketContextSections>>().notNull().default({}),
+    sections: jsonb('sections')
+        .$type<Partial<MarketContextSections> | Partial<CoinBlogSections>>()
+        .notNull()
+        .default({}),
     newsIds: jsonb('news_ids').$type<number[]>().notNull().default([]),
     marketDataVersion: varchar('market_data_version', { length: 100 }),
     generatorVersion: varchar('generator_version', { length: 50 }).notNull().default('MC-v1'),
     generatedAt: timestamp('generated_at'),
     publishedAt: timestamp('published_at'),
     createdBy: varchar('created_by', { length: 255 }),
+    symbol: text('symbol'),
+    seoMeta: jsonb('seo_meta').$type<MarketContextSeoMeta | null>(),
+    autoPublished: boolean('auto_published').notNull().default(false),
+    seoScore: jsonb('seo_score').$type<MarketContextSeoScore | null>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });

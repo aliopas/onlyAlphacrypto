@@ -13,6 +13,16 @@ export type SectionKey =
     | 'outlook'
     | 'faq';
 
+/** DEC-043 coin blog section keys */
+export type CoinSectionKey =
+    | 'heroWhatIs'
+    | 'historicalStructure'
+    | 'eventTimeline'
+    | 'newsImpact'
+    | 'structuralOutlook'
+    | 'relatedCoins'
+    | 'faq';
+
 export interface MarketContextSection {
     content: string;
     updatedAt: string;
@@ -33,6 +43,28 @@ export interface PublicSnapshot {
     updatedAt: string | null;
 }
 
+export interface PublicCoinSeoMeta {
+    metaTitle: string;
+    metaDescription: string;
+    seoKeywords: string[];
+}
+
+export interface PublicCoinSnapshot {
+    id: number;
+    snapshotKey: string;
+    kind: 'coin';
+    symbol: string;
+    status: 'published';
+    sections: Partial<Record<CoinSectionKey, MarketContextSection>>;
+    seoMeta: PublicCoinSeoMeta | null;
+    marketDataVersion: string | null;
+    generatorVersion: string;
+    generatedAt: string | null;
+    publishedAt: string | null;
+    updatedAt: string | null;
+    autoPublished: boolean;
+}
+
 export const SECTION_ORDER: SectionKey[] = [
     'overview',
     'btcCorrelation',
@@ -41,6 +73,16 @@ export const SECTION_ORDER: SectionKey[] = [
     'geopolitics',
     'thisWeek',
     'outlook',
+    'faq',
+];
+
+export const COIN_SECTION_ORDER: CoinSectionKey[] = [
+    'heroWhatIs',
+    'historicalStructure',
+    'eventTimeline',
+    'newsImpact',
+    'structuralOutlook',
+    'relatedCoins',
     'faq',
 ];
 
@@ -53,6 +95,16 @@ export const SECTION_CHAPTER_LABELS: Record<SectionKey, string> = {
     geopolitics: 'Macro & Geopolitics',
     thisWeek: 'This Week',
     outlook: 'Outlook',
+    faq: 'Questions',
+};
+
+export const COIN_SECTION_CHAPTER_LABELS: Record<CoinSectionKey, string> = {
+    heroWhatIs: 'What is it?',
+    historicalStructure: 'Historical structure',
+    eventTimeline: 'Event timeline',
+    newsImpact: 'News impact',
+    structuralOutlook: 'Structural outlook',
+    relatedCoins: 'Related assets',
     faq: 'Questions',
 };
 
@@ -280,6 +332,10 @@ export function renderChapterBodyHtml(md: string): string {
 
 function inlineFormat(text: string): string {
     return text
+        .replace(
+            /\[([^\]]+)\]\((\/[^)\s]+|https?:\/\/[^)\s]+)\)/g,
+            '<a href="$2" class="text-[#c9a227] underline underline-offset-2 hover:text-[#e0c04a]">$1</a>'
+        )
         .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-[#e8e6e3] font-semibold">$1</strong>')
         .replace(/\*([^*]+)\*/g, '<em>$1</em>')
         .replace(

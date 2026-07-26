@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAdminAuth } from '../hooks/useAdminAuth';
+import { TRACKED_COINS } from '@/config/coins';
 
 type NewsTrust = 'pending' | 'trusted' | 'rejected';
 type NewsSourceType = 'terminal' | 'rss' | 'telegram' | 'manual';
@@ -19,6 +20,9 @@ interface MarketNewsRow {
     symbols: string[];
     trust: NewsTrust;
     trustNote: string | null;
+    classification?: string | null;
+    eventSeverity?: number | null;
+    relevanceScore?: number | null;
     createdAt: string;
     updatedAt: string;
 }
@@ -47,6 +51,7 @@ interface SnapshotRow {
     kind: string;
     weekLabel: string | null;
     status: string;
+    symbol?: string | null;
     newsIds: number[];
     marketDataVersion: string | null;
     generatorVersion: string;
@@ -55,6 +60,14 @@ interface SnapshotRow {
     createdBy: string | null;
     createdAt: string;
     sectionCount: number;
+    wordCount?: number;
+    seoScore?: { band: string; score: number } | null;
+    autoPublished?: boolean;
+    seoMeta?: {
+        metaTitle: string;
+        metaDescription: string;
+        seoKeywords: string[];
+    } | null;
 }
 
 interface SnapshotSection {
@@ -68,6 +81,16 @@ interface SnapshotDetail extends Omit<SnapshotRow, 'sectionCount'> {
     updatedAt: string | null;
 }
 
+interface ActivityRow {
+    id: number;
+    adminEmail: string;
+    action: string;
+    targetTable: string | null;
+    targetId: string | null;
+    newValue: Record<string, unknown> | null;
+    createdAt: string | null;
+}
+
 const SECTION_PREVIEW_ORDER = [
     'overview',
     'btcCorrelation',
@@ -77,11 +100,26 @@ const SECTION_PREVIEW_ORDER = [
     'thisWeek',
     'outlook',
     'faq',
+    'heroWhatIs',
+    'historicalStructure',
+    'eventTimeline',
+    'newsImpact',
+    'structuralOutlook',
+    'relatedCoins',
 ] as const;
+
+function seoBandEmoji(band: string | null | undefined): string {
+    if (band === 'green') return '🟢';
+    if (band === 'yellow') return '🟡';
+    if (band === 'red') return '🔴';
+    return '—';
+}
 
 export default function MarketContextAdminPage() {
     const { fetchWithAuth } = useAdminAuth();
-    const [tab, setTab] = useState<'news' | 'channels' | 'snapshots'>('news');
+    const [tab, setTab] = useState<'news' | 'channels' | 'snapshots' | 'coins' | 'activity'>(
+        'news'
+    );
 
     const [items, setItems] = useState<MarketNewsRow[]>([]);
     const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -91,10 +129,13 @@ export default function MarketContextAdminPage() {
 
     const [trustFilter, setTrustFilter] = useState('');
     const [sourceFilter, setSourceFilter] = useState('');
+    const [reviewQueueOnly, setReviewQueueOnly] = useState(false);
     const [q, setQ] = useState('');
     const [qInput, setQInput] = useState('');
     const [page, setPage] = useState(1);
     const [busyId, setBusyId] = useState<number | null>(null);
+    const [busySymbol, setBusySymbol] = useState<string | null>(null);
+    const [generateAllRunning, setGenerateAllRunning] = useState(false);
 
     const [manualTitle, setManualTitle] = useState('');
     const [manualBody, setManualBody] = useState('');
@@ -114,9 +155,14 @@ export default function MarketContextAdminPage() {
     const [snapshots, setSnapshots] = useState<SnapshotRow[]>([]);
     const [snapshotsLoading, setSnapshotsLoading] = useState(false);
     const [snapshotStatusFilter, setSnapshotStatusFilter] = useState('draft');
+    const [snapshotKindFilter, setSnapshotKindFilter] = useState<'weekly' | 'coin' | ''>('');
     const [generating, setGenerating] = useState(false);
     const [preview, setPreview] = useState<SnapshotDetail | null>(null);
     const [previewLoading, setPreviewLoading] = useState(false);
+    const [coinSnapshots, setCoinSnapshots] = useState<SnapshotRow[]>([]);
+    const [coinsLoading, setCoinsLoading] = useState(false);
+    const [activities, setActivities] = useState<ActivityRow[]>([]);
+    const [activityLoading, setActivityLoading] = useState(false);
 
     const fetchNews = useCallback(async () => {
         setLoading(true);
@@ -165,8 +211,9 @@ export default function MarketContextAdminPage() {
         try {
             const params = new URLSearchParams();
             if (snapshotStatusFilter) params.append('status', snapshotStatusFilter);
+            if (snapshotKindFilter) params.append('kind', snapshotKindFilter);
             params.append('page', '1');
-            params.append('limit', '20');
+            params.append('limit', '50');
             const response = await fetchWithAuth(
                 `/admin/market-context/snapshots?${params}`
             );
@@ -178,7 +225,43 @@ export default function MarketContextAdminPage() {
         } finally {
             setSnapshotsLoading(false);
         }
-    }, [fetchWithAuth, snapshotStatusFilter]);
+    }, [fetchWithAuth, snapshotStatusFilter, snapshotKindFilter]);
+
+    const fetchCoinSnapshots = useCallback(async () => {
+        setCoinsLoading(true);
+        setError(null);
+        try {
+            const params = new URLSearchParams();
+            params.append('kind', 'coin');
+            params.append('page', '1');
+            params.append('limit', '100');
+            const response = await fetchWithAuth(
+                `/admin/market-context/snapshots?${params}`
+            );
+            if (!response.ok) throw new Error('Failed to fetch coin snapshots');
+            const data = (await response.json()) as { snapshots: SnapshotRow[] };
+            setCoinSnapshots(data.snapshots);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load coins');
+        } finally {
+            setCoinsLoading(false);
+        }
+    }, [fetchWithAuth]);
+
+    const fetchActivity = useCallback(async () => {
+        setActivityLoading(true);
+        setError(null);
+        try {
+            const response = await fetchWithAuth('/admin/market-context/activity?limit=40');
+            if (!response.ok) throw new Error('Failed to fetch activity');
+            const data = (await response.json()) as { activities: ActivityRow[] };
+            setActivities(data.activities ?? []);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to load activity');
+        } finally {
+            setActivityLoading(false);
+        }
+    }, [fetchWithAuth]);
 
     useEffect(() => {
         if (tab === 'news') fetchNews();
@@ -191,6 +274,52 @@ export default function MarketContextAdminPage() {
     useEffect(() => {
         if (tab === 'snapshots') fetchSnapshots();
     }, [tab, fetchSnapshots]);
+
+    useEffect(() => {
+        if (tab === 'coins') fetchCoinSnapshots();
+    }, [tab, fetchCoinSnapshots]);
+
+    useEffect(() => {
+        if (tab === 'activity') fetchActivity();
+    }, [tab, fetchActivity]);
+
+    const displayedNews = useMemo(() => {
+        if (!reviewQueueOnly) return items;
+        return items
+            .filter(
+                (i) =>
+                    i.trust === 'pending' &&
+                    i.classification === 'MAJOR' &&
+                    i.eventSeverity === 3
+            )
+            .sort((a, b) => {
+                const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                return ta - tb;
+            });
+    }, [items, reviewQueueOnly]);
+
+    const coinRowsBySymbol = useMemo(() => {
+        const map = new Map<string, SnapshotRow>();
+        for (const s of coinSnapshots) {
+            const sym = (s.symbol || '').toUpperCase();
+            if (!sym) continue;
+            const existing = map.get(sym);
+            if (!existing) {
+                map.set(sym, s);
+                continue;
+            }
+            // Prefer published, else newest generated
+            if (s.status === 'published' && existing.status !== 'published') {
+                map.set(sym, s);
+                continue;
+            }
+            const tNew = s.generatedAt ? new Date(s.generatedAt).getTime() : 0;
+            const tOld = existing.generatedAt ? new Date(existing.generatedAt).getTime() : 0;
+            if (tNew > tOld) map.set(sym, s);
+        }
+        return map;
+    }, [coinSnapshots]);
 
     const handlePreviewSnapshot = async (id: number) => {
         setPreviewLoading(true);
@@ -236,6 +365,92 @@ export default function MarketContextAdminPage() {
             setMessage(err instanceof Error ? err.message : 'Generate failed');
         } finally {
             setGenerating(false);
+        }
+    };
+
+    const handleGenerateCoin = async (symbol: string) => {
+        setBusySymbol(symbol);
+        setMessage(null);
+        try {
+            const response = await fetchWithAuth(
+                '/admin/market-context/snapshots/generate-coin',
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol }),
+                }
+            );
+            const data = (await response.json()) as {
+                error?: string;
+                snapshot?: { id: number; symbol?: string; status?: string };
+            };
+            if (!response.ok) throw new Error(data.error || 'Coin generate failed');
+            setMessage(
+                `Coin draft #${data.snapshot?.id} for ${symbol} created (${data.snapshot?.status ?? 'draft'})`
+            );
+            fetchCoinSnapshots();
+        } catch (err) {
+            setMessage(err instanceof Error ? err.message : 'Coin generate failed');
+        } finally {
+            setBusySymbol(null);
+        }
+    };
+
+    const handleGenerateAllRemaining = async () => {
+        setGenerateAllRunning(true);
+        setMessage(null);
+        const missing = TRACKED_COINS.filter((s) => {
+            const row = coinRowsBySymbol.get(s);
+            return !row || row.status !== 'published';
+        });
+        if (missing.length === 0) {
+            setMessage('All tracked coins already have a published page');
+            setGenerateAllRunning(false);
+            return;
+        }
+        let ok = 0;
+        let fail = 0;
+        for (const symbol of missing) {
+            try {
+                setBusySymbol(symbol);
+                const response = await fetchWithAuth(
+                    '/admin/market-context/snapshots/generate-coin',
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ symbol }),
+                    }
+                );
+                if (response.ok) ok += 1;
+                else fail += 1;
+            } catch {
+                fail += 1;
+            }
+            await new Promise((r) => setTimeout(r, 3000));
+        }
+        setBusySymbol(null);
+        setGenerateAllRunning(false);
+        setMessage(`Generate all remaining done: ${ok} ok, ${fail} failed (${missing.length} attempted)`);
+        fetchCoinSnapshots();
+    };
+
+    const handleUnpublishSnapshot = async (id: number) => {
+        setBusyId(id);
+        setMessage(null);
+        try {
+            const response = await fetchWithAuth(
+                `/admin/market-context/snapshots/${id}/unpublish`,
+                { method: 'PATCH' }
+            );
+            const data = (await response.json()) as { error?: string };
+            if (!response.ok) throw new Error(data.error || 'Unpublish failed');
+            setMessage(`Snapshot #${id} unpublished → draft`);
+            fetchSnapshots();
+            fetchCoinSnapshots();
+        } catch (err) {
+            setMessage(err instanceof Error ? err.message : 'Unpublish failed');
+        } finally {
+            setBusyId(null);
         }
     };
 
@@ -403,43 +618,32 @@ export default function MarketContextAdminPage() {
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold">Market Context</h1>
+                <h1 className="text-2xl font-bold">Blog / Insights</h1>
             </div>
 
             <div className="flex gap-2 mb-6 flex-wrap">
-                <button
-                    type="button"
-                    onClick={() => setTab('news')}
-                    className={`px-4 py-2 rounded text-sm ${
-                        tab === 'news'
-                            ? 'bg-blue-900/40 text-blue-300 border border-blue-800'
-                            : 'bg-[#111] text-gray-400 border border-[#333]'
-                    }`}
-                >
-                    News trust
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setTab('channels')}
-                    className={`px-4 py-2 rounded text-sm ${
-                        tab === 'channels'
-                            ? 'bg-blue-900/40 text-blue-300 border border-blue-800'
-                            : 'bg-[#111] text-gray-400 border border-[#333]'
-                    }`}
-                >
-                    Telegram channels
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setTab('snapshots')}
-                    className={`px-4 py-2 rounded text-sm ${
-                        tab === 'snapshots'
-                            ? 'bg-blue-900/40 text-blue-300 border border-blue-800'
-                            : 'bg-[#111] text-gray-400 border border-[#333]'
-                    }`}
-                >
-                    Snapshots
-                </button>
+                {(
+                    [
+                        ['news', 'Review Queue / News'],
+                        ['channels', 'Telegram channels'],
+                        ['snapshots', 'Snapshots'],
+                        ['coins', 'Coins'],
+                        ['activity', 'Activity'],
+                    ] as const
+                ).map(([id, label]) => (
+                    <button
+                        key={id}
+                        type="button"
+                        onClick={() => setTab(id)}
+                        className={`px-4 py-2 rounded text-sm ${
+                            tab === id
+                                ? 'bg-blue-900/40 text-blue-300 border border-blue-800'
+                                : 'bg-[#111] text-gray-400 border border-[#333]'
+                        }`}
+                    >
+                        {label}
+                    </button>
+                ))}
             </div>
 
             {message && (
@@ -510,11 +714,43 @@ export default function MarketContextAdminPage() {
                     </div>
 
                     <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded mb-6">
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setReviewQueueOnly(true);
+                                    setTrustFilter('pending');
+                                    setPage(1);
+                                }}
+                                className={`px-3 py-1.5 text-xs rounded border ${
+                                    reviewQueueOnly
+                                        ? 'border-amber-700 text-amber-300 bg-amber-900/20'
+                                        : 'border-[#333] text-gray-400'
+                                }`}
+                            >
+                                Review Queue (MAJOR sev=3 pending)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setReviewQueueOnly(false);
+                                    setTrustFilter('');
+                                }}
+                                className={`px-3 py-1.5 text-xs rounded border ${
+                                    !reviewQueueOnly
+                                        ? 'border-blue-800 text-blue-300'
+                                        : 'border-[#333] text-gray-400'
+                                }`}
+                            >
+                                All news
+                            </button>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                             <select
                                 value={trustFilter}
                                 onChange={(e) => {
                                     setTrustFilter(e.target.value);
+                                    setReviewQueueOnly(false);
                                     setPage(1);
                                 }}
                                 className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white"
@@ -571,6 +807,7 @@ export default function MarketContextAdminPage() {
                                         <th className="px-3 py-2 text-left">ID</th>
                                         <th className="px-3 py-2 text-left">Source</th>
                                         <th className="px-3 py-2 text-left">Title</th>
+                                        <th className="px-3 py-2 text-left">Class / Sev</th>
                                         <th className="px-3 py-2 text-left">Trust</th>
                                         <th className="px-3 py-2 text-left">Published</th>
                                         <th className="px-3 py-2 text-left">Actions</th>
@@ -580,28 +817,36 @@ export default function MarketContextAdminPage() {
                                     {loading && (
                                         <tr>
                                             <td
-                                                colSpan={6}
+                                                colSpan={7}
                                                 className="px-3 py-6 text-center text-gray-500"
                                             >
                                                 Loading…
                                             </td>
                                         </tr>
                                     )}
-                                    {!loading && items.length === 0 && (
+                                    {!loading && displayedNews.length === 0 && (
                                         <tr>
                                             <td
-                                                colSpan={6}
+                                                colSpan={7}
                                                 className="px-3 py-6 text-center text-gray-500"
                                             >
-                                                No news items
+                                                {reviewQueueOnly
+                                                    ? 'Review queue empty'
+                                                    : 'No news items'}
                                             </td>
                                         </tr>
                                     )}
                                     {!loading &&
-                                        items.map((item) => (
+                                        displayedNews.map((item) => (
                                             <tr
                                                 key={item.id}
-                                                className="border-t border-[#222] hover:bg-[#111]"
+                                                className={`border-t border-[#222] hover:bg-[#111] ${
+                                                    item.classification === 'MAJOR' &&
+                                                    item.eventSeverity === 3 &&
+                                                    item.trust === 'pending'
+                                                        ? 'bg-amber-950/20'
+                                                        : ''
+                                                }`}
                                             >
                                                 <td className="px-3 py-2 text-gray-400">
                                                     {item.id}
@@ -614,6 +859,11 @@ export default function MarketContextAdminPage() {
                                                 </td>
                                                 <td className="px-3 py-2 text-white text-sm max-w-md">
                                                     {truncate(item.title, 100)}
+                                                    {item.symbols?.length > 0 && (
+                                                        <span className="block text-[10px] text-gray-500">
+                                                            {item.symbols.join(', ')}
+                                                        </span>
+                                                    )}
                                                     {item.url && (
                                                         <a
                                                             href={item.url}
@@ -624,6 +874,15 @@ export default function MarketContextAdminPage() {
                                                             {item.url}
                                                         </a>
                                                     )}
+                                                </td>
+                                                <td className="px-3 py-2 text-xs text-gray-400">
+                                                    {item.classification ?? '—'}
+                                                    {item.eventSeverity != null
+                                                        ? ` · sev ${item.eventSeverity}`
+                                                        : ''}
+                                                    {item.relevanceScore != null
+                                                        ? ` · rel ${item.relevanceScore}`
+                                                        : ''}
                                                 </td>
                                                 <td
                                                     className={`px-3 py-2 text-sm font-medium ${trustClass(item.trust)}`}
@@ -707,8 +966,21 @@ export default function MarketContextAdminPage() {
                         >
                             {generating
                                 ? 'Generating draft… (AI may take ~30–90s)'
-                                : 'Generate draft snapshot'}
+                                : 'Generate market edition draft'}
                         </button>
+                        <select
+                            value={snapshotKindFilter}
+                            onChange={(e) =>
+                                setSnapshotKindFilter(
+                                    e.target.value as '' | 'weekly' | 'coin'
+                                )
+                            }
+                            className="border border-[#333] bg-[#0D0D0D] p-2 rounded text-white text-sm"
+                        >
+                            <option value="">All kinds</option>
+                            <option value="weekly">Market Editions</option>
+                            <option value="coin">Coins</option>
+                        </select>
                         <select
                             value={snapshotStatusFilter}
                             onChange={(e) => setSnapshotStatusFilter(e.target.value)}
@@ -727,8 +999,9 @@ export default function MarketContextAdminPage() {
                             Refresh
                         </button>
                         <p className="text-xs text-gray-500 w-full">
-                            Uses trusted news only + Search Intent Pack (DEC-040). Status stays{' '}
-                            <span className="text-yellow-400">draft</span> until publish (MC-4).
+                            Market editions use trusted news + Search Intent Pack. Coin drafts from
+                            Coins tab. Status stays{' '}
+                            <span className="text-yellow-400">draft</span> until publish.
                         </p>
                     </div>
                     <div className="bg-[#0A0A0A] border border-[#333] rounded overflow-hidden">
@@ -737,10 +1010,10 @@ export default function MarketContextAdminPage() {
                                 <tr className="bg-[#111] text-gray-300">
                                     <th className="px-3 py-2 text-left">ID</th>
                                     <th className="px-3 py-2 text-left">Key</th>
-                                    <th className="px-3 py-2 text-left">Kind / Week</th>
+                                    <th className="px-3 py-2 text-left">Kind / Symbol</th>
                                     <th className="px-3 py-2 text-left">Status</th>
-                                    <th className="px-3 py-2 text-left">News</th>
-                                    <th className="px-3 py-2 text-left">Sections</th>
+                                    <th className="px-3 py-2 text-left">SEO</th>
+                                    <th className="px-3 py-2 text-left">Words</th>
                                     <th className="px-3 py-2 text-left">Generated</th>
                                     <th className="px-3 py-2 text-left">By</th>
                                     <th className="px-3 py-2 text-left">Actions</th>
@@ -779,6 +1052,7 @@ export default function MarketContextAdminPage() {
                                             </td>
                                             <td className="px-3 py-2 text-sm text-gray-300">
                                                 {s.kind}
+                                                {s.symbol ? ` · ${s.symbol}` : ''}
                                                 {s.weekLabel ? ` · ${s.weekLabel}` : ''}
                                             </td>
                                             <td className="px-3 py-2 text-sm">
@@ -794,11 +1068,14 @@ export default function MarketContextAdminPage() {
                                                     {s.status}
                                                 </span>
                                             </td>
-                                            <td className="px-3 py-2 text-gray-400 text-sm">
-                                                {s.newsIds?.length ?? 0}
+                                            <td className="px-3 py-2 text-sm">
+                                                {seoBandEmoji(s.seoScore?.band)}
+                                                {s.seoScore
+                                                    ? ` ${s.seoScore.band} (${s.seoScore.score})`
+                                                    : ''}
                                             </td>
                                             <td className="px-3 py-2 text-gray-400 text-sm">
-                                                {s.sectionCount}
+                                                {s.wordCount ?? '—'}
                                             </td>
                                             <td className="px-3 py-2 text-gray-500 text-xs">
                                                 {s.generatedAt
@@ -836,6 +1113,18 @@ export default function MarketContextAdminPage() {
                                                                 Publish
                                                             </button>
                                                         )}
+                                                    {s.status === 'published' && (
+                                                        <button
+                                                            type="button"
+                                                            disabled={busyId === s.id}
+                                                            onClick={() =>
+                                                                handleUnpublishSnapshot(s.id)
+                                                            }
+                                                            className="px-2 py-1 text-xs rounded border border-amber-800 text-amber-300 hover:bg-amber-900/20 disabled:opacity-40"
+                                                        >
+                                                            Unpublish
+                                                        </button>
+                                                    )}
                                                     {s.status !== 'archived' && (
                                                         <button
                                                             type="button"
@@ -925,6 +1214,251 @@ export default function MarketContextAdminPage() {
                         </div>
                     )}
                 </>
+            )}
+
+            {tab === 'coins' && (
+                <>
+                    <div className="bg-[#0A0A0A] border border-[#333] p-4 rounded mb-6 flex flex-wrap gap-3 items-center">
+                        <button
+                            type="button"
+                            disabled={generateAllRunning}
+                            onClick={() => void handleGenerateAllRemaining()}
+                            className="px-4 py-2 bg-blue-800 hover:bg-blue-700 disabled:opacity-50 text-white rounded text-sm"
+                        >
+                            {generateAllRunning
+                                ? `Generating… ${busySymbol ?? ''}`
+                                : 'Generate All Remaining'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={fetchCoinSnapshots}
+                            className="px-3 py-2 border border-[#333] text-gray-300 rounded text-sm"
+                        >
+                            Refresh
+                        </button>
+                        <p className="text-xs text-gray-500 w-full">
+                            Tracked set ({TRACKED_COINS.length}). Sequential generate with ~3s gap.
+                            SEO score from last generation.
+                        </p>
+                    </div>
+                    <div className="bg-[#0A0A0A] border border-[#333] rounded overflow-hidden">
+                        <table className="w-full table-auto">
+                            <thead>
+                                <tr className="bg-[#111] text-gray-300">
+                                    <th className="px-3 py-2 text-left">Symbol</th>
+                                    <th className="px-3 py-2 text-left">Status</th>
+                                    <th className="px-3 py-2 text-left">Last Generated</th>
+                                    <th className="px-3 py-2 text-left">Word Count</th>
+                                    <th className="px-3 py-2 text-left">SEO Score</th>
+                                    <th className="px-3 py-2 text-left">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {coinsLoading && (
+                                    <tr>
+                                        <td colSpan={6} className="px-3 py-6 text-center text-gray-500">
+                                            Loading…
+                                        </td>
+                                    </tr>
+                                )}
+                                {!coinsLoading &&
+                                    TRACKED_COINS.map((symbol) => {
+                                        const row = coinRowsBySymbol.get(symbol);
+                                        return (
+                                            <tr
+                                                key={symbol}
+                                                className="border-t border-[#222] hover:bg-[#111]"
+                                            >
+                                                <td className="px-3 py-2 font-semibold text-white">
+                                                    {symbol}
+                                                </td>
+                                                <td className="px-3 py-2 text-sm">
+                                                    <span
+                                                        className={
+                                                            row?.status === 'published'
+                                                                ? 'text-green-400'
+                                                                : row?.status === 'draft'
+                                                                  ? 'text-yellow-400'
+                                                                  : row
+                                                                    ? 'text-gray-500'
+                                                                    : 'text-gray-600'
+                                                        }
+                                                    >
+                                                        {row?.status ?? 'missing'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2 text-xs text-gray-500">
+                                                    {row?.generatedAt
+                                                        ? new Date(row.generatedAt).toLocaleString()
+                                                        : '—'}
+                                                </td>
+                                                <td className="px-3 py-2 text-sm text-gray-400">
+                                                    {row?.wordCount ?? '—'}
+                                                </td>
+                                                <td className="px-3 py-2 text-sm">
+                                                    {seoBandEmoji(row?.seoScore?.band)}
+                                                    {row?.seoScore
+                                                        ? ` ${row.seoScore.band} (${row.seoScore.score})`
+                                                        : ' —'}
+                                                </td>
+                                                <td className="px-3 py-2">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        <button
+                                                            type="button"
+                                                            disabled={
+                                                                busySymbol === symbol ||
+                                                                generateAllRunning
+                                                            }
+                                                            onClick={() =>
+                                                                void handleGenerateCoin(symbol)
+                                                            }
+                                                            className="px-2 py-1 text-xs rounded border border-blue-800 text-blue-300 hover:bg-blue-900/30 disabled:opacity-40"
+                                                        >
+                                                            Generate
+                                                        </button>
+                                                        {row && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    void handlePreviewSnapshot(
+                                                                        row.id
+                                                                    )
+                                                                }
+                                                                className="px-2 py-1 text-xs rounded border border-[#333] text-gray-300 hover:bg-[#222]"
+                                                            >
+                                                                Preview
+                                                            </button>
+                                                        )}
+                                                        {row &&
+                                                            row.status !== 'published' &&
+                                                            row.status !== 'archived' && (
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={busyId === row.id}
+                                                                    onClick={() =>
+                                                                        handlePublishSnapshot(
+                                                                            row.id
+                                                                        )
+                                                                    }
+                                                                    className="px-2 py-1 text-xs rounded border border-green-800 text-green-400 disabled:opacity-40"
+                                                                >
+                                                                    Publish
+                                                                </button>
+                                                            )}
+                                                        {row?.status === 'published' && (
+                                                            <button
+                                                                type="button"
+                                                                disabled={busyId === row.id}
+                                                                onClick={() =>
+                                                                    handleUnpublishSnapshot(row.id)
+                                                                }
+                                                                className="px-2 py-1 text-xs rounded border border-amber-800 text-amber-300 disabled:opacity-40"
+                                                            >
+                                                                Unpublish
+                                                            </button>
+                                                        )}
+                                                        {row && row.status !== 'archived' && (
+                                                            <button
+                                                                type="button"
+                                                                disabled={busyId === row.id}
+                                                                onClick={() =>
+                                                                    handleArchiveSnapshot(row.id)
+                                                                }
+                                                                className="px-2 py-1 text-xs rounded border border-[#333] text-gray-400 disabled:opacity-40"
+                                                            >
+                                                                Archive
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                            </tbody>
+                        </table>
+                    </div>
+                    {preview && (
+                        <div className="mt-6 bg-[#0A0A0A] border border-[#333] rounded p-4">
+                            <div className="flex justify-between mb-3">
+                                <h2 className="text-white font-semibold">
+                                    Preview #{preview.id} {preview.symbol ?? preview.kind}
+                                </h2>
+                                <button
+                                    type="button"
+                                    onClick={() => setPreview(null)}
+                                    className="text-xs text-gray-400 border border-[#333] px-2 py-1 rounded"
+                                >
+                                    Close
+                                </button>
+                            </div>
+                            {preview.seoMeta && (
+                                <p className="text-xs text-gray-500 mb-3">
+                                    SEO: {preview.seoMeta.metaTitle} · score{' '}
+                                    {seoBandEmoji(preview.seoScore?.band)}{' '}
+                                    {preview.seoScore?.score ?? '—'}
+                                </p>
+                            )}
+                            <div className="space-y-4 max-h-[50vh] overflow-y-auto">
+                                {SECTION_PREVIEW_ORDER.map((key) => {
+                                    const section = preview.sections?.[key];
+                                    if (!section?.content?.trim()) return null;
+                                    return (
+                                        <section key={key} className="border-t border-[#222] pt-3">
+                                            <h3 className="text-xs font-mono text-blue-400 mb-1">
+                                                {key}
+                                            </h3>
+                                            <pre className="whitespace-pre-wrap text-sm text-gray-300 font-sans">
+                                                {section.content.slice(0, 2000)}
+                                            </pre>
+                                        </section>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+
+            {tab === 'activity' && (
+                <div className="bg-[#0A0A0A] border border-[#333] rounded overflow-hidden">
+                    <div className="p-3 border-b border-[#333] flex justify-between items-center">
+                        <h2 className="text-sm text-gray-300">Recent market_context_* actions</h2>
+                        <button
+                            type="button"
+                            onClick={fetchActivity}
+                            className="text-xs border border-[#333] px-2 py-1 rounded text-gray-400"
+                        >
+                            Refresh
+                        </button>
+                    </div>
+                    {activityLoading && (
+                        <p className="p-4 text-gray-500 text-sm">Loading…</p>
+                    )}
+                    {!activityLoading && activities.length === 0 && (
+                        <p className="p-4 text-gray-500 text-sm">No activity yet</p>
+                    )}
+                    <ul className="divide-y divide-[#222] max-h-[600px] overflow-y-auto">
+                        {activities.map((a) => (
+                            <li key={a.id} className="px-4 py-3 text-sm">
+                                <div className="flex flex-wrap gap-2 text-gray-300">
+                                    <span className="text-blue-300 font-mono text-xs">
+                                        {a.action}
+                                    </span>
+                                    <span className="text-gray-500 text-xs">
+                                        {a.createdAt
+                                            ? new Date(a.createdAt).toLocaleString()
+                                            : '—'}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {a.adminEmail}
+                                    {a.targetId ? ` · #${a.targetId}` : ''}
+                                    {a.targetTable ? ` · ${a.targetTable}` : ''}
+                                </p>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             )}
 
             {tab === 'channels' && (

@@ -189,6 +189,13 @@ const envSchema = z.object({
     MARKET_CONTEXT_ENABLED: z.coerce.boolean().default(false),
     MARKET_CONTEXT_INGEST_ENABLED: z.coerce.boolean().default(false),
     MARKET_CONTEXT_TELEGRAM_POLL_LIMIT: z.coerce.number().default(50),
+    // DEC-043 hub: auto-trust + semantic dedup + severity timeout
+    MARKET_CONTEXT_SEMANTIC_DEDUP_THRESHOLD: z.coerce.number().default(0.88),
+    MARKET_CONTEXT_AUTO_TRUST_MINOR_MIN_SCORE: z.coerce.number().default(60),
+    MARKET_CONTEXT_AUTO_TRUST_MAJOR_MIN_SCORE: z.coerce.number().default(70),
+    MARKET_CONTEXT_SEVERITY3_TIMEOUT_HOURS: z.coerce.number().default(6),
+    MARKET_CONTEXT_AUTO_TRUST_ENABLED: z.coerce.boolean().default(true),
+    MARKET_CONTEXT_FULL_AUTO_COIN_ENABLED: z.coerce.boolean().default(true),
 
     // Airdrop Intelligence (DEC-041) — schema/flags only in AD-0; all default off
     AIRDROP_INTELLIGENCE_ENABLED: z.coerce.boolean().default(false),

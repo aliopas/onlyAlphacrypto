@@ -102,3 +102,76 @@ export async function storeEmbedding(id: number, text: string): Promise<void> {
         console.error(`[Embedding] storeEmbedding failed for id=${id}:`, error);
     }
 }
+
+/**
+ * Semantic duplicate check against market_news_items (DEC-043 B2).
+ * Reuses generateEmbedding + pgvector cosine; does not touch raw_news_buffer path.
+ */
+export async function findMarketNewsSemanticDuplicate(
+    text: string,
+    excludeId?: number,
+    threshold: number = DEFAULT_SIMILARITY_THRESHOLD
+): Promise<EmbeddingResult> {
+    const defaultResult: EmbeddingResult = { isDuplicate: false, duplicateId: null, similarity: 0 };
+
+    try {
+        const embedding = await generateEmbedding(text);
+        const embeddingStr = `[${embedding.join(',')}]`;
+
+        const query = excludeId
+            ? `
+                SELECT id, 1 - (embedding <=> $1::vector) AS similarity
+                FROM market_news_items
+                WHERE embedding IS NOT NULL
+                  AND id <> $2
+                ORDER BY embedding <=> $1::vector
+                LIMIT 1
+            `
+            : `
+                SELECT id, 1 - (embedding <=> $1::vector) AS similarity
+                FROM market_news_items
+                WHERE embedding IS NOT NULL
+                ORDER BY embedding <=> $1::vector
+                LIMIT 1
+            `;
+
+        const params: Array<string | number> = excludeId
+            ? [embeddingStr, excludeId]
+            : [embeddingStr];
+        const result = await pool.query(query, params);
+
+        if (result.rows.length === 0) {
+            return defaultResult;
+        }
+
+        const row = result.rows[0] as { id: number; similarity: number };
+
+        if (row.similarity >= threshold) {
+            return {
+                isDuplicate: true,
+                duplicateId: row.id,
+                similarity: row.similarity,
+            };
+        }
+
+        return { ...defaultResult, similarity: row.similarity };
+    } catch (error) {
+        console.error('[Embedding] findMarketNewsSemanticDuplicate failed:', error);
+        return defaultResult;
+    }
+}
+
+export async function storeMarketNewsEmbedding(id: number, text: string): Promise<number[] | null> {
+    try {
+        const embedding = await generateEmbedding(text);
+        const embeddingStr = `[${embedding.join(',')}]`;
+        await pool.query(
+            'UPDATE market_news_items SET embedding = $1::vector, updated_at = NOW() WHERE id = $2',
+            [embeddingStr, id]
+        );
+        return embedding;
+    } catch (error) {
+        console.error(`[Embedding] storeMarketNewsEmbedding failed for id=${id}:`, error);
+        return null;
+    }
+}

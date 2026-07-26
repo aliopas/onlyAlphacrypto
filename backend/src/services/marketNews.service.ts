@@ -10,10 +10,17 @@ import {
     marketNewsItems,
     marketTelegramChannels,
     type MarketNewsSourceType,
+    type MarketNewsClassification,
     type NewMarketNewsItem,
 } from '../models/marketContext.model';
 import { fetchAllRSSNews } from './rssNews.service';
 import { logger } from '../utils/logger';
+import {
+    processNewsItemAutoTrust,
+    processPendingMarketNewsAutoTrust,
+    deriveTerminalClassification,
+    type ProcessPendingAutoTrustSummary,
+} from './marketNewsAutoTrust.service';
 
 export interface NormalizeNewsInput {
     sourceType: MarketNewsSourceType;
@@ -27,6 +34,12 @@ export interface NormalizeNewsInput {
     rawRef?: Record<string, unknown> | null;
     trust?: 'pending' | 'trusted' | 'rejected';
     trustNote?: string | null;
+    /** Optional pre-known triage (e.g. terminal) — zero extra AI cost */
+    classification?: MarketNewsClassification | null;
+    eventSeverity?: number | null;
+    relevanceScore?: number | null;
+    /** When false, skip post-insert auto-trust (batch path runs later) */
+    runAutoTrust?: boolean;
 }
 
 export interface SourceIngestResult {
@@ -42,6 +55,7 @@ export interface MarketNewsIngestResult {
     terminal: SourceIngestResult;
     rss: SourceIngestResult;
     telegram: SourceIngestResult;
+    autoTrust?: ProcessPendingAutoTrustSummary;
 }
 
 function publishedDayKey(publishedAt: Date | null | undefined): string {
@@ -90,6 +104,23 @@ export async function normalizeAndUpsertNewsItem(
         publishedAt: input.publishedAt ?? null,
     });
 
+    const classification =
+        input.classification === 'MAJOR' ||
+        input.classification === 'MINOR' ||
+        input.classification === 'NOISE'
+            ? input.classification
+            : null;
+
+    const eventSeverity =
+        typeof input.eventSeverity === 'number' && !Number.isNaN(input.eventSeverity)
+            ? Math.max(1, Math.min(3, Math.round(input.eventSeverity)))
+            : null;
+
+    const relevanceScore =
+        typeof input.relevanceScore === 'number' && !Number.isNaN(input.relevanceScore)
+            ? Math.max(0, Math.min(100, Math.round(input.relevanceScore)))
+            : null;
+
     const row: NewMarketNewsItem = {
         sourceType: input.sourceType,
         externalId: input.externalId ?? null,
@@ -103,6 +134,9 @@ export async function normalizeAndUpsertNewsItem(
         trust: input.trust ?? 'pending',
         trustNote: input.trustNote ?? null,
         rawRef: input.rawRef ?? null,
+        classification,
+        eventSeverity,
+        relevanceScore,
         updatedAt: new Date(),
     };
 
@@ -113,7 +147,22 @@ export async function normalizeAndUpsertNewsItem(
             .onConflictDoNothing({ target: marketNewsItems.sourceHash })
             .returning({ id: marketNewsItems.id });
 
-        return result.length > 0 ? 'inserted' : 'skipped';
+        if (result.length === 0) {
+            return 'skipped';
+        }
+
+        const insertedId = result[0].id;
+        const shouldAutoTrust = input.runAutoTrust !== false;
+        if (
+            shouldAutoTrust &&
+            env.MARKET_CONTEXT_AUTO_TRUST_ENABLED &&
+            (input.trust ?? 'pending') === 'pending'
+        ) {
+            // Fire-and-await per item is OK at modest ingest volume; batch path also runs at end
+            await processNewsItemAutoTrust(insertedId);
+        }
+
+        return 'inserted';
     } catch (err) {
         logger.error(
             '[MarketNews] upsert failed for hash=%s: %s',
@@ -142,6 +191,8 @@ export async function ingestFromTerminalNews(limit = 100): Promise<SourceIngestR
                 summary: coinNews.summary,
                 sourceUrl: coinNews.sourceUrl,
                 publishedAt: coinNews.publishedAt,
+                impactScore: coinNews.impactScore,
+                isBreaking: coinNews.isBreaking,
             })
             .from(coinNews)
             .orderBy(desc(coinNews.publishedAt))
@@ -150,6 +201,12 @@ export async function ingestFromTerminalNews(limit = 100): Promise<SourceIngestR
         result.attempted = rows.length;
 
         for (const row of rows) {
+            // Reuse terminal impact signals as classification when available (zero AI cost)
+            const derived = deriveTerminalClassification({
+                impactScore: row.impactScore,
+                isBreaking: row.isBreaking,
+            });
+
             const outcome = await normalizeAndUpsertNewsItem({
                 sourceType: 'terminal',
                 externalId: String(row.id),
@@ -161,6 +218,11 @@ export async function ingestFromTerminalNews(limit = 100): Promise<SourceIngestR
                 symbols: row.coinSymbol ? [row.coinSymbol.toUpperCase()] : [],
                 rawRef: { coinNewsId: row.id },
                 trust: 'pending',
+                classification: derived?.classification ?? null,
+                eventSeverity: derived?.eventSeverity ?? null,
+                relevanceScore: derived?.relevanceScore ?? null,
+                // Defer auto-trust to end-of-ingest batch for efficiency
+                runAutoTrust: false,
             });
             if (outcome === 'inserted') result.inserted += 1;
             else result.skipped += 1;
@@ -208,6 +270,7 @@ export async function ingestFromRss(): Promise<SourceIngestResult> {
                 symbols: [],
                 rawRef: { rssSource: item.source },
                 trust: 'pending',
+                runAutoTrust: false,
             });
             if (outcome === 'inserted') result.inserted += 1;
             else result.skipped += 1;
@@ -328,6 +391,7 @@ export async function ingestFromTelegramChannels(): Promise<SourceIngestResult> 
                                 usernameOrId: channel.usernameOrId,
                             },
                             trust: 'pending',
+                            runAutoTrust: false,
                         });
 
                         if (outcome === 'inserted') result.inserted += 1;
@@ -396,6 +460,27 @@ export async function runMarketNewsIngest(): Promise<MarketNewsIngestResult> {
     const rss = await ingestFromRss();
     const telegram = await ingestFromTelegramChannels();
 
+    let autoTrust: ProcessPendingAutoTrustSummary | undefined;
+    if (env.MARKET_CONTEXT_AUTO_TRUST_ENABLED) {
+        try {
+            autoTrust = await processPendingMarketNewsAutoTrust(50);
+            logger.info(
+                '[MarketNews] auto-trust processed=%d trusted=%d rejected=%d pendingReview=%d fullAuto=%d timeout=%d',
+                autoTrust.processed,
+                autoTrust.trusted,
+                autoTrust.rejected,
+                autoTrust.pendingReview,
+                autoTrust.fullAutoIntents,
+                autoTrust.timedOut
+            );
+        } catch (err) {
+            logger.error(
+                '[MarketNews] auto-trust batch failed: %s',
+                err instanceof Error ? err.message : String(err)
+            );
+        }
+    }
+
     logger.info(
         '[MarketNews] runMarketNewsIngest done terminal=%d/%d rss=%d/%d telegram=%d/%d',
         terminal.inserted,
@@ -406,5 +491,5 @@ export async function runMarketNewsIngest(): Promise<MarketNewsIngestResult> {
         telegram.attempted
     );
 
-    return { enabled: true, terminal, rss, telegram };
+    return { enabled: true, terminal, rss, telegram, autoTrust };
 }

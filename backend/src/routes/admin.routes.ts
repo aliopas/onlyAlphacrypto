@@ -32,7 +32,9 @@ import {
     postMarketContextTelegramChannelHandler,
     patchMarketContextTelegramChannelHandler,
     postMarketContextSnapshotGenerateHandler,
+    postMarketContextCoinGenerateHandler,
     getMarketContextSnapshotsHandler,
+    getMarketContextActivityHandler,
     getMarketContextSnapshotByIdHandler,
     patchMarketContextSnapshotPublishHandler,
     patchMarketContextSnapshotArchiveHandler,
@@ -172,6 +174,19 @@ router.post(
     marketContextFlagMiddleware,
     adminAuth,
     postMarketContextSnapshotGenerateHandler
+);
+// DEC-043 B3 — coin blog generate
+router.post(
+    '/market-context/snapshots/generate-coin',
+    marketContextFlagMiddleware,
+    adminAuth,
+    postMarketContextCoinGenerateHandler
+);
+router.get(
+    '/market-context/activity',
+    marketContextFlagMiddleware,
+    adminAuth,
+    getMarketContextActivityHandler
 );
 router.get(
     '/market-context/snapshots',

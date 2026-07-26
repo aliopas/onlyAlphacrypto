@@ -366,6 +366,7 @@ export async function generateMarketContextSnapshot(
 
 export async function listMarketContextSnapshots(options?: {
     status?: 'draft' | 'published' | 'archived';
+    kind?: string;
     page?: number;
     limit?: number;
 }): Promise<{
@@ -375,6 +376,7 @@ export async function listMarketContextSnapshots(options?: {
         kind: string;
         weekLabel: string | null;
         status: string;
+        symbol: string | null;
         newsIds: number[];
         marketDataVersion: string | null;
         generatorVersion: string;
@@ -383,16 +385,38 @@ export async function listMarketContextSnapshots(options?: {
         createdBy: string | null;
         createdAt: string;
         sectionCount: number;
+        wordCount: number;
+        seoScore: {
+            band: string;
+            score: number;
+            checks: Array<{ id: string; passed: boolean; detail?: string }>;
+        } | null;
+        autoPublished: boolean;
+        seoMeta: {
+            metaTitle: string;
+            metaDescription: string;
+            seoKeywords: string[];
+        } | null;
     }>;
     pagination: { page: number; limit: number; total: number; totalPages: number };
 }> {
     const page = Math.max(options?.page ?? 1, 1);
-    const limit = Math.min(Math.max(options?.limit ?? 20, 1), 50);
+    const limit = Math.min(Math.max(options?.limit ?? 20, 1), 100);
     const offset = (page - 1) * limit;
 
-    const whereClause = options?.status
-        ? eq(marketContextSnapshots.status, options.status)
-        : undefined;
+    const conditions = [];
+    if (options?.status) {
+        conditions.push(eq(marketContextSnapshots.status, options.status));
+    }
+    if (options?.kind) {
+        conditions.push(eq(marketContextSnapshots.kind, options.kind));
+    }
+    const whereClause =
+        conditions.length === 0
+            ? undefined
+            : conditions.length === 1
+              ? conditions[0]
+              : and(...conditions);
 
     const totalResult = await db
         .select({ count: sql<number>`count(*)` })
@@ -408,6 +432,7 @@ export async function listMarketContextSnapshots(options?: {
             kind: marketContextSnapshots.kind,
             weekLabel: marketContextSnapshots.weekLabel,
             status: marketContextSnapshots.status,
+            symbol: marketContextSnapshots.symbol,
             sections: marketContextSnapshots.sections,
             newsIds: marketContextSnapshots.newsIds,
             marketDataVersion: marketContextSnapshots.marketDataVersion,
@@ -416,6 +441,9 @@ export async function listMarketContextSnapshots(options?: {
             publishedAt: marketContextSnapshots.publishedAt,
             createdBy: marketContextSnapshots.createdBy,
             createdAt: marketContextSnapshots.createdAt,
+            seoScore: marketContextSnapshots.seoScore,
+            seoMeta: marketContextSnapshots.seoMeta,
+            autoPublished: marketContextSnapshots.autoPublished,
         })
         .from(marketContextSnapshots)
         .where(whereClause)
@@ -426,12 +454,22 @@ export async function listMarketContextSnapshots(options?: {
     return {
         snapshots: rows.map((r) => {
             const sections = r.sections && typeof r.sections === 'object' ? r.sections : {};
+            let wordCount = 0;
+            for (const val of Object.values(sections as Record<string, unknown>)) {
+                if (val && typeof val === 'object' && 'content' in val) {
+                    const c = (val as { content?: unknown }).content;
+                    if (typeof c === 'string') {
+                        wordCount += c.split(/\s+/).filter(Boolean).length;
+                    }
+                }
+            }
             return {
                 id: r.id,
                 snapshotKey: r.snapshotKey,
                 kind: r.kind,
                 weekLabel: r.weekLabel,
                 status: r.status,
+                symbol: r.symbol ?? null,
                 newsIds: Array.isArray(r.newsIds) ? r.newsIds : [],
                 marketDataVersion: r.marketDataVersion,
                 generatorVersion: r.generatorVersion,
@@ -440,6 +478,24 @@ export async function listMarketContextSnapshots(options?: {
                 createdBy: r.createdBy,
                 createdAt: r.createdAt ? r.createdAt.toISOString() : '',
                 sectionCount: Object.keys(sections).length,
+                wordCount,
+                seoScore:
+                    r.seoScore && typeof r.seoScore === 'object'
+                        ? (r.seoScore as {
+                              band: string;
+                              score: number;
+                              checks: Array<{ id: string; passed: boolean; detail?: string }>;
+                          })
+                        : null,
+                autoPublished: Boolean(r.autoPublished),
+                seoMeta:
+                    r.seoMeta && typeof r.seoMeta === 'object'
+                        ? (r.seoMeta as {
+                              metaTitle: string;
+                              metaDescription: string;
+                              seoKeywords: string[];
+                          })
+                        : null,
             };
         }),
         pagination: {
@@ -460,7 +516,8 @@ export async function getMarketContextSnapshotById(id: number): Promise<{
     kind: string;
     weekLabel: string | null;
     status: string;
-    sections: Partial<MarketContextSections>;
+    symbol: string | null;
+    sections: Partial<MarketContextSections> | Record<string, unknown>;
     newsIds: number[];
     marketDataVersion: string | null;
     generatorVersion: string;
@@ -469,6 +526,17 @@ export async function getMarketContextSnapshotById(id: number): Promise<{
     createdBy: string | null;
     createdAt: string;
     updatedAt: string | null;
+    seoMeta: {
+        metaTitle: string;
+        metaDescription: string;
+        seoKeywords: string[];
+    } | null;
+    seoScore: {
+        band: string;
+        score: number;
+        checks: Array<{ id: string; passed: boolean; detail?: string }>;
+    } | null;
+    autoPublished: boolean;
 } | null> {
     const rows = await db
         .select()
@@ -481,7 +549,7 @@ export async function getMarketContextSnapshotById(id: number): Promise<{
     const s = rows[0];
     const sections =
         s.sections && typeof s.sections === 'object'
-            ? (s.sections as Partial<MarketContextSections>)
+            ? (s.sections as Partial<MarketContextSections> | Record<string, unknown>)
             : {};
 
     return {
@@ -490,6 +558,7 @@ export async function getMarketContextSnapshotById(id: number): Promise<{
         kind: s.kind,
         weekLabel: s.weekLabel,
         status: s.status,
+        symbol: s.symbol ?? null,
         sections,
         newsIds: Array.isArray(s.newsIds) ? s.newsIds : [],
         marketDataVersion: s.marketDataVersion,
@@ -499,6 +568,23 @@ export async function getMarketContextSnapshotById(id: number): Promise<{
         createdBy: s.createdBy,
         createdAt: s.createdAt ? s.createdAt.toISOString() : '',
         updatedAt: s.updatedAt ? s.updatedAt.toISOString() : null,
+        seoMeta:
+            s.seoMeta && typeof s.seoMeta === 'object'
+                ? (s.seoMeta as {
+                      metaTitle: string;
+                      metaDescription: string;
+                      seoKeywords: string[];
+                  })
+                : null,
+        seoScore:
+            s.seoScore && typeof s.seoScore === 'object'
+                ? (s.seoScore as {
+                      band: string;
+                      score: number;
+                      checks: Array<{ id: string; passed: boolean; detail?: string }>;
+                  })
+                : null,
+        autoPublished: Boolean(s.autoPublished),
     };
 }
 
@@ -525,7 +611,7 @@ export interface PublicMarketContextPayload {
 }
 
 /**
- * Latest published snapshot for public hub (no drafts).
+ * Latest published weekly market edition for public hub (no drafts, no coin pages).
  */
 export async function getLatestPublishedMarketContext(): Promise<PublicMarketContextPayload> {
     if (!env.MARKET_CONTEXT_ENABLED) {
@@ -535,15 +621,39 @@ export async function getLatestPublishedMarketContext(): Promise<PublicMarketCon
     const rows = await db
         .select()
         .from(marketContextSnapshots)
-        .where(eq(marketContextSnapshots.status, 'published'))
+        .where(
+            and(
+                eq(marketContextSnapshots.status, 'published'),
+                sql`(${marketContextSnapshots.kind} = 'weekly' OR ${marketContextSnapshots.kind} IS NULL OR ${marketContextSnapshots.kind} = '')`
+            )
+        )
         .orderBy(desc(marketContextSnapshots.publishedAt), desc(marketContextSnapshots.id))
         .limit(1);
 
-    if (rows.length === 0) {
+    // Fallback: any published non-coin (legacy rows may use other kind labels)
+    const effective =
+        rows.length > 0
+            ? rows
+            : await db
+                  .select()
+                  .from(marketContextSnapshots)
+                  .where(
+                      and(
+                          eq(marketContextSnapshots.status, 'published'),
+                          sql`${marketContextSnapshots.kind} <> 'coin'`
+                      )
+                  )
+                  .orderBy(
+                      desc(marketContextSnapshots.publishedAt),
+                      desc(marketContextSnapshots.id)
+                  )
+                  .limit(1);
+
+    if (effective.length === 0) {
         return { available: false, snapshot: null };
     }
 
-    const s = rows[0];
+    const s = effective[0];
     const sections =
         s.sections && typeof s.sections === 'object'
             ? (s.sections as Partial<MarketContextSections>)
@@ -567,10 +677,200 @@ export async function getLatestPublishedMarketContext(): Promise<PublicMarketCon
     };
 }
 
-async function bustPublicMarketContextCache(): Promise<void> {
+export interface PublicCoinSnapshotPayload {
+    available: boolean;
+    snapshot: {
+        id: number;
+        snapshotKey: string;
+        kind: 'coin';
+        symbol: string;
+        status: 'published';
+        sections: Record<string, unknown>;
+        seoMeta: {
+            metaTitle: string;
+            metaDescription: string;
+            seoKeywords: string[];
+        } | null;
+        seoScore: {
+            band: string;
+            score: number;
+            checks: Array<{ id: string; passed: boolean; detail?: string }>;
+        } | null;
+        marketDataVersion: string | null;
+        generatorVersion: string;
+        generatedAt: string | null;
+        publishedAt: string | null;
+        updatedAt: string | null;
+        autoPublished: boolean;
+    } | null;
+}
+
+export interface PublicCoinListItem {
+    symbol: string;
+    snapshotId: number;
+    status: 'published';
+    publishedAt: string | null;
+    updatedAt: string | null;
+    generatorVersion: string;
+    seoMeta: {
+        metaTitle: string;
+        metaDescription: string;
+        seoKeywords: string[];
+    } | null;
+    seoScoreBand: string | null;
+    hook: string | null;
+}
+
+function extractHookFromSections(sections: unknown): string | null {
+    if (!sections || typeof sections !== 'object') return null;
+    const rec = sections as Record<string, unknown>;
+    const hero = rec.heroWhatIs;
+    if (!hero || typeof hero !== 'object') return null;
+    const content = (hero as { content?: unknown }).content;
+    if (typeof content !== 'string' || !content.trim()) return null;
+    const plain = content
+        .replace(/^#{1,6}\s+/gm, '')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (plain.length <= 160) return plain;
+    const cut = plain.slice(0, 160);
+    const sp = cut.lastIndexOf(' ');
+    return `${(sp > 60 ? cut.slice(0, sp) : cut).trim()}…`;
+}
+
+/**
+ * Latest published coin page for a symbol (DEC-043 B4).
+ */
+export async function getLatestPublishedCoinContext(
+    symbolRaw: string
+): Promise<PublicCoinSnapshotPayload> {
+    if (!env.MARKET_CONTEXT_ENABLED) {
+        return { available: false, snapshot: null };
+    }
+
+    const symbol = symbolRaw.trim().toUpperCase();
+    if (!symbol || !/^[A-Z0-9]{2,15}$/.test(symbol)) {
+        return { available: false, snapshot: null };
+    }
+
+    const rows = await db
+        .select()
+        .from(marketContextSnapshots)
+        .where(
+            and(
+                eq(marketContextSnapshots.status, 'published'),
+                eq(marketContextSnapshots.kind, 'coin'),
+                eq(marketContextSnapshots.symbol, symbol)
+            )
+        )
+        .orderBy(desc(marketContextSnapshots.publishedAt), desc(marketContextSnapshots.id))
+        .limit(1);
+
+    if (rows.length === 0) {
+        return { available: false, snapshot: null };
+    }
+
+    const s = rows[0];
+    const sections =
+        s.sections && typeof s.sections === 'object'
+            ? (s.sections as Record<string, unknown>)
+            : {};
+    type SeoMetaShape = {
+        metaTitle: string;
+        metaDescription: string;
+        seoKeywords: string[];
+    };
+    type SeoScoreShape = {
+        band: string;
+        score: number;
+        checks: Array<{ id: string; passed: boolean; detail?: string }>;
+    };
+    const seoMeta: SeoMetaShape | null =
+        s.seoMeta && typeof s.seoMeta === 'object' ? (s.seoMeta as SeoMetaShape) : null;
+    const seoScore: SeoScoreShape | null =
+        s.seoScore && typeof s.seoScore === 'object' ? (s.seoScore as SeoScoreShape) : null;
+
+    return {
+        available: true,
+        snapshot: {
+            id: s.id,
+            snapshotKey: s.snapshotKey,
+            kind: 'coin',
+            symbol,
+            status: 'published',
+            sections,
+            seoMeta,
+            seoScore,
+            marketDataVersion: s.marketDataVersion,
+            generatorVersion: s.generatorVersion,
+            generatedAt: s.generatedAt ? s.generatedAt.toISOString() : null,
+            publishedAt: s.publishedAt ? s.publishedAt.toISOString() : null,
+            updatedAt: s.updatedAt ? s.updatedAt.toISOString() : null,
+            autoPublished: Boolean(s.autoPublished),
+        },
+    };
+}
+
+/**
+ * List latest published coin pages (one per symbol) for blog index / sitemap.
+ */
+export async function listPublishedCoinContexts(): Promise<PublicCoinListItem[]> {
+    if (!env.MARKET_CONTEXT_ENABLED) {
+        return [];
+    }
+
+    const rows = await db
+        .select()
+        .from(marketContextSnapshots)
+        .where(
+            and(
+                eq(marketContextSnapshots.status, 'published'),
+                eq(marketContextSnapshots.kind, 'coin'),
+                sql`${marketContextSnapshots.symbol} IS NOT NULL`
+            )
+        )
+        .orderBy(desc(marketContextSnapshots.publishedAt), desc(marketContextSnapshots.id));
+
+    const bySymbol = new Map<string, (typeof rows)[0]>();
+    for (const row of rows) {
+        const sym = row.symbol?.toUpperCase();
+        if (!sym || bySymbol.has(sym)) continue;
+        bySymbol.set(sym, row);
+    }
+
+    return Array.from(bySymbol.entries()).map(([symbol, s]) => {
+        const seoMeta =
+            s.seoMeta && typeof s.seoMeta === 'object'
+                ? (s.seoMeta as PublicCoinListItem['seoMeta'])
+                : null;
+        const seoScore =
+            s.seoScore && typeof s.seoScore === 'object'
+                ? (s.seoScore as { band?: string })
+                : null;
+        return {
+            symbol,
+            snapshotId: s.id,
+            status: 'published' as const,
+            publishedAt: s.publishedAt ? s.publishedAt.toISOString() : null,
+            updatedAt: s.updatedAt ? s.updatedAt.toISOString() : null,
+            generatorVersion: s.generatorVersion,
+            seoMeta,
+            seoScoreBand: seoScore?.band ?? null,
+            hook: extractHookFromSections(s.sections),
+        };
+    });
+}
+
+async function bustPublicMarketContextCache(symbol?: string | null): Promise<void> {
     try {
         const { deleteCache } = await import('../config/redis');
         await deleteCache('market-context:public:latest');
+        await deleteCache('market-context:public:coins-list');
+        if (symbol) {
+            await deleteCache(`market-context:public:coin:${symbol.toUpperCase()}`);
+        }
     } catch {
         /* non-blocking */
     }
@@ -611,7 +911,7 @@ export async function publishMarketContextSnapshot(
         .where(eq(marketContextSnapshots.id, id))
         .returning();
 
-    await bustPublicMarketContextCache();
+    await bustPublicMarketContextCache(row.symbol);
     return updated[0];
 }
 
@@ -623,7 +923,7 @@ export async function archiveMarketContextSnapshot(
     }
 
     const existing = await db
-        .select({ id: marketContextSnapshots.id })
+        .select()
         .from(marketContextSnapshots)
         .where(eq(marketContextSnapshots.id, id))
         .limit(1);
@@ -642,7 +942,7 @@ export async function archiveMarketContextSnapshot(
         .where(eq(marketContextSnapshots.id, id))
         .returning();
 
-    await bustPublicMarketContextCache();
+    await bustPublicMarketContextCache(existing[0].symbol);
     return updated[0];
 }
 
@@ -677,6 +977,6 @@ export async function unpublishMarketContextSnapshot(
         .where(eq(marketContextSnapshots.id, id))
         .returning();
 
-    await bustPublicMarketContextCache();
+    await bustPublicMarketContextCache(existing[0].symbol);
     return updated[0];
 }

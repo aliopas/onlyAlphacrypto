@@ -877,7 +877,180 @@ ${constraints}
 SECTION KEYS TO PRODUCE (all required):
 ${h2Lines}
 
-Write educational macro context only. CTA to live analysis is out of scope for this JSON.
+        Write educational macro context only. CTA to live analysis is out of scope for this JSON.
+Respond with JSON only.`,
+            },
+        ];
+    }
+
+    /**
+     * Coin blog article draft (DEC-043 B3).
+     * Two-step pipeline uses this for DeepSeek draft; polish may reuse the same shape.
+     * Keyword constraints: no primary "price prediction".
+     */
+    buildCoinBlogArticleMessages(input: {
+        symbol: string;
+        coinName?: string | null;
+        mode: 'draft' | 'polish';
+        primaryKeywords: string[];
+        supportingKeywords: string[];
+        peopleAlsoAsk: string[];
+        trustedNews: Array<{
+            id: number;
+            title: string;
+            body?: string | null;
+            sourceName?: string | null;
+            publishedAt?: string | null;
+        }>;
+        intelligence: {
+            ath?: number | null;
+            athDate?: string | null;
+            trend8w?: string | null;
+            week52High?: number | null;
+            week52Low?: number | null;
+            priceChange30d?: string | null;
+            wikiBackground?: string | null;
+            currentPrice?: number | null;
+        };
+        ohlcvSummary: string;
+        sectionKeys: string[];
+        generatorVersion: string;
+        draftJson?: string | null;
+    }): ChatCompletionMessageParam[] {
+        const coin = input.symbol.toUpperCase();
+        const display = input.coinName?.trim() || coin;
+        const newsBlock =
+            input.trustedNews.length === 0
+                ? '(No trusted news for this symbol — write evergreen structural context only; do not invent events.)'
+                : input.trustedNews
+                      .map((n) => {
+                          const body = n.body ? n.body.slice(0, 350) : '';
+                          return `[#${n.id}] ${n.title}\n  source=${n.sourceName ?? 'unknown'} published=${n.publishedAt ?? 'n/a'}\n  ${body}`;
+                      })
+                      .join('\n\n');
+
+        const intel = input.intelligence;
+        const intelBlock = [
+            `ATH: ${intel.ath ?? 'n/a'} (${intel.athDate ?? 'n/a'})`,
+            `52w high/low: ${intel.week52High ?? 'n/a'} / ${intel.week52Low ?? 'n/a'}`,
+            `30d change: ${intel.priceChange30d ?? 'n/a'}`,
+            `8w trend: ${intel.trend8w ?? 'n/a'}`,
+            `Current price (ref only, no targets): ${intel.currentPrice ?? 'n/a'}`,
+            `Background: ${(intel.wikiBackground ?? '').slice(0, 600) || 'n/a'}`,
+        ].join('\n');
+
+        const sectionList = input.sectionKeys.join(', ');
+
+        if (input.mode === 'polish') {
+            return [
+                {
+                    role: 'system',
+                    content: `You are the OnlyAlpha Insights editor polishing a coin educational article about ${display} (${coin}).
+English only. NFA. No BUY/SELL. No price targets. No primary keyword "price prediction".
+Improve clarity, SEO meta, and FAQ quality while preserving factual claims from the draft and trusted sources.
+
+Return ONLY valid JSON (no markdown fences):
+{
+  "sections": {
+    "heroWhatIs": { "content": "markdown with H2 first line", "sourceNewsIds": [] },
+    "historicalStructure": { "content": "...", "sourceNewsIds": [] },
+    "eventTimeline": { "content": "...", "sourceNewsIds": [] },
+    "newsImpact": { "content": "...", "sourceNewsIds": [] },
+    "structuralOutlook": { "content": "...", "sourceNewsIds": [] },
+    "relatedCoins": { "content": "...", "sourceNewsIds": [] },
+    "faq": { "content": "Q/A markdown, >=5 questions", "sourceNewsIds": [] }
+  },
+  "seo_meta": {
+    "metaTitle": "<=60 chars",
+    "metaDescription": "<=160 chars",
+    "seoKeywords": ["..."]
+  }
+}
+sourceNewsIds must only reference provided news ids. generatorVersion=${input.generatorVersion}.`,
+                },
+                {
+                    role: 'user',
+                    content: `PRIMARY KEYWORDS (must appear naturally; do NOT use "price prediction" as primary):
+${input.primaryKeywords.map((k) => `- ${k}`).join('\n')}
+
+SUPPORTING:
+${input.supportingKeywords.map((k) => `- ${k}`).join('\n')}
+
+PAA:
+${input.peopleAlsoAsk.map((q) => `- ${q}`).join('\n')}
+
+TRUSTED NEWS:
+${newsBlock}
+
+DRAFT JSON TO POLISH:
+${input.draftJson ?? '{}'}
+
+Produce polished sections + seo_meta. Respond with JSON only.`,
+                },
+            ];
+        }
+
+        return [
+            {
+                role: 'system',
+                content: `You are the OnlyAlpha Insights educational writer for a single-coin page about ${display} (${coin}).
+This is NOT live Terminal trading analysis. English only. NFA. No BUY/SELL language. No price targets.
+Primary keywords MUST lean on patterns like:
+- "${coin} price analysis"
+- "${coin} news today"
+- "${coin} historical performance"
+- "is ${coin} a good investment"
+FORBIDDEN as primary keyword: "price prediction".
+
+Return ONLY valid JSON (no markdown fences):
+{
+  "sections": {
+    "heroWhatIs": { "content": "markdown EN prose with H2 first line", "sourceNewsIds": [] },
+    "historicalStructure": { "content": "...", "sourceNewsIds": [] },
+    "eventTimeline": { "content": "...", "sourceNewsIds": [] },
+    "newsImpact": { "content": "...", "sourceNewsIds": [] },
+    "structuralOutlook": { "content": "...", "sourceNewsIds": [] },
+    "relatedCoins": { "content": "...", "sourceNewsIds": [] },
+    "faq": { "content": "Q/A markdown, >=5 questions", "sourceNewsIds": [] }
+  },
+  "seo_meta": {
+    "metaTitle": "<=60 chars including ${coin}",
+    "metaDescription": "<=160 chars",
+    "seoKeywords": ["${coin} price analysis", "..."]
+  },
+  "numericClaims": {
+    "supportLevels": [],
+    "resistanceLevels": [],
+    "currentPrice": null
+  }
+}
+Section keys required: ${sectionList}.
+sourceNewsIds must only use provided news ids.
+generatorVersion=${input.generatorVersion}.`,
+            },
+            {
+                role: 'user',
+                content: `COIN: ${coin} (${display})
+
+PRIMARY KEYWORDS:
+${input.primaryKeywords.map((k) => `- ${k}`).join('\n')}
+
+SUPPORTING KEYWORDS:
+${input.supportingKeywords.map((k) => `- ${k}`).join('\n')}
+
+PEOPLE ALSO ASK:
+${input.peopleAlsoAsk.map((q) => `- ${q}`).join('\n')}
+
+COIN INTELLIGENCE:
+${intelBlock}
+
+OHLCV SUMMARY:
+${input.ohlcvSummary}
+
+TRUSTED NEWS (facts only; cite via sourceNewsIds):
+${newsBlock}
+
+Write educational coin context. No invented events. No price prediction framing.
 Respond with JSON only.`,
             },
         ];

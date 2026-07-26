@@ -13,7 +13,11 @@ import { getLivePrices, getTopMovers } from '../services/binance.service';
 import { getPriceWithFallback } from '../services/priceService';
 import { AppError } from '../middleware/errorHandler';
 import { compareWithHistoricalEvents } from '../services/historicalEventComparison.service';
-import { getLatestPublishedMarketContext } from '../services/marketContextGenerator.service';
+import {
+    getLatestPublishedMarketContext,
+    getLatestPublishedCoinContext,
+    listPublishedCoinContexts,
+} from '../services/marketContextGenerator.service';
 
 export async function getCoinInsight(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -41,7 +45,7 @@ export async function getCoinInsight(req: Request, res: Response, next: NextFunc
 
 /**
  * Public Market Context hub payload (DEC-040 MC-4).
- * Returns latest published snapshot only — never drafts.
+ * Returns latest published weekly edition only — never drafts/coins.
  */
 export async function getPublicMarketContextHandler(
     req: Request,
@@ -57,6 +61,61 @@ export async function getPublicMarketContextHandler(
         }
 
         const payload = await getLatestPublishedMarketContext();
+        await setCache(cacheKey, payload, 120);
+        res.json(payload);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * DEC-043 B4 — list published coin pages (blog index / sitemap).
+ */
+export async function getPublicMarketContextCoinsHandler(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const cacheKey = 'market-context:public:coins-list';
+        const cached = await getCache(cacheKey);
+        if (cached) {
+            res.json(cached);
+            return;
+        }
+
+        const coins = await listPublishedCoinContexts();
+        const payload = { coins };
+        await setCache(cacheKey, payload, 120);
+        res.json(payload);
+    } catch (err) {
+        next(err);
+    }
+}
+
+/**
+ * DEC-043 B4 — latest published coin snapshot by symbol.
+ */
+export async function getPublicMarketContextCoinBySymbolHandler(
+    req: Request,
+    res: Response,
+    next: NextFunction
+): Promise<void> {
+    try {
+        const symbol = String(req.params['symbol'] || '').trim().toUpperCase();
+        if (!symbol || !/^[A-Z0-9]{2,15}$/.test(symbol)) {
+            res.status(400).json({ available: false, snapshot: null, error: 'INVALID_SYMBOL' });
+            return;
+        }
+
+        const cacheKey = `market-context:public:coin:${symbol}`;
+        const cached = await getCache(cacheKey);
+        if (cached) {
+            res.json(cached);
+            return;
+        }
+
+        const payload = await getLatestPublishedCoinContext(symbol);
         await setCache(cacheKey, payload, 120);
         res.json(payload);
     } catch (err) {

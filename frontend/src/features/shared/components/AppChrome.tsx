@@ -9,7 +9,7 @@ interface AppChromeProps {
 }
 
 function isEditorialPath(pathname: string): boolean {
-    return pathname === '/blog/market-context' || pathname.startsWith('/blog/market-context/');
+    return pathname === '/blog' || pathname.startsWith('/blog/');
 }
 
 /**

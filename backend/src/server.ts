@@ -43,6 +43,7 @@ import { runRadarCleanup } from './scripts/clean-duplicate-radars';
 import { runArticleRepair } from './scripts/repair-incomplete-articles';
 import { runMetaTagRepair } from './scripts/repair-meta-tags';
 import { runScorecardInvestmentModeRepair } from './scripts/repair-scorecard-investment-mode';
+import { wireFullAutoCoinHandler } from './services/coinBlogGenerator.service';
 import { logger } from './utils/logger';
 import { startCrons } from './crons/registry';
 import { logFlowStatus } from './config/flows';
@@ -88,6 +89,10 @@ async function bootstrap(): Promise<void> {
     try {
         await initDb();
         await testConnection();
+
+        // DEC-043 B2/B3: register full-auto coin handler before crons/ingest
+        // (ensures severity=3 path can generate+publish without admin module load)
+        wireFullAutoCoinHandler();
 
         await runRadarCleanup();
         

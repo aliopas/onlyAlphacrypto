@@ -7,7 +7,7 @@ import { collectSystemTelemetry } from '../services/telemetry.service';
 import { getPriceWithFallback } from '../services/priceService';
 import { deleteCache } from '../config/redis';
 import { db } from '../config/db';
-import { shadowSignals, signalPerformance } from '../models/market.model';
+import { shadowSignals, signalPerformance, adminAuditLog } from '../models/market.model';
 import { portfolioCoins, portfolioTransactions, telegramPortfolioPosts } from '../models/scorecard.model';
 import {
     marketNewsItems,
@@ -36,6 +36,7 @@ import {
     archiveMarketContextSnapshot,
     unpublishMarketContextSnapshot,
 } from '../services/marketContextGenerator.service';
+import { generateCoinBlogSnapshot } from '../services/coinBlogGenerator.service';
 import {
     listContentSources,
     serializeContentSource,
@@ -1856,6 +1857,9 @@ export async function getMarketContextNewsHandler(req: Request, res: Response): 
                 symbols: marketNewsItems.symbols,
                 trust: marketNewsItems.trust,
                 trustNote: marketNewsItems.trustNote,
+                classification: marketNewsItems.classification,
+                eventSeverity: marketNewsItems.eventSeverity,
+                relevanceScore: marketNewsItems.relevanceScore,
                 createdAt: marketNewsItems.createdAt,
                 updatedAt: marketNewsItems.updatedAt,
             })
@@ -1879,6 +1883,9 @@ export async function getMarketContextNewsHandler(req: Request, res: Response): 
                 symbols: Array.isArray(r.symbols) ? r.symbols : [],
                 trust: r.trust,
                 trustNote: r.trustNote,
+                classification: r.classification ?? null,
+                eventSeverity: r.eventSeverity ?? null,
+                relevanceScore: r.relevanceScore ?? null,
                 createdAt: r.createdAt ? r.createdAt.toISOString() : '',
                 updatedAt: r.updatedAt ? r.updatedAt.toISOString() : '',
             })),
@@ -2436,22 +2443,134 @@ export async function postMarketContextSnapshotGenerateHandler(
     }
 }
 
+interface GenerateCoinSnapshotBody {
+    symbol?: string;
+    newsLimit?: number;
+    newsDaysBack?: number;
+    autoPublish?: boolean;
+}
+
+/** DEC-043 B3 — generate coin blog snapshot (draft by default) */
+export async function postMarketContextCoinGenerateHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        if (!env.MARKET_CONTEXT_ENABLED) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const body = (req.body ?? {}) as GenerateCoinSnapshotBody;
+        const adminEmail = req.adminEmail ?? 'unknown';
+        const symbol =
+            typeof body.symbol === 'string' ? body.symbol.trim().toUpperCase() : '';
+
+        if (!symbol) {
+            res.status(400).json({ error: 'symbol is required' });
+            return;
+        }
+
+        try {
+            const result = await generateCoinBlogSnapshot({
+                symbol,
+                createdBy: adminEmail,
+                newsLimit:
+                    typeof body.newsLimit === 'number' ? body.newsLimit : undefined,
+                newsDaysBack:
+                    typeof body.newsDaysBack === 'number' ? body.newsDaysBack : undefined,
+                autoPublish: body.autoPublish === true,
+            });
+
+            const snap = result.snapshot;
+
+            await logAdminAction({
+                adminEmail,
+                action: 'market_context_coin_generate',
+                targetTable: 'market_context_snapshots',
+                targetId: String(snap.id),
+                newValue: {
+                    snapshotKey: snap.snapshotKey,
+                    kind: snap.kind,
+                    symbol: snap.symbol,
+                    status: snap.status,
+                    newsCount: result.newsCount,
+                    generatorVersion: snap.generatorVersion,
+                    autoPublished: result.autoPublished,
+                    qualityScore: result.qualityScore,
+                    seoMeta: result.seoMeta,
+                },
+                ipAddress: getClientIp(req),
+            });
+
+            res.status(201).json({
+                snapshot: {
+                    id: snap.id,
+                    snapshotKey: snap.snapshotKey,
+                    kind: snap.kind,
+                    symbol: snap.symbol,
+                    status: snap.status,
+                    newsIds: Array.isArray(snap.newsIds) ? snap.newsIds : [],
+                    marketDataVersion: snap.marketDataVersion,
+                    generatorVersion: snap.generatorVersion,
+                    generatedAt: snap.generatedAt ? snap.generatedAt.toISOString() : null,
+                    publishedAt: snap.publishedAt ? snap.publishedAt.toISOString() : null,
+                    createdBy: snap.createdBy,
+                    createdAt: snap.createdAt ? snap.createdAt.toISOString() : '',
+                    autoPublished: snap.autoPublished,
+                    seoMeta: result.seoMeta,
+                    sectionKeys: result.sectionKeys,
+                    newsCount: result.newsCount,
+                    qualityScore: result.qualityScore,
+                },
+            });
+        } catch (genErr) {
+            const msg = genErr instanceof Error ? genErr.message : String(genErr);
+            if (msg === 'MARKET_CONTEXT_DISABLED') {
+                res.status(404).json({ error: 'Not found' });
+                return;
+            }
+            if (msg === 'INVALID_SYMBOL' || msg === 'SYMBOL_NOT_TRACKED') {
+                res.status(400).json({ error: msg });
+                return;
+            }
+            if (msg === 'COIN_DRAFT_PARSE_FAILED') {
+                res.status(502).json({ error: 'Coin draft generation failed' });
+                return;
+            }
+            throw genErr;
+        }
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to generate coin snapshot:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to generate coin blog snapshot' });
+    }
+}
+
 export async function getMarketContextSnapshotsHandler(
     req: Request,
     res: Response
 ): Promise<void> {
     try {
-        const { page = '1', limit = '20', status } = req.query;
+        const { page = '1', limit = '20', status, kind } = req.query;
         const pageNum = parseInt(page as string, 10) || 1;
-        const limitNum = Math.min(parseInt(limit as string, 10) || 20, 50);
+        const limitNum = Math.min(parseInt(limit as string, 10) || 20, 100);
 
         let statusFilter: 'draft' | 'published' | 'archived' | undefined;
         if (status === 'draft' || status === 'published' || status === 'archived') {
             statusFilter = status;
         }
 
+        const kindFilter =
+            typeof kind === 'string' && (kind === 'weekly' || kind === 'coin')
+                ? kind
+                : undefined;
+
         const result = await listMarketContextSnapshots({
             status: statusFilter,
+            kind: kindFilter,
             page: pageNum,
             limit: limitNum,
         });
@@ -2463,6 +2582,55 @@ export async function getMarketContextSnapshotsHandler(
             error instanceof Error ? error.message : String(error)
         );
         res.status(500).json({ error: 'Failed to list market context snapshots' });
+    }
+}
+
+/** DEC-043 B5 — recent market_context_* admin audit activity */
+export async function getMarketContextActivityHandler(
+    req: Request,
+    res: Response
+): Promise<void> {
+    try {
+        if (!env.MARKET_CONTEXT_ENABLED) {
+            res.status(404).json({ error: 'Not found' });
+            return;
+        }
+
+        const limitRaw = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 30;
+        const limit = Math.min(Math.max(Number.isFinite(limitRaw) ? limitRaw : 30, 1), 100);
+
+        const rows = await db
+            .select({
+                id: adminAuditLog.id,
+                adminEmail: adminAuditLog.adminEmail,
+                action: adminAuditLog.action,
+                targetTable: adminAuditLog.targetTable,
+                targetId: adminAuditLog.targetId,
+                newValue: adminAuditLog.newValue,
+                createdAt: adminAuditLog.createdAt,
+            })
+            .from(adminAuditLog)
+            .where(sql`${adminAuditLog.action} LIKE 'market_context_%'`)
+            .orderBy(desc(adminAuditLog.createdAt))
+            .limit(limit);
+
+        res.json({
+            activities: rows.map((r) => ({
+                id: r.id,
+                adminEmail: r.adminEmail,
+                action: r.action,
+                targetTable: r.targetTable,
+                targetId: r.targetId,
+                newValue: r.newValue,
+                createdAt: r.createdAt ? r.createdAt.toISOString() : null,
+            })),
+        });
+    } catch (error) {
+        console.error(
+            '[AdminMarketContext] Failed to list activity:',
+            error instanceof Error ? error.message : String(error)
+        );
+        res.status(500).json({ error: 'Failed to list market context activity' });
     }
 }
 
