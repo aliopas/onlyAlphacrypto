@@ -3,10 +3,10 @@ import Link from 'next/link';
 import { apiClient } from '@/features/shared/api/client';
 import { SITE_URL } from '@/lib/constants';
 import { TRACKED_COINS } from '@/config/coins';
-import { sanitizeForJsonLd } from '@/lib/json-ld';
 import {
-    ReadingMeasure,
+    IndexMeasure,
     CalmNfaNotice,
+    PublicationPath,
     ed,
     formatDisplayDate,
     type PublicSnapshot,
@@ -97,7 +97,7 @@ function buildBreadcrumbJsonLd(): Record<string, unknown> {
             {
                 '@type': 'ListItem',
                 position: 2,
-                name: 'Blog',
+                name: 'Insights',
                 item: CANONICAL,
             },
         ],
@@ -109,9 +109,10 @@ export default async function BlogIndexPage() {
     const coinBySymbol = new Map(coins.map((c) => [c.symbol.toUpperCase(), c]));
     const snap = edition.available ? edition.snapshot : null;
     const editionUpdated = formatDisplayDate(snap?.publishedAt ?? snap?.updatedAt);
+    const publishedCount = TRACKED_COINS.filter((s) => coinBySymbol.has(s)).length;
 
     return (
-        <ReadingMeasure>
+        <IndexMeasure>
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{
@@ -119,117 +120,191 @@ export default async function BlogIndexPage() {
                 }}
             />
 
-            <nav className={`${ed.type.meta} mb-8`} aria-label="Breadcrumb">
-                <Link href="/" className={ed.colors.link}>
-                    Home
-                </Link>
-                <span className="text-[#333] mx-2" aria-hidden>
-                    /
-                </span>
-                <span className="text-[#8a8680]">Blog</span>
-            </nav>
+            <PublicationPath items={[{ label: 'Insights' }]} />
 
-            <header className={ed.space.heroBottom}>
-                <p className={`${ed.type.wordmark} mb-3`}>OnlyAlpha Insights</p>
-                <h1 className={`${ed.type.h1} mb-4`}>Market context &amp; coin analysis</h1>
-                <p className={ed.type.dek}>
-                    Educational reading on why markets move and how major assets are structured —
-                    not live trading signals. Not financial advice.
+            <header className={`${ed.space.heroBottom} max-w-[36rem]`}>
+                <p
+                    className={`${ed.type.wordmark} mb-5`}
+                    style={{ fontFamily: ed.font.ui }}
+                >
+                    OnlyAlpha Insights
+                </p>
+                <h1
+                    className={`${ed.type.h1} mb-5`}
+                    style={{ fontFamily: ed.font.display }}
+                >
+                    Structure before noise
+                </h1>
+                <p className={ed.type.dek} style={{ fontFamily: ed.font.body }}>
+                    Long-form educational reading on why crypto markets move — weekly market
+                    editions and asset briefs. Not live signals.
                 </p>
             </header>
 
             <CalmNfaNotice />
 
-            <section className="mb-12">
-                <h2 className="text-xl font-semibold text-white mb-4">Market edition</h2>
+            {/* Featured weekly edition — magazine lead */}
+            <section className="mb-16 md:mb-20" aria-labelledby="edition-heading">
+                <div
+                    className="flex items-baseline justify-between gap-4 mb-6"
+                    style={{ fontFamily: ed.font.ui }}
+                >
+                    <h2
+                        id="edition-heading"
+                        className={ed.type.chapterLabel + ' mb-0'}
+                    >
+                        This week
+                    </h2>
+                    {editionUpdated && (
+                        <span className={ed.type.meta}>{editionUpdated}</span>
+                    )}
+                </div>
+
                 {snap ? (
                     <Link
                         href="/blog/market-context"
-                        className="block border border-[#1f1f1f] bg-[#0a0a0a] rounded-lg p-5 hover:border-[#333] transition-colors"
+                        className="group block border-t border-b border-[#1c1b19] py-8 md:py-10 transition-colors hover:border-[#2e2c28]"
                     >
-                        <p className="text-xs uppercase tracking-wider text-[#6a6660] mb-2">
-                            Weekly Market Context
+                        <p
+                            className={`${ed.type.editionBadge} mb-5 inline-block`}
+                            style={{ fontFamily: ed.font.ui }}
+                        >
+                            Market Context
+                            {snap.weekLabel ? ` · ${snap.weekLabel}` : ''}
                         </p>
-                        <p className="text-lg font-semibold text-white mb-2">
-                            {snap.weekLabel
-                                ? `Edition ${snap.weekLabel}`
-                                : 'Latest market context edition'}
+                        <h3
+                            className="text-[1.65rem] md:text-[2.1rem] font-normal text-[#f4f0ea] tracking-[-0.02em] leading-[1.2] mb-4 group-hover:text-white transition-colors"
+                            style={{ fontFamily: ed.font.display }}
+                        >
+                            Why is the crypto market moving today?
+                        </h3>
+                        <p
+                            className={`${ed.type.dek} mb-6 max-w-[38rem]`}
+                            style={{ fontFamily: ed.font.body }}
+                        >
+                            Liquidity, Bitcoin correlation, macro narrative, and the week&apos;s
+                            verified context — written for understanding.
                         </p>
-                        <p className="text-sm text-[#a8a49e] mb-3">
-                            Why crypto markets are moving — liquidity, Bitcoin correlation, macro,
-                            and the week&apos;s narrative.
-                        </p>
-                        {editionUpdated && (
-                            <p className={ed.type.meta}>Updated {editionUpdated}</p>
-                        )}
+                        <span
+                            className="inline-flex items-center gap-2 text-[13px] tracking-wide text-[#b5a894] group-hover:text-[#ece8e1] transition-colors"
+                            style={{ fontFamily: ed.font.ui }}
+                        >
+                            Read the edition
+                            <span className="text-[#5c574f] group-hover:text-[#9c968c]" aria-hidden>
+                                →
+                            </span>
+                        </span>
                     </Link>
                 ) : (
-                    <div className="border border-[#1f1f1f] rounded-lg p-5 text-[#8a8680] text-sm">
-                        No market edition is published yet. Check back after the next editorial
-                        publish.
+                    <div className="border-t border-b border-[#1c1b19] py-10">
+                        <p
+                            className={ed.type.dek}
+                            style={{ fontFamily: ed.font.body }}
+                        >
+                            The next market edition is in progress. Check back after the next
+                            editorial publish.
+                        </p>
                     </div>
                 )}
             </section>
 
-            <section>
-                <h2 className="text-xl font-semibold text-white mb-4">Coin pages</h2>
-                <p className={`${ed.type.bodySm} mb-6 text-[#8a8680]`}>
-                    Structural context for the OnlyAlpha tracked set. Empty cards mean a page has
-                    not been generated yet.
+            {/* Asset index — editorial list, not dashboard cards */}
+            <section id="assets" aria-labelledby="assets-heading">
+                <div
+                    className="flex flex-wrap items-baseline justify-between gap-3 mb-2"
+                    style={{ fontFamily: ed.font.ui }}
+                >
+                    <h2 id="assets-heading" className={ed.type.chapterLabel + ' mb-0'}>
+                        Asset briefs
+                    </h2>
+                    <span className={ed.type.meta}>
+                        {publishedCount} of {TRACKED_COINS.length} published
+                    </span>
+                </div>
+                <p
+                    className={`${ed.type.bodySm} mb-8 max-w-[34rem]`}
+                    style={{ fontFamily: ed.font.body }}
+                >
+                    Structural context for major assets — history, news impact, and outlook without
+                    price targets.
                 </p>
-                <ul className="grid gap-3 sm:grid-cols-2">
+
+                <ul className="border-t border-[#1c1b19]">
                     {TRACKED_COINS.map((symbol) => {
                         const row = coinBySymbol.get(symbol);
                         const href = `/blog/${symbol.toLowerCase()}`;
                         const updated = formatDisplayDate(row?.updatedAt ?? row?.publishedAt);
                         const title =
-                            row?.seoMeta?.metaTitle ||
-                            `${symbol} price analysis | OnlyAlpha Insights`;
+                            row?.seoMeta?.metaTitle?.replace(/\s*\|\s*OnlyAlpha.*$/i, '').trim() ||
+                            `${symbol} market structure`;
                         const hook =
                             row?.hook ||
                             (row
-                                ? `Educational ${symbol} market structure and news context.`
-                                : `${symbol} page not published yet.`);
+                                ? `Educational ${symbol} structure and news context.`
+                                : null);
+
+                        if (!row) {
+                            return (
+                                <li
+                                    key={symbol}
+                                    className="flex items-baseline gap-4 md:gap-6 py-4 border-b border-[#141311] opacity-45"
+                                >
+                                    <span
+                                        className="w-14 shrink-0 text-[13px] tracking-wide text-[#6e6860]"
+                                        style={{ fontFamily: ed.font.ui }}
+                                    >
+                                        {symbol}
+                                    </span>
+                                    <span
+                                        className="flex-1 text-[0.95rem] text-[#5c574f]"
+                                        style={{ fontFamily: ed.font.body }}
+                                    >
+                                        In preparation
+                                    </span>
+                                </li>
+                            );
+                        }
 
                         return (
-                            <li key={symbol}>
+                            <li key={symbol} className="border-b border-[#1c1b19]">
                                 <Link
                                     href={href}
-                                    className={`block h-full border rounded-lg p-4 transition-colors ${
-                                        row
-                                            ? 'border-[#1f1f1f] bg-[#0a0a0a] hover:border-[#333]'
-                                            : 'border-[#151515] bg-transparent opacity-70 hover:opacity-100'
-                                    }`}
+                                    className="group flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-6 py-5 md:py-6 transition-colors"
                                 >
-                                    <div className="flex items-baseline justify-between gap-2 mb-2">
-                                        <span className="text-base font-semibold text-white">
-                                            {symbol}
+                                    <span
+                                        className="w-14 shrink-0 text-[13px] tracking-wide text-[#a89a88] group-hover:text-[#ece8e1] transition-colors"
+                                        style={{ fontFamily: ed.font.ui }}
+                                    >
+                                        {symbol}
+                                    </span>
+                                    <span className="flex-1 min-w-0">
+                                        <span
+                                            className={`${ed.type.indexTitle} block group-hover:text-white transition-colors`}
+                                            style={{ fontFamily: ed.font.display }}
+                                        >
+                                            {title}
                                         </span>
-                                        {row?.seoScoreBand && (
-                                            <span className="text-[10px] uppercase tracking-wider text-[#6a6660]">
-                                                SEO {row.seoScoreBand}
+                                        {hook && (
+                                            <span
+                                                className={`${ed.type.indexHook} block mt-1.5 line-clamp-2`}
+                                                style={{ fontFamily: ed.font.body }}
+                                            >
+                                                {hook}
                                             </span>
                                         )}
-                                    </div>
-                                    <p className="text-sm text-[#c8c4be] line-clamp-2 mb-2">
-                                        {sanitizeForJsonLd(title)}
-                                    </p>
-                                    <p className="text-xs text-[#8a8680] line-clamp-2 mb-2">
-                                        {hook}
-                                    </p>
-                                    <p className={ed.type.meta}>
-                                        {row
-                                            ? updated
-                                                ? `Updated ${updated}`
-                                                : 'Published'
-                                            : 'Coming soon'}
-                                    </p>
+                                    </span>
+                                    <span
+                                        className="shrink-0 text-[12px] text-[#5c574f] sm:text-right sm:w-28 mt-1 sm:mt-0"
+                                        style={{ fontFamily: ed.font.ui }}
+                                    >
+                                        {updated ?? 'Published'}
+                                    </span>
                                 </Link>
                             </li>
                         );
                     })}
                 </ul>
             </section>
-        </ReadingMeasure>
+        </IndexMeasure>
     );
 }

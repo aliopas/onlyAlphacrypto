@@ -1,33 +1,38 @@
 import Link from 'next/link';
 import { ed } from './tokens';
 
-/** MC-ED-7 — slim legal/brand footer for editorial reading paths. */
+/** Slim legal/brand footer for publication paths. */
 export function EditorialFooter() {
     const year = new Date().getFullYear();
 
     return (
-        <footer className={`w-full border-t ${ed.colors.border} bg-black py-8 mt-auto`}>
-            <div className={`${ed.measure} mx-auto ${ed.space.pageX} text-center`}>
-                <p className={`${ed.type.footer} mb-3`}>
-                    © {year} OnlyAlpha · Market Context
-                </p>
+        <footer
+            className={`w-full border-t ${ed.colors.rule} mt-auto`}
+            style={{ fontFamily: ed.font.ui }}
+        >
+            <div
+                className={`${ed.measureIndex} mx-auto ${ed.space.pageX} py-10 md:py-12 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6`}
+            >
+                <div>
+                    <p className={`${ed.type.wordmark} mb-2`}>OnlyAlpha Insights</p>
+                    <p className={ed.type.footer}>
+                        © {year} OnlyAlpha · Educational market reading
+                    </p>
+                </div>
                 <nav
-                    className="flex items-center justify-center flex-wrap gap-x-3 gap-y-1 text-[11px] font-mono"
+                    className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px]"
                     aria-label="Editorial legal"
                 >
-                    <Link href="/disclaimer" className="text-[#555] hover:text-[#888] transition-colors">
+                    <Link href="/blog" className={ed.type.navLink}>
+                        Insights
+                    </Link>
+                    <Link href="/disclaimer" className={ed.type.navLink}>
                         Disclaimer
                     </Link>
-                    <span className="text-[#333]" aria-hidden>
-                        ·
-                    </span>
-                    <Link href="/about" className="text-[#555] hover:text-[#888] transition-colors">
+                    <Link href="/about" className={ed.type.navLink}>
                         About
                     </Link>
-                    <span className="text-[#333]" aria-hidden>
-                        ·
-                    </span>
-                    <Link href="/" className="text-[#555] hover:text-[#888] transition-colors">
+                    <Link href="/" className={ed.type.navLink}>
                         OnlyAlpha
                     </Link>
                 </nav>

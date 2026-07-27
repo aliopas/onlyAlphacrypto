@@ -15,6 +15,7 @@ import {
     CalmNfaNotice,
     EditionIdentity,
     ContinueLiveIntelligence,
+    PublicationPath,
     ed,
     COIN_SECTION_ORDER,
     COIN_SECTION_CHAPTER_LABELS,
@@ -211,29 +212,35 @@ function EmptyCoinState({ symbol }: { symbol: string }) {
                     ),
                 }}
             />
-            <nav className={`${ed.type.meta} mb-8`} aria-label="Breadcrumb">
-                <Link href="/" className={ed.colors.link}>
-                    Home
-                </Link>
-                <span className="text-[#333] mx-2">/</span>
-                <Link href="/blog" className={ed.colors.link}>
-                    Blog
-                </Link>
-                <span className="text-[#333] mx-2">/</span>
-                <span className="text-[#8a8680]">{symbol}</span>
-            </nav>
-            <p className={`${ed.type.wordmark} mb-6`}>OnlyAlpha Insights</p>
-            <h1 className={`${ed.type.h1} mb-4`}>{symbol} page is not published yet</h1>
-            <p className={`${ed.type.dek} mb-8`}>
-                An educational {symbol} article will appear here after generation and publish.
-                Browse other Insights pages meanwhile.
+            <PublicationPath
+                items={[
+                    { label: 'Insights', href: '/blog' },
+                    { label: 'Assets', href: '/blog#assets' },
+                    { label: symbol },
+                ]}
+            />
+            <p
+                className={`${ed.type.wordmark} mb-6`}
+                style={{ fontFamily: ed.font.ui }}
+            >
+                Asset brief
+            </p>
+            <h1
+                className={`${ed.type.h1} mb-5`}
+                style={{ fontFamily: ed.font.display }}
+            >
+                {symbol} is not published yet
+            </h1>
+            <p className={`${ed.type.dek} mb-8`} style={{ fontFamily: ed.font.body }}>
+                An educational {symbol} brief will appear here after editorial publish. Browse other
+                Insights pages meanwhile.
             </p>
             <CalmNfaNotice />
-            <p className={ed.type.meta}>
-                <Link href="/blog" className={ed.colors.link}>
-                    Back to Blog
+            <p className={ed.type.meta} style={{ fontFamily: ed.font.ui }}>
+                <Link href="/blog#assets" className={ed.colors.link}>
+                    All asset briefs
                 </Link>
-                <span className="text-[#333] mx-2">·</span>
+                <span className="text-[#3a3630] mx-2">·</span>
                 <Link href="/blog/market-context" className={ed.colors.link}>
                     Market Context
                 </Link>
@@ -275,7 +282,10 @@ export default async function CoinBlogPage({ params }: PageProps) {
     const related = TRACKED_COINS.filter((c) => c !== symbol).slice(0, 4);
 
     return (
-        <article className={ed.measure + ' mx-auto w-full'}>
+        <article
+            className={ed.measure + ' mx-auto w-full'}
+            style={{ fontFamily: ed.font.body }}
+        >
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{
@@ -290,20 +300,16 @@ export default async function CoinBlogPage({ params }: PageProps) {
             />
             {faqItems.length > 0 && <FaqSchema items={faqItems} />}
 
-            <nav className={`${ed.type.meta} mb-6`} aria-label="Breadcrumb">
-                <Link href="/" className={ed.colors.link}>
-                    Home
-                </Link>
-                <span className="text-[#333] mx-2">/</span>
-                <Link href="/blog" className={ed.colors.link}>
-                    Blog
-                </Link>
-                <span className="text-[#333] mx-2">/</span>
-                <span className="text-[#8a8680]">{symbol}</span>
-            </nav>
+            <PublicationPath
+                items={[
+                    { label: 'Insights', href: '/blog' },
+                    { label: 'Assets', href: '/blog#assets' },
+                    { label: symbol },
+                ]}
+            />
 
             <EditionIdentity
-                editionLabel={`${symbol} Insights`}
+                editionLabel={`${symbol} brief`}
                 publishedLabel={publishedLabel}
                 updatedLabel={updatedLabel}
                 showUpdated={showUpdated}
@@ -312,13 +318,16 @@ export default async function CoinBlogPage({ params }: PageProps) {
                 confidenceBand={sourceCount >= 3 ? 'solid' : 'moderate'}
                 confidenceDetail={
                     sourceCount > 0
-                        ? `This page draws on ${sourceCount} verified news item${sourceCount === 1 ? '' : 's'}.`
-                        : 'Limited verified news window for this coin.'
+                        ? `This brief draws on ${sourceCount} verified news item${sourceCount === 1 ? '' : 's'}.`
+                        : 'Limited verified news window for this asset.'
                 }
             />
 
             <header className={ed.space.heroBottom}>
-                <h1 className={`${ed.type.h1} mb-4`}>
+                <h1
+                    className={`${ed.type.h1} mb-5`}
+                    style={{ fontFamily: ed.font.display }}
+                >
                     {extractH2(sections.heroWhatIs?.content ?? '') ||
                         `${symbol} price analysis`}
                 </h1>
@@ -352,34 +361,75 @@ export default async function CoinBlogPage({ params }: PageProps) {
 
             {takeaway && <KeyTakeaway>{takeaway}</KeyTakeaway>}
 
-            <section className="mt-10 mb-8">
-                <h2 className="text-lg font-semibold text-white mb-3">Related reading</h2>
-                <ul className="flex flex-wrap gap-3 text-sm">
+            <section
+                className="mt-14 mb-4 border-t border-[#1c1b19] pt-10"
+                aria-labelledby="related-reading"
+            >
+                <h2
+                    id="related-reading"
+                    className={`${ed.type.chapterLabel}`}
+                    style={{ fontFamily: ed.font.ui }}
+                >
+                    Related reading
+                </h2>
+                <ul className="mt-2 divide-y divide-[#1c1b19] border-t border-b border-[#1c1b19]">
                     <li>
-                        <Link href="/blog" className={ed.colors.link}>
-                            Insights hub
+                        <Link
+                            href="/blog/market-context"
+                            className="flex items-baseline justify-between gap-4 py-4 group"
+                        >
+                            <span
+                                className="text-[#d4cfc6] group-hover:text-white transition-colors"
+                                style={{ fontFamily: ed.font.display }}
+                            >
+                                Market Context edition
+                            </span>
+                            <span className="text-[#5c574f] text-sm" aria-hidden>
+                                →
+                            </span>
                         </Link>
                     </li>
-                    <li>
-                        <Link href="/blog/market-context" className={ed.colors.link}>
-                            Market Context edition
-                        </Link>
-                    </li>
-                    {related.map((c) => (
+                    {related.slice(0, 3).map((c) => (
                         <li key={c}>
-                            <Link href={`/blog/${c.toLowerCase()}`} className={ed.colors.link}>
-                                {c}
+                            <Link
+                                href={`/blog/${c.toLowerCase()}`}
+                                className="flex items-baseline justify-between gap-4 py-4 group"
+                            >
+                                <span
+                                    className="text-[#d4cfc6] group-hover:text-white transition-colors"
+                                    style={{ fontFamily: ed.font.display }}
+                                >
+                                    {c} brief
+                                </span>
+                                <span className="text-[#5c574f] text-sm" aria-hidden>
+                                    →
+                                </span>
                             </Link>
                         </li>
                     ))}
+                    <li>
+                        <Link
+                            href="/blog#assets"
+                            className="flex items-baseline justify-between gap-4 py-4 group"
+                        >
+                            <span
+                                className="text-[#9c968c] group-hover:text-[#ece8e1] transition-colors"
+                                style={{ fontFamily: ed.font.ui }}
+                            >
+                                All asset briefs
+                            </span>
+                            <span className="text-[#5c574f] text-sm" aria-hidden>
+                                →
+                            </span>
+                        </Link>
+                    </li>
                 </ul>
             </section>
 
             {sourceCount > 0 && (
                 <SourceNote>
-                    This {symbol} page synthesizes {sourceCount} verified source
-                    {sourceCount === 1 ? '' : 's'} from the OnlyAlpha intake pipeline. Not financial
-                    advice.
+                    This {symbol} brief synthesizes {sourceCount} verified source
+                    {sourceCount === 1 ? '' : 's'} from the OnlyAlpha intake pipeline.
                 </SourceNote>
             )}
 

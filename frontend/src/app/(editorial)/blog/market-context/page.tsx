@@ -13,6 +13,7 @@ import {
     CalmNfaNotice,
     EditionIdentity,
     ContinueLiveIntelligence,
+    PublicationPath,
     ed,
     SECTION_ORDER,
     SECTION_CHAPTER_LABELS,
@@ -219,27 +220,32 @@ function EmptyEditionState() {
                     __html: JSON.stringify(buildBreadcrumbJsonLd()),
                 }}
             />
-            <p className={`${ed.type.wordmark} mb-6`}>Market Context</p>
-            <h1 className={`${ed.type.h1} mb-4`}>The next edition is in progress</h1>
-            <p className={`${ed.type.dek} mb-8`}>
+            <PublicationPath
+                items={[
+                    { label: 'Insights', href: '/blog' },
+                    { label: 'Market Context' },
+                ]}
+            />
+            <p
+                className={`${ed.type.wordmark} mb-6`}
+                style={{ fontFamily: ed.font.ui }}
+            >
+                Market Context
+            </p>
+            <h1
+                className={`${ed.type.h1} mb-5`}
+                style={{ fontFamily: ed.font.display }}
+            >
+                The next edition is in progress
+            </h1>
+            <p className={`${ed.type.dek} mb-8`} style={{ fontFamily: ed.font.body }}>
                 Market Context publishes educational market-wide editions on a regular cycle. No
-                edition is live for readers yet — check back after the next editorial publish.
+                edition is live yet — check back after the next editorial publish.
             </p>
             <CalmNfaNotice />
-            <p className={`${ed.type.bodySm} mb-8`}>
-                When an edition is published, you will find structural context on liquidity,
-                Bitcoin correlation, macro, and the week&apos;s narrative — written for understanding,
-                not for trading signals.
-            </p>
-            <p className={ed.type.meta}>
-                <Link href="/" className={ed.colors.link}>
-                    Return to OnlyAlpha
-                </Link>
-                <span className="text-[#333] mx-2" aria-hidden>
-                    ·
-                </span>
-                <Link href="/terminal" className={ed.type.exitLink}>
-                    Exit to Terminal
+            <p className={ed.type.meta} style={{ fontFamily: ed.font.ui }}>
+                <Link href="/blog" className={ed.colors.link}>
+                    All Insights
                 </Link>
             </p>
         </ReadingMeasure>
@@ -272,7 +278,10 @@ export default async function MarketContextPublicPage() {
     const takeaway = extractTakeawayFromOutlook(snapshot.sections.outlook?.content);
 
     return (
-        <article className={ed.measure + ' mx-auto w-full'}>
+        <article
+            className={ed.measure + ' mx-auto w-full'}
+            style={{ fontFamily: ed.font.body }}
+        >
             <script
                 type="application/ld+json"
                 dangerouslySetInnerHTML={{
@@ -287,7 +296,13 @@ export default async function MarketContextPublicPage() {
             />
             {faqItems.length > 0 && <FaqSchema items={faqItems} />}
 
-            {/* MC-ED-11 Edition Identity */}
+            <PublicationPath
+                items={[
+                    { label: 'Insights', href: '/blog' },
+                    { label: 'Market Context' },
+                ]}
+            />
+
             <EditionIdentity
                 editionLabel={editionLabel}
                 publishedLabel={publishedLabel}
@@ -299,9 +314,11 @@ export default async function MarketContextPublicPage() {
                 confidenceDetail={confidence.detail}
             />
 
-            {/* MC-ED-2 Edition hero */}
             <header className={ed.space.heroBottom}>
-                <h1 className={`${ed.type.h1} mb-4`}>
+                <h1
+                    className={`${ed.type.h1} mb-5`}
+                    style={{ fontFamily: ed.font.display }}
+                >
                     Why is the crypto market moving today?
                 </h1>
                 <p className={ed.type.dek}>{dek}</p>

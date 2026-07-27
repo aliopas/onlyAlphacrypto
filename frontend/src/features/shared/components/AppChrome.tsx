@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/features/shared/components/Sidebar';
 import { TickerBar } from '@/features/shared/components/TickerBar';
@@ -13,18 +14,34 @@ function isEditorialPath(pathname: string): boolean {
 }
 
 /**
- * Operational chrome (Sidebar + Ticker) for Intelligence Platform routes.
- * Hidden on editorial Market Context routes so reading shell owns the experience.
+ * Ops chrome (Sidebar + Ticker) for platform routes.
+ * Insights uses a full-document reading shell — no app panel scroll trap.
  */
 export function AppChrome({ children }: AppChromeProps) {
     const pathname = usePathname() ?? '';
     const editorial = isEditorialPath(pathname);
 
+    useEffect(() => {
+        const root = document.documentElement;
+        const body = document.body;
+        if (editorial) {
+            root.classList.add('editorial-mode');
+            body.classList.add('editorial-mode');
+        } else {
+            root.classList.remove('editorial-mode');
+            body.classList.remove('editorial-mode');
+        }
+        return () => {
+            root.classList.remove('editorial-mode');
+            body.classList.remove('editorial-mode');
+        };
+    }, [editorial]);
+
     if (editorial) {
         return (
-            <main className="flex-1 flex flex-col h-full min-w-0 bg-black overflow-hidden">
+            <div className="editorial-shell w-full min-h-screen flex flex-col bg-[#070706]">
                 {children}
-            </main>
+            </div>
         );
     }
 

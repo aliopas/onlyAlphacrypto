@@ -1,6 +1,7 @@
 export { ed } from './tokens';
 export {
     ReadingMeasure,
+    IndexMeasure,
     EditionBadge,
     Chapter,
     Quote,
@@ -14,6 +15,7 @@ export {
 export { EditionIdentity } from './EditionIdentity';
 export { ContinueLiveIntelligence } from './ContinueLiveIntelligence';
 export { EditorialFooter } from './EditorialFooter';
+export { PublicationPath } from './PublicationPath';
 export {
     SECTION_ORDER,
     SECTION_CHAPTER_LABELS,

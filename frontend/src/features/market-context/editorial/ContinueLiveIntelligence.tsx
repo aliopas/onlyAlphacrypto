@@ -1,39 +1,43 @@
 import Link from 'next/link';
 import { ed } from './tokens';
 
-/** MC-ED-6 — post-body bridge only. Never place above the fold. */
+/** Post-body bridge only — quiet, not a product banner. */
 export function ContinueLiveIntelligence() {
     return (
         <section
-            className={`${ed.space.bridgeTop} border-t ${ed.colors.border} pt-12 md:pt-16`}
+            className={`${ed.space.bridgeTop} border-t ${ed.colors.rule} pt-14 md:pt-16`}
             aria-labelledby="continue-live-heading"
         >
-            <p className={`${ed.type.moduleLabel} mb-3`}>After this edition</p>
+            <p
+                className={`${ed.type.moduleLabel} mb-4`}
+                style={{ fontFamily: ed.font.ui }}
+            >
+                Further reading
+            </p>
             <h2
                 id="continue-live-heading"
-                className="text-[1.35rem] md:text-[1.5rem] font-semibold text-white tracking-tight mb-3"
+                className="text-[1.45rem] md:text-[1.65rem] font-normal text-[#f4f0ea] tracking-[-0.015em] mb-4"
+                style={{ fontFamily: ed.font.display }}
             >
-                Continue with Live Intelligence
+                Live markets on Terminal
             </h2>
-            <p className={`${ed.type.bodySm} mb-6 max-w-[60ch]`}>
-                You have the structural picture — why markets may be behaving this way. When you
-                need what is happening right now per asset, open the Intelligence Platform Terminal
-                for live wire, radar, and coin-level analysis.
+            <p
+                className={`${ed.type.bodySm} mb-8 max-w-[34rem]`}
+                style={{ fontFamily: ed.font.body }}
+            >
+                This page is for understanding. When you need what is moving right now — wire,
+                radar, and per-coin analysis — continue on the Intelligence Platform.
             </p>
-            <div className="flex flex-wrap items-center gap-4">
-                <Link
-                    href="/terminal"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-sm bg-[#141414] text-[#e8e6e3] border border-[#333] hover:border-[#555] hover:bg-[#1a1a1a] text-sm font-medium transition-colors"
-                >
-                    Open Terminal
-                </Link>
-                <Link
-                    href="/terminal"
-                    className="text-[12px] font-mono text-[#555] hover:text-[#888] transition-colors"
-                >
-                    Radar &amp; live wire
-                </Link>
-            </div>
+            <Link
+                href="/terminal"
+                className="inline-flex items-center gap-2 text-[13px] tracking-wide text-[#b5a894] hover:text-[#f4f0ea] transition-colors border-b border-[#3a3630] hover:border-[#b5a894] pb-0.5"
+                style={{ fontFamily: ed.font.ui }}
+            >
+                Open Terminal
+                <span aria-hidden className="text-[#6e6860]">
+                    →
+                </span>
+            </Link>
         </section>
     );
 }

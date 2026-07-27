@@ -285,39 +285,38 @@ export function renderMarkdownToSafeHtml(md: string): string {
         if (trimmed.startsWith('### ')) {
             flushList();
             htmlParts.push(
-                `<h3 class="text-[1.1rem] font-semibold text-white mt-6 mb-2">${inlineFormat(trimmed.slice(4))}</h3>`
+                `<h3 class="text-[1.15rem] font-normal text-[#f4f0ea] mt-7 mb-2 tracking-tight">${inlineFormat(trimmed.slice(4))}</h3>`
             );
             continue;
         }
         if (trimmed.startsWith('## ')) {
             flushList();
-            // H2 rendered by Chapter chrome when extractH2 used; still allow inline H2s deeper in body
             htmlParts.push(
-                `<h2 class="text-[1.35rem] md:text-[1.5rem] font-semibold text-white tracking-tight leading-snug mt-8 mb-4">${inlineFormat(trimmed.slice(3))}</h2>`
+                `<h2 class="text-[1.35rem] md:text-[1.5rem] font-normal text-[#f4f0ea] tracking-tight leading-snug mt-10 mb-4">${inlineFormat(trimmed.slice(3))}</h2>`
             );
             continue;
         }
         if (trimmed.startsWith('# ')) {
             flushList();
             htmlParts.push(
-                `<h2 class="text-[1.35rem] md:text-[1.5rem] font-semibold text-white tracking-tight leading-snug mt-8 mb-4">${inlineFormat(trimmed.slice(2))}</h2>`
+                `<h2 class="text-[1.35rem] md:text-[1.5rem] font-normal text-[#f4f0ea] tracking-tight leading-snug mt-10 mb-4">${inlineFormat(trimmed.slice(2))}</h2>`
             );
             continue;
         }
         if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
             if (!inList) {
                 htmlParts.push(
-                    '<ul class="list-disc pl-5 space-y-2 text-[#c8c4be] mb-4 marker:text-[#4a4742]">'
+                    '<ul class="list-disc pl-5 space-y-2.5 text-[#d4cfc6] mb-5 marker:text-[#5c574f]">'
                 );
                 inList = true;
             }
-            htmlParts.push(`<li class="leading-[1.75]">${inlineFormat(trimmed.slice(2))}</li>`);
+            htmlParts.push(`<li class="leading-[1.8]">${inlineFormat(trimmed.slice(2))}</li>`);
             continue;
         }
 
         flushList();
         htmlParts.push(
-            `<p class="text-[1.0625rem] md:text-[1.125rem] text-[#c8c4be] leading-[1.75] mb-4">${inlineFormat(trimmed)}</p>`
+            `<p class="text-[1.0625rem] md:text-[1.125rem] text-[#d4cfc6] leading-[1.8] mb-5">${inlineFormat(trimmed)}</p>`
         );
     }
     flushList();
@@ -334,12 +333,12 @@ function inlineFormat(text: string): string {
     return text
         .replace(
             /\[([^\]]+)\]\((\/[^)\s]+|https?:\/\/[^)\s]+)\)/g,
-            '<a href="$2" class="text-[#c9a227] underline underline-offset-2 hover:text-[#e0c04a]">$1</a>'
+            '<a href="$2" class="text-[#b5a894] underline-offset-[3px] hover:underline hover:text-[#ece8e1] transition-colors">$1</a>'
         )
-        .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-[#e8e6e3] font-semibold">$1</strong>')
-        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong class="text-[#f4f0ea] font-medium">$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em class="text-[#ece8e1]">$1</em>')
         .replace(
             /`([^`]+)`/g,
-            '<code class="text-[0.85em] bg-[#111] border border-[#2a2a2a] px-1 rounded text-[#c8c4be]">$1</code>'
+            '<code class="text-[0.85em] bg-[#12110f] border border-[#2a2824] px-1 rounded-sm text-[#c8c2b8]">$1</code>'
         );
 }
