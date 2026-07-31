@@ -78,8 +78,8 @@ function formatPct(val: number | null): string {
 
 function verdictBadge(verdict: string): string {
     const v = verdict.toUpperCase();
-    if (v === 'BULLISH' || v === 'BUY') return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-    if (v === 'BEARISH' || v === 'SELL') return 'bg-red-500/20 text-red-400 border border-red-500/30';
+    if (v === 'BULLISH' || v === 'BUY' || v === 'STRONG_BUY') return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+    if (v === 'BEARISH' || v === 'SELL' || v === 'STRONG_SELL') return 'bg-red-500/20 text-red-400 border border-red-500/30';
     return 'bg-[#222] text-[#888]';
 }
 
